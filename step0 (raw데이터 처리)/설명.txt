@@ -1,0 +1,24 @@
+1. tashu_api.py
+    - tashu_api 를 읽어와
+    - 대여소별 현재 정보(station_id	station_name	parking_info	lat	lon	stock)
+
+2. extract_parking_lot.py
+    - 1번의 결과물을 통해 대여소별 주차대수를 파싱
+    (station_id	lat	lon	parking_lot)
+
+3. raw_to_net.py
+    - raw 데이터 "data/raw_data/대전시 공영자전거 타슈 대여이력 정보(25년11월).csv"를 읽어와
+    - 날짜별 대여소의 순수요(시간대별)를 구함
+    (
+        날짜	station_id	
+        net_00	net_01	net_02	net_03	net_04	net_05	
+        net_06	net_07	net_08	net_09	net_10	net_11	
+        net_12	net_13	net_14	net_15	net_16	net_17	
+        net_18	net_19	net_20	net_21	net_22	net_23
+    )
+
+
+4. api_to_info.py
+
+
+5.

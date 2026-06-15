@@ -1,0 +1,255 @@
+from datetime import datetime
+from sklearn_extra.cluster import KMedoids
+from sklearn.preprocessing import StandardScaler
+from scipy.spatial.distance import cdist
+import pandas as pd
+import numpy as np
+from adjust_module import compute_medoids, compute_objective, select_cluster_candidates, \
+                            make_cluster_pairs, get_movable_nodes, check_size_constraint, try_move_node
+
+# read_csv
+file_path = "data/pp_data/재배치 정보/rebal_qty{duration} ({now}).csv"
+st_info_file = "data/pp_data/대여소 정보/st_info ({now}).csv"
+
+# to_csv
+clustered_file = "data/pp_data/ILP/후보/top{duration} ({now}).csv"
+#cluster_center_file = "data/pp_data/ILP/후보/top_center{duration} ({now}).csv"
+ 
+#now = datetime.now().strftime('%Y-%m-%d %H')
+now = '2026-05-21 18'
+
+def select_top_unbalanced_st(file_path:str, duration:str, st_info:pd.DataFrame) -> pd.DataFrame:
+    '''
+    1차 : 재배치 작업 시, 대상 대여소(pick/drop)를 선택한다.
+    '''
+
+    types = ['pick', 'drop']
+
+    st_rebal = pd.read_csv(file_path.format(duration=duration), encoding='utf-8', low_memory=False)
+    
+    st = (
+        st_rebal[abs(st_rebal['rebal_qty']) > 2]
+        .merge(st_info, how='left', on='station_id')
+        .iloc[:,[0,7,8,9,3,4,5,6,1,2]]
+        .rename(columns={'parking_lot_x':'parking_lot', 'stock_x':'stock'})
+        )
+    
+    print(st.head(10))
+
+    # pick/drop을 작업량 내림차순으로 정렬 후 붙이기
+    pick_st = (
+        st[st['rebal_qty'] < 0]
+        .sort_values('rebal_qty', ascending=True)
+    )
+    pick_st = pick_st.iloc[:50, :]
+
+    drop_st = (
+        st[st['rebal_qty'] > 0]
+        .sort_values('rebal_qty', ascending=False)
+    )
+    drop_st = drop_st.iloc[:50, :]
+
+    # 각 작업량 계산
+    pick_qty = pick_st['rebal_qty'].sum(axis=0)
+    drop_qty = drop_st['rebal_qty'].sum(axis=0)
+
+
+    cut_point = min(abs(pick_qty), drop_qty)
+
+    pick_st['cumul'] = pick_st['rebal_qty'].cumsum()
+    drop_st['cumul'] = drop_st['rebal_qty'].cumsum()
+    
+
+    pick_st = pick_st[abs(pick_st['cumul']) <= cut_point].drop(columns='cumul')
+    drop_st = drop_st[drop_st['cumul'] <= cut_point].drop(columns='cumul')
+    
+
+    print(f"\n pick 대상) \
+          \n - {len(pick_st)}개의 대여소 \
+          \n - {pick_st['rebal_qty'].sum(axis=0)}개의 작업량")
+    print(f"\n drop 대상 \
+          \n - {len(drop_st)}개의 대여소\
+          \n - {drop_st['rebal_qty'].sum(axis=0)}개의 작업량")
+    
+
+    pick_drop = pd.concat([pick_st, drop_st], axis=0)
+    ''' 
+    [5, 3, -3, -3, -3] 방지용으로 할까 했는데, 몇 대 정도의 차이는 괜찮을 듯 일단 킵
+    pick_drop['cumul'] = pick_drop['rebal_qty'].cumsum()
+    pick_drop = pick_drop[pick_drop['cumul'] <= 0]
+    pick_drop.drop(columns='cumul', inplace=True)
+    '''
+    #pick_drop.to_csv("asd.csv", encoding='utf-8', index=False)
+    
+    return pick_drop
+
+
+def make_clustering(pick_drop: pd.DataFrame, target_cluster_size: int = 7) -> pd.DataFrame:
+    '''
+    # 2차 : 클러스터링(K-Medoids)
+    '''
+    
+    K = int(np.ceil(len(pick_drop) / target_cluster_size))
+    print(f"군집 개수 K = {K}")
+
+    # K-Medoids 클러스터링
+    X = pick_drop[['lat', 'lon']].values
+    #print(X); print(X.shape)
+    #X_scaled = StandardScaler().fit_transform(X)
+
+    model = KMedoids(
+        n_clusters=K, 
+        metric='manhattan',
+        random_state=42
+    )
+    
+    pick_drop['cluster'] = model.fit_predict(X)
+    
+    return pick_drop
+
+
+# 군집별 정보(불균형 지수 : rebal_qty, 대여소 개수)와 중심점 계산
+def cal_cluster_info(pick_drop: pd.DataFrame) -> pd.DataFrame:
+    cluster_balance = (     # 군집 내 대여소별 rebal_qty 합계(불균형도)
+        pick_drop.groupby('cluster')['rebal_qty']
+        .sum()
+        .reset_index(name='balance')
+    )
+    #print(cluster_balance)
+
+    cluster_size = (           # 군집별 크기
+        pick_drop['cluster']
+        .value_counts()
+        .reset_index(name='st_qty')
+    )
+    #print(cluster_size)
+    
+    cluster_info = cluster_balance.merge(cluster_size, how='left', on='cluster').copy()
+    
+    mean_location = pick_drop.groupby('cluster')[['lat', 'lon']].mean()  # 군집별 중심점 좌표
+    
+    cluster_info = (
+        cluster_info
+        .merge(mean_location, how='left', on='cluster')
+        .sort_values(by='cluster')
+        .iloc[:, [0,2,1,3,4]]
+    )
+
+    print("-"*30); print(f"군집별 정보 : \n{cluster_info}"); print("-"*30)
+
+    return cluster_info
+
+
+# main adjust
+def adjust_clustering(pick_drop):
+
+    MAX_ITER = 200      # 최대 대여소 이동 횟수
+    THRESHOLD = 3       # THRESHOLD(임계값) 이내면 만족
+    BALANCE_LIMIT = 5   # BALANCE_LIMIT(균형 제한) 초과면 재조정 대상
+
+    # '군집 개수'(K), '군집당 적정 크기'(K_SIZE) 계산
+    K = pick_drop['cluster'].nunique()
+    K_SIZE = len(pick_drop) / K
+
+    # 대여소를 보낼/받을 군집 선정 시 size 기준
+    MIN_SIZE = int(np.floor(K_SIZE - 1))
+    MAX_SIZE = int(np.ceil(K_SIZE + 1))
+
+    alpha = 1           # 군집 내 불균형도 (balance_term)
+    beta = 100          # 군집 크기 (size_term)
+    gamma = 10          # 군집 내 노드별 거리 (distance_term)
+
+
+    # < 메인 반복문 (최대 MAX_ITER 만큼의 대여소 이동 발생) >
+    for iter in range(MAX_ITER):
+        print("\n" + "="*70)
+        print(f"{iter} 번째 iteration")
+
+        # 상태 계산
+        balance = pick_drop.groupby('cluster')['rebal_qty'].sum()
+        c_size = pick_drop.groupby('cluster').size()
+
+        # 클러스터별 상태 계산 및 출력 ()
+        cluster_info = cal_cluster_info(pick_drop)
+
+        # 종료 조건
+        if balance.abs().max() <= THRESHOLD:
+            print("balance threshold 만족")
+            break
+
+        # 현재 점수 계산
+        current_score = compute_objective(pick_drop, K, alpha, beta, gamma)
+        
+        # 군집별 '중앙점' 계산
+        centers = compute_medoids(pick_drop)
+                                  
+        # cluster 후보 선정(노드를 보낼/받을)
+        from_cand, to_cand = select_cluster_candidates(balance, c_size, K_SIZE, BALANCE_LIMIT)
+        
+        if not from_cand or not to_cand:
+            print("후보 cluster 없음")
+            break
+
+        # pair 생성
+        pairs = make_cluster_pairs(centers, from_cand, to_cand)
+
+        improved = False    # 대여소 이동 전/후의 '개선' 여부
+
+        # 이동 시도
+        for _, from_c, to_c in pairs:
+
+            if from_c == to_c:
+                continue
+
+            # size 제약
+            if not check_size_constraint(from_c, to_c, c_size, balance, MIN_SIZE, MAX_SIZE, BALANCE_LIMIT):
+                continue
+
+            # 이동 가능한 node
+            nodes = get_movable_nodes(pick_drop, from_c, to_c, balance, centers)
+            if nodes.empty:
+                continue
+
+            # 실제 이동
+            pick_drop, improved = (
+                try_move_node(pick_drop, nodes, to_c, current_score, K, alpha, beta, gamma)
+            )
+
+            if improved:
+                break
+
+        if not improved:
+
+            print("더 이상 개선 없음")
+            break
+
+    return pick_drop
+
+
+
+if __name__ == '__main__':
+    
+    ####duration_list = ['_05_15', '_15_05']
+    #duration_list = ['_05_10', '_10_15', '_15_20', '_20_05']
+    duration_list = ['_05_10']
+
+    st_info = pd.read_csv(st_info_file.format(now=now), low_memory=False, encoding='utf-8')
+
+    for duration in duration_list:
+        print('-'*100)
+        print(f"< {duration[1:]} > 시간대 처리")
+        
+        # 1차 : 재배치 대상 대여소 선택
+        pick_drop = select_top_unbalanced_st(file_path.format(duration=duration, now=now), duration, st_info)
+
+        # 2차 : 클러스터링
+        pick_drop = make_clustering(pick_drop).copy()
+        cluster_info = cal_cluster_info(pick_drop)
+                
+        # 3차 : 군집 간 불균형 조정
+        pick_drop = adjust_clustering(pick_drop).copy()
+        cluster_info = cal_cluster_info(pick_drop)
+
+        # 저장
+        pick_drop.to_csv(clustered_file.format(duration=duration, now=now),encoding='utf-8', index=False)
+        print(f"\n{len(pick_drop)}개의 행이 저장된 {clustered_file.format(duration=duration, now=now)} 파일이 저장되었습니다.")
