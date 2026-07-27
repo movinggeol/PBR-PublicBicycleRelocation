@@ -1,0 +1,192 @@
+"""step0~step4 전체 파이프라인 실행기(한글 주석 버전).
+
+원본 단계 파일을 직접 수정하지 않고, 프로젝트 루트에서 각 파일을
+subprocess로 호출합니다. 따라서 한 단계에서 사용하는 상대 경로가
+항상 프로젝트 루트의 data/ 폴더를 가리키도록 cwd를 고정합니다.
+
+기본 실행:
+    python run_pipeline_documented.py
+
+실행 목록만 확인:
+    python run_pipeline_documented.py --dry-run
+"""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+from typing import Iterable
+
+
+# 이 파일이 있는 디렉터리가 프로젝트 루트입니다.
+# 단계 파일들은 data/... 상대 경로를 사용하므로 모든 subprocess의
+# 현재 작업 디렉터리(cwd)를 이 경로로 지정해야 합니다.
+ROOT = Path(__file__).resolve().parent
+
+
+# 데이터 의존성이 있는 순서대로 단계 파일을 그룹화합니다.
+# 앞 단계의 산출물이 다음 단계의 입력이 되므로 순서를 바꾸면 안 됩니다.
+STAGES = {
+    "api": [
+        Path("step0 (raw데이터 처리)") / "tashu_api.py",
+        Path("step0 (raw데이터 처리)") / "extract_parking_lot.py",
+        Path("step0 (raw데이터 처리)") / "api_to_info.py",
+    ],
+    "eda": [
+        Path("step0(전처리 및 EDA)") / "concat_1year_file.py",
+        Path("step0(전처리 및 EDA)") / "EDA.py",
+    ],
+    "preprocess": [
+        Path("step0 (raw데이터 처리)") / "raw_to_net.py",
+        Path("step0 (raw데이터 처리)") / "!calculate_target_qty.py",
+    ],
+    "selection": [
+        Path("step1 (작업대상 선정 및 클러스터링)") / "1.top_st_clustering.py",
+        Path("step1 (작업대상 선정 및 클러스터링)") / "st_visualization.py",
+    ],
+    "optimization": [
+        Path("step2 (ilp, vrp)") / "ilp.py",
+        Path("step2 (ilp, vrp)") / "vrp.py",
+    ],
+    "visualization": [
+        Path("step3 (결과 시각화)") / "main.py",
+    ],
+    "evaluation": [
+        Path("step4 (성과 지표)") / "imbalance.py",
+    ],
+}
+
+
+def parse_args() -> argparse.Namespace:
+    """통합 실행기에서 사용할 명령행 옵션을 정의합니다."""
+
+    parser = argparse.ArgumentParser(
+        description="Run the complete public-bike rebalancing pipeline."
+    )
+
+    # 분석 시점과 입력 파일 옵션입니다.
+    # 각 하위 스크립트에 전달해 공통 설정으로 사용할 수 있도록 합니다.
+    parser.add_argument("--now", help="분석 시점. 예: 2026-05-21 18")
+    parser.add_argument("--period", help="순수요 입력 기간. 예: 25년 11월")
+    parser.add_argument("--duration", help="시간대 구간. 예: _05_10")
+    parser.add_argument("--raw-file", help="원천 CSV 경로(프로젝트 루트 기준)")
+
+    # API와 EDA는 이미 산출물이 있는 경우 선택적으로 생략할 수 있습니다.
+    parser.add_argument("--skip-api", action="store_true", help="API 수집 생략")
+    parser.add_argument("--skip-eda", action="store_true", help="EDA 생략")
+
+    # 기본은 실패 즉시 중단입니다.
+    # 디버깅이나 일부 결과 확보가 필요할 때만 계속 실행 옵션을 사용합니다.
+    parser.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="한 단계가 실패해도 다음 단계를 계속 실행",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="실제 실행 없이 실행 목록만 출력",
+    )
+    return parser.parse_args()
+
+
+def build_command(script: Path, args: argparse.Namespace) -> list[str]:
+    """현재 Python 환경으로 하위 스크립트를 실행할 명령을 만듭니다."""
+
+    # sys.executable을 사용하면 가상환경을 활성화한 경우에도
+    # 현재 사용 중인 동일한 Python 환경으로 모든 단계를 실행합니다.
+    command = [sys.executable, str(script)]
+
+    # 값이 지정된 옵션만 전달합니다.
+    # 기존 스크립트가 옵션을 사용하지 않더라도 향후 공통 설정 연결 시
+    # 동일한 통합 실행 명령을 그대로 사용할 수 있습니다.
+    for option, value in (
+        ("--now", args.now),
+        ("--period", args.period),
+        ("--duration", args.duration),
+        ("--raw-file", args.raw_file),
+    ):
+        if value:
+            command.extend([option, value])
+    return command
+
+
+def selected_scripts(args: argparse.Namespace) -> Iterable[Path]:
+    """옵션에 맞는 단계 파일을 의존성 순서대로 반환합니다."""
+
+    groups: list[str] = []
+
+    if not args.skip_api:
+        groups.append("api")
+    if not args.skip_eda:
+        groups.append("eda")
+
+    # 전처리는 API/EDA 이후에 실행되어야 순수요와 재배치량을 계산할 수 있습니다.
+    groups.extend(
+        ["preprocess", "selection", "optimization", "visualization", "evaluation"]
+    )
+
+    for group in groups:
+        yield from STAGES[group]
+
+
+def main() -> int:
+    """전체 파이프라인을 실행하고 실패 상태를 반환합니다."""
+
+    args = parse_args()
+    scripts = list(selected_scripts(args))
+
+    print("=== Public Bike Rebalancing Pipeline ===")
+    for index, script in enumerate(scripts, start=1):
+        print(f"[{index}/{len(scripts)}] {script}")
+
+    # dry-run은 파일 존재 여부와 실행 순서만 확인할 때 사용합니다.
+    if args.dry_run:
+        return 0
+
+    failures: list[tuple[Path, int]] = []
+
+    for index, script in enumerate(scripts, start=1):
+        full_path = ROOT / script
+
+        # 파일이 없으면 실행할 수 없으므로 오류 목록에 기록합니다.
+        if not full_path.exists():
+            print(f"파일이 없습니다: {script}")
+            failures.append((script, 2))
+            if not args.continue_on_error:
+                return 2
+            continue
+
+        command = build_command(script, args)
+        print(f"\n[{index}/{len(scripts)}] 실행: {' '.join(command)}")
+
+        # cwd를 ROOT로 고정해야 data/ 상대 경로가 모든 단계에서 동일합니다.
+        completed = subprocess.run(command, cwd=ROOT)
+
+        if completed.returncode == 0:
+            print(f"완료: {script}")
+            continue
+
+        print(f"실패: {script} (exit code={completed.returncode})")
+        failures.append((script, completed.returncode))
+
+        # 뒤 단계는 앞 단계 산출물에 의존하므로 기본적으로 즉시 중단합니다.
+        if not args.continue_on_error:
+            print("파이프라인을 중단합니다.")
+            return completed.returncode
+
+    if failures:
+        print("\n실패한 단계:")
+        for script, code in failures:
+            print(f"- {script}: {code}")
+        return 1
+
+    print("\n모든 단계가 완료되었습니다.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
