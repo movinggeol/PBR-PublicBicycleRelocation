@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}실행 — PBR 대시보드{% endblock %}
+{% block content %}
+<h1>파이프라인 실행</h1>
+
+<div class="grid2">
+  <div class="card">
+    <h2 style="margin-top:0">새 실행</h2>
+    {% if running %}
+      <p>⏳ 실행 중인 작업이 있습니다:
+        <a href="/runs/{{ running.id }}">{{ running.id }}</a></p>
+      <p class="muted">파이프라인은 공유 파일을 사용하므로 동시에 1개만 실행됩니다.</p>
+    {% else %}
+    <form class="run-form" method="post" action="/runs">
+      <label>분석 시점 라벨 (now) — 산출물 파일명에 사용
+        <input type="text" name="now" value="{{ defaults.now }}">
+      </label>
+      <label>순수요 기간 (period)
+        <input type="text" name="period" value="{{ defaults.period }}">
+      </label>
+      <label>시간대 (duration, 콤마로 여러 개)
+        <input type="text" name="duration" value="{{ defaults.duration }}">
+      </label>
+      <label>원천 대여 이력 CSV (프로젝트 루트 기준)
+        <input type="text" name="raw_file" value="{{ defaults.raw_file }}">
+      </label>
+      <div class="checks">
+        <label><input type="checkbox" name="skip_api" value="1"> API 수집 생략</label>
+        <label><input type="checkbox" name="skip_eda" value="1" checked> EDA 생략</label>
+      </div>
+      <p style="margin-top:1rem">
+        <button class="btn" type="submit">▶ 파이프라인 실행</button>
+      </p>
+      <p class="muted">step1 군집 조정에 수 분이 걸릴 수 있습니다. 실행 후 로그 화면으로 이동합니다.</p>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">최신 산출물</h2>
+    {% if latest %}
+      <table>
+        <tr><th>분류</th><th>파일</th><th>수정 시각</th></tr>
+        {% for group in latest %}
+          {% for e in group.entries %}
+          <tr>
+            <td>{{ group.title if loop.first else "" }}</td>
+            <td>
+              {% if e.name.endswith(".html") %}
+                <a href="/files/{{ e.relpath | urlencode }}" target="_blank">{{ e.name }}</a>
+              {% else %}
+                <a href="/preview/{{ e.relpath | urlencode }}">{{ e.name }}</a>
+              {% endif %}
+            </td>
+            <td class="muted">{{ e.mtime }}</td>
+          </tr>
+          {% endfor %}
+        {% endfor %}
+      </table>
+    {% else %}
+      <p class="muted">아직 산출물이 없습니다. 파이프라인을 실행하면 여기에 나타납니다.</p>
+    {% endif %}
+  </div>
+</div>
+
+<h2>실행 이력</h2>
+<div class="card">
+  {% if jobs %}
+  <table>
+    <tr><th>ID</th><th>상태</th><th>시작</th><th>종료</th><th>인자</th></tr>
+    {% for job in jobs %}
+    <tr>
+      <td><a href="/runs/{{ job.id }}">{{ job.id }}</a></td>
+      <td><span class="badge {{ job.status }}">{{ job.status }}</span></td>
+      <td class="muted">{{ job.started_at }}</td>
+      <td class="muted">{{ job.finished_at or "—" }}</td>
+      <td class="muted">{{ " ".join(job.args) or "(기본값)" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">실행 이력이 없습니다.</p>
+  {% endif %}
+</div>
+{% endblock %}

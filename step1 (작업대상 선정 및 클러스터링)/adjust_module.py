@@ -157,7 +157,7 @@ def get_movable_nodes(pick_drop: pd.DataFrame, from_c: int, to_c: int, balance: 
     if nodes.empty:
         return nodes
 
-    # '보낼 군집'과 가까운 node 우선 (유클리드 거리 기반)
+    # '보낼 군집'과 가까운 node 우선 (맨해튼 거리 기반)
     nodes['dist'] = (
         abs(nodes['lat'] - centers.loc[to_c, 'lat']) +
         abs(nodes['lon'] - centers.loc[to_c, 'lon'])

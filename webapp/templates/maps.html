@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}지도 결과 — PBR 대시보드{% endblock %}
+{% block content %}
+<h1>지도 결과 (HTML)</h1>
+
+{% for group in groups %}
+<h2>{{ group.title }}</h2>
+<div class="card">
+  {% if group.entries %}
+  <table>
+    <tr><th>파일</th><th>수정 시각</th><th>크기</th><th></th></tr>
+    {% for e in group.entries %}
+    <tr>
+      <td>{{ e.name }}</td>
+      <td class="muted">{{ e.mtime }}</td>
+      <td class="muted">{{ e.size_kb }} KB</td>
+      <td>
+        <a href="/view/{{ e.relpath | urlencode }}">여기서 보기</a> ·
+        <a href="/files/{{ e.relpath | urlencode }}" target="_blank">새 창</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">산출물이 없습니다. <a href="/">파이프라인을 실행</a>하면 생성됩니다.</p>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

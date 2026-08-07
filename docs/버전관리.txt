@@ -12,7 +12,37 @@ PBR (Public_Bicycle_Relocation)
 		크거나 작다는 등 유연하게 적용함. balance와 size는 적절하게 되어었다. 모든 대여소의 abs(balance) < 5 
 		였으며 size 또한 기준 +-2였다. (다만 시간이 오래 걸린다. 5분 이상. 이걸 개선할 예정)
 1.0.2 : 'step1'의 '1.top_clustering.py'을 주로 수정함.
-		-  cluster size를 기준으로 sender/receiver 군집을 선정하고, balance 부호에 따라 Pick 또는 Drop 대여소만 이동하도록 
-			제한하였다. 또한 cluster size 범위를 유지하고, 극단적인 imbalance 발생 시 
+		-  cluster size를 기준으로 sender/receiver 군집을 선정하고, balance 부호에 따라 Pick 또는 Drop 대여소만 이동하도록
+			제한하였다. 또한 cluster size 범위를 유지하고, 극단적인 imbalance 발생 시
 			emergency mode를 통해 balance 우선 조정을 수행하여 군집 간 불균형을 완화하였다.
+1.0.3 : (2026-08-07) 전 단계 공통 설정(project_config.py) 연결 및 구조 정리.
+		- 모든 step 스크립트가 project_config의 now/period/duration/raw_file을 사용하도록 통일.
+			(기존에는 datetime.now()와 '2026-05-21 18' 하드코딩이 섞여 단계 간 파일명이 어긋났음)
+		- step0 import 부작용 체인 제거: 각 스크립트 실행 로직을 main()/__main__으로 격리,
+			실행 순서는 run_pipeline.py가 제어. run_pipeline의 --now 등 인자 전달이 실제로 동작하게 됨.
+		- '!calculate_target_qty.py' → 'calculate_target_qty.py' 개명 (import 불가/셸 인용 문제).
+		- 버그 수정: EDA.py 크래시(pd.DateFrame 오타, month_graph 인자 오류),
+			tashu_api API 실패 시 미종료, calculate_target_qty의 clip inplace 미반영 위험,
+			raw_to_net의 파일명 슬라이싱 period 추출, vrp depot 복귀 from_id 오기록,
+			imbalance 결과 저장 활성화 및 tiles= 오타.
+		- 문서: docs/TODO.md, docs/steps/step0~4 문서 신규 작성, README/PROJECT_PIPELINE 최신화.
+1.1.0 : (2026-08-07) 웹 대시보드(webapp/) 신설 — 파이썬 단독(FastAPI + Jinja2).
+		- 브라우저에서 파이프라인 실행(옵션 폼) → 백그라운드 subprocess + 실시간 로그 확인.
+		- 지도 산출물(HTML)을 /maps에서 iframe/새 창으로 열람, CSV는 /data에서 미리보기·다운로드.
+		- JSON API 제공(/api/stations GeoJSON, /api/plans/ilp·vrp, /api/metrics) —
+			추후 JS 프론트엔드 교체 시 재사용 목적.
+		- 동시 실행 1개 제한(공유 파일 충돌 방지), 파일 서빙은 data/ 하위 .html/.csv로 제한.
+		- requirements.txt에 fastapi/uvicorn/jinja2/python-multipart 추가. 문서 docs/WEBAPP.md.
+1.2.0 : (2026-08-07) P2 동작 문제 해소 및 VRP 시간 모델 추가.
+		- depot(ST0001)·차량 적재 용량(10대)을 project_config 공통 상수로 통일
+			(기존 main.py ST0000 vs vrp.py ST0001 불일치 해소).
+		- vrp.py: 노드 키를 (station_id, type)으로 변경해 pick/drop 동시 대상 대여소의
+			작업 유실 수정. 이동거리·이동시간·작업시간(1대당 30초 가정)·누적시간 컬럼 추가.
+			drop-only 잔여 시 depot 무한복귀 방어.
+		- step3 main.py: depot 복귀(return) 행 처리(기존 KeyError). TMAP 경유지 30개 초과 시
+			module.call_tmap_chunked()로 구간 분할 호출 후 merge_tmap_results()로 병합.
+			module.py 구버전 주석 코드 삭제.
+		- step4 imbalance.py: route_summary() 추가 — 클러스터별 방문수·처리대수·총이동거리·
+			총이동/작업/소요시간을 route_summary*.csv로 저장.
+		- 정리: 일회성 test 스크립트를 experiments/로 이동, .env.example 추가.
 

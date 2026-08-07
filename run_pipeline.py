@@ -1,14 +1,14 @@
-"""step0~step4 전체 파이프라인 실행기(한글 주석 버전).
+"""step0~step4 전체 파이프라인 실행기.
 
-원본 단계 파일을 직접 수정하지 않고, 프로젝트 루트에서 각 파일을
-subprocess로 호출합니다. 따라서 한 단계에서 사용하는 상대 경로가
-항상 프로젝트 루트의 data/ 폴더를 가리키도록 cwd를 고정합니다.
+각 단계 파일을 프로젝트 루트에서 subprocess로 호출합니다.
+공통 설정(--now/--period/--duration/--raw-file)은 그대로 하위 스크립트에
+전달되며, 각 스크립트는 project_config를 통해 이를 읽습니다.
 
 기본 실행:
-    python run_pipeline_documented.py
+    python run_pipeline.py
 
 실행 목록만 확인:
-    python run_pipeline_documented.py --dry-run
+    python run_pipeline.py --dry-run
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Iterable
+
+from project_config import ensure_output_dirs
 
 
 # 이 파일이 있는 디렉터리가 프로젝트 루트입니다.
@@ -40,7 +42,7 @@ STAGES = {
     ],
     "preprocess": [
         Path("step0 (raw데이터 처리)") / "raw_to_net.py",
-        Path("step0 (raw데이터 처리)") / "!calculate_target_qty.py",
+        Path("step0 (raw데이터 처리)") / "calculate_target_qty.py",
     ],
     "selection": [
         Path("step1 (작업대상 선정 및 클러스터링)") / "1.top_st_clustering.py",
@@ -145,6 +147,9 @@ def main() -> int:
     # dry-run은 파일 존재 여부와 실행 순서만 확인할 때 사용합니다.
     if args.dry_run:
         return 0
+
+    # 산출물 폴더가 없어 저장에 실패하는 일을 예방합니다.
+    ensure_output_dirs()
 
     failures: list[tuple[Path, int]] = []
 

@@ -1,4 +1,8 @@
-from datetime import datetime
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from sklearn_extra.cluster import KMedoids
 from sklearn.preprocessing import StandardScaler
 from scipy.spatial.distance import cdist
@@ -7,16 +11,17 @@ import numpy as np
 from adjust_module import compute_medoids, compute_objective, select_cluster_candidates, \
                             make_cluster_pairs, get_movable_nodes, check_size_constraint, try_move_node
 
+from project_config import PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config
+
 # read_csv
-file_path = "data/pp_data/재배치 정보/rebal_qty{duration} ({now}).csv"
-st_info_file = "data/pp_data/대여소 정보/st_info ({now}).csv"
+file_path = str(PROJECT_ROOT / "data/pp_data/재배치 정보/rebal_qty{duration} ({now}).csv")
+st_info_file = str(PROJECT_ROOT / "data/pp_data/대여소 정보/st_info ({now}).csv")
 
 # to_csv
-clustered_file = "data/pp_data/ILP/후보/top{duration} ({now}).csv"
-#cluster_center_file = "data/pp_data/ILP/후보/top_center{duration} ({now}).csv"
- 
-#now = datetime.now().strftime('%Y-%m-%d %H')
-now = '2026-05-21 18'
+clustered_file = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")
+
+config = get_runtime_config()
+now = config.now
 
 def select_top_unbalanced_st(file_path:str, duration:str, st_info:pd.DataFrame) -> pd.DataFrame:
     '''
@@ -25,7 +30,8 @@ def select_top_unbalanced_st(file_path:str, duration:str, st_info:pd.DataFrame) 
 
     types = ['pick', 'drop']
 
-    st_rebal = pd.read_csv(file_path.format(duration=duration), encoding='utf-8', low_memory=False)
+    # file_path는 호출부에서 이미 완전히 포맷된 경로
+    st_rebal = pd.read_csv(file_path, encoding='utf-8', low_memory=False)
     
     st = (
         st_rebal[abs(st_rebal['rebal_qty']) > 2]
@@ -228,14 +234,13 @@ def adjust_clustering(pick_drop):
 
 
 if __name__ == '__main__':
-    
-    ####duration_list = ['_05_15', '_15_05']
-    #duration_list = ['_05_10', '_10_15', '_15_20', '_20_05']
-    duration_list = ['_05_10']
+
+    ensure_output_dirs()
 
     st_info = pd.read_csv(st_info_file.format(now=now), low_memory=False, encoding='utf-8')
 
-    for duration in duration_list:
+    # 시간대 목록은 project_config의 --duration(콤마 구분)으로 지정
+    for duration in duration_list(config):
         print('-'*100)
         print(f"< {duration[1:]} > 시간대 처리")
         

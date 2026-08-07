@@ -21,6 +21,13 @@ DEFAULT_RAW_FILE = os.getenv(
     "data/raw_data/대전시 공영자전거 타슈 대여이력 정보(25년11월).csv",
 )
 
+# ---- 운영 상수 (step2 vrp, step3 지도에서 공유) ----
+DEPOT_ID = "ST0001"          # 타슈 관제센터 (이용자 대상 대여소 아님)
+DEPOT_NAME = "타슈 관제센터"
+DEPOT_LAT = 36.406607
+DEPOT_LON = 127.306457
+VEHICLE_CAPACITY = 10        # 차량 최대 적재 대수 (대전교통공사 확인값, 버전관리 1.0.1)
+
 
 @dataclass(frozen=True)
 class RuntimeConfig:

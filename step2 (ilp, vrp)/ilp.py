@@ -1,17 +1,22 @@
-from datetime import datetime
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 import numpy as np
 import pulp
 
+from project_config import PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config
+
 # read_csv
-metrics_path = "data/pp_data/ILP/후보/top{duration} ({now}).csv"   # lat/lon 포함된 metrics
+metrics_path = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")   # lat/lon 포함된 metrics
 # to_csv
-ilp_plan_path = "data/pp_data/ILP/ILP_plan{duration} ({now}).csv"
+ilp_plan_path = str(PROJECT_ROOT / "data/pp_data/ILP/ILP_plan{duration} ({now}).csv")
 
-#now = datetime.now().strftime('%Y-%m-%d %H')
-now = '2026-05-21 18'
+config = get_runtime_config()
+now = config.now
 
-assume_initial_stock = 3                                     # initial_stock 없을 때 기본값
 vehicle_speed_kmph = 25                                  # 이동 속도(km/h)
 
 def haversine_km(lat1, lon1, lat2, lon2) -> float:
@@ -46,7 +51,7 @@ def km_to_travel_seconds(km: float, speed_kmph: float = 25.0) -> float:
     return float((km / speed_kmph) * 3600.0)
 
 
-def run_ilp_plan(metrics: pd.DataFrame, duration: str):
+def run_ilp_plan(metrics: pd.DataFrame, duration: str, solver: pulp.LpSolver):
     '''
     재배치 후보 대여소(metrics) -> pick / drop 분리 ->  대여소 간 이동시간 계산 -> 
     ILP 문제 생성 -> 목적함수 정의 -> 제약조건 추가 -> 
@@ -164,17 +169,14 @@ def run_ilp_plan(metrics: pd.DataFrame, duration: str):
 
 # main
 if __name__ == "__main__":
-    duration_list = ['_05_10']
-    # duration_list = ['_05_10', '_10_15', '15_20', '20_05']
+    ensure_output_dirs()
 
-    # 솔버 객체 생성 후 실행 (시간 제한/갭 포함) 
-    # 계산 시간의 폭증을 방지하고 실시간 운영 가능성을 확보하기 위해, 
+    # 솔버 객체 생성 후 실행 (시간 제한/갭 포함)
+    # 계산 시간의 폭증을 방지하고 실시간 운영 가능성을 확보하기 위해,
     # 본 연구에서는 CBC 정수계획 솔버에 시간 제한(600초)과 상대적 최적 갭(2%)을 적용하였다.
     solver = pulp.PULP_CBC_CMD(msg=True, timeLimit=600, gapRel=0.02)
 
-    for duration in duration_list:
+    for duration in duration_list(config):
         metrics = pd.read_csv(metrics_path.format(duration=duration, now=now), encoding='utf-8', low_memory=False)
         print(f"\n=== [ILP @ {duration}] ===")
-        # 다음 재배치 시각
-        #duration_end = 15 if duration == 5 else 5
-        run_ilp_plan(metrics, duration)
+        run_ilp_plan(metrics, duration, solver)

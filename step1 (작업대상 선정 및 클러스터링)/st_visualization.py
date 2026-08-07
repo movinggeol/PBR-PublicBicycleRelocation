@@ -1,26 +1,29 @@
-from datetime import datetime
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import folium
 from folium import FeatureGroup
 from folium.plugins import FeatureGroupSubGroup
 import pandas as pd
 import numpy as np
 
+from project_config import PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config
+
 # read_csv
-clustered_file = "data/pp_data/ILP/후보/top{duration} ({now}).csv"
-cluster_center_file = "data/pp_data/ILP/후보/top_center{duration} ({now}).csv"
+clustered_file = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")
+cluster_center_file = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top_center{duration} ({now}).csv")
 
 # to_csv
-clusterd_map = "data/pp_data/ILP/visualization/clusterd_map{duration} ({now}).html"
+clusterd_map = str(PROJECT_ROOT / "data/pp_data/ILP/visualization/clusterd_map{duration} ({now}).html")
 
-#now = '2026-04-28 18'
-now = datetime.now().strftime('%Y-%m-%d %H')
+config = get_runtime_config()
+now = config.now
 
-duration_list = ['_05_10']
-#duration_list = ['_05_15', '_15_05']
+def make_clustered_map(durations: list):
 
-def make_clustered_map(duration_list: list):
-
-    for duration in duration_list:
+    for duration in durations:
         pick_drop = pd.read_csv(
             clustered_file.format(duration=duration, now=now), 
             low_memory=False, 
@@ -34,7 +37,6 @@ def make_clustered_map(duration_list: list):
         m = folium.Map(
             location=[center_lat, center_lon],
             zoom_start=13,
-            title=f"map ({duration})",
             control_scale=True,
             tiles="CartoDB positron"  # 밝은 배경의 깔끔한 지도
         )
@@ -126,5 +128,6 @@ def make_clustered_map(duration_list: list):
 
 
 if __name__ == '__main__':
-    
-    make_clustered_map(duration_list)
+
+    ensure_output_dirs()
+    make_clustered_map(duration_list(config))

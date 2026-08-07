@@ -98,7 +98,7 @@ raw_to_net.py는 시간대와 대여소별 대여·반납량을 집계합니다.
 
 ### 4.4 목표 재고와 재배치량
 
-!calculate_target_qty.py는 재고와 순수요 통계를 이용해 대여소별 목표 재고를 계산합니다. 코드에 사용된 수요 추정의 기본 형태는 다음과 같습니다.
+calculate_target_qty.py는 재고와 순수요 통계를 이용해 대여소별 목표 재고를 계산합니다. 코드에 사용된 수요 추정의 기본 형태는 다음과 같습니다.
 
 ~~~text
 Pick 기준 = Stock - 평균 수요
@@ -155,13 +155,17 @@ vrp.py는 ILP 결과를 실제 차량이 수행할 방문 순서로 바꿉니다
 5. 적재량이 부족하면 depot으로 복귀
 6. 남은 작업이 없어질 때까지 반복
 
-현재 코드의 운영 가정:
+현재 코드의 운영 가정 (depot·적재 용량은 project_config 공통 상수):
 
-- 차량 총량: 21대
-- 차량 적재 용량: 10대
-- 차량 속도: 30 km/h
-- Pick·Drop 작업 시간: 각 30초
-- depot: 타슈 관제센터
+- 차량 적재 용량: 10대 (대전교통공사 확인값, 버전관리.txt 1.0.1)
+- 차량 속도: 30 km/h (ILP의 25 km/h와 다름 — 통일 여부는 운영 데이터로 결정)
+- Pick·Drop 작업 시간: 자전거 1대당 각 30초 (가정값)
+- depot: 타슈 관제센터 (ST0001)
+- 차량 수: 상수 `VEHICLE_TOTAL = 21`이 선언되어 있으나 **코드에 반영되지 않음** —
+  실제 동작은 클러스터당 차량 1대가 모든 작업을 처리하는 greedy 방식
+
+출력에는 이동별 거리(distance_km)·이동시간(travel_sec)·작업시간(work_sec)·
+누적시간(cum_sec)이 포함되며, step4가 이를 집계해 경로 요약을 만듭니다.
 
 출력은 data/pp_data/VRP/VRP_plan{duration} ({now}).csv입니다.
 
@@ -185,11 +189,10 @@ imbalance.py는 목표 재고 대비 재배치 전후의 불균형을 비교합�
 개선률 = 개선량 / 재배치 전 불균형
 ~~~
 
-- 입력: Pick·Drop 후보 및 재배치 결과
-- 출력: data/pp_data/성능 지표/verification*.csv
+- 입력: Pick·Drop 후보 및 VRP 결과
+- 출력: data/pp_data/성능 지표/verification*.csv (불균형 개선),
+  route_summary*.csv (클러스터별 총 이동거리·이동/작업/소요시간)
 - 지도: data/pp_data/성능 지표/visualization/imbalance_map*.html
-
-총 이동거리, 총 운행시간, 실제 작업량, Pick·Drop 매칭량도 함께 검토할 수 있습니다.
 
 ## 10. 전체 실행 순서
 
@@ -201,7 +204,7 @@ python "step0 (raw데이터 처리)/tashu_api.py"
 python "step0 (raw데이터 처리)/extract_parking_lot.py"
 python "step0 (raw데이터 처리)/api_to_info.py"
 python "step0 (raw데이터 처리)/raw_to_net.py"
-python "step0 (raw데이터 처리)/!calculate_target_qty.py"
+python "step0 (raw데이터 처리)/calculate_target_qty.py"
 python "step1 (작업대상 선정 및 클러스터링)/1.top_st_clustering.py"
 python "step1 (작업대상 선정 및 클러스터링)/st_visualization.py"
 python "step2 (ilp, vrp)/ilp.py"
@@ -223,9 +226,15 @@ python "step4 (성과 지표)/imbalance.py"
 
 ## 12. 개선 방향
 
-- requirements.txt를 추가해 패키지 버전을 고정
-- 날짜와 경로를 공통 설정 파일 또는 CLI 인자로 통합
+상세 목록과 우선순위는 [TODO.md](TODO.md), 단계별 상세는 [steps/](steps/) 문서를 참고합니다.
+
+- ~~requirements.txt를 추가해 패키지 버전을 고정~~ → 완료 (`requirements.txt`)
+- ~~날짜와 경로를 공통 설정으로 통합~~ → 완료. 모든 step 스크립트가
+  `project_config.get_runtime_config()`를 사용하며, `run_pipeline.py`의
+  `--now/--period/--duration/--raw-file` 인자가 그대로 전달됨 (버전 1.0.3)
+- ~~step0 스크립트 간 import 부작용 체인 제거~~ → 완료. 각 스크립트가 독립 실행되며
+  순서는 run_pipeline.py가 제어 (버전 1.0.3)
 - CSV 파일 간 암묵적 스키마를 검증하는 코드 추가
-- 데이터 규모가 커질 경우 SQLite 등으로 중간 데이터 관리
+- 데이터 규모가 커질 경우 SQLite 등으로 중간 데이터 관리 (메모.txt에 테이블 설계 초안 있음)
 - 현재 휴리스틱 VRP를 차량·시간창·실제 도로 거리 제약을 포함한 전용 solver로 확장
 

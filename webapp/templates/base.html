@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PBR 대시보드{% endblock %}</title>
+  <style>
+    :root {
+      --bg: #f6f7f9; --card: #ffffff; --ink: #1f2430; --sub: #6b7280;
+      --accent: #2563eb; --ok: #16a34a; --bad: #dc2626; --warn: #d97706;
+      --line: #e5e7eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--ink);
+      font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+      font-size: 15px; line-height: 1.55;
+    }
+    header {
+      background: #111827; color: #fff; padding: 0.7rem 1.2rem;
+      display: flex; align-items: center; gap: 1.4rem; flex-wrap: wrap;
+    }
+    header .brand { font-weight: 700; font-size: 1.05rem; }
+    header nav a {
+      color: #d1d5db; text-decoration: none; margin-right: 1rem; font-size: 0.95rem;
+    }
+    header nav a:hover { color: #fff; }
+    main { max-width: 1080px; margin: 1.4rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.35rem; margin: 0.2rem 0 1rem; }
+    h2 { font-size: 1.05rem; margin: 1.6rem 0 0.6rem; }
+    .card {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1rem;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--line); }
+    th { color: var(--sub); font-weight: 600; font-size: 0.85rem; }
+    a { color: var(--accent); }
+    .btn {
+      display: inline-block; background: var(--accent); color: #fff; border: 0;
+      padding: 0.55rem 1.1rem; border-radius: 8px; font-size: 0.95rem;
+      cursor: pointer; text-decoration: none;
+    }
+    .btn:disabled { background: #9ca3af; cursor: not-allowed; }
+    .badge {
+      display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px;
+      font-size: 0.8rem; font-weight: 600; color: #fff;
+    }
+    .badge.running { background: var(--warn); }
+    .badge.success { background: var(--ok); }
+    .badge.failed { background: var(--bad); }
+    .badge.interrupted { background: #6b7280; }
+    .muted { color: var(--sub); font-size: 0.85rem; }
+    form.run-form label { display: block; font-size: 0.85rem; color: var(--sub); margin-top: 0.7rem; }
+    form.run-form input[type=text] {
+      width: 100%; padding: 0.45rem 0.6rem; border: 1px solid var(--line);
+      border-radius: 6px; font-size: 0.95rem;
+    }
+    form.run-form .checks { margin-top: 0.8rem; }
+    form.run-form .checks label { display: inline-block; margin-right: 1.2rem; color: var(--ink); }
+    pre.log {
+      background: #0b1020; color: #d7e0ff; border-radius: 8px;
+      padding: 1rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.5;
+      white-space: pre-wrap; word-break: break-all;
+    }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+    .preview-table { font-size: 0.82rem; }
+    .preview-table th { background: #f3f4f6; }
+    iframe.map-frame { width: 100%; height: 78vh; border: 1px solid var(--line); border-radius: 8px; }
+  </style>
+</head>
+<body>
+<header>
+  <span class="brand">🚲 PBR 파이프라인 대시보드</span>
+  <nav>
+    <a href="/">실행</a>
+    <a href="/maps">지도 결과</a>
+    <a href="/data">데이터 산출물</a>
+    <a href="/api/docs">API 문서</a>
+  </nav>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

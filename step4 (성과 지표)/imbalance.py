@@ -1,15 +1,22 @@
-from datetime import datetime
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import folium
 import pandas as pd
-import numpy as np
 
-file_path = "data/pp_data/ILP/후보/top{duration} ({now}).csv"
+from project_config import PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config
 
-result_file_path = "data/pp_data/성능 지표/verification{duration} ({now}).csv"
-map_file_path = "data/pp_data/성능 지표/visualization/imbalance_map{duration} ({now}).html"
+file_path = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")
+vrp_plan_file = str(PROJECT_ROOT / "data/pp_data/VRP/VRP_plan{duration} ({now}).csv")
 
-now = "2026-05-21 18"
-#now = datetime.now().strftime('%Y-%m-%d %H')
+result_file_path = str(PROJECT_ROOT / "data/pp_data/성능 지표/verification{duration} ({now}).csv")
+route_summary_file = str(PROJECT_ROOT / "data/pp_data/성능 지표/route_summary{duration} ({now}).csv")
+map_file_path = str(PROJECT_ROOT / "data/pp_data/성능 지표/visualization/imbalance_map{duration} ({now}).html")
+
+config = get_runtime_config()
+now = config.now
 
 def demand_satisfaction(reloc: pd.DataFrame):
     '''
@@ -44,14 +51,49 @@ def demand_satisfaction(reloc: pd.DataFrame):
     print(f"   - Drop 대상 대여소 평균 개선률: {(100 * drop_avg_imp_rate).round(2)}%")
     print("-"*50)
 
-
-    
-    temp.fillna(np.nan)
-    
     return temp
 
 
-def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame):
+def route_summary(duration: str):
+    '''
+    VRP 결과(거리·시간 컬럼 포함)로 클러스터별 총 이동거리·운행시간을 집계한다.
+    VRP 파일이 없거나 구버전(시간 컬럼 없음)이면 건너뛴다.
+    '''
+    path = Path(vrp_plan_file.format(duration=duration, now=now))
+    if not path.exists():
+        print(f"VRP 결과가 없어 경로 요약을 건너뜁니다: {path}")
+        return
+
+    vrp = pd.read_csv(path, encoding='utf-8')
+    if 'distance_km' not in vrp.columns:
+        print("VRP 결과에 거리·시간 컬럼이 없습니다(구버전). step2 vrp.py를 다시 실행하세요.")
+        return
+
+    summary = vrp.groupby('cluster').agg(
+        방문수=('action', 'size'),
+        처리대수=('qty', 'sum'),
+        총이동거리_km=('distance_km', 'sum'),
+        총이동시간_분=('travel_sec', 'sum'),
+        총작업시간_분=('work_sec', 'sum'),
+        총소요시간_분=('cum_sec', 'max'),
+    ).reset_index()
+
+    for col in ['총이동시간_분', '총작업시간_분', '총소요시간_분']:
+        summary[col] = (summary[col] / 60).round(1)
+    summary['총이동거리_km'] = summary['총이동거리_km'].round(2)
+
+    print("-" * 50)
+    print("클러스터별 경로 요약:")
+    print(summary.to_string(index=False))
+    print(f"전체: {summary['총이동거리_km'].sum():.2f} km, "
+          f"최장 소요 {summary['총소요시간_분'].max():.1f} 분")
+    print("-" * 50)
+
+    summary.to_csv(route_summary_file.format(duration=duration, now=now), index=False, encoding='utf-8')
+    print(f"route_summary 파일이 저장되었습니다. ({route_summary_file.format(duration=duration, now=now)})")
+
+
+def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, duration: str):
 
     center_lat = reloc_df['lat'].mean()
     center_lon = reloc_df['lon'].mean()
@@ -60,7 +102,7 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame):
         location=[center_lat, center_lon],
         zoom_start=13,
         control_scale=True,
-        title='CartoDB positron'
+        tiles='CartoDB positron'
     )
 
     unique_clusters = sorted(imbalance_df['cluster'].unique())
@@ -163,18 +205,17 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame):
 
 
 if __name__ == "__main__":
-    duration_list = ['_05_10']
-    #duration_list = ['_05_10', '_10_15', '_15_20', '_20_05']
+    ensure_output_dirs()
 
-    for duration in duration_list:
+    for duration in duration_list(config):
         reloc_df = pd.read_csv(file_path.format(duration=duration, now=now), encoding='utf-8')
         print(reloc_df.head())
 
         imbalance_df = demand_satisfaction(reloc_df).copy()
-        #print(reloc_df.head())
 
-        #demand_satisfaction_map(reloc_df, imbalance_df)
+        demand_satisfaction_map(reloc_df, imbalance_df, duration)
 
+        imbalance_df.to_csv(result_file_path.format(duration=duration, now=now), index=False, encoding='utf-8')
+        print(f"\nresult_file_path 파일이 저장되었습니다. ({result_file_path.format(duration=duration, now=now)})")
 
-        #reloc_df.to_csv(result_file_path.format(duration=duration, now=now), index=False, encoding='utf-8')
-        #print(f"\ result_file_path 파일이 저장되었습니다. ({result_file_path.format(duration=duration, now=now)})")
+        route_summary(duration)

@@ -1,5 +1,9 @@
-from datetime import datetime
 import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 import folium
 from folium import plugins
@@ -7,8 +11,13 @@ from dotenv import load_dotenv
 
 from module import (
     seconds_to_hms,
-    call_tmap_sequential,
-    extract_cumulative_times
+    call_tmap_chunked,
+    merge_tmap_results,
+)
+
+from project_config import (
+    DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, PROJECT_ROOT, VEHICLE_CAPACITY,
+    duration_list, ensure_output_dirs, get_runtime_config,
 )
 
 '''
@@ -39,26 +48,26 @@ HTML 지도 저장
 '''
 
 # ---------------- 설정 ----------------
-vrp_plan_file = "data/pp_data/VRP/VRP_plan{duration} ({now}).csv"
-clustered_file = "data/pp_data/ILP/후보/top{duration} ({now}).csv"
+vrp_plan_file = str(PROJECT_ROOT / "data/pp_data/VRP/VRP_plan{duration} ({now}).csv")
+clustered_file = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")
 
-result_path = "data/pp_data/VRP/visualization/vrp_map{duration} ({now}).html"
+result_path = str(PROJECT_ROOT / "data/pp_data/VRP/visualization/vrp_map{duration} ({now}).html")
 
+config = get_runtime_config()
+now = config.now
 
-now = "2026-05-21 18"
-#now = datetime.now().strftime('%Y-%m-%d %H')
-
-# 차고지 설정
+# 차고지: 프로젝트 공통 상수 (vrp.py와 동일한 depot)
 depot = {
-    "id": "ST0000",
-    "name": "타슈 관제센터",
-    "lat": 36.406607,
-    "lon": 127.306457
+    "id": DEPOT_ID,
+    "name": DEPOT_NAME,
+    "lat": DEPOT_LAT,
+    "lon": DEPOT_LON
 }
 
-vehicle_capacity = 10
+vehicle_capacity = VEHICLE_CAPACITY
 
-def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame):
+def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
+                 duration: str, headers: dict, tmap_url: str):
     
     center_lat = pick_drop['lat'].mean()
     center_lon = pick_drop['lon'].mean()
@@ -118,6 +127,18 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame):
         
         for _, row in cluster_df.iterrows():
 
+            if row["action"] == "return":
+                # depot 복귀도 경유지로 포함 (station_map에 depot이 없으므로 별도 처리)
+                route_pts.append({
+                    "id": depot["id"],
+                    "name": depot["name"],
+                    "lat": row["to_lat"],
+                    "lon": row["to_lon"],
+                    "action": "return",
+                    "qty": 0
+                })
+                continue
+
             info = station_map[row["to_id"]]
             route_pts.append({
                 "id": row["to_id"],
@@ -158,16 +179,21 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame):
                 "viaY": str(p["lat"])
             })
 
-        geo = call_tmap_sequential(start, end, via,
-                                   headers=HEADERS,
-                                   url=TMAP_URL)
+        # 경유지가 30개를 넘으면 module이 구간을 분할 호출한 뒤 병합
+        geo_list = call_tmap_chunked(start, end, via,
+                                     headers=headers,
+                                     url=tmap_url)
+        merged = merge_tmap_results(geo_list)
+        elapsed_list = merged["elapsed_sec"]
 
-        timing = extract_cumulative_times(geo)
-        point_seq = timing["point_coords"]
-        elapsed_list = timing["elapsed_sec"]
+        def _arrival_txt(order: int) -> str:
+            idx = order - 1
+            if 0 <= idx < len(elapsed_list):
+                return seconds_to_hms(elapsed_list[idx]) or "-"
+            return "-"
 
         # --------- 도로 선 그리기 ----------
-        for feat in geo.get("features", []):
+        for feat in merged["features"]:
             geom = feat.get("geometry", {})
             if geom.get("type")=="LineString":
                 coords = geom["coordinates"]
@@ -212,6 +238,11 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame):
 
             visit_order = visit_idx + 2   # 1번은 depot
 
+            if action == "return":
+                # depot 복귀: 마커는 만들지 않고 적재량만 초기화 (방문 번호는 유지)
+                current_load = 0
+                continue
+
             # --- 적재량 계산 ---
             if action == "pick":
                 current_load += qty
@@ -242,11 +273,8 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame):
                 "load": current_load
             })
 
-                # --- 도착 정보 계산 ---
-        if len(elapsed_list) > 0:
-            total_time_txt = seconds_to_hms(elapsed_list[-1])
-        else:
-            total_time_txt = "-"
+        # --- 도착 정보 계산 ---
+        total_time_txt = (seconds_to_hms(elapsed_list[-1]) if elapsed_list else None) or "-"
 
         arrival_popup = (
             f"<b>도착 (depot)</b><br>"
@@ -287,7 +315,7 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame):
                     f"작업 유형 : {r['action']}<br>"
                     f"재배치 수량 : {r['qty']}<br>"
                     f"현재 적재량 : {r['load']}/{vehicle_capacity}<br>"
-                    f"누적 도착시간 : {seconds_to_hms(elapsed_list[r['order']-1])}"
+                    f"누적 도착시간 : {_arrival_txt(r['order'])}"
                 )
 
             else:
@@ -300,8 +328,7 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame):
                         f"작업 유형 : {r['action']}<br>"
                         f"재배치 수량 : {r['qty']}<br>"
                         f"현재 적재량 : {r['load']}/{vehicle_capacity}<br>"
-                        f"누적 도착시간 : {seconds_to_hms(elapsed_list[r['order']-1])}"
-
+                        f"누적 도착시간 : {_arrival_txt(r['order'])}"
                     )
 
                 popup_parts = "<br>-------------------------<br>".join(popup_parts)
@@ -358,7 +385,7 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame):
 # ---------------- 메인 ----------------
 if __name__ == "__main__":
 
-    load_dotenv()
+    load_dotenv(PROJECT_ROOT / ".env")
     API_KEY = os.getenv("API_KEY")
 
     if not API_KEY:
@@ -371,16 +398,17 @@ if __name__ == "__main__":
         "content-type":"application/json"
     }
 
-    duration = "_05_10"
+    ensure_output_dirs()
 
-    vrp_plan = pd.read_csv(
-        vrp_plan_file.format(duration=duration, now=now),
-        encoding="utf-8"
-    )
+    for duration in duration_list(config):
+        vrp_plan = pd.read_csv(
+            vrp_plan_file.format(duration=duration, now=now),
+            encoding="utf-8"
+        )
 
-    pick_drop = pd.read_csv(
-        clustered_file.format(duration=duration, now=now),
-        encoding="utf-8"
-    )
-    
-    make_vrp_map(depot, pick_drop, vrp_plan)
+        pick_drop = pd.read_csv(
+            clustered_file.format(duration=duration, now=now),
+            encoding="utf-8"
+        )
+
+        make_vrp_map(depot, pick_drop, vrp_plan, duration, HEADERS, TMAP_URL)

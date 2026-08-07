@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}실행 {{ job.id }} — PBR 대시보드{% endblock %}
+{% block content %}
+{% if job.is_running %}
+<meta http-equiv="refresh" content="3">
+{% endif %}
+
+<h1>실행 {{ job.id }}
+  <span class="badge {{ job.status }}">{{ job.status }}</span>
+</h1>
+
+<div class="card">
+  <table>
+    <tr><th>시작</th><td>{{ job.started_at }}</td></tr>
+    <tr><th>종료</th><td>{{ job.finished_at or "—" }}</td></tr>
+    <tr><th>종료 코드</th><td>{{ job.returncode if job.returncode is not none else "—" }}</td></tr>
+    <tr><th>인자</th><td>{{ " ".join(job.args) or "(기본값)" }}</td></tr>
+  </table>
+</div>
+
+{% if job.is_running %}
+<p class="muted">⏳ 실행 중 — 이 페이지는 3초마다 자동 갱신됩니다.</p>
+{% elif job.status == "success" %}
+<p>✅ 완료되었습니다. <a href="/maps">지도 결과 보기</a> · <a href="/data">데이터 산출물 보기</a></p>
+{% elif job.status == "failed" %}
+<p>❌ 실패했습니다. 아래 로그의 마지막 부분을 확인하세요.</p>
+{% endif %}
+
+<h2>로그</h2>
+<pre class="log">{{ log }}</pre>
+
+<p><a href="/">← 실행 화면으로</a></p>
+{% endblock %}
