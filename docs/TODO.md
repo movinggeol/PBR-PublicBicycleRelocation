@@ -31,8 +31,8 @@
    "5분 이상 소요" 문제의 원인. 이동 노드가 속한 두 군집만 재계산하는 증분 방식으로 개선.
 4. **VRP 고도화**: 현행은 greedy 휴리스틱(단일 차량/클러스터). OR-Tools 등
    전용 VRP solver로 다차량·시간창·실도로 거리 반영.
-5. **데이터 관리**: CSV → SQLite 단일 DB(`bike_system.db`) 이관 검토
-   (docs/메모.txt에 테이블 설계 초안 있음).
+5. **데이터 관리**: CSV → SQLite 이관 — **채택 결정됨**, 스키마·작업 단계는
+   [DB_PLAN.md](DB_PLAN.md) 참고 (선행 조건: 파이프라인 검증 완료).
 6. **EDA 시각화**: `month_graph`에 matplotlib 그래프 통합
    (`experiments/matplotlib_month_graph.py`의 한글 폰트 설정 참고).
 7. **step1 매직 넘버**: 상위 50개 컷, `|rebal_qty| > 2`, target_cluster_size=7 등을 설정으로 추출.

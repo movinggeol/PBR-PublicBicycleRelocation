@@ -16,6 +16,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/PROJECT_PIPELINE.md` | 파이프라인 전체 구조 |
 | `docs/steps/step*.md` | 단계별 입출력·문제점·작업 목록 |
 | `docs/WEBAPP.md` | 웹 대시보드(webapp/) 실행·구조·API |
+| `docs/DB_PLAN.md` | SQLite 도입 결정·목표 스키마·이관 단계 (CSV→DB 작업 시 필독) |
 | `docs/버전관리.txt` | 버전 이력, 수정 이유 기록 |
 
 ## 파이프라인 구조 (실행 순서 = 데이터 의존 순서)
