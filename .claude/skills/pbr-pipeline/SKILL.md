@@ -99,8 +99,22 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
 - pandas 2.x 기준으로 작성 (`.loc` 슬라이스에 inplace 연산 금지).
 - 버전에 영향 주는 수정을 하면 `docs/버전관리.txt`에 이유와 함께 기록한다.
 
+## 테스트
+
+```powershell
+python -m pytest                 # 34개, 약 20초 (tests/ 만 수집)
+python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
+```
+
+- `tests/test_webapp.py` — 라우트·보안·템플릿 회귀
+- `tests/test_pipeline.py` — 합성 데이터로 step0→step4 실제 실행 + 산출물 검증
+- 실행마다 고유 라벨(`smoketest-{pid}`)을 쓰므로 실데이터를 덮어쓰지 않는다.
+  **테스트를 추가할 때 이 규칙을 깨지 마라** — 고정 라벨을 쓰면 사용자 데이터가 지워진다.
+- 새 step이나 라우트를 추가하면 해당 테스트도 함께 추가한다.
+
 ## 수정 후 확인 절차
 
+0. `python -m pytest` 로 회귀 확인 (가장 먼저)
 1. `python -m py_compile <수정한 파일>` 로 구문 확인
 2. 수정한 파일이 읽는/쓰는 파일명 패턴(`{now}`, `{duration}`, `{period}`)이
    앞뒤 단계와 일치하는지 확인

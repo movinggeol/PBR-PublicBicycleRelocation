@@ -37,6 +37,8 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 ├── step4 (성과 지표)/                     # 불균형 평가
 ├── docs/                                  # 문서 (파이프라인 설명·단계별 문서·TODO)
 ├── webapp/                                # 웹 대시보드 (FastAPI, 파이썬 단독)
+├── tests/                                 # 스모크 테스트 (pytest)
+├── tools/                                 # 합성 데이터 생성기 등 보조 도구
 ├── experiments/                           # 일회성 학습·검증 스크립트
 ├── project_config.py                      # 공통 설정(now/period/duration/raw_file)
 ├── run_pipeline.py                        # 전체 단계 일괄 실행기
@@ -130,6 +132,26 @@ python "step4 (성과 지표)/imbalance.py"
 ```
 
 월별 파일을 합칠 때는 먼저 `step0(전처리 및 EDA)/concat_1year_file.py --concat`을 실행합니다.
+
+## 테스트
+
+실데이터나 API 키 없이 합성 데이터로 전 단계를 검증합니다.
+
+```powershell
+pip install -r requirements-dev.txt
+python -m pytest                 # 34개 (웹 라우트 17 + 파이프라인 E2E 17), 약 20초
+```
+
+- `tests/test_webapp.py` — 라우트·경로 탈출 차단·템플릿 렌더링 회귀 감지
+- `tests/test_pipeline.py` — 합성 데이터로 step0→step1→step2→step4 실행 후
+  산출물 존재·스키마·ILP 공급 제약·개선량을 검증. 실행마다 고유 라벨을 써서
+  실데이터를 건드리지 않고, 끝나면 그 라벨 파일만 정리합니다.
+
+데모용 데이터만 만들고 싶다면:
+
+```powershell
+python tools/make_sample_data.py --now "데모"
+```
 
 ## 웹 대시보드
 

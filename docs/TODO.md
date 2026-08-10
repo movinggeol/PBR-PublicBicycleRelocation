@@ -38,10 +38,25 @@
 7. **step1 매직 넘버**: 상위 50개 컷, `|rebal_qty| > 2`, target_cluster_size=7 등을 설정으로 추출.
 8. **버전관리.txt → CHANGELOG.md 승격 검토.**
 9. **README 주요 결과 수치의 산출 근거**(입력 데이터·실행 시점) 기록.
-10. **webapp**: SSE 로그 스트리밍(현재 3초 meta-refresh), 라우트 스모크 테스트,
+10. **webapp**: SSE 로그 스트리밍(현재 3초 meta-refresh),
     외부 공개 시 인증 (docs/WEBAPP.md 참고).
+11. **테스트 확장**: 현재는 스모크 수준. 단계별 계산 로직(목표재고 공식, 군집 조정,
+    VRP 적재 제약)의 단위 테스트와 CI(GitHub Actions) 연결.
 
 ---
+
+## ✅ 완료 (2026-08-10, 버전 1.3.0) — 스모크 테스트·샘플 데이터
+
+수정할 때마다 수동으로 확인하던 것을 자동화했습니다. `python -m pytest`로 34개가 20초에 돕니다.
+
+| 항목 | 내용 |
+| --- | --- |
+| `tools/make_sample_data.py` | 타슈 CSV 스키마를 재현한 합성 데이터 생성기. API 키·실데이터 없이 파이프라인과 대시보드를 돌려볼 수 있다 (TODO의 "샘플 데이터 부재" 해소) |
+| `tests/test_webapp.py` (17개) | 라우트 렌더링·경로 탈출 차단·허용 확장자·404 처리. Starlette 시그니처 변경 같은 회귀를 즉시 잡는다 |
+| `tests/test_pipeline.py` (17개) | 합성 데이터로 step0→step1→step2→step4 실제 실행. 산출물 존재·스키마, ILP 공급 제약, VRP 시간 컬럼, 개선량 부호까지 검증 |
+| 실데이터 안전성 | 실행마다 고유 라벨(`smoketest-{pid}`)을 써서 실데이터와 파일명이 겹치지 않고, 종료 시 해당 라벨 파일만 정리 |
+| `pytest.ini` | `testpaths = tests` — `experiments/pulp_test.py`가 pytest 기본 패턴에 걸려 수집되던 문제 차단 |
+| `requirements-dev.txt` | pytest·httpx 분리 (런타임 의존성에 섞지 않음) |
 
 ## ✅ 완료 (2026-08-10, 버전 1.2.2) — 웹 대시보드 코드 리뷰 수정
 

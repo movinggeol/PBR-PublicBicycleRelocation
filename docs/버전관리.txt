@@ -76,4 +76,18 @@ PBR (Public_Bicycle_Relocation)
 			favicon 204 응답, meta refresh를 <head>로 이동.
 		- 검증: XSS 이스케이프(악성 대여소명), ID 유일성, 409 안내, 취소 동작,
 			취소 엣지케이스(없는 작업 404 / 끝난 작업 재취소 무해) 모두 확인.
+1.3.0 : (2026-08-10) 스모크 테스트와 합성 데이터 생성기 도입.
+		- 지금까지 수정할 때마다 수동으로 확인하던 것을 자동화했다.
+			python -m pytest 로 34개가 약 20초에 실행된다.
+		- tools/make_sample_data.py: 타슈 원천 CSV와 tashu_api 산출물 스키마를 재현.
+			API 키나 실데이터 없이 파이프라인·대시보드를 돌려볼 수 있다.
+		- tests/test_webapp.py(17개): 라우트 렌더링, 경로 탈출 차단, 허용 확장자,
+			404 처리. Starlette TemplateResponse 시그니처 변경 같은 회귀를 즉시 잡는 것이 목적.
+		- tests/test_pipeline.py(17개): 합성 데이터로 step0→step1→step2→step4를 실제 실행하고
+			산출물 존재·스키마, ILP 공급 제약 준수, VRP 시간 컬럼, 개선량 부호를 검증.
+			실행마다 고유 라벨(smoketest-{pid})을 써서 실데이터와 파일명이 겹치지 않게 하고,
+			종료 시 그 라벨이 붙은 파일만 정리한다.
+		- pytest.ini: testpaths=tests. experiments/pulp_test.py가 pytest 기본 파일 패턴
+			(*_test.py)에 걸려 수집·실행되던 문제를 차단.
+		- requirements-dev.txt 분리(pytest, httpx) — 런타임 의존성에 테스트 도구를 섞지 않는다.
 
