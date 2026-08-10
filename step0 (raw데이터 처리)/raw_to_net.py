@@ -1,7 +1,9 @@
 """원천 대여 이력에서 날짜·대여소·시간대별 순수요(대여 − 반납)를 계산한다.
 
-입력: 원천 대여 이력 CSV(project_config의 raw_file)
+입력: DB의 rental_history(해당 period가 적재돼 있으면) 또는 원천 CSV
+      적재는 `python tools/load_rentals.py`
 출력: data/pp_data/순수요/st_net_daily ({period}).csv  (net_00 ~ net_23)
+      + SQLite net_demand 테이블
 """
 import sys
 from pathlib import Path
@@ -21,10 +23,14 @@ def main() -> None:
     config = get_runtime_config()
     period = config.period
 
-    raw_data = pd.read_csv(config.raw_path, low_memory=False)
-    data = raw_data.loc[:, ['자전거번호',
-                            '대여일시', '대여_대여소ID', '대여_X좌표', '대여_Y좌표',
-                            '반납일시', '반납_대여소ID', '반납_X좌표', '반납_Y좌표']]
+    # DB에 적재돼 있으면 DB에서, 없으면 원천 CSV에서 읽는다 (DB_PLAN 4단계).
+    # 순수요 계산에 실제로 쓰는 4개 컬럼만 읽는다(60만 행에서 전체 12컬럼과 차이가 크다).
+    data, source = db.read_rental_source(
+        period, csv_path=config.raw_path,
+        columns=['대여일시', '대여_대여소ID', '반납일시', '반납_대여소ID'])
+    if data.empty:
+        raise SystemExit(f"대여이력을 찾을 수 없습니다: {config.raw_path}")
+    print(f"대여이력 {len(data):,}행 로드 (출처: {source})")
 
     data['대여일시'] = pd.to_datetime(data['대여일시'])
     data['반납일시'] = pd.to_datetime(data['반납일시'])

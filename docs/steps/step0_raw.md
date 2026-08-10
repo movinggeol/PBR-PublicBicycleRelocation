@@ -27,6 +27,17 @@ CSV가 아직 정본이며 DB 기록 실패는 경고만 남긴다.
 | `raw_to_net.py` | `net_demand` (period 스코프) |
 | `calculate_target_qty.py` | `rebalance_plan` |
 
+`api_to_info.py`와 `raw_to_net.py`는 **읽기도 DB에서** 합니다(DB_PLAN 4단계).
+원천 대여이력을 먼저 적재해 두면 됩니다.
+
+```powershell
+python tools/load_rentals.py            # 원천 CSV → rental_history
+python tools/load_rentals.py --status   # 기간별 적재 현황
+```
+
+적재돼 있지 않으면 원천 CSV로 폴백하므로, 적재하지 않아도 파이프라인은 그대로 돕니다.
+1년치를 적재해 두고 한 달씩 분석할 때 DB 쪽이 유리합니다(성능 비교는 [DB_PLAN.md](../DB_PLAN.md) 4단계).
+
 ## 파일별 상세
 
 ### 1. `tashu_api.py`
@@ -42,13 +53,13 @@ CSV가 아직 정본이며 DB 기록 실패는 경고만 남긴다.
 - **출력**: `data/pp_data/대여소별 주차대수/대여소별_주차대수 ({now}).csv`
 
 ### 3. `api_to_info.py`
-- **입력**: 원천 대여 이력 CSV(경로 하드코딩), 1·2번 출력
+- **입력**: 대여이력(DB `rental_history` 또는 원천 CSV), 1·2번 출력
 - **처리**: 평일만 필터 → 대여/반납 건수 집계 → 주차대수·재고 병합
 - **출력**: `data/pp_data/대여소 정보/st_info ({now}).csv`
 - **참고**: 타슈 관제센터 2곳(ST0001, ST1220)은 이용자 대상 대여소가 아님 (주석 참고)
 
 ### 4. `raw_to_net.py`
-- **입력**: 원천 대여 이력 CSV
+- **입력**: 대여이력(DB `rental_history` 또는 원천 CSV)
 - **처리**: 평일 기준, 날짜×대여소×시간대(0~23시)별 `순수요 = 대여량 − 반납량`
 - **출력**: `data/pp_data/순수요/st_net_daily ({period}).csv` (net_00 ~ net_23 컬럼)
 

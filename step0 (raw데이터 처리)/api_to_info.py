@@ -1,8 +1,9 @@
 """대여 이력·재고·주차대수를 통합해 대여소 정보(st_info)를 만든다.
 
-입력: 원천 대여 이력 CSV(project_config의 raw_file),
+입력: DB의 rental_history(해당 period가 적재돼 있으면) 또는 원천 CSV,
       대여소별_자전거대수 ({now}).csv, 대여소별_주차대수 ({now}).csv
-출력: data/pp_data/대여소 정보/st_info ({now}).csv
+      적재는 `python tools/load_rentals.py`
+출력: data/pp_data/대여소 정보/st_info ({now}).csv + SQLite station_info 테이블
 """
 import sys
 from pathlib import Path
@@ -26,7 +27,15 @@ def main() -> None:
     config = get_runtime_config()
     now = config.now
 
-    st = pd.read_csv(config.raw_path, low_memory=False)
+    # DB에 적재돼 있으면 DB에서, 없으면 원천 CSV에서 읽는다 (DB_PLAN 4단계).
+    # 집계에 실제로 쓰는 컬럼만 읽는다.
+    st, source = db.read_rental_source(
+        config.period, csv_path=config.raw_path,
+        columns=['대여일시', '대여_대여소ID', '대여_대여소명', '대여_X좌표', '대여_Y좌표',
+                 '반납일시', '반납_대여소ID', '이용시간(분)', '이용거리(km)'])
+    if st.empty:
+        raise SystemExit(f"대여이력을 찾을 수 없습니다: {config.raw_path}")
+    print(f"대여이력 {len(st):,}행 로드 (출처: {source})")
 
     # 대여일시 -> 평일만 필터링
     st['대여일시'] = pd.to_datetime(st['대여일시'])

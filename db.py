@@ -23,7 +23,7 @@ import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterator, Optional, Tuple
+from typing import Dict, Iterator, Optional, Sequence, Tuple
 
 import pandas as pd
 
@@ -35,6 +35,26 @@ DB_PATH = DATA_ROOT / "bike_system.db"
 
 # 순수요는 24개 시간대 컬럼을 그대로 보존한다(현재 계산 코드가 wide 형태를 기대).
 NET_COLUMNS = [f"net_{h:02d}" for h in range(24)]
+
+# 원천 대여이력 CSV(한글 컬럼) ↔ rental_history 테이블(ASCII 컬럼)
+RENTAL_COLUMNS = {
+    "자전거번호": "bike_no",
+    "대여일시": "rent_at",
+    "대여_대여소ID": "rent_station",
+    "대여_대여소명": "rent_station_name",
+    "대여_X좌표": "rent_lat",      # API와 마찬가지로 X가 위도다
+    "대여_Y좌표": "rent_lon",
+    "반납일시": "return_at",
+    "반납_대여소ID": "return_station",
+    "반납_X좌표": "return_lat",
+    "반납_Y좌표": "return_lon",
+    "이용시간(분)": "use_min",
+    "이용거리(km)": "use_km",
+}
+RENTAL_COLUMNS_REVERSED = {v: k for k, v in RENTAL_COLUMNS.items()}
+
+# 문자열 비교로 기간 조회가 되도록 저장 시 통일하는 형식
+DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 @dataclass(frozen=True)
@@ -225,19 +245,29 @@ CREATE TABLE IF NOT EXISTS route_summary (
     PRIMARY KEY (run_label, duration, cluster)
 );
 
--- 원천 대여이력(대용량). 시간 조회를 위해 인덱스를 건다.
+-- 원천 대여이력(대용량). 원본 CSV 12개 컬럼을 그대로 미러링한다.
+-- 대여소명·좌표는 station_info와 중복이지만, api_to_info가 이 값을 집계해
+-- 대여소 정보를 만들기 때문에 여기 있어야 결과가 달라지지 않는다.
 CREATE TABLE IF NOT EXISTS rental_history (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    period        TEXT NOT NULL,
-    bike_no       TEXT,
-    rent_at       TEXT NOT NULL,
-    rent_station  TEXT NOT NULL,
-    return_at     TEXT,
-    return_station TEXT,
-    use_min       REAL,
-    use_km        REAL
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    period             TEXT NOT NULL,
+    bike_no            TEXT,
+    rent_at            TEXT NOT NULL,
+    rent_station       TEXT NOT NULL,
+    rent_station_name  TEXT,
+    rent_lat           REAL,
+    rent_lon           REAL,
+    return_at          TEXT,
+    return_station     TEXT,
+    return_lat         REAL,
+    return_lon         REAL,
+    -- NUMERIC 친화도: 정수 값은 정수로 보존한다. REAL로 두면 원본이 정수인
+    -- '이용시간(분)'이 실수로 바뀌어 CSV 경로와 산출물 dtype이 달라진다.
+    use_min            NUMERIC,
+    use_km             NUMERIC
 );
 
+CREATE INDEX IF NOT EXISTS idx_rental_period ON rental_history(period);
 CREATE INDEX IF NOT EXISTS idx_rental_rent_at ON rental_history(rent_at);
 CREATE INDEX IF NOT EXISTS idx_rental_station ON rental_history(rent_station);
 CREATE INDEX IF NOT EXISTS idx_pick_drop_cluster ON pick_drop(run_label, duration, cluster);
@@ -424,3 +454,138 @@ def save_output(table: str, df: pd.DataFrame, run_label: Optional[str] = None,
 def list_runs(conn: sqlite3.Connection) -> pd.DataFrame:
     """실행 이력을 최신순으로 돌려준다."""
     return pd.read_sql("SELECT * FROM runs ORDER BY run_label DESC", conn)
+
+
+# ---------------- 대여이력 (대용량 원천 데이터) ----------------
+
+_RENTAL_INDEXES = {
+    "idx_rental_period": "CREATE INDEX IF NOT EXISTS idx_rental_period ON rental_history(period)",
+    "idx_rental_rent_at": "CREATE INDEX IF NOT EXISTS idx_rental_rent_at ON rental_history(rent_at)",
+    "idx_rental_station": "CREATE INDEX IF NOT EXISTS idx_rental_station ON rental_history(rent_station)",
+}
+
+
+def _ensure_rental_schema(conn: sqlite3.Connection) -> None:
+    """rental_history가 현재 컬럼 구성과 다르면 다시 만든다.
+
+    이 테이블은 원천 CSV에서 언제든 다시 적재할 수 있으므로, 구버전 스키마가
+    남아 있을 때 알 수 없는 컬럼 오류를 내기보다 재생성하는 편이 안전하다.
+    """
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(rental_history)")}
+    if not existing:
+        return
+    expected = set(RENTAL_COLUMNS.values()) | {"id", "period"}
+    if existing != expected:
+        print("[안내] rental_history 스키마가 달라 다시 만듭니다(원천에서 재적재 필요).")
+        conn.execute("DROP TABLE rental_history")
+        conn.executescript(SCHEMA)
+        conn.commit()
+
+
+def bulk_load_rentals(csv_path: Path, period: str, db_path: Optional[Path] = None,
+                      chunksize: int = 100_000) -> int:
+    """원천 대여이력 CSV를 rental_history에 적재한다.
+
+    60만 행 규모를 염두에 두고 세 가지를 신경 쓴다.
+    1. 청크 단위로 읽고 넣어 메모리에 전체를 올리지 않는다.
+    2. 적재 전에 인덱스를 지우고 끝난 뒤 다시 만든다
+       (인덱스가 걸린 채로 대량 삽입하면 매 행마다 B-Tree를 갱신해 훨씬 느리다).
+    3. 같은 period를 다시 적재하면 기존 행을 지우고 넣는다(멱등).
+
+    반환값은 적재한 행 수.
+    """
+    csv_path = Path(csv_path)
+    if not csv_path.is_file():
+        raise FileNotFoundError(f"원천 CSV가 없습니다: {csv_path}")
+
+    conn = connect(db_path)
+    try:
+        init_schema(conn)
+        _ensure_rental_schema(conn)
+
+        for name in _RENTAL_INDEXES:
+            conn.execute(f"DROP INDEX IF EXISTS {name}")
+        conn.execute("DELETE FROM rental_history WHERE period = ?", (period,))
+        conn.commit()
+
+        total = 0
+        for chunk in pd.read_csv(csv_path, encoding="utf-8", low_memory=False,
+                                 chunksize=chunksize):
+            frame = _normalize_rentals(chunk, period)
+            frame.to_sql("rental_history", conn, if_exists="append", index=False)
+            total += len(frame)
+
+        for statement in _RENTAL_INDEXES.values():
+            conn.execute(statement)
+        conn.commit()
+        return total
+    finally:
+        conn.close()
+
+
+def _normalize_rentals(chunk: pd.DataFrame, period: str) -> pd.DataFrame:
+    """CSV 한 청크를 테이블 컬럼 구성으로 바꾼다."""
+    available = {k: v for k, v in RENTAL_COLUMNS.items() if k in chunk.columns}
+    missing = set(RENTAL_COLUMNS) - set(available)
+    if "대여일시" in missing or "대여_대여소ID" in missing:
+        raise ValueError(f"원천 CSV에 필수 컬럼이 없습니다: {sorted(missing)}")
+
+    frame = chunk[list(available)].rename(columns=available)
+
+    # 문자열 비교로 기간 조회가 되도록 형식을 통일한다.
+    for column in ("rent_at", "return_at"):
+        if column in frame.columns:
+            parsed = pd.to_datetime(frame[column], errors="coerce")
+            frame[column] = parsed.dt.strftime(DATETIME_FORMAT)
+
+    frame.insert(0, "period", period)
+    return frame.astype(object).where(pd.notna(frame), None)
+
+
+def rental_count(conn: sqlite3.Connection, period: str) -> int:
+    """해당 기간에 적재된 대여이력 행 수."""
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM rental_history WHERE period = ?", (period,)).fetchone()
+    except sqlite3.OperationalError:
+        return 0
+    return row[0] if row else 0
+
+
+def read_rental_source(period: str, csv_path: Optional[Path] = None,
+                       db_path: Optional[Path] = None,
+                       columns: Optional[Sequence[str]] = None) -> Tuple[pd.DataFrame, str]:
+    """대여이력을 **원본 CSV의 한글 컬럼명 그대로** 돌려준다.
+
+    DB에 해당 기간이 적재돼 있으면 DB에서, 없으면 CSV에서 읽는다.
+    한글 컬럼으로 되돌려주는 이유는 기존 step0 계산 로직을 손대지 않기 위해서다
+    (전환기 장치 — CSV 기록을 걷어낼 때 계산 로직도 ASCII 컬럼으로 정리한다).
+
+    columns를 주면 그 컬럼만 읽는다. 60만 행 규모에서는 12개를 다 읽는 것과
+    필요한 4~9개만 읽는 것의 차이가 크므로, 호출부가 쓰는 컬럼만 지정하는 것이 좋다.
+
+    반환: (DataFrame, 출처) — 출처는 "db" | "csv" | "none"
+    """
+    requested = list(columns) if columns else list(RENTAL_COLUMNS)
+    unknown = [c for c in requested if c not in RENTAL_COLUMNS]
+    if unknown:
+        raise KeyError(f"대여이력에 없는 컬럼: {unknown}")
+
+    conn = connect(db_path)
+    try:
+        init_schema(conn)
+        if rental_count(conn, period) > 0:
+            selected = ", ".join(RENTAL_COLUMNS[c] for c in requested)
+            frame = pd.read_sql(
+                f"SELECT {selected} FROM rental_history WHERE period = ? ORDER BY id",
+                conn, params=[period])
+            frame = frame.rename(columns=RENTAL_COLUMNS_REVERSED)
+            return frame[requested], "db"
+    finally:
+        conn.close()
+
+    if csv_path is None:
+        return pd.DataFrame(), "none"
+
+    frame = pd.read_csv(csv_path, encoding="utf-8", low_memory=False, usecols=requested)
+    return frame[requested], "csv"      # usecols는 파일 순서를 따르므로 다시 정렬

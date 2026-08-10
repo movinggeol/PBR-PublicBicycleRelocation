@@ -138,4 +138,25 @@ PBR (Public_Bicycle_Relocation)
 			data/bike_system.db가 생성되는 문제가 생겼다. tests/conftest.py의 autouse fixture로
 			모든 테스트에 PBR_DB_PATH를 임시 경로로 강제해 차단했다.
 		- 테스트 9개 추가(전체 71개). CSV 폴백 동작은 별도 스크립트로 확인.
+1.7.0 : (2026-08-10) 대여이력 적재와 step0 전환 (DB_PLAN.md 4단계).
+		- db.bulk_load_rentals(): 원천 대여이력 CSV를 rental_history에 청크 단위로 적재.
+			적재 중에는 인덱스를 지웠다가 끝나고 다시 만든다(인덱스가 걸린 채로 대량 삽입하면
+			매 행마다 B-Tree를 갱신해 훨씬 느리다). period 단위 멱등.
+			594,000행 적재에 6.1초(약 97,000행/초).
+		- tools/load_rentals.py: 적재 CLI(--status로 기간별 현황).
+		- db.read_rental_source(): DB 우선·CSV 폴백. 원본 한글 컬럼명 그대로 돌려주어
+			기존 step0 계산 로직을 손대지 않는다. columns= 로 필요한 컬럼만 읽는다.
+		- raw_to_net.py(4컬럼)·api_to_info.py(9컬럼)가 CSV 대신 DB에서 읽는다.
+		- [예상과 다른 측정 결과] "DB로 옮기면 빨라진다"고 예상했으나, 단일 기간만 다룰 때는
+			CSV가 최대 1.8배 빠르다. pandas의 C CSV 파서가 빠르고 SQLite->Python->DataFrame
+			경로에 행 단위 변환 비용이 있기 때문이다. 반면 3개월치 저장소에서 한 달만 읽으면
+			DB가 2.45배 빠르다. 즉 저장소가 필요한 양보다 클 때만 이득이며,
+			1년치를 병합해 두고 한 달씩 쓰는 실제 운용이 여기 해당한다.
+		- [스키마 되돌림] rental_history에서 대여소명·좌표를 'station_info와 중복'이라고
+			판단해 뺐다가 되돌렸다. api_to_info가 대여소 정보를 만들 때 이 값들을
+			대여이력에서 집계하고 있어, 빼면 산출물이 달라진다. 원본 12컬럼을 그대로 미러링한다.
+		- [동일성 테스트가 잡은 결함] use_min을 REAL로 두니 원본이 정수인 '이용시간(분)'이
+			실수로 바뀌어 CSV 경로와 산출물 dtype이 달라졌다. NUMERIC 친화도로 수정.
+		- 테스트 9개 추가(전체 80개). 핵심은 CSV 경로와 DB 경로의 산출물을
+			pd.testing.assert_frame_equal로 비교하는 동일성 테스트다.
 

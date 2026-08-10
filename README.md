@@ -197,6 +197,16 @@ SELECT run_label, AVG(improvement_rate) FROM metrics GROUP BY run_label;
 
 DB 위치는 `data/bike_system.db`이며 `PBR_DB_PATH` 환경변수로 바꿀 수 있습니다.
 
+원천 대여이력을 적재해 두면 step0가 CSV 대신 DB에서 읽습니다(적재하지 않으면 CSV 폴백).
+
+```powershell
+python tools/load_rentals.py            # 원천 CSV → rental_history
+python tools/load_rentals.py --status   # 기간별 적재 현황
+```
+
+1년치를 적재해 두고 한 달씩 분석할 때 유리합니다 — 반대로 딱 한 달치 파일만 쓰는
+경우에는 CSV가 더 빠릅니다. 실측 비교는 [docs/DB_PLAN.md](docs/DB_PLAN.md) 4단계에 있습니다.
+
 ## 성과 지표
 
 ```text
