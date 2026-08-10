@@ -26,7 +26,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.templating import Jinja2Templates
 
 from project_config import DEFAULT_DURATION, DEFAULT_NOW, DEFAULT_PERIOD, DEFAULT_RAW_FILE
-from webapp import catalog, jobs
+from webapp import catalog, jobs, store
 
 app = FastAPI(title="PBR 파이프라인 대시보드", docs_url="/api/docs")
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
@@ -45,6 +45,7 @@ def _index_context(error: Optional[str] = None) -> dict:
         "running": jobs.running_job(),
         "jobs": jobs.list_jobs()[:15],
         "latest": catalog.latest_outputs(),
+        "pipeline_runs": store.records(store.run_labels().head(10)),
         "error": error,
     }
 
@@ -196,19 +197,65 @@ def api_run_status(job_id: str):
     }
 
 
-def _read_latest_csv(subdir: str, pattern: str) -> pd.DataFrame:
-    path = catalog.latest_file(subdir, pattern)
-    if path is None:
-        raise HTTPException(status_code=404, detail=f"'{subdir}'에 산출물이 없습니다. 파이프라인을 먼저 실행하세요.")
-    return pd.read_csv(path, encoding="utf-8", low_memory=False)
+def _load_or_404(table: str, run_label: Optional[str], duration: Optional[str]):
+    """산출물을 읽고, 없으면 404. (DB 우선, 이전 산출물은 CSV 폴백)"""
+    frame, source = store.load(table, run_label=run_label, duration=duration)
+    if frame.empty:
+        raise HTTPException(
+            status_code=404,
+            detail=f"'{table}' 산출물이 없습니다. 파이프라인을 먼저 실행하세요."
+                   + (f" (run_label={run_label})" if run_label else ""),
+        )
+    return frame, source
+
+
+def _int(value, default=0) -> int:
+    """CSV 폴백 등으로 결측이 섞여도 API가 500으로 죽지 않게 한다."""
+    try:
+        if pd.isna(value):
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _envelope(frame: pd.DataFrame, source: str, run_label: Optional[str],
+              duration: Optional[str]) -> dict:
+    """레코드 목록에 어느 실행분인지·어디서 읽었는지를 함께 담는다."""
+    label = run_label
+    if label is None and "run_label" in frame.columns and not frame.empty:
+        label = frame["run_label"].iloc[0]
+    return {
+        "run_label": label,
+        "duration": duration,
+        "source": source,          # db | csv
+        "count": len(frame),
+        "rows": store.records(frame),
+    }
+
+
+@app.get("/api/pipeline-runs")
+def api_pipeline_runs():
+    """DB에 기록된 파이프라인 실행 이력(최신순).
+
+    웹에서 띄운 작업 상태를 보는 /api/runs/{job_id}와는 다른 개념이다.
+    이쪽은 산출물이 어느 실행(run_label)에 속하는지를 다룬다.
+    """
+    runs = store.run_labels()
+    return JSONResponse({"count": len(runs), "rows": store.records(runs)})
 
 
 @app.get("/api/stations")
-def api_stations():
-    """최신 Pick/Drop 후보를 GeoJSON FeatureCollection으로 반환한다."""
-    df = _read_latest_csv("ILP/후보", "top*.csv")
+def api_stations(run_label: Optional[str] = None, duration: Optional[str] = None):
+    """Pick/Drop 후보를 GeoJSON FeatureCollection으로 반환한다.
+
+    run_label을 주면 그 실행분을, 생략하면 최신 실행분을 돌려준다.
+    """
+    df, source = _load_or_404("pick_drop", run_label, duration)
+
     features = []
     for _, row in df.iterrows():
+        rebal = _int(row["rebal_qty"])
         features.append({
             "type": "Feature",
             "geometry": {"type": "Point",
@@ -216,31 +263,48 @@ def api_stations():
             "properties": {
                 "station_id": row["station_id"],
                 "station_name": row.get("station_name", ""),
-                "rebal_qty": int(row["rebal_qty"]),
-                "type": "drop" if row["rebal_qty"] > 0 else "pick",
-                "cluster": int(row["cluster"]),
-                "stock": int(row["stock"]),
+                "rebal_qty": rebal,
+                "type": "drop" if rebal > 0 else "pick",
+                "cluster": _int(row.get("cluster")),
+                "stock": _int(row.get("stock")),
             },
         })
-    return JSONResponse({"type": "FeatureCollection", "features": features})
+
+    label = run_label
+    if label is None and "run_label" in df.columns and not df.empty:
+        label = df["run_label"].iloc[0]
+
+    return JSONResponse({
+        "type": "FeatureCollection",
+        "run_label": label,
+        "source": source,
+        "features": features,
+    })
 
 
 @app.get("/api/plans/ilp")
-def api_ilp_plan():
-    df = _read_latest_csv("ILP", "ILP_plan*.csv")
-    return JSONResponse(df.to_dict(orient="records"))
+def api_ilp_plan(run_label: Optional[str] = None, duration: Optional[str] = None):
+    df, source = _load_or_404("ilp_plan", run_label, duration)
+    return JSONResponse(_envelope(df, source, run_label, duration))
 
 
 @app.get("/api/plans/vrp")
-def api_vrp_plan():
-    df = _read_latest_csv("VRP", "VRP_plan*.csv")
-    return JSONResponse(df.to_dict(orient="records"))
+def api_vrp_plan(run_label: Optional[str] = None, duration: Optional[str] = None):
+    df, source = _load_or_404("vrp_plan", run_label, duration)
+    return JSONResponse(_envelope(df, source, run_label, duration))
 
 
 @app.get("/api/metrics")
-def api_metrics():
-    df = _read_latest_csv("성능 지표", "verification*.csv")
-    return JSONResponse(df.to_dict(orient="records"))
+def api_metrics(run_label: Optional[str] = None, duration: Optional[str] = None):
+    df, source = _load_or_404("metrics", run_label, duration)
+    return JSONResponse(_envelope(df, source, run_label, duration))
+
+
+@app.get("/api/route-summary")
+def api_route_summary(run_label: Optional[str] = None, duration: Optional[str] = None):
+    """클러스터별 총 이동거리·운행시간 (step4 산출)."""
+    df, source = _load_or_404("route_summary", run_label, duration)
+    return JSONResponse(_envelope(df, source, run_label, duration))
 
 
 if __name__ == "__main__":

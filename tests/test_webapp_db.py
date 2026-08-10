@@ -1,0 +1,132 @@
+"""웹 API의 DB 조회 검증 (DB_PLAN 3단계).
+
+지금까지 웹 API는 "파일 수정시각이 가장 최근인 것"을 최신으로 삼았다.
+이제 DB의 run_label로 조회하고 과거 실행분도 지정할 수 있어야 한다.
+
+모든 테스트가 PBR_DB_PATH로 임시 DB를 가리켜 실제 data/bike_system.db를
+건드리지 않는다.
+"""
+import pandas as pd
+import pytest
+from fastapi.testclient import TestClient
+
+import db
+from webapp.app import app
+
+OLD, NEW = "2026-01-01 09", "2026-05-21 18"
+DURATION = "_05_10"
+
+
+def _pick_drop(n, cluster=0):
+    return pd.DataFrame({
+        "station_id": [f"ST{i:04d}" for i in range(n)],
+        "station_name": [f"대여소{i}" for i in range(n)],
+        "lat": [36.30 + i * 0.01 for i in range(n)],
+        "lon": [127.32 + i * 0.01 for i in range(n)],
+        "parking_lot": [10] * n,
+        "stock": [5] * n,
+        "target_qty": [7.5] * n,
+        "rebal_qty": [3 if i % 2 else -3 for i in range(n)],
+        "mu": [1.0] * n,
+        "sigma": [0.5] * n,
+        "cluster": [cluster] * n,
+    })
+
+
+def _metrics(n, rate):
+    return pd.DataFrame({
+        "station_id": [f"ST{i:04d}" for i in range(n)],
+        "station_name": [f"대여소{i}" for i in range(n)],
+        "lat": [36.3] * n, "lon": [127.3] * n,
+        "cluster": [0] * n, "stock": [5] * n,
+        "mu": [1.0] * n, "sigma": [0.5] * n,
+        "target_qty": [7.0] * n, "rebal_qty": [2] * n, "new_stock": [7] * n,
+        "bf_imbalance": [2.0] * n, "af_imbalance": [0.0] * n,
+        "improvement": [2.0] * n, "improvement_rate": [rate] * n,
+    })
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    """임시 DB에 두 번의 실행분을 심고 API 클라이언트를 준다."""
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "api.db"))
+
+    with db.session() as conn:
+        db.record_run(conn, OLD, period="25년 10월", duration=DURATION)
+        db.record_run(conn, NEW, period="25년 11월", duration=DURATION)
+        db.save_frame(conn, "pick_drop", _pick_drop(4), run_label=OLD, duration=DURATION)
+        db.save_frame(conn, "pick_drop", _pick_drop(6), run_label=NEW, duration=DURATION)
+        db.save_frame(conn, "metrics", _metrics(4, 0.60), run_label=OLD, duration=DURATION)
+        db.save_frame(conn, "metrics", _metrics(6, 0.85), run_label=NEW, duration=DURATION)
+
+    with TestClient(app) as c:
+        yield c
+
+
+def test_stations_returns_latest_run(client):
+    """라벨을 생략하면 최신 실행분(파일 수정시각이 아니라 run_label 기준)."""
+    body = client.get("/api/stations").json()
+
+    assert body["type"] == "FeatureCollection"
+    assert body["source"] == "db"
+    assert body["run_label"] == NEW
+    assert len(body["features"]) == 6      # 최신 실행분의 대여소 수
+
+
+def test_stations_can_select_past_run(client):
+    """과거 실행분을 콕 집어 조회할 수 있다 — CSV 시절에는 불가능했던 기능."""
+    body = client.get("/api/stations", params={"run_label": OLD}).json()
+
+    assert body["run_label"] == OLD
+    assert len(body["features"]) == 4
+
+
+def test_station_feature_shape(client):
+    props = client.get("/api/stations").json()["features"][0]["properties"]
+
+    assert set(props) == {"station_id", "station_name", "rebal_qty", "type", "cluster", "stock"}
+    assert props["type"] in ("pick", "drop")
+
+
+def test_metrics_envelope_reports_source_and_label(client):
+    body = client.get("/api/metrics").json()
+
+    assert body["source"] == "db"
+    assert body["run_label"] == NEW
+    assert body["count"] == len(body["rows"]) == 6
+
+
+def test_metrics_past_run_differs(client):
+    """실행별로 다른 결과가 나온다(비교의 기반)."""
+    new_rows = client.get("/api/metrics").json()["rows"]
+    old_rows = client.get("/api/metrics", params={"run_label": OLD}).json()["rows"]
+
+    assert new_rows[0]["improvement_rate"] == pytest.approx(0.85)
+    assert old_rows[0]["improvement_rate"] == pytest.approx(0.60)
+
+
+def test_unknown_run_label_returns_404(client):
+    res = client.get("/api/metrics", params={"run_label": "없는실행"})
+    assert res.status_code == 404
+
+
+def test_pipeline_runs_lists_history(client):
+    body = client.get("/api/pipeline-runs").json()
+
+    assert body["count"] == 2
+    assert [r["run_label"] for r in body["rows"]] == [NEW, OLD]   # 최신순
+    assert body["rows"][0]["period"] == "25년 11월"
+
+
+def test_index_shows_run_history(client):
+    """실행 이력이 대시보드에 보인다."""
+    html = client.get("/").text
+
+    assert "데이터 저장소" in html
+    assert NEW in html
+
+
+def test_missing_table_returns_404(client):
+    """DB에도 CSV에도 없는 산출물은 404 (500이 아니다)."""
+    assert client.get("/api/plans/vrp").status_code == 404
+    assert client.get("/api/route-summary").status_code == 404

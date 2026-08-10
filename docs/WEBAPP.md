@@ -23,7 +23,7 @@ uvicorn webapp.app:app --reload
 
 | 경로 | 내용 |
 | --- | --- |
-| `/` | 실행 폼(now·period·duration·raw_file·skip 옵션) + 실행 이력 + 최신 산출물 |
+| `/` | 실행 폼 + **DB 실행 이력(run_label)** + 작업 이력 + 최신 산출물 |
 | `/runs/{id}` | 실행 상태·로그 (실행 중엔 3초마다 자동 갱신) + **실행 중단** 버튼 |
 | `/maps` | step1·step3·step4가 생성한 folium 지도 목록 → iframe 열람(`/view/...`) 또는 새 창 |
 | `/data` | 단계별 CSV 산출물 목록 → 미리보기(200행)·다운로드 |
@@ -32,16 +32,42 @@ uvicorn webapp.app:app --reload
 ## JSON API
 
 향후 JS 프론트엔드로 교체할 때 그대로 쓸 수 있도록 JSON/GeoJSON을 제공합니다.
+**산출물 API는 SQLite를 조회**하며, `run_label`로 과거 실행분도 가져올 수 있습니다.
 
 | 엔드포인트 | 내용 |
 | --- | --- |
-| `GET /api/stations` | 최신 Pick/Drop 후보 → GeoJSON FeatureCollection |
-| `GET /api/plans/ilp` | 최신 ILP 이동 계획 (records) |
-| `GET /api/plans/vrp` | 최신 VRP 방문 계획 (records) |
-| `GET /api/metrics` | 최신 불균형 개선 지표 (records) |
-| `GET /api/runs/{id}` | 실행 상태 폴링 |
+| `GET /api/stations` | Pick/Drop 후보 → GeoJSON FeatureCollection |
+| `GET /api/plans/ilp` | ILP 이동 계획 |
+| `GET /api/plans/vrp` | VRP 방문 계획 |
+| `GET /api/metrics` | 불균형 개선 지표 |
+| `GET /api/route-summary` | 클러스터별 총 이동거리·운행시간 |
+| `GET /api/pipeline-runs` | DB에 기록된 실행 이력(run_label 목록) |
+| `GET /api/runs/{id}` | 웹에서 띄운 **작업**의 상태 폴링 (위와 다른 개념) |
 
-"최신"은 해당 폴더에서 수정 시각이 가장 최근인 파일 기준입니다.
+산출물 API는 `?run_label=...&duration=...` 쿼리를 받습니다. 생략하면 **최신 실행분**입니다.
+
+```
+GET /api/metrics                              # 최신 실행
+GET /api/metrics?run_label=2026-05-21%2018    # 특정 실행
+```
+
+응답에는 어느 실행분인지·어디서 읽었는지가 함께 담깁니다.
+
+```json
+{"run_label": "2026-05-21 18", "duration": null, "source": "db", "count": 39, "rows": [...]}
+```
+
+### "최신"의 의미가 바뀌었습니다
+
+| | 이전 | 현재 |
+| --- | --- | --- |
+| 기준 | 파일 **수정시각**이 가장 최근인 CSV | DB의 **`run_label`** 최대값 |
+| 과거 실행 조회 | 불가능 | `?run_label=` 지정 |
+| 취약점 | 파일 복사·재저장으로 순서가 뒤바뀜 | 없음 |
+
+`source` 필드가 `"csv"`면 DB가 비어 있어 **폴백**으로 읽었다는 뜻입니다. 이중 기록
+이전에 만들어진 산출물을 위한 전환기 장치이며, CSV 기록을 걷어낼 때 함께 제거합니다.
+단, `run_label`을 지정한 요청은 폴백하지 않습니다(CSV에는 실행을 구분할 정보가 없음).
 
 ## 구조
 
@@ -49,10 +75,14 @@ uvicorn webapp.app:app --reload
 webapp/
 ├── app.py        # FastAPI 라우트 (페이지 + JSON API)
 ├── jobs.py       # run_pipeline.py를 subprocess로 실행, 상태·로그 추적
-├── catalog.py    # data/pp_data 산출물 스캔, 안전한 경로 해석
+├── store.py      # 산출물 조회 계층 — DB 우선, 없으면 CSV 폴백
+├── catalog.py    # data/pp_data 파일 스캔(지도·CSV 목록), 안전한 경로 해석
 ├── __main__.py   # python -m webapp 진입점
 └── templates/    # base, index, run_detail, maps, view, data, preview
 ```
+
+`store.py`는 **데이터**(지표·계획)를, `catalog.py`는 **파일**(지도 HTML·CSV 다운로드)을
+담당합니다. 지도는 DB에 넣을 대상이 아니므로 `/maps`·`/data` 페이지는 계속 파일 기반입니다.
 
 ## 설계 결정
 

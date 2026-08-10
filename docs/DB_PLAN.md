@@ -82,7 +82,9 @@ data/bike_system.db  (WAL 모드)
 - [x] 2. **이중 기록** — 9개 단계가 CSV와 DB에 모두 쓴다. CSV가 아직 정본이며,
       DB 기록 실패는 경고만 남기고 파이프라인을 멈추지 않는다.
       테스트 11개로 각 테이블 적재와 CSV 대조를 검증 (아래 "2단계" 참고)
-- [ ] 3. webapp API를 DB 조회로 전환 (`/api/stations` 등에서 최신 파일 휴리스틱 제거)
+- [x] 3. **webapp API를 DB 조회로 전환** — `webapp/store.py`가 DB를 먼저 보고,
+      비어 있으면 CSV로 폴백한다. `?run_label=`로 과거 실행분 조회 가능,
+      `/api/pipeline-runs`로 실행 이력 노출. 테스트 9개 (아래 "3단계" 참고)
 - [ ] 4. 대여이력 원본 적재 스크립트 (`raw_data` CSV → rental_history, 인덱스 생성)
 - [ ] 5. 실행 이력 비교 기능 (run_label 간 개선률 비교 API·화면)
 
@@ -144,13 +146,45 @@ db.save_output("pick_drop", df, run_label=now, duration=duration)    # 추가
 - **DB 경로는 `PBR_DB_PATH`로 재정의**할 수 있습니다. 테스트가 실제
   `data/bike_system.db`를 오염시키지 않도록 이 변수로 임시 파일을 가리킵니다.
 
-### 다음 단계로 넘어가기 전 확인할 것
-
-CSV와 DB가 일치하는지 실데이터로 확인한 뒤 3단계(웹 API 전환)로 갑니다.
+### 확인 방법
 
 ```python
-import db, pandas as pd
+import db
 with db.session() as conn:
     print(db.list_runs(conn))
     print(db.load_frame(conn, "metrics").head())
 ```
+
+## 3단계 — 웹 API를 DB 조회로 전환 (완료)
+
+웹 API가 파일 대신 DB를 읽습니다. **"최신"의 의미가 바뀐 것**이 핵심입니다.
+
+| | 이전 | 현재 |
+| --- | --- | --- |
+| 최신 판단 기준 | 파일 **수정시각** | DB의 **`run_label`** 최대값 |
+| 과거 실행 조회 | 불가능 | `?run_label=` 지정 |
+| 취약점 | 파일 복사·재저장으로 순서가 뒤바뀜 | 없음 |
+
+```
+GET /api/metrics                              # 최신 실행
+GET /api/metrics?run_label=2026-05-21%2018    # 특정 실행
+GET /api/pipeline-runs                        # 실행 이력 목록
+```
+
+응답에 `run_label`과 `source`(db|csv)가 함께 담겨, 어느 실행분을 어디서 읽었는지
+확인할 수 있습니다. 대시보드 첫 화면에도 실행 이력 표가 추가되었습니다.
+
+### 설계 결정
+
+- **`webapp/store.py` 신설** — 데이터 조회(DB 우선, CSV 폴백)를 한 곳에 모았습니다.
+  기존 `catalog.py`는 **파일**(지도 HTML, CSV 다운로드) 담당으로 역할이 갈립니다.
+  지도는 DB에 넣을 대상이 아니라 `/maps`·`/data` 페이지는 계속 파일 기반입니다.
+- **CSV 폴백을 남긴 이유** — 이중 기록 이전에 만들어진 산출물을 가진 사용자가
+  DB를 채우기 전에도 대시보드를 쓸 수 있어야 합니다. 마지막 단계(CSV 기록 제거)에서
+  함께 없앱니다. 단 `run_label`을 지정한 요청은 폴백하지 않습니다 — CSV에는
+  어느 실행분인지 구분할 정보가 파일명 말고 없기 때문입니다.
+- **엔드포인트 이름 충돌 회피** — `/api/runs/{id}`는 이미 "웹에서 띄운 작업의 상태"를
+  뜻합니다. DB의 실행 이력은 다른 개념이라 `/api/pipeline-runs`로 분리했습니다.
+- **테스트 격리** — API가 DB를 조회하게 되면서 라우트를 한 번 부르기만 해도 실제
+  `data/bike_system.db`가 생성됩니다. `tests/conftest.py`의 autouse fixture가
+  모든 테스트에 `PBR_DB_PATH`를 임시 경로로 강제합니다.

@@ -162,10 +162,18 @@ python tools/make_sample_data.py --now "데모"
 python -m webapp        # http://127.0.0.1:8000
 ```
 
-- `/` 실행 폼·실행 이력·최신 산출물
+- `/` 실행 폼·DB 실행 이력·작업 이력·최신 산출물
 - `/maps` folium 지도 결과(HTML)를 브라우저에서 바로 열람
 - `/data` CSV 산출물 미리보기·다운로드
 - `/api/docs` JSON API 문서 (GeoJSON 대여소, ILP/VRP 계획, 성과 지표)
+
+산출물 API는 DB를 조회하므로 과거 실행분도 볼 수 있습니다.
+
+```
+GET /api/metrics                              # 최신 실행
+GET /api/metrics?run_label=2026-05-21%2018    # 특정 실행
+GET /api/pipeline-runs                        # 실행 이력 목록
+```
 
 ## 데이터 저장
 

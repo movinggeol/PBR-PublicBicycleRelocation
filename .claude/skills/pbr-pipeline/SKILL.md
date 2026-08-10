@@ -81,12 +81,17 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
 
 ## 웹 대시보드 (webapp/)
 
-- FastAPI + Jinja2 파이썬 단독. `webapp/jobs.py`가 run_pipeline.py를 subprocess로
-  실행하고(동시 1개 제한), `webapp/catalog.py`가 data/pp_data 산출물을 스캔한다.
+- FastAPI + Jinja2 파이썬 단독. `jobs.py`가 run_pipeline.py를 subprocess로 실행하고
+  (동시 1개 제한), `store.py`가 산출물 **데이터**를, `catalog.py`가 **파일**(지도 HTML·
+  CSV 다운로드)을 담당한다. 새 데이터 API는 `store.load()`를 써라.
+- **산출물 API는 DB를 읽는다**(`?run_label=`로 과거 실행분 조회). DB가 비면 CSV로
+  폴백하는데, 이건 전환기 장치이니 새 기능이 여기 의존하게 만들지 마라.
 - 파일 서빙은 `data/` 아래 `.html`/`.csv`로 제한된다 — 새 라우트를 추가할 때
   `catalog.safe_resolve()`를 우회하지 마라.
 - 파이프라인 로직을 웹 요청 안에서 직접 실행하지 마라(수 분 소요) —
   반드시 jobs.start_job() 경유.
+- `/api/runs/{id}`는 **웹 작업 상태**, `/api/pipeline-runs`는 **DB 실행 이력**이다.
+  이름이 비슷하니 헷갈리지 마라.
 
 ## 코드 규약
 
@@ -125,6 +130,8 @@ python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 - `tests/test_pipeline.py` — 합성 데이터로 step0→step4 실제 실행 + 산출물 검증
 - 실행마다 고유 라벨(`smoketest-{pid}`)을 쓰므로 실데이터를 덮어쓰지 않는다.
   **테스트를 추가할 때 이 규칙을 깨지 마라** — 고정 라벨을 쓰면 사용자 데이터가 지워진다.
+- `conftest.py`의 autouse fixture가 모든 테스트에 `PBR_DB_PATH`를 임시 경로로 강제한다.
+  이걸 지우면 테스트가 실제 `data/bike_system.db`를 만들고 오염시킨다.
 - 새 step이나 라우트를 추가하면 해당 테스트도 함께 추가한다.
 
 ## 수정 후 확인 절차

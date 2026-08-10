@@ -31,9 +31,9 @@
    "5분 이상 소요" 문제의 원인. 이동 노드가 속한 두 군집만 재계산하는 증분 방식으로 개선.
 4. **VRP 고도화**: 현행은 greedy 휴리스틱(단일 차량/클러스터). OR-Tools 등
    전용 VRP solver로 다차량·시간창·실도로 거리 반영.
-5. **데이터 관리**: CSV → SQLite 이관 — **1·2단계 완료**(저장소 + 이중 기록).
+5. **데이터 관리**: CSV → SQLite 이관 — **1~3단계 완료**(저장소 + 이중 기록 + 웹 API 전환).
    남은 단계는 [DB_PLAN.md](DB_PLAN.md) 참고
-   (3. webapp API 전환 → 4. 대여이력 적재 → 5. 실행 이력 비교 → CSV 기록 제거).
+   (4. 대여이력 적재 → 5. 실행 이력 비교 화면 → CSV 기록·폴백 제거).
 6. **EDA 시각화**: `month_graph`에 matplotlib 그래프 통합
    (`experiments/matplotlib_month_graph.py`의 한글 폰트 설정 참고).
 7. **step1 매직 넘버**: 상위 50개 컷, `|rebal_qty| > 2`, target_cluster_size=7 등을 설정으로 추출.
@@ -45,6 +45,22 @@
     VRP 적재 제약)의 단위 테스트와 CI(GitHub Actions) 연결.
 
 ---
+
+## ✅ 완료 (2026-08-10, 버전 1.6.0) — 웹 API의 DB 전환 (3단계)
+
+웹 API가 파일 대신 DB를 읽습니다. **"최신"의 기준이 파일 수정시각에서 `run_label`로** 바뀌었고,
+과거 실행분 조회가 처음으로 가능해졌습니다.
+
+| 항목 | 내용 |
+| --- | --- |
+| `webapp/store.py` | 데이터 조회 계층. DB 우선, 비어 있으면 CSV 폴백. `catalog.py`는 파일(지도·다운로드) 담당으로 역할 분리 |
+| `?run_label=` · `?duration=` | 산출물 API가 과거 실행분을 지정해 조회 |
+| `/api/pipeline-runs` | DB 실행 이력 목록 (`/api/runs/{id}`는 웹 작업 상태로 개념이 달라 이름 분리) |
+| `/api/route-summary` | 클러스터별 이동거리·운행시간 API 신설 |
+| 응답 봉투 | `run_label`·`source`(db\|csv)·`count`·`rows` — 어느 실행분을 어디서 읽었는지 표시 |
+| 대시보드 | 첫 화면에 DB 실행 이력 표 추가 |
+| 테스트 9개 추가 (전체 71개) | 최신 조회, 과거 실행 조회, 404 처리, 이력 목록. CSV 폴백은 별도 확인 |
+| 테스트 격리 보강 | 라우트 호출만으로 실제 DB가 생성되는 문제를 `conftest.py` autouse fixture로 차단 |
 
 ## ✅ 완료 (2026-08-10, 버전 1.5.0) — SQLite 이중 기록 (2단계)
 
