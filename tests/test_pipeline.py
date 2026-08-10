@@ -140,3 +140,34 @@ def test_improvement_is_positive(pipeline_run):
     df = pd.read_csv(_out("성능 지표/verification{duration} ({label}).csv"), encoding="utf-8")
     assert (df["improvement"] >= 0).all()
     assert df["improvement_rate"].mean() > 0
+
+
+def test_outputs_load_into_database(pipeline_run, tmp_path):
+    """실제 산출물이 DB 스키마에 그대로 들어간다 (DB_PLAN 1단계 검증).
+
+    합성 데이터가 아니라 파이프라인이 방금 만든 CSV를 적재하므로,
+    컬럼이 하나라도 어긋나면 여기서 잡힌다.
+    """
+    import db
+    from tools.csv_to_db import import_outputs
+
+    with db.connect(tmp_path / "smoke.db") as conn:
+        db.init_schema(conn)
+        loaded = import_outputs(conn, now=LABEL, period=LABEL, durations=[DURATION])
+
+        # CSV로 확인한 산출물이 모두 적재되어야 한다.
+        assert {"station_info", "parking_lot", "net_demand",
+                f"rebalance_plan{DURATION}", f"pick_drop{DURATION}",
+                f"ilp_plan{DURATION}", f"vrp_plan{DURATION}",
+                f"metrics{DURATION}", f"route_summary{DURATION}"} <= set(loaded)
+        assert all(rows > 0 for rows in loaded.values())
+
+        # 행 수가 원본 CSV와 일치한다.
+        csv_rows = len(pd.read_csv(_out("ILP/후보/top{duration} ({label}).csv"), encoding="utf-8"))
+        stored = db.load_frame(conn, "pick_drop", run_label=LABEL, duration=DURATION)
+        assert len(stored) == csv_rows
+        assert set(stored["run_label"]) == {LABEL}
+
+        # 라벨을 생략해도 최신 실행분을 찾을 수 있다(웹 API가 쓸 경로).
+        assert not db.load_frame(conn, "metrics").empty
+        assert db.list_runs(conn)["run_label"].tolist() == [LABEL]

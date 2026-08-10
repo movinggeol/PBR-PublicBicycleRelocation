@@ -41,6 +41,7 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 ├── tools/                                 # 합성 데이터 생성기 등 보조 도구
 ├── experiments/                           # 일회성 학습·검증 스크립트
 ├── project_config.py                      # 공통 설정(now/period/duration/raw_file)
+├── db.py                                  # SQLite 저장소 (이관 진행 중, DB_PLAN.md)
 ├── run_pipeline.py                        # 전체 단계 일괄 실행기
 └── requirements.txt                       # 고정된 패키지 버전
 ```

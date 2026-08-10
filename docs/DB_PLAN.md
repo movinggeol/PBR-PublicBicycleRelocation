@@ -29,20 +29,37 @@
 2. TASHU API를 **상시 수집**(예: 10분마다 재고 스냅샷)으로 바꿔 쓰기가 잦아질 때
 3. 다른 PC/서버에서 **원격 접속**이 필요할 때
 
-전환 비용을 낮추기 위해 이관 시 SQLAlchemy를 얇게 사용한다(raw sqlite3 직접 호출 지양).
+**전환 비용에 대한 재검토 (1단계 구현 시 결정 변경)**: 애초에 SQLAlchemy를 얇게 쓰기로
+했으나, 실제로 구현해 보니 필요가 없었다. pandas의 `to_sql`/`read_sql`은 sqlite3 연결과
+SQLAlchemy 엔진 모두에서 동일하게 동작하므로, 데이터 접근 코드는 어느 쪽이든 같다.
+바뀌는 곳은 연결 생성뿐이라 `db.connect()` 하나로 격리했다. 지금은 표준 라이브러리만으로
+돌아가고, PostgreSQL 전환 시점에 그 함수만 엔진 팩토리로 교체하면 된다.
 
-## 목표 스키마
+## 스키마 (1단계에서 구현됨 — `db.py`)
 
 ```text
 data/bike_system.db  (WAL 모드)
-├── rental_history   (대여이력, 대여일시 인덱스)      ← raw CSV
+├── runs             (실행 이력: run_label, period, duration, raw_file, created_at)
 ├── station_info     (대여소 마스터)                  ← step0 산출
-├── net_demand       (순수요)                        ← step0 산출
+├── parking_lot      (거치대 수)                      ← step0 산출
+├── net_demand       (순수요, period 스코프)          ← step0 산출
 ├── rebalance_plan   (rebal_qty)                     ← step0 산출
+├── pick_drop        (Pick/Drop 후보 + 클러스터)      ← step1 산출
 ├── ilp_plan         (Pick→Drop 이동 계획)           ← step2 산출
-├── vrp_plan         (방문 순서 + 거리·시간)          ← step2 산출
-└── metrics          (verification + route_summary)  ← step4 산출
+├── vrp_plan         (방문 순서 + 거리·시간, seq 보존) ← step2 산출
+├── metrics          (재배치 전후 불균형 개선)         ← step4 산출
+├── route_summary    (클러스터별 이동거리·소요시간)     ← step4 산출
+└── rental_history   (대여이력 원본, 대여일시 인덱스)   ← raw CSV (5단계에서 적재)
 ```
+
+설계 시 실제 산출물 CSV의 컬럼을 뽑아 맞췄습니다. 주의할 점 3가지:
+
+- **한글 컬럼은 ASCII로 변환**해 저장합니다 (`총 이용시간(분)` → `total_use_min`,
+  `방문수` → `visits` 등). 변환표는 `db.TABLES`에 모여 있습니다.
+- **`net_demand`는 `period` 스코프**입니다. 순수요는 원천 데이터 기간에만 의존하고
+  분석 시점(`now`)과 무관하기 때문입니다.
+- **`vrp_plan`은 `seq` 컬럼으로 방문 순서를 보존**합니다. 같은 대여소를 여러 번
+  방문할 수 있어 자연키가 없습니다.
 
 **핵심 설계: `run_label` 컬럼.** 지금 파일명에 박혀 있는 `{now}` 라벨을 산출 테이블의
 컬럼으로 옮긴다(`run_label TEXT`, duration도 컬럼화). 효과:
@@ -57,9 +74,33 @@ data/bike_system.db  (WAL 모드)
 
 ## 작업 단계
 
-- [ ] 0. 선행: Python 설치 → 파이프라인 검증 → 커밋 (docs/TODO.md 참고)
-- [ ] 1. `db.py` 공통 모듈: 연결(WAL), 테이블 생성, `df.to_sql`/`read_sql` 헬퍼, run_label 규약
+- [x] 0. 선행: Python 설치 → 파이프라인 검증 → 커밋 (1.2.1)
+- [x] 1. `db.py` 공통 모듈 — 연결(WAL), 스키마, `save_frame`/`load_frame`, run_label 규약.
+      `tools/csv_to_db.py`로 기존 CSV 산출물을 적재할 수 있고, 테스트 17개로 검증됨
+      (그중 1개는 파이프라인이 실제로 만든 CSV를 적재해 스키마 적합성을 확인)
 - [ ] 2. step0부터 순차 이관: CSV 저장과 DB 저장 병행(이중 기록) → 검증 후 CSV 기록 제거
 - [ ] 3. webapp API를 DB 조회로 전환 (`/api/stations` 등에서 최신 파일 휴리스틱 제거)
 - [ ] 4. 대여이력 원본 적재 스크립트 (`raw_data` CSV → rental_history, 인덱스 생성)
 - [ ] 5. 실행 이력 비교 기능 (run_label 간 개선률 비교 API·화면)
+
+## 1단계 사용법
+
+```powershell
+# 기존 CSV 산출물을 DB로 적재 (project_config의 now/period/duration 사용)
+python tools/csv_to_db.py
+python tools/csv_to_db.py --list        # 적재된 실행 이력 확인
+```
+
+```python
+import db
+with db.connect() as conn:
+    db.init_schema(conn)
+    latest = db.load_frame(conn, "metrics")            # 최신 실행분
+    old    = db.load_frame(conn, "metrics", run_label="2026-05-21 18")
+```
+
+`run_label` 도입의 효과 — 실행 간 비교가 쿼리 한 줄이 됩니다:
+
+```sql
+SELECT run_label, AVG(improvement_rate) FROM metrics GROUP BY run_label;
+```

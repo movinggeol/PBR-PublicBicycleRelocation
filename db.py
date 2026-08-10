@@ -1,0 +1,346 @@
+"""SQLite 저장소 공통 모듈 (DB_PLAN.md 1단계).
+
+파이프라인 산출물을 `data/bike_system.db` 한 파일에 모아 관리한다.
+지금 파일명에 박혀 있는 `{now}` 라벨을 **run_label 컬럼**으로 옮기는 것이 핵심이며,
+그 결과 "지난 실행 대비 개선률" 같은 비교가 SQL 한 줄이 된다.
+
+사용 예:
+    import db
+    with db.connect() as conn:
+        db.init_schema(conn)
+        db.record_run(conn, "2026-05-21 18", period="25년 11월", duration="_05_10")
+        db.save_frame(conn, "pick_drop", df, run_label="2026-05-21 18", duration="_05_10")
+        latest = db.load_frame(conn, "pick_drop")      # 라벨 생략 시 최신 실행
+
+이식성: 다른 DB로 옮길 때 바꿔야 하는 곳은 connect() 하나다.
+pandas의 to_sql/read_sql은 sqlite3 연결과 SQLAlchemy 엔진 모두에서 동일하게 동작하므로,
+PostgreSQL 전환 시점에 connect()만 엔진 팩토리로 교체하면 나머지 코드는 그대로 쓴다.
+"""
+from __future__ import annotations
+
+import sqlite3
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, Optional, Sequence, Tuple
+
+import pandas as pd
+
+from project_config import DATA_ROOT
+
+DB_PATH = DATA_ROOT / "bike_system.db"
+
+# 순수요는 24개 시간대 컬럼을 그대로 보존한다(현재 계산 코드가 wide 형태를 기대).
+NET_COLUMNS = [f"net_{h:02d}" for h in range(24)]
+
+
+@dataclass(frozen=True)
+class TableSpec:
+    """테이블별 저장 규칙.
+
+    scope   : 같은 실행을 다시 저장할 때 먼저 지울 기준 컬럼(멱등성 보장)
+    rename  : CSV의 한글 컬럼 → DB의 ASCII 컬럼
+    drop    : 저장 시 버릴 컬럼(다른 컬럼과 중복되는 값)
+    """
+    scope: Tuple[str, ...]
+    rename: Dict[str, str] = field(default_factory=dict)
+    drop: Tuple[str, ...] = ()
+
+
+TABLES: Dict[str, TableSpec] = {
+    "station_info": TableSpec(
+        scope=("run_label",),
+        rename={"총 이용시간(분)": "total_use_min", "총 이용거리(km)": "total_use_km"},
+    ),
+    "parking_lot": TableSpec(scope=("run_label",)),
+    # 순수요는 원천 데이터 기간(period)에만 의존하므로 run_label이 아니라 period로 묶는다.
+    "net_demand": TableSpec(scope=("period",), rename={"날짜": "date"}),
+    "rebalance_plan": TableSpec(scope=("run_label", "duration")),
+    "pick_drop": TableSpec(scope=("run_label", "duration")),
+    # ilp_plan의 'hour'는 duration과 같은 값이라 중복 저장하지 않는다.
+    "ilp_plan": TableSpec(scope=("run_label", "duration"), drop=("hour",)),
+    "vrp_plan": TableSpec(scope=("run_label", "duration")),
+    "metrics": TableSpec(scope=("run_label", "duration")),
+    "route_summary": TableSpec(
+        scope=("run_label", "duration"),
+        rename={"방문수": "visits", "처리대수": "bikes", "총이동거리_km": "distance_km",
+                "총이동시간_분": "travel_min", "총작업시간_분": "work_min",
+                "총소요시간_분": "total_min"},
+    ),
+}
+
+_NET_DDL = ",\n    ".join(f"{c} INTEGER" for c in NET_COLUMNS)
+
+SCHEMA = f"""
+-- 실행 이력. 각 산출물 테이블의 run_label이 여기를 가리킨다.
+CREATE TABLE IF NOT EXISTS runs (
+    run_label   TEXT PRIMARY KEY,
+    period      TEXT,
+    duration    TEXT,
+    raw_file    TEXT,
+    created_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS station_info (
+    run_label      TEXT NOT NULL,
+    station_id     TEXT NOT NULL,
+    station_name   TEXT,
+    lat            REAL,
+    lon            REAL,
+    parking_lot    INTEGER,
+    stock          INTEGER,
+    rent_count     INTEGER,
+    return_count   INTEGER,
+    total_use_min  REAL,
+    total_use_km   REAL,
+    PRIMARY KEY (run_label, station_id)
+);
+
+CREATE TABLE IF NOT EXISTS parking_lot (
+    run_label    TEXT NOT NULL,
+    station_id   TEXT NOT NULL,
+    lat          REAL,
+    lon          REAL,
+    parking_lot  INTEGER,
+    PRIMARY KEY (run_label, station_id)
+);
+
+CREATE TABLE IF NOT EXISTS net_demand (
+    period      TEXT NOT NULL,
+    date        TEXT NOT NULL,
+    station_id  TEXT NOT NULL,
+    {_NET_DDL},
+    PRIMARY KEY (period, date, station_id)
+);
+
+CREATE TABLE IF NOT EXISTS rebalance_plan (
+    run_label   TEXT NOT NULL,
+    duration    TEXT NOT NULL,
+    station_id  TEXT NOT NULL,
+    mu          REAL,
+    sigma       REAL,
+    parking_lot INTEGER,
+    stock       INTEGER,
+    target_qty  REAL,
+    rebal_qty   INTEGER,
+    PRIMARY KEY (run_label, duration, station_id)
+);
+
+CREATE TABLE IF NOT EXISTS pick_drop (
+    run_label     TEXT NOT NULL,
+    duration      TEXT NOT NULL,
+    station_id    TEXT NOT NULL,
+    station_name  TEXT,
+    lat           REAL,
+    lon           REAL,
+    parking_lot   INTEGER,
+    stock         INTEGER,
+    target_qty    REAL,
+    rebal_qty     INTEGER,
+    mu            REAL,
+    sigma         REAL,
+    cluster       INTEGER,
+    PRIMARY KEY (run_label, duration, station_id)
+);
+
+CREATE TABLE IF NOT EXISTS ilp_plan (
+    run_label        TEXT NOT NULL,
+    duration         TEXT NOT NULL,
+    cluster          INTEGER,
+    pick_station_id  TEXT NOT NULL,
+    drop_station_id  TEXT NOT NULL,
+    qty              INTEGER,
+    travel_time_sec  REAL,
+    PRIMARY KEY (run_label, duration, pick_station_id, drop_station_id)
+);
+
+-- 방문 순서는 같은 대여소를 여러 번 지날 수 있어 자연키가 없다. 행 순서를 seq로 보존.
+CREATE TABLE IF NOT EXISTS vrp_plan (
+    run_label    TEXT NOT NULL,
+    duration     TEXT NOT NULL,
+    seq          INTEGER NOT NULL,
+    cluster      INTEGER,
+    from_id      TEXT,
+    from_lat     REAL,
+    from_lon     REAL,
+    to_id        TEXT,
+    to_lat       REAL,
+    to_lon       REAL,
+    action       TEXT,
+    qty          INTEGER,
+    distance_km  REAL,
+    travel_sec   REAL,
+    work_sec     REAL,
+    cum_sec      REAL,
+    PRIMARY KEY (run_label, duration, seq)
+);
+
+CREATE TABLE IF NOT EXISTS metrics (
+    run_label         TEXT NOT NULL,
+    duration          TEXT NOT NULL,
+    station_id        TEXT NOT NULL,
+    station_name      TEXT,
+    lat               REAL,
+    lon               REAL,
+    cluster           INTEGER,
+    stock             INTEGER,
+    mu                REAL,
+    sigma             REAL,
+    target_qty        REAL,
+    rebal_qty         INTEGER,
+    new_stock         INTEGER,
+    bf_imbalance      REAL,
+    af_imbalance      REAL,
+    improvement       REAL,
+    improvement_rate  REAL,
+    PRIMARY KEY (run_label, duration, station_id)
+);
+
+CREATE TABLE IF NOT EXISTS route_summary (
+    run_label    TEXT NOT NULL,
+    duration     TEXT NOT NULL,
+    cluster      INTEGER NOT NULL,
+    visits       INTEGER,
+    bikes        INTEGER,
+    distance_km  REAL,
+    travel_min   REAL,
+    work_min     REAL,
+    total_min    REAL,
+    PRIMARY KEY (run_label, duration, cluster)
+);
+
+-- 원천 대여이력(대용량). 시간 조회를 위해 인덱스를 건다.
+CREATE TABLE IF NOT EXISTS rental_history (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    period        TEXT NOT NULL,
+    bike_no       TEXT,
+    rent_at       TEXT NOT NULL,
+    rent_station  TEXT NOT NULL,
+    return_at     TEXT,
+    return_station TEXT,
+    use_min       REAL,
+    use_km        REAL
+);
+
+CREATE INDEX IF NOT EXISTS idx_rental_rent_at ON rental_history(rent_at);
+CREATE INDEX IF NOT EXISTS idx_rental_station ON rental_history(rent_station);
+CREATE INDEX IF NOT EXISTS idx_pick_drop_cluster ON pick_drop(run_label, duration, cluster);
+CREATE INDEX IF NOT EXISTS idx_metrics_run ON metrics(run_label, duration);
+"""
+
+
+def connect(db_path: Optional[Path] = None) -> sqlite3.Connection:
+    """DB에 연결한다. 다른 DB로 옮길 때 교체할 지점은 이 함수 하나다.
+
+    WAL 모드를 켜면 파이프라인이 쓰는 중에도 웹 대시보드가 읽을 수 있다.
+    """
+    path = Path(db_path) if db_path else DB_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    conn = sqlite3.connect(path)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
+def init_schema(conn: sqlite3.Connection) -> None:
+    """테이블과 인덱스를 만든다(이미 있으면 그대로 둔다)."""
+    conn.executescript(SCHEMA)
+    conn.commit()
+
+
+def _spec(table: str) -> TableSpec:
+    if table not in TABLES:
+        raise KeyError(f"알 수 없는 테이블: {table} (가능: {', '.join(TABLES)})")
+    return TABLES[table]
+
+
+def _scope_values(spec: TableSpec, run_label: Optional[str],
+                  period: Optional[str], duration: Optional[str]) -> Dict[str, str]:
+    supplied = {"run_label": run_label, "period": period, "duration": duration}
+    values = {}
+    for column in spec.scope:
+        value = supplied[column]
+        if value is None:
+            raise ValueError(f"{column} 값이 필요합니다.")
+        values[column] = value
+    return values
+
+
+def save_frame(conn: sqlite3.Connection, table: str, df: pd.DataFrame,
+               run_label: Optional[str] = None, period: Optional[str] = None,
+               duration: Optional[str] = None) -> int:
+    """DataFrame을 테이블에 저장한다.
+
+    같은 스코프(run_label/period[+duration])의 기존 행은 먼저 지우므로,
+    같은 실행을 다시 저장해도 중복이 쌓이지 않는다. 저장한 행 수를 돌려준다.
+    """
+    spec = _spec(table)
+    scope = _scope_values(spec, run_label, period, duration)
+
+    frame = df.drop(columns=[c for c in spec.drop if c in df.columns])
+    frame = frame.rename(columns=spec.rename)
+
+    # 방문 순서 테이블은 행 순서 자체가 정보다.
+    if table == "vrp_plan" and "seq" not in frame.columns:
+        frame = frame.reset_index(drop=True)
+        frame.insert(0, "seq", range(len(frame)))
+
+    for column, value in scope.items():
+        frame.insert(0, column, value)
+
+    where = " AND ".join(f"{c} = ?" for c in scope)
+    conn.execute(f"DELETE FROM {table} WHERE {where}", tuple(scope.values()))
+    frame.to_sql(table, conn, if_exists="append", index=False)
+    conn.commit()
+    return len(frame)
+
+
+def load_frame(conn: sqlite3.Connection, table: str,
+               run_label: Optional[str] = None, period: Optional[str] = None,
+               duration: Optional[str] = None) -> pd.DataFrame:
+    """테이블을 읽는다.
+
+    run_label/period를 생략하면 가장 최근 실행분을 돌려준다.
+    (파일 수정시각 휴리스틱 대신 라벨 정렬을 쓴다.)
+    """
+    spec = _spec(table)
+    label_column = "period" if "period" in spec.scope else "run_label"
+    label_value = period if label_column == "period" else run_label
+
+    if label_value is None:
+        label_value = latest_label(conn, table)
+        if label_value is None:
+            return pd.DataFrame()
+
+    conditions = [f"{label_column} = ?"]
+    params = [label_value]
+    if "duration" in spec.scope and duration is not None:
+        conditions.append("duration = ?")
+        params.append(duration)
+
+    query = f"SELECT * FROM {table} WHERE {' AND '.join(conditions)}"
+    return pd.read_sql(query, conn, params=params)
+
+
+def latest_label(conn: sqlite3.Connection, table: str) -> Optional[str]:
+    """해당 테이블에 저장된 가장 최근 run_label(또는 period)."""
+    spec = _spec(table)
+    column = "period" if "period" in spec.scope else "run_label"
+    row = conn.execute(f"SELECT MAX({column}) FROM {table}").fetchone()
+    return row[0] if row else None
+
+
+def record_run(conn: sqlite3.Connection, run_label: str, period: Optional[str] = None,
+               duration: Optional[str] = None, raw_file: Optional[str] = None) -> None:
+    """실행 메타데이터를 기록한다(같은 라벨이면 덮어쓴다)."""
+    conn.execute(
+        "INSERT OR REPLACE INTO runs (run_label, period, duration, raw_file, created_at)"
+        " VALUES (?, ?, ?, ?, datetime('now', 'localtime'))",
+        (run_label, period, duration, raw_file),
+    )
+    conn.commit()
+
+
+def list_runs(conn: sqlite3.Connection) -> pd.DataFrame:
+    """실행 이력을 최신순으로 돌려준다."""
+    return pd.read_sql("SELECT * FROM runs ORDER BY run_label DESC", conn)

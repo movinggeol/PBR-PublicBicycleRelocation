@@ -16,7 +16,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/PROJECT_PIPELINE.md` | 파이프라인 전체 구조 |
 | `docs/steps/step*.md` | 단계별 입출력·문제점·작업 목록 |
 | `docs/WEBAPP.md` | 웹 대시보드(webapp/) 실행·구조·API |
-| `docs/DB_PLAN.md` | SQLite 도입 결정·목표 스키마·이관 단계 (CSV→DB 작업 시 필독) |
+| `docs/DB_PLAN.md` | SQLite 도입 결정·스키마·이관 단계 (CSV→DB 작업 시 필독) |
 | `docs/버전관리.txt` | 버전 이력, 수정 이유 기록 |
 
 ## 파이프라인 구조 (실행 순서 = 데이터 의존 순서)
@@ -98,6 +98,16 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
   ILP 속도 25km/h, VRP 속도 30km/h, 신뢰계수 z=1.65, depot=타슈 관제센터(ST0001).
 - pandas 2.x 기준으로 작성 (`.loc` 슬라이스에 inplace 연산 금지).
 - 버전에 영향 주는 수정을 하면 `docs/버전관리.txt`에 이유와 함께 기록한다.
+
+## 저장소 (db.py, 이관 진행 중)
+
+- `db.py`가 `data/bike_system.db`(SQLite, WAL)를 다룬다. **파일명의 `{now}`는 DB에서
+  `run_label` 컬럼**이고, 라벨을 생략하면 최신 실행분이 나온다.
+- 새 산출물 테이블을 추가할 때는 `db.TABLES`에 스코프·컬럼 변환을 등록하고 `SCHEMA`에
+  DDL을 넣어라. 한글 컬럼은 ASCII로 변환한다(변환표가 `db.TABLES`에 모여 있다).
+- 연결 생성은 `db.connect()` 한 곳뿐이다 — 다른 DB로 옮길 때 여기만 바꾸면 되므로
+  다른 곳에서 `sqlite3.connect`를 직접 부르지 마라.
+- **step 스크립트는 아직 CSV를 쓴다.** 이관은 DB_PLAN.md 2단계다.
 
 ## 테스트
 

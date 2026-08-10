@@ -31,8 +31,9 @@
    "5분 이상 소요" 문제의 원인. 이동 노드가 속한 두 군집만 재계산하는 증분 방식으로 개선.
 4. **VRP 고도화**: 현행은 greedy 휴리스틱(단일 차량/클러스터). OR-Tools 등
    전용 VRP solver로 다차량·시간창·실도로 거리 반영.
-5. **데이터 관리**: CSV → SQLite 이관 — **채택 결정됨**, 스키마·작업 단계는
-   [DB_PLAN.md](DB_PLAN.md) 참고 (선행 조건: 파이프라인 검증 완료).
+5. **데이터 관리**: CSV → SQLite 이관 — **1단계(`db.py`) 완료**, 남은 단계는
+   [DB_PLAN.md](DB_PLAN.md) 참고 (2. step 스크립트 이중 기록 → 3. webapp API 전환
+   → 4. 대여이력 적재 → 5. 실행 이력 비교).
 6. **EDA 시각화**: `month_graph`에 matplotlib 그래프 통합
    (`experiments/matplotlib_month_graph.py`의 한글 폰트 설정 참고).
 7. **step1 매직 넘버**: 상위 50개 컷, `|rebal_qty| > 2`, target_cluster_size=7 등을 설정으로 추출.
@@ -44,6 +45,19 @@
     VRP 적재 제약)의 단위 테스트와 CI(GitHub Actions) 연결.
 
 ---
+
+## ✅ 완료 (2026-08-10, 버전 1.4.0) — SQLite 저장소 1단계
+
+CSV 파일명에 박혀 있던 `{now}` 라벨을 **`run_label` 컬럼**으로 옮기는 기반을 만들었습니다.
+step 스크립트는 아직 CSV를 쓰며, 이관은 [DB_PLAN.md](DB_PLAN.md) 2단계에서 진행합니다.
+
+| 항목 | 내용 |
+| --- | --- |
+| `db.py` | `data/bike_system.db` 연결(WAL), 11개 테이블 스키마, `save_frame`/`load_frame`/`latest_label`/`record_run`. 라벨 생략 시 최신 실행분 반환 |
+| `tools/csv_to_db.py` | 기존 CSV 산출물을 DB로 적재. `--list`로 실행 이력 확인 |
+| `tests/test_db.py` (16개) | 멱등 저장, 실행·시간대 격리, 한글 컬럼 변환, VRP 방문 순서 보존, 실행 간 비교 쿼리 |
+| 통합 검증 (1개) | 파이프라인이 **실제로 만든 CSV**를 적재해 스키마 적합성과 행 수 일치 확인 |
+| 설계 변경 | SQLAlchemy를 쓰기로 했다가 표준 sqlite3로 변경 — pandas 계층 코드가 동일해 이점이 없었고, 교체 지점을 `db.connect()` 하나로 격리 (DB_PLAN.md에 근거 기록) |
 
 ## ✅ 완료 (2026-08-10, 버전 1.3.0) — 스모크 테스트·샘플 데이터
 

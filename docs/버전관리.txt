@@ -90,4 +90,19 @@ PBR (Public_Bicycle_Relocation)
 		- pytest.ini: testpaths=tests. experiments/pulp_test.py가 pytest 기본 파일 패턴
 			(*_test.py)에 걸려 수집·실행되던 문제를 차단.
 		- requirements-dev.txt 분리(pytest, httpx) — 런타임 의존성에 테스트 도구를 섞지 않는다.
+1.4.0 : (2026-08-10) SQLite 저장소 1단계 (DB_PLAN.md 1단계).
+		- db.py 신설: data/bike_system.db 연결(WAL), 11개 테이블 스키마,
+			save_frame/load_frame/latest_label/record_run/list_runs.
+			CSV 파일명의 {now} 라벨을 run_label 컬럼으로 옮기는 것이 핵심.
+			라벨을 생략하면 최신 실행분을 돌려주므로 웹의 '수정시각 최신 파일' 휴리스틱을 대체한다.
+		- 스키마는 실제 산출물 CSV의 컬럼을 뽑아 맞췄다. 한글 컬럼은 ASCII로 변환하고
+			(총 이용시간(분)->total_use_min, 방문수->visits 등), net_demand는 원천 기간에만
+			의존하므로 period 스코프, vrp_plan은 같은 대여소 재방문이 있어 seq로 순서를 보존한다.
+		- tools/csv_to_db.py: 기존 CSV 산출물을 DB로 적재(--list로 실행 이력 확인).
+		- tests/test_db.py(16개) + 파이프라인 통합 1개. 통합 테스트는 합성 데이터가 아니라
+			파이프라인이 실제로 만든 CSV를 적재해 컬럼 어긋남을 잡는다. 전체 51개 통과.
+		- [설계 변경] DB_PLAN에서 SQLAlchemy를 얇게 쓰기로 했으나 표준 sqlite3로 변경.
+			pandas의 to_sql/read_sql이 양쪽에서 동일하게 동작해 데이터 접근 코드가 같고,
+			바뀌는 곳은 연결 생성뿐이라 db.connect() 하나로 격리했다. 근거는 DB_PLAN.md에 기록.
+			(PostgreSQL 전환 시 그 함수만 엔진 팩토리로 교체)
 
