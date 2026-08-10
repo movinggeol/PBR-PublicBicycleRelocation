@@ -105,4 +105,20 @@ PBR (Public_Bicycle_Relocation)
 			pandas의 to_sql/read_sql이 양쪽에서 동일하게 동작해 데이터 접근 코드가 같고,
 			바뀌는 곳은 연결 생성뿐이라 db.connect() 하나로 격리했다. 근거는 DB_PLAN.md에 기록.
 			(PostgreSQL 전환 시 그 함수만 엔진 팩토리로 교체)
+1.5.0 : (2026-08-10) SQLite 이중 기록 (DB_PLAN.md 2단계).
+		- 9개 단계가 CSV를 저장한 직후 DB에도 기록한다. 별도 적재 명령이 필요 없어졌다.
+			station_stock(tashu_api), parking_lot, station_info, net_demand,
+			rebalance_plan, pick_drop, ilp_plan, vrp_plan, metrics, route_summary.
+		- db.save_output(): 단계용 헬퍼. CSV가 아직 정본이므로 DB 기록이 실패해도
+			예외를 올리지 않고 경고만 남긴다. 전환기에 DB 문제로 파이프라인이 멈추면 안 되기 때문.
+			대신 조용히 넘어가지 않도록 테스트가 각 테이블의 적재를 검사한다.
+		- db.session(): 연결을 열고 스키마를 보장한 뒤 닫는 컨텍스트 매니저.
+			sqlite3 연결의 with 문은 트랜잭션만 관리하고 연결을 닫지 않아 자원이 샌다.
+		- db.ensure_run(): 단계마다 아는 정보가 달라(순수요는 period만, 최적화는 duration만)
+			COALESCE로 빈 값만 채워 누적한다. 전체를 확정해 덮어쓸 때는 record_run()을 쓴다.
+		- PBR_DB_PATH 환경변수로 DB 경로를 재정의할 수 있다. 테스트가 실제
+			data/bike_system.db를 오염시키지 않도록 임시 파일을 가리키는 데 쓴다.
+			(이 장치가 없으면 테스트를 돌릴 때마다 smoketest 데이터가 실제 DB에 쌓인다)
+		- 테스트 11개 추가(전체 62개): 테이블별 적재 9개 + CSV 행 수 대조 + runs 등록.
+			이중 기록이 하나라도 빠지면 실패한다.
 

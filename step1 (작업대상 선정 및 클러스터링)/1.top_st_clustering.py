@@ -11,6 +11,7 @@ import numpy as np
 from adjust_module import compute_medoids, compute_objective, select_cluster_candidates, \
                             make_cluster_pairs, get_movable_nodes, check_size_constraint, try_move_node
 
+import db
 from project_config import PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config
 
 # read_csv
@@ -257,3 +258,7 @@ if __name__ == '__main__':
         # 저장
         pick_drop.to_csv(clustered_file.format(duration=duration, now=now),encoding='utf-8', index=False)
         print(f"\n{len(pick_drop)}개의 행이 저장된 {clustered_file.format(duration=duration, now=now)} 파일이 저장되었습니다.")
+
+        # CSV·DB 이중 기록 (DB_PLAN 2단계). CSV가 아직 정본이다.
+        db.save_output("pick_drop", pick_drop, run_label=now,
+                       period=config.period, duration=duration)

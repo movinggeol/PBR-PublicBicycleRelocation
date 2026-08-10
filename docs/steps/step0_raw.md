@@ -16,6 +16,17 @@ TASHU API와 공공데이터포털 대여 이력을 받아, 이후 최적화 단
 모든 스크립트는 `project_config.get_runtime_config()`에서 `now`/`period`/`duration`/`raw_file`을
 읽으며, 각 파일은 독립 실행된다(상호 import 없음). 실행 순서는 `run_pipeline.py`가 제어한다.
 
+각 단계는 CSV와 함께 **SQLite에도 기록**한다(이중 기록, [DB_PLAN.md](../DB_PLAN.md) 2단계).
+CSV가 아직 정본이며 DB 기록 실패는 경고만 남긴다.
+
+| 스크립트 | DB 테이블 |
+| --- | --- |
+| `tashu_api.py` | `station_stock` |
+| `extract_parking_lot.py` | `parking_lot` |
+| `api_to_info.py` | `station_info` |
+| `raw_to_net.py` | `net_demand` (period 스코프) |
+| `calculate_target_qty.py` | `rebalance_plan` |
+
 ## 파일별 상세
 
 ### 1. `tashu_api.py`

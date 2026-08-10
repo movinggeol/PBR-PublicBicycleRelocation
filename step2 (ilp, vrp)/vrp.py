@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 from ilp import haversine_km
 
+import db
 from project_config import (
     DEPOT_ID, DEPOT_LAT, DEPOT_LON, PROJECT_ROOT, VEHICLE_CAPACITY,
     duration_list, ensure_output_dirs, get_runtime_config,
@@ -193,6 +194,9 @@ def run_vrp_plan(ilp_plan: pd.DataFrame, duration: str):
     vrp_result = pd.DataFrame(results)
     vrp_result.to_csv(vrp_plan_file.format(duration=duration, now=now), index=False)
     print(f"\nvrp_plan_path 파일이 저장되었습니다. ({vrp_plan_file.format(duration=duration, now=now)})")
+
+    # CSV·DB 이중 기록 (DB_PLAN 2단계). 방문 순서는 db가 seq 컬럼으로 보존한다.
+    db.save_output("vrp_plan", vrp_result, run_label=now, duration=duration)
 
 
 if __name__ == '__main__':

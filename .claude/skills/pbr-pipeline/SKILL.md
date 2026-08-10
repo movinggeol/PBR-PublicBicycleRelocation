@@ -99,15 +99,20 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
 - pandas 2.x 기준으로 작성 (`.loc` 슬라이스에 inplace 연산 금지).
 - 버전에 영향 주는 수정을 하면 `docs/버전관리.txt`에 이유와 함께 기록한다.
 
-## 저장소 (db.py, 이관 진행 중)
+## 저장소 (db.py — CSV·DB 이중 기록 중)
 
 - `db.py`가 `data/bike_system.db`(SQLite, WAL)를 다룬다. **파일명의 `{now}`는 DB에서
   `run_label` 컬럼**이고, 라벨을 생략하면 최신 실행분이 나온다.
-- 새 산출물 테이블을 추가할 때는 `db.TABLES`에 스코프·컬럼 변환을 등록하고 `SCHEMA`에
+- **각 단계는 CSV를 저장한 뒤 `db.save_output(...)`을 부른다.** 새 산출물을 만드는
+  단계를 추가하면 이 호출도 함께 넣어라(테스트가 누락을 잡는다).
+- **CSV가 아직 정본이다.** `save_output()`은 DB 실패 시 경고만 남기고 파이프라인을
+  멈추지 않는다. 이 동작을 예외로 바꾸지 마라 — 전환기 설계다 (DB_PLAN 2단계).
+- 새 테이블을 추가할 때는 `db.TABLES`에 스코프·컬럼 변환을 등록하고 `SCHEMA`에
   DDL을 넣어라. 한글 컬럼은 ASCII로 변환한다(변환표가 `db.TABLES`에 모여 있다).
-- 연결 생성은 `db.connect()` 한 곳뿐이다 — 다른 DB로 옮길 때 여기만 바꾸면 되므로
-  다른 곳에서 `sqlite3.connect`를 직접 부르지 마라.
-- **step 스크립트는 아직 CSV를 쓴다.** 이관은 DB_PLAN.md 2단계다.
+- 연결은 `db.session()`(스키마 보장 + 자동 close)을 써라. `sqlite3.connect`를 직접
+  부르지 마라 — 다른 DB로 옮길 때 `db.connect()` 한 곳만 바꾸면 되도록 격리해 뒀다.
+- **`PBR_DB_PATH`로 DB 경로를 재정의**할 수 있다. 테스트는 이 변수로 임시 DB를 쓴다 —
+  이걸 빼면 테스트 데이터가 실제 DB에 쌓인다.
 
 ## 테스트
 

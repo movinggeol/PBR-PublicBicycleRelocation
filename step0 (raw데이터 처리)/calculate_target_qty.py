@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import pandas as pd
 
+import db
 from project_config import PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config
 
 # read_csv
@@ -81,6 +82,9 @@ def calculate_rebal_qty(stats: pd.DataFrame, duration: str, now: str, z=1.65, up
 
     stats.to_csv(out_file_path.format(duration=duration, now=now) + '.csv', encoding='utf-8', index=False)
     print(f"rebal{duration}가 저장되었습니다. (저장 위치 : {out_file_path.format(duration=duration, now=now) + '.csv'})")
+
+    # CSV·DB 이중 기록 (DB_PLAN 2단계). CSV가 아직 정본이다.
+    db.save_output("rebalance_plan", stats, run_label=now, duration=duration)
 
 
 # 메인

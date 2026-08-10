@@ -25,6 +25,7 @@
 
 - **입력**: `rebal_qty{duration} ({now}).csv`, `st_info ({now}).csv`
 - **출력**: `data/pp_data/ILP/후보/top{duration} ({now}).csv`
+  + SQLite `pick_drop` 테이블 (이중 기록, [DB_PLAN.md](../DB_PLAN.md) 2단계)
   (station_id, station_name, lat, lon, mu, sigma, parking_lot, stock, target_qty, rebal_qty, cluster)
 
 ### `adjust_module.py` (군집 조정 보조)

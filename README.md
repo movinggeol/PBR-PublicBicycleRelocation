@@ -41,7 +41,7 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 ├── tools/                                 # 합성 데이터 생성기 등 보조 도구
 ├── experiments/                           # 일회성 학습·검증 스크립트
 ├── project_config.py                      # 공통 설정(now/period/duration/raw_file)
-├── db.py                                  # SQLite 저장소 (이관 진행 중, DB_PLAN.md)
+├── db.py                                  # SQLite 저장소 (CSV와 이중 기록, DB_PLAN.md)
 ├── run_pipeline.py                        # 전체 단계 일괄 실행기
 └── requirements.txt                       # 고정된 패키지 버전
 ```
@@ -166,6 +166,28 @@ python -m webapp        # http://127.0.0.1:8000
 - `/maps` folium 지도 결과(HTML)를 브라우저에서 바로 열람
 - `/data` CSV 산출물 미리보기·다운로드
 - `/api/docs` JSON API 문서 (GeoJSON 대여소, ILP/VRP 계획, 성과 지표)
+
+## 데이터 저장
+
+파이프라인은 CSV와 SQLite에 **동시에** 기록합니다(이중 기록). CSV가 아직 정본이며,
+DB 이관 계획은 [docs/DB_PLAN.md](docs/DB_PLAN.md)에 있습니다.
+
+```python
+import db
+
+with db.session() as conn:
+    print(db.list_runs(conn))                 # 실행 이력
+    latest = db.load_frame(conn, "metrics")   # 라벨 생략 시 최신 실행분
+```
+
+파일명에 있던 분석 시점(`{now}`)이 DB에서는 `run_label` 컬럼이라, 실행 간 비교가
+쿼리 한 줄이 됩니다.
+
+```sql
+SELECT run_label, AVG(improvement_rate) FROM metrics GROUP BY run_label;
+```
+
+DB 위치는 `data/bike_system.db`이며 `PBR_DB_PATH` 환경변수로 바꿀 수 있습니다.
 
 ## 성과 지표
 

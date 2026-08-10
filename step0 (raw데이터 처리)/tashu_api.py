@@ -13,6 +13,7 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
+import db
 from project_config import PROJECT_ROOT, ensure_output_dirs, get_runtime_config
 
 # to_csv
@@ -48,6 +49,9 @@ def main() -> None:
     ensure_output_dirs()
     df.to_csv(out_file_path.format(now=config.now), encoding='utf-8', index=False)
     print(f"\n{out_file_path.format(now=config.now)} 가 저장되었습니다.")
+
+    # CSV·DB 이중 기록 (DB_PLAN 2단계). CSV가 아직 정본이다.
+    db.save_output("station_stock", df, run_label=config.now, period=config.period)
 
 
 if __name__ == '__main__':

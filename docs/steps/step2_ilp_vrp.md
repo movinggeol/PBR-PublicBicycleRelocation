@@ -8,6 +8,7 @@
 - **입력**: `data/pp_data/ILP/후보/top{duration} ({now}).csv`
 - **출력**: `data/pp_data/ILP/ILP_plan{duration} ({now}).csv`
   (hour, cluster, pick_station_id, drop_station_id, qty, travel_time_sec)
+  + SQLite `ilp_plan` 테이블 (`hour`는 `duration`과 중복이라 DB에는 저장하지 않는다)
 
 ### 모델 (클러스터별 독립 수행)
 
@@ -25,6 +26,7 @@
 - **출력**: `data/pp_data/VRP/VRP_plan{duration} ({now}).csv`
   (cluster, from_id/lat/lon, to_id/lat/lon, action(pick/drop/return), qty,
   distance_km, travel_sec, work_sec, cum_sec)
+  + SQLite `vrp_plan` 테이블 (같은 대여소 재방문이 있어 `seq` 컬럼으로 방문 순서 보존)
 - 노드 키는 `(station_id, type)` — 같은 대여소가 pick·drop 양쪽에 있어도 유실 없음
 - 작업시간은 자전거 1대당 `PICK/DROP_TIME_SEC`(30초) 가정
 

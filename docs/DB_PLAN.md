@@ -40,6 +40,7 @@ SQLAlchemy 엔진 모두에서 동일하게 동작하므로, 데이터 접근 �
 ```text
 data/bike_system.db  (WAL 모드)
 ├── runs             (실행 이력: run_label, period, duration, raw_file, created_at)
+├── station_stock    (TASHU API 재고 스냅샷)          ← step0 산출
 ├── station_info     (대여소 마스터)                  ← step0 산출
 ├── parking_lot      (거치대 수)                      ← step0 산출
 ├── net_demand       (순수요, period 스코프)          ← step0 산출
@@ -78,7 +79,9 @@ data/bike_system.db  (WAL 모드)
 - [x] 1. `db.py` 공통 모듈 — 연결(WAL), 스키마, `save_frame`/`load_frame`, run_label 규약.
       `tools/csv_to_db.py`로 기존 CSV 산출물을 적재할 수 있고, 테스트 17개로 검증됨
       (그중 1개는 파이프라인이 실제로 만든 CSV를 적재해 스키마 적합성을 확인)
-- [ ] 2. step0부터 순차 이관: CSV 저장과 DB 저장 병행(이중 기록) → 검증 후 CSV 기록 제거
+- [x] 2. **이중 기록** — 9개 단계가 CSV와 DB에 모두 쓴다. CSV가 아직 정본이며,
+      DB 기록 실패는 경고만 남기고 파이프라인을 멈추지 않는다.
+      테스트 11개로 각 테이블 적재와 CSV 대조를 검증 (아래 "2단계" 참고)
 - [ ] 3. webapp API를 DB 조회로 전환 (`/api/stations` 등에서 최신 파일 휴리스틱 제거)
 - [ ] 4. 대여이력 원본 적재 스크립트 (`raw_data` CSV → rental_history, 인덱스 생성)
 - [ ] 5. 실행 이력 비교 기능 (run_label 간 개선률 비교 API·화면)
@@ -103,4 +106,51 @@ with db.connect() as conn:
 
 ```sql
 SELECT run_label, AVG(improvement_rate) FROM metrics GROUP BY run_label;
+```
+
+## 2단계 — 이중 기록 (완료)
+
+파이프라인을 돌리면 CSV와 DB에 **동시에** 기록됩니다. 별도 적재 명령이 필요 없습니다.
+
+| 단계 | 스크립트 | 테이블 |
+| --- | --- | --- |
+| 0 | `tashu_api.py` | `station_stock` |
+| 0 | `extract_parking_lot.py` | `parking_lot` |
+| 0 | `api_to_info.py` | `station_info` |
+| 0 | `raw_to_net.py` | `net_demand` (period 스코프) |
+| 0 | `calculate_target_qty.py` | `rebalance_plan` |
+| 1 | `1.top_st_clustering.py` | `pick_drop` |
+| 2 | `ilp.py` | `ilp_plan` |
+| 2 | `vrp.py` | `vrp_plan` |
+| 4 | `imbalance.py` | `metrics`, `route_summary` |
+
+각 스크립트는 CSV를 저장한 직후 한 줄을 더 부릅니다.
+
+```python
+df.to_csv(out_path, index=False)                                     # 기존 (정본)
+db.save_output("pick_drop", df, run_label=now, duration=duration)    # 추가
+```
+
+### 이 단계의 설계 원칙
+
+- **CSV가 아직 정본입니다.** `save_output()`은 DB 기록이 실패해도 예외를 올리지 않고
+  경고만 출력합니다. 전환기에 DB 문제로 파이프라인이 멈추면 안 되기 때문입니다.
+  대신 조용히 넘어가지 않도록 테스트가 각 테이블의 적재를 검사합니다.
+- **멱등성**: `save_frame()`이 같은 라벨의 기존 행을 먼저 지우므로, 파이프라인을
+  재실행해도 중복이 쌓이지 않습니다.
+- **`runs` 테이블은 누적 갱신**: 단계마다 아는 정보가 다릅니다(순수요 단계는 `period`만,
+  최적화 단계는 `duration`만). `ensure_run()`이 `COALESCE`로 빈 값만 채워
+  먼저 기록된 값을 덮어쓰지 않습니다.
+- **DB 경로는 `PBR_DB_PATH`로 재정의**할 수 있습니다. 테스트가 실제
+  `data/bike_system.db`를 오염시키지 않도록 이 변수로 임시 파일을 가리킵니다.
+
+### 다음 단계로 넘어가기 전 확인할 것
+
+CSV와 DB가 일치하는지 실데이터로 확인한 뒤 3단계(웹 API 전환)로 갑니다.
+
+```python
+import db, pandas as pd
+with db.session() as conn:
+    print(db.list_runs(conn))
+    print(db.load_frame(conn, "metrics").head())
 ```

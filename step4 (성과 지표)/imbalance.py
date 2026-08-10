@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import folium
 import pandas as pd
 
+import db
 from project_config import PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config
 
 file_path = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")
@@ -91,6 +92,9 @@ def route_summary(duration: str):
 
     summary.to_csv(route_summary_file.format(duration=duration, now=now), index=False, encoding='utf-8')
     print(f"route_summary 파일이 저장되었습니다. ({route_summary_file.format(duration=duration, now=now)})")
+
+    # CSV·DB 이중 기록 (DB_PLAN 2단계). 한글 컬럼은 db가 ASCII로 변환한다.
+    db.save_output("route_summary", summary, run_label=now, duration=duration)
 
 
 def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, duration: str):
@@ -217,5 +221,9 @@ if __name__ == "__main__":
 
         imbalance_df.to_csv(result_file_path.format(duration=duration, now=now), index=False, encoding='utf-8')
         print(f"\nresult_file_path 파일이 저장되었습니다. ({result_file_path.format(duration=duration, now=now)})")
+
+        # CSV·DB 이중 기록 (DB_PLAN 2단계). CSV가 아직 정본이다.
+        db.save_output("metrics", imbalance_df, run_label=now,
+                       period=config.period, duration=duration)
 
         route_summary(duration)

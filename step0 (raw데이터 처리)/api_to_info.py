@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd
 
+import db
 from project_config import PROJECT_ROOT, ensure_output_dirs, get_runtime_config
 
 # read_csv
@@ -93,6 +94,10 @@ def main() -> None:
     ensure_output_dirs()
     intersect_df.to_csv(out_file_path.format(now=now), encoding='utf-8', index=False)
     print(f"\n{out_file_path.format(now=now)} 가 저장되었습니다.")
+
+    # CSV·DB 이중 기록 (DB_PLAN 2단계). CSV가 아직 정본이다.
+    db.save_output("station_info", intersect_df, run_label=now,
+                   period=config.period)
 
     '''
     # ------------------ 이용자들 대상으로 사용하지 않는 대여소(타슈관제센터 2곳) ------------------

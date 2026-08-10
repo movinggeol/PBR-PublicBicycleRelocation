@@ -39,13 +39,20 @@ def _out(relative: str) -> Path:
 
 
 @pytest.fixture(scope="module")
-def pipeline_run(tmp_path_factory):
+def smoke_db(tmp_path_factory):
+    """이중 기록이 실제 DB(data/bike_system.db)를 오염시키지 않도록 별도 파일을 쓴다."""
+    return tmp_path_factory.mktemp("db") / "smoke.db"
+
+
+@pytest.fixture(scope="module")
+def pipeline_run(tmp_path_factory, smoke_db):
     """합성 데이터를 만들고 파이프라인을 한 번 실행한다."""
     raw_path = tmp_path_factory.mktemp("raw") / "합성_대여이력.csv"
     generate(now=LABEL, period=LABEL, stations=70, days=12,
              rentals_per_day=500, raw_path=raw_path)
 
-    env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
+    env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8",
+               PBR_DB_PATH=str(smoke_db))
     results = []
 
     for script in STAGES:
@@ -142,32 +149,67 @@ def test_improvement_is_positive(pipeline_run):
     assert df["improvement_rate"].mean() > 0
 
 
-def test_outputs_load_into_database(pipeline_run, tmp_path):
-    """실제 산출물이 DB 스키마에 그대로 들어간다 (DB_PLAN 1단계 검증).
+@pytest.mark.parametrize("table", [
+    "parking_lot", "station_info", "net_demand", "rebalance_plan",
+    "pick_drop", "ilp_plan", "vrp_plan", "metrics", "route_summary",
+])
+def test_stages_write_to_database(pipeline_run, smoke_db, table):
+    """각 단계가 CSV와 함께 DB에도 기록한다 (DB_PLAN 2단계 이중 기록).
 
-    합성 데이터가 아니라 파이프라인이 방금 만든 CSV를 적재하므로,
-    컬럼이 하나라도 어긋나면 여기서 잡힌다.
+    tashu_api(station_stock)는 API 키가 필요해 이 테스트 범위 밖이다.
+    """
+    import db
+
+    with db.session(smoke_db) as conn:
+        stored = db.load_frame(conn, table)
+        assert not stored.empty, f"{table} 테이블이 비어 있다(이중 기록 누락)"
+
+
+def test_database_matches_csv(pipeline_run, smoke_db):
+    """이중 기록된 DB 내용이 CSV와 일치한다."""
+    import db
+
+    checks = [
+        ("pick_drop", "ILP/후보/top{duration} ({label}).csv"),
+        ("ilp_plan", "ILP/ILP_plan{duration} ({label}).csv"),
+        ("vrp_plan", "VRP/VRP_plan{duration} ({label}).csv"),
+        ("metrics", "성능 지표/verification{duration} ({label}).csv"),
+        ("route_summary", "성능 지표/route_summary{duration} ({label}).csv"),
+    ]
+    with db.session(smoke_db) as conn:
+        for table, relative in checks:
+            csv_rows = len(pd.read_csv(_out(relative), encoding="utf-8"))
+            stored = db.load_frame(conn, table, run_label=LABEL, duration=DURATION)
+            assert len(stored) == csv_rows, f"{table}: DB {len(stored)}행 vs CSV {csv_rows}행"
+            assert set(stored["run_label"]) == {LABEL}
+
+
+def test_run_registry_populated(pipeline_run, smoke_db):
+    """실행 라벨이 runs 테이블에 기록되고, 라벨 생략 조회가 최신을 찾는다."""
+    import db
+
+    with db.session(smoke_db) as conn:
+        assert db.list_runs(conn)["run_label"].tolist() == [LABEL]
+        assert db.latest_label(conn, "metrics") == LABEL
+        assert not db.load_frame(conn, "metrics").empty      # 웹 API가 쓸 경로
+
+
+def test_csv_to_db_tool_imports_outputs(pipeline_run, tmp_path):
+    """CSV → DB 적재 도구도 같은 결과를 낸다(이관 검증·복구 경로).
+
+    파이프라인이 방금 만든 CSV를 적재하므로 컬럼이 하나라도 어긋나면 여기서 잡힌다.
     """
     import db
     from tools.csv_to_db import import_outputs
 
-    with db.connect(tmp_path / "smoke.db") as conn:
-        db.init_schema(conn)
+    with db.session(tmp_path / "imported.db") as conn:
         loaded = import_outputs(conn, now=LABEL, period=LABEL, durations=[DURATION])
 
-        # CSV로 확인한 산출물이 모두 적재되어야 한다.
         assert {"station_info", "parking_lot", "net_demand",
                 f"rebalance_plan{DURATION}", f"pick_drop{DURATION}",
                 f"ilp_plan{DURATION}", f"vrp_plan{DURATION}",
                 f"metrics{DURATION}", f"route_summary{DURATION}"} <= set(loaded)
         assert all(rows > 0 for rows in loaded.values())
 
-        # 행 수가 원본 CSV와 일치한다.
         csv_rows = len(pd.read_csv(_out("ILP/후보/top{duration} ({label}).csv"), encoding="utf-8"))
-        stored = db.load_frame(conn, "pick_drop", run_label=LABEL, duration=DURATION)
-        assert len(stored) == csv_rows
-        assert set(stored["run_label"]) == {LABEL}
-
-        # 라벨을 생략해도 최신 실행분을 찾을 수 있다(웹 API가 쓸 경로).
-        assert not db.load_frame(conn, "metrics").empty
-        assert db.list_runs(conn)["run_label"].tolist() == [LABEL]
+        assert len(db.load_frame(conn, "pick_drop", run_label=LABEL)) == csv_rows

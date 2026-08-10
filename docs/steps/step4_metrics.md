@@ -9,6 +9,7 @@
   - `data/pp_data/성능 지표/verification{duration} ({now}).csv` (지표 계산 결과)
   - `data/pp_data/성능 지표/route_summary{duration} ({now}).csv` (클러스터별 이동거리·운행시간)
   - `data/pp_data/성능 지표/visualization/imbalance_map{duration} ({now}).html` (개선 지도)
+  - SQLite `metrics`·`route_summary` 테이블 (이중 기록, 한글 컬럼은 ASCII로 변환)
   - 콘솔에 전체·Pick·Drop 평균 개선률과 경로 요약 출력
 
 ### 지표 정의

@@ -31,9 +31,9 @@
    "5분 이상 소요" 문제의 원인. 이동 노드가 속한 두 군집만 재계산하는 증분 방식으로 개선.
 4. **VRP 고도화**: 현행은 greedy 휴리스틱(단일 차량/클러스터). OR-Tools 등
    전용 VRP solver로 다차량·시간창·실도로 거리 반영.
-5. **데이터 관리**: CSV → SQLite 이관 — **1단계(`db.py`) 완료**, 남은 단계는
-   [DB_PLAN.md](DB_PLAN.md) 참고 (2. step 스크립트 이중 기록 → 3. webapp API 전환
-   → 4. 대여이력 적재 → 5. 실행 이력 비교).
+5. **데이터 관리**: CSV → SQLite 이관 — **1·2단계 완료**(저장소 + 이중 기록).
+   남은 단계는 [DB_PLAN.md](DB_PLAN.md) 참고
+   (3. webapp API 전환 → 4. 대여이력 적재 → 5. 실행 이력 비교 → CSV 기록 제거).
 6. **EDA 시각화**: `month_graph`에 matplotlib 그래프 통합
    (`experiments/matplotlib_month_graph.py`의 한글 폰트 설정 참고).
 7. **step1 매직 넘버**: 상위 50개 컷, `|rebal_qty| > 2`, target_cluster_size=7 등을 설정으로 추출.
@@ -45,6 +45,19 @@
     VRP 적재 제약)의 단위 테스트와 CI(GitHub Actions) 연결.
 
 ---
+
+## ✅ 완료 (2026-08-10, 버전 1.5.0) — SQLite 이중 기록 (2단계)
+
+파이프라인을 돌리면 이제 CSV와 DB에 **동시에** 기록됩니다. 별도 적재 명령이 필요 없습니다.
+
+| 항목 | 내용 |
+| --- | --- |
+| 이중 기록 | 9개 단계가 각자의 테이블에 기록 (`station_stock`·`parking_lot`·`station_info`·`net_demand`·`rebalance_plan`·`pick_drop`·`ilp_plan`·`vrp_plan`·`metrics`·`route_summary`) |
+| `db.save_output()` | 단계용 헬퍼. **CSV가 정본이므로 DB 실패는 경고만 남기고 파이프라인을 멈추지 않는다** — 대신 테스트가 누락을 잡는다 |
+| `db.session()` | 연결을 열고 스키마를 보장한 뒤 **닫는** 컨텍스트 매니저 (sqlite3의 `with`는 연결을 닫지 않아 자원이 샌다) |
+| `db.ensure_run()` | 단계마다 아는 정보가 달라(`period`만/`duration`만) `COALESCE`로 누적 갱신. 먼저 기록된 값을 덮어쓰지 않는다 |
+| `PBR_DB_PATH` | DB 경로 재정의 환경변수. **테스트가 실제 `data/bike_system.db`를 오염시키지 않도록** 임시 파일을 가리킨다 |
+| 테스트 11개 추가 (전체 62개) | 테이블별 적재 9개 + CSV 대조 + `runs` 등록. 이중 기록이 하나라도 빠지면 실패한다 |
 
 ## ✅ 완료 (2026-08-10, 버전 1.4.0) — SQLite 저장소 1단계
 

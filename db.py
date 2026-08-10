@@ -18,15 +18,19 @@ PostgreSQL 전환 시점에 connect()만 엔진 팩토리로 교체하면 나머
 """
 from __future__ import annotations
 
+import os
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Optional, Sequence, Tuple
+from typing import Dict, Iterator, Optional, Tuple
 
 import pandas as pd
 
 from project_config import DATA_ROOT
 
+# 기본 DB 위치. 환경변수 PBR_DB_PATH로 바꿀 수 있다
+# (테스트가 실제 DB를 건드리지 않도록 별도 파일을 가리키는 데 쓴다).
 DB_PATH = DATA_ROOT / "bike_system.db"
 
 # 순수요는 24개 시간대 컬럼을 그대로 보존한다(현재 계산 코드가 wide 형태를 기대).
@@ -47,6 +51,8 @@ class TableSpec:
 
 
 TABLES: Dict[str, TableSpec] = {
+    # TASHU API 스냅샷 원본(거치대 설명 문자열 포함)
+    "station_stock": TableSpec(scope=("run_label",)),
     "station_info": TableSpec(
         scope=("run_label",),
         rename={"총 이용시간(분)": "total_use_min", "총 이용거리(km)": "total_use_km"},
@@ -78,6 +84,17 @@ CREATE TABLE IF NOT EXISTS runs (
     duration    TEXT,
     raw_file    TEXT,
     created_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS station_stock (
+    run_label     TEXT NOT NULL,
+    station_id    TEXT NOT NULL,
+    station_name  TEXT,
+    parking_info  TEXT,
+    lat           REAL,
+    lon           REAL,
+    stock         INTEGER,
+    PRIMARY KEY (run_label, station_id)
 );
 
 CREATE TABLE IF NOT EXISTS station_info (
@@ -231,9 +248,10 @@ CREATE INDEX IF NOT EXISTS idx_metrics_run ON metrics(run_label, duration);
 def connect(db_path: Optional[Path] = None) -> sqlite3.Connection:
     """DB에 연결한다. 다른 DB로 옮길 때 교체할 지점은 이 함수 하나다.
 
+    경로 우선순위: 인자 → 환경변수 PBR_DB_PATH → 기본값(data/bike_system.db).
     WAL 모드를 켜면 파이프라인이 쓰는 중에도 웹 대시보드가 읽을 수 있다.
     """
-    path = Path(db_path) if db_path else DB_PATH
+    path = Path(db_path or os.getenv("PBR_DB_PATH") or DB_PATH)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     conn = sqlite3.connect(path)
@@ -246,6 +264,22 @@ def init_schema(conn: sqlite3.Connection) -> None:
     """테이블과 인덱스를 만든다(이미 있으면 그대로 둔다)."""
     conn.executescript(SCHEMA)
     conn.commit()
+
+
+@contextmanager
+def session(db_path: Optional[Path] = None) -> Iterator[sqlite3.Connection]:
+    """연결을 열고 스키마를 보장한 뒤, 끝나면 커밋하고 **닫는다**.
+
+    sqlite3 연결의 `with` 문은 트랜잭션만 관리하고 연결을 닫지 않으므로
+    (자원 누수) 이 헬퍼를 쓴다.
+    """
+    conn = connect(db_path)
+    try:
+        init_schema(conn)
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _spec(table: str) -> TableSpec:
@@ -339,6 +373,52 @@ def record_run(conn: sqlite3.Connection, run_label: str, period: Optional[str] =
         (run_label, period, duration, raw_file),
     )
     conn.commit()
+
+
+def ensure_run(conn: sqlite3.Connection, run_label: str, period: Optional[str] = None,
+               duration: Optional[str] = None, raw_file: Optional[str] = None) -> None:
+    """실행 행이 없으면 만들고, 새로 알게 된 값만 채운다.
+
+    단계 스크립트는 저마다 아는 정보가 다르다(순수요 단계는 period만, 최적화 단계는
+    duration만 안다). 이미 채워진 값을 덮어쓰지 않고 누적하기 위해 COALESCE를 쓴다.
+    전체 값을 확정해 덮어써야 할 때는 record_run()을 쓴다.
+    """
+    conn.execute(
+        "INSERT OR IGNORE INTO runs (run_label, created_at)"
+        " VALUES (?, datetime('now', 'localtime'))",
+        (run_label,),
+    )
+    conn.execute(
+        "UPDATE runs SET period = COALESCE(period, ?),"
+        "                duration = COALESCE(duration, ?),"
+        "                raw_file = COALESCE(raw_file, ?)"
+        " WHERE run_label = ?",
+        (period, duration, raw_file, run_label),
+    )
+    conn.commit()
+
+
+def save_output(table: str, df: pd.DataFrame, run_label: Optional[str] = None,
+                period: Optional[str] = None, duration: Optional[str] = None,
+                db_path: Optional[Path] = None) -> int:
+    """단계 산출물을 DB에 기록한다 (CSV·DB 이중 기록 전환기용).
+
+    아직 **CSV가 정본**이므로 DB 기록이 실패해도 파이프라인을 멈추지 않는다.
+    대신 경고를 남겨 문제를 감추지 않는다. 회귀는 테스트가 잡는다
+    (tests/test_pipeline.py의 DB 적재 검증).
+
+    반환값은 저장한 행 수, 실패 시 0.
+    """
+    try:
+        with session(db_path) as conn:
+            if run_label:
+                ensure_run(conn, run_label, period=period, duration=duration)
+            rows = save_frame(conn, table, df, run_label=run_label,
+                              period=period, duration=duration)
+        return rows
+    except Exception as err:   # DB는 아직 보조 저장소 — 파이프라인을 막지 않는다
+        print(f"[경고] DB 기록 실패 ({table}): {type(err).__name__}: {err}")
+        return 0
 
 
 def list_runs(conn: sqlite3.Connection) -> pd.DataFrame:

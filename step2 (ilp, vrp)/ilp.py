@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import pulp
 
+import db
 from project_config import PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config
 
 # read_csv
@@ -165,6 +166,9 @@ def run_ilp_plan(metrics: pd.DataFrame, duration: str, solver: pulp.LpSolver):
     ilp_plan = pd.DataFrame(rows)
     ilp_plan.to_csv(ilp_plan_path.format(duration=duration, now=now), index=False)
     print(f"\nilp_plan_path 파일이 저장되었습니다. ({ilp_plan_path.format(duration=duration, now=now)})")
+
+    # CSV·DB 이중 기록 (DB_PLAN 2단계). CSV가 아직 정본이다.
+    db.save_output("ilp_plan", ilp_plan, run_label=now, duration=duration)
 
 
 # main

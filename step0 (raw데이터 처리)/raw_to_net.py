@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd
 
+import db
 from project_config import PROJECT_ROOT, ensure_output_dirs, get_runtime_config
 
 # to_csv
@@ -71,6 +72,10 @@ def main() -> None:
     net_daily.to_csv(out_file_path.format(period=period), encoding='utf-8', index=False)
     print("날짜별 대여소당 순수요 데이터 저장")
     print(f"\n{out_file_path.format(period=period)} 가 저장되었습니다.")
+
+    # CSV·DB 이중 기록 (DB_PLAN 2단계).
+    # 순수요는 원천 데이터 기간에만 의존하므로 run_label이 아니라 period로 묶는다.
+    db.save_output("net_demand", net_daily, period=period)
 
 
 if __name__ == '__main__':
