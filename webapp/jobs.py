@@ -15,7 +15,8 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -27,7 +28,12 @@ WEBAPP_DATA = PROJECT_ROOT / "data" / "webapp"
 LOG_DIR = WEBAPP_DATA / "logs"
 REGISTRY_FILE = WEBAPP_DATA / "runs.json"
 
-_lock = threading.Lock()
+# 이력이 무한히 쌓이지 않도록 최근 N건만 보관한다(실행 중인 작업은 항상 유지).
+MAX_HISTORY = 100
+
+# 조회 함수도 락을 잡는데 start_job이 락을 쥔 채 running_job()을 호출하므로
+# 재진입 가능한 RLock이어야 교착이 생기지 않는다.
+_lock = threading.RLock()
 _jobs: Dict[str, "Job"] = {}
 _running_proc: Optional[subprocess.Popen] = None
 
@@ -36,10 +42,11 @@ _running_proc: Optional[subprocess.Popen] = None
 class Job:
     id: str
     args: List[str] = field(default_factory=list)
-    status: str = "running"            # running | success | failed | interrupted
+    status: str = "running"   # running | success | failed | cancelled | interrupted
     returncode: Optional[int] = None
     started_at: str = ""
     finished_at: str = ""
+    cancelled: bool = False
 
     @property
     def log_path(self) -> Path:
@@ -54,8 +61,35 @@ def _now_str() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _new_job_id() -> str:
+    """작업 ID를 만든다.
+
+    초 단위 ID는 같은 초에 두 번 실행하면 충돌해 이전 기록과 로그가
+    덮어써지므로 밀리초까지 쓰고, 그래도 겹치면 일련번호를 붙인다.
+    (문자열 정렬이 곧 시간순 정렬이 되도록 자리수를 고정한다.)
+    """
+    base = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
+    job_id = base
+    serial = 1
+    while job_id in _jobs:
+        serial += 1
+        job_id = f"{base}-{serial}"
+    return job_id
+
+
+def _prune() -> None:
+    """최근 MAX_HISTORY건만 남긴다. 실행 중인 작업은 예외 없이 보존."""
+    if len(_jobs) <= MAX_HISTORY:
+        return
+    keep = {job.id for job in sorted(_jobs.values(), key=lambda j: j.id, reverse=True)[:MAX_HISTORY]}
+    keep |= {job.id for job in _jobs.values() if job.is_running}
+    for job_id in [j for j in _jobs if j not in keep]:
+        _jobs.pop(job_id, None)
+
+
 def _save_registry() -> None:
     WEBAPP_DATA.mkdir(parents=True, exist_ok=True)
+    _prune()
     payload = [asdict(job) for job in _jobs.values()]
     REGISTRY_FILE.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -69,8 +103,11 @@ def _load_registry() -> None:
         payload = json.loads(REGISTRY_FILE.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return
+
+    known = {f.name for f in fields(Job)}
     for item in payload:
-        job = Job(**item)
+        # 과거 버전에서 저장된 레코드에 없는/추가된 키가 있어도 깨지지 않게 한다.
+        job = Job(**{k: v for k, v in item.items() if k in known})
         # 서버 재시작으로 추적이 끊긴 작업은 '중단됨'으로 표시
         if job.status == "running":
             job.status = "interrupted"
@@ -80,18 +117,21 @@ def _load_registry() -> None:
 
 def list_jobs() -> List[Job]:
     """최신 작업이 앞에 오도록 반환한다."""
-    return sorted(_jobs.values(), key=lambda j: j.id, reverse=True)
+    with _lock:
+        return sorted(_jobs.values(), key=lambda j: j.id, reverse=True)
 
 
 def get_job(job_id: str) -> Optional[Job]:
-    return _jobs.get(job_id)
+    with _lock:
+        return _jobs.get(job_id)
 
 
 def running_job() -> Optional[Job]:
-    for job in _jobs.values():
-        if job.is_running:
-            return job
-    return None
+    with _lock:
+        for job in _jobs.values():
+            if job.is_running:
+                return job
+        return None
 
 
 def read_log_tail(job: Job, max_lines: int = 300) -> str:
@@ -108,6 +148,36 @@ def read_log_tail(job: Job, max_lines: int = 300) -> str:
     return "\n".join(lines)
 
 
+def _terminate_tree(proc: subprocess.Popen) -> None:
+    """실행 중인 파이프라인을 하위 단계 프로세스까지 함께 종료한다.
+
+    run_pipeline.py는 각 단계를 다시 subprocess로 띄우므로 부모만 죽이면
+    진행 중이던 단계가 고아 프로세스로 계속 돈다. Windows에서는 taskkill /T로
+    프로세스 트리를 정리한다.
+    """
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+            capture_output=True, check=False,
+        )
+    else:
+        proc.terminate()
+
+
+def cancel_job(job_id: str) -> bool:
+    """실행 중인 작업을 중단한다. 중단 요청을 보냈으면 True."""
+    with _lock:
+        job = _jobs.get(job_id)
+        if job is None or not job.is_running or _running_proc is None:
+            return False
+        job.cancelled = True
+        proc = _running_proc
+
+    # 종료는 락 밖에서 — taskkill이 끝날 때까지 다른 요청을 막을 이유가 없다.
+    _terminate_tree(proc)
+    return True
+
+
 def _watch(job: Job, proc: subprocess.Popen, log_file) -> None:
     """subprocess 종료를 기다렸다가 작업 상태를 갱신한다."""
     global _running_proc
@@ -115,7 +185,10 @@ def _watch(job: Job, proc: subprocess.Popen, log_file) -> None:
     log_file.close()
     with _lock:
         job.returncode = returncode
-        job.status = "success" if returncode == 0 else "failed"
+        if job.cancelled:
+            job.status = "cancelled"
+        else:
+            job.status = "success" if returncode == 0 else "failed"
         job.finished_at = _now_str()
         _running_proc = None
         _save_registry()
@@ -133,7 +206,7 @@ def start_job(pipeline_args: List[str]) -> Job:
             raise RuntimeError("이미 실행 중인 파이프라인이 있습니다. 완료 후 다시 시도하세요.")
 
         job = Job(
-            id=time.strftime("%Y%m%d-%H%M%S"),
+            id=_new_job_id(),
             args=list(pipeline_args),
             started_at=_now_str(),
         )
@@ -141,22 +214,28 @@ def start_job(pipeline_args: List[str]) -> Job:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         log_file = open(job.log_path, "w", encoding="utf-8")
 
-        # 하위 파이썬 프로세스의 출력이 콘솔 인코딩(cp949)으로 깨지지 않도록 UTF-8 강제
-        env = dict(os.environ)
-        env["PYTHONUTF8"] = "1"
-        env["PYTHONIOENCODING"] = "utf-8"
+        try:
+            # 하위 파이썬 프로세스의 출력이 콘솔 인코딩(cp949)으로 깨지지 않도록 UTF-8 강제
+            env = dict(os.environ)
+            env["PYTHONUTF8"] = "1"
+            env["PYTHONIOENCODING"] = "utf-8"
 
-        command = [sys.executable, str(PROJECT_ROOT / "run_pipeline.py")] + list(pipeline_args)
-        log_file.write("$ " + " ".join(command) + "\n\n")
-        log_file.flush()
+            command = [sys.executable, str(PROJECT_ROOT / "run_pipeline.py")] + list(pipeline_args)
+            log_file.write("$ " + " ".join(command) + "\n\n")
+            log_file.flush()
 
-        proc = subprocess.Popen(
-            command,
-            cwd=PROJECT_ROOT,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            env=env,
-        )
+            proc = subprocess.Popen(
+                command,
+                cwd=PROJECT_ROOT,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                env=env,
+            )
+        except Exception:
+            # 프로세스를 못 띄웠으면 열어둔 로그 파일을 닫고 그대로 올려보낸다.
+            log_file.close()
+            raise
+
         _running_proc = proc
         _jobs[job.id] = job
         _save_registry()

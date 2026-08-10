@@ -38,9 +38,55 @@
 7. **step1 매직 넘버**: 상위 50개 컷, `|rebal_qty| > 2`, target_cluster_size=7 등을 설정으로 추출.
 8. **버전관리.txt → CHANGELOG.md 승격 검토.**
 9. **README 주요 결과 수치의 산출 근거**(입력 데이터·실행 시점) 기록.
-10. **webapp**: 실행 취소 버튼, SSE 로그 스트리밍 (docs/WEBAPP.md 참고).
+10. **webapp**: SSE 로그 스트리밍(현재 3초 meta-refresh), 라우트 스모크 테스트,
+    외부 공개 시 인증 (docs/WEBAPP.md 참고).
 
 ---
+
+## ✅ 완료 (2026-08-10, 버전 1.2.2) — 웹 대시보드 코드 리뷰 수정
+
+| 항목 | 내용 |
+| --- | --- |
+| 🔴 작업 ID 충돌 | 초 단위 ID → 같은 초 재실행 시 기록·로그 덮어씀. 밀리초+일련번호로 수정 |
+| 🟡 실행 중단 불가 | `cancel_job()` + 중단 버튼 추가. Windows `taskkill /T`로 프로세스 트리 종료 |
+| 🟡 409 UX | 폼 요청에 JSON 오류 대신 안내 문구가 붙은 실행 화면 반환 |
+| 🟡 미리보기 비효율 | 200행 보여주며 전체 `read_csv` → `nrows` + 개행 카운트 |
+| 🟢 이력 무한 누적 | `runs.json` 최근 100건 유지 |
+| 🟢 기타 | 조회 함수 락(RLock), Popen 실패 시 파일 누수 방지, favicon 204, meta refresh `<head>` 이동 |
+
+안전 확인: CSV 미리보기 XSS(pandas `to_html` 이스케이프), 경로 탈출 차단은 기존대로 정상.
+
+## ✅ 완료 (2026-08-10, 버전 1.2.1) — 실제 환경 검증
+
+Python 3.14.7 / Windows 11에서 설치·구동을 검증하고, 그 과정에서 드러난 문제를 수정했습니다.
+
+| 검증 항목 | 결과 |
+| --- | --- |
+| `pip install -r requirements.txt` | 구버전 고정 → **실패**(아래 수정) → 갱신 후 성공 |
+| `py_compile` (27개 파일) | 통과 |
+| 전체 모듈·step 스크립트 import (13개) | 통과 |
+| `run_pipeline.py --dry-run` | 13단계 정상 출력, exit 0 |
+| webapp 기동·라우트 | 구 시그니처로 500 → **수정 후 전부 정상** |
+| 웹 폼 실행 → 로그 → 상태 추적 | 정상 (한글 인자 보존 확인) |
+| **전체 파이프라인 E2E** (합성 데이터: 대여소 90곳·이력 14,000건) | step0~step2·step4 전부 exit 0 |
+| ㄴ step0 (4단계) | 통과 — 주차대수 파싱·대여소 정보·순수요·재배치량 산출 |
+| ㄴ step1 (클러스터링·지도) | 통과 — 39개 대여소 → 6클러스터, 4.5초, \|balance\| ≤ 2 |
+| ㄴ step2 (ILP·VRP) | 통과 — CBC `Optimal`, VRP 계획 생성 |
+| ㄴ step4 (지표·경로요약) | 통과 — 평균 개선률 75%, 총 192km / 최장 95분 |
+| 산출물 있는 상태의 webapp | 지도 HTML·CSV 미리보기·GeoJSON API 전부 200 |
+| API 키 필요 단계 (tashu_api, step3 TMAP) | ❌ 미검증 — 키 없음 |
+
+수정한 내용:
+
+- ~~requirements.txt의 2023년 고정 버전~~ → Python 3.14의 C 확장 ABI와 맞지 않아
+  numpy/pandas/scipy/sklearn/folium/matplotlib/fastapi가 **전부 import 실패**했음.
+  3.14 휠이 있는 버전으로 갱신하고 하한(`>=`) 고정으로 변경.
+- ~~`scikit-learn-extra` (step1 K-Medoids)~~ → 아카이브된 프로젝트라 Python 3.12+ 휠이 없고
+  소스 빌드에 MSVC C++ 빌드툴을 요구해 **설치 불가**. Rust 구현(FasterPAM)의
+  `kmedoids` 패키지로 교체(API 호환).
+- ~~webapp 전 페이지 500 오류~~ → Starlette 1.x가 구
+  `TemplateResponse(name, {"request": ...})` 시그니처를 제거함.
+  `TemplateResponse(request, name, {...})`로 6개 라우트 수정.
 
 ## ✅ 완료 (2026-08-07, 버전 1.2.0)
 
@@ -98,9 +144,4 @@
 
 ### 검증 상태
 
-- ⚠️ 이 PC에 Python이 설치되어 있지 않아(Microsoft Store 스텁만 존재) 구문·실행 검증을
-  수행하지 못함. Python 설치 후 다음으로 확인할 것:
-  ```powershell
-  python run_pipeline.py --dry-run     # 파일 존재·실행 순서 확인
-  python -m py_compile run_pipeline.py project_config.py  # + 각 step 파일
-  ```
+- ✅ 2026-08-10 Python 3.14.7 환경에서 검증 완료 (아래 1.2.1 섹션 참고).

@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from project_config import DEFAULT_DURATION, DEFAULT_NOW, DEFAULT_PERIOD, DEFAULT_RAW_FILE
@@ -34,10 +34,8 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "tem
 
 # ---------------- 페이지 ----------------
 
-@app.get("/")
-def index(request: Request):
-    return templates.TemplateResponse("index.html", {
-        "request": request,
+def _index_context(error: Optional[str] = None) -> dict:
+    return {
         "defaults": {
             "now": DEFAULT_NOW,
             "period": DEFAULT_PERIOD,
@@ -47,11 +45,18 @@ def index(request: Request):
         "running": jobs.running_job(),
         "jobs": jobs.list_jobs()[:15],
         "latest": catalog.latest_outputs(),
-    })
+        "error": error,
+    }
+
+
+@app.get("/")
+def index(request: Request):
+    return templates.TemplateResponse(request, "index.html", _index_context())
 
 
 @app.post("/runs")
 def create_run(
+    request: Request,
     now: str = Form(""),
     period: str = Form(""),
     duration: str = Form(""),
@@ -73,9 +78,21 @@ def create_run(
     try:
         job = jobs.start_job(args)
     except RuntimeError as err:
-        raise HTTPException(status_code=409, detail=str(err))
+        # 폼에서 온 요청이므로 JSON 오류 대신 안내 문구를 담아 실행 화면을 다시 보여준다.
+        return templates.TemplateResponse(
+            request, "index.html", _index_context(error=str(err)), status_code=409
+        )
 
     return RedirectResponse(url=f"/runs/{job.id}", status_code=303)
+
+
+@app.post("/runs/{job_id}/cancel")
+def cancel_run(job_id: str):
+    """실행 중인 파이프라인을 중단한다(하위 단계 프로세스까지 함께 종료)."""
+    if jobs.get_job(job_id) is None:
+        raise HTTPException(status_code=404, detail="해당 실행 이력이 없습니다.")
+    jobs.cancel_job(job_id)   # 이미 끝난 작업이면 아무 일도 하지 않는다
+    return RedirectResponse(url=f"/runs/{job_id}", status_code=303)
 
 
 @app.get("/runs/{job_id}")
@@ -83,8 +100,7 @@ def run_detail(request: Request, job_id: str):
     job = jobs.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="해당 실행 이력이 없습니다.")
-    return templates.TemplateResponse("run_detail.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "run_detail.html", {
         "job": job,
         "log": jobs.read_log_tail(job),
     })
@@ -92,16 +108,14 @@ def run_detail(request: Request, job_id: str):
 
 @app.get("/maps")
 def maps_page(request: Request):
-    return templates.TemplateResponse("maps.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "maps.html", {
         "groups": catalog.list_maps(),
     })
 
 
 @app.get("/data")
 def data_page(request: Request):
-    return templates.TemplateResponse("data.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "data.html", {
         "groups": catalog.list_csvs(),
     })
 
@@ -112,11 +126,21 @@ def view_map(request: Request, relpath: str):
     target = catalog.safe_resolve(relpath)
     if target is None or target.suffix.lower() != ".html":
         raise HTTPException(status_code=404, detail="열람할 수 없는 파일입니다.")
-    return templates.TemplateResponse("view.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "view.html", {
         "name": target.name,
         "relpath": relpath,
     })
+
+
+def _count_csv_rows(path: Path) -> int:
+    """헤더를 뺀 데이터 행 수를 센다.
+
+    전체를 파싱하지 않고 개행만 세므로 큰 파일에서도 가볍다.
+    (필드 안에 줄바꿈이 든 CSV는 과다 계산되지만 파이프라인 산출물에는 없다.)
+    """
+    with path.open("rb") as f:
+        newlines = sum(chunk.count(b"\n") for chunk in iter(lambda: f.read(1 << 20), b""))
+    return max(0, newlines - 1)
 
 
 @app.get("/preview/{relpath:path}")
@@ -125,19 +149,25 @@ def preview_csv(request: Request, relpath: str):
     if target is None or target.suffix.lower() != ".csv":
         raise HTTPException(status_code=404, detail="미리볼 수 없는 파일입니다.")
 
-    df = pd.read_csv(target, encoding="utf-8", low_memory=False)
+    # 미리보기는 앞부분만 필요하므로 전체를 읽지 않는다.
     max_rows = 200
-    table_html = df.head(max_rows).to_html(
-        classes="preview-table", index=False, border=0
-    )
-    return templates.TemplateResponse("preview.html", {
-        "request": request,
+    df = pd.read_csv(target, encoding="utf-8", nrows=max_rows)
+    total_rows = _count_csv_rows(target)
+    table_html = df.to_html(classes="preview-table", index=False, border=0)
+
+    return templates.TemplateResponse(request, "preview.html", {
         "name": target.name,
         "relpath": relpath,
-        "total_rows": len(df),
-        "shown_rows": min(max_rows, len(df)),
+        "total_rows": total_rows,
+        "shown_rows": len(df),
         "table_html": table_html,
     })
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """아이콘이 없으므로 404 로그를 남기지 않고 조용히 응답한다."""
+    return Response(status_code=204)
 
 
 @app.get("/files/{relpath:path}")

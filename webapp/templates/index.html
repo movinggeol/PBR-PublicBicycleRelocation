@@ -3,13 +3,18 @@
 {% block content %}
 <h1>파이프라인 실행</h1>
 
+{% if error %}
+<div class="alert">⚠️ {{ error }}</div>
+{% endif %}
+
 <div class="grid2">
   <div class="card">
     <h2 style="margin-top:0">새 실행</h2>
     {% if running %}
       <p>⏳ 실행 중인 작업이 있습니다:
         <a href="/runs/{{ running.id }}">{{ running.id }}</a></p>
-      <p class="muted">파이프라인은 공유 파일을 사용하므로 동시에 1개만 실행됩니다.</p>
+      <p class="muted">파이프라인은 공유 파일을 사용하므로 동시에 1개만 실행됩니다.
+        중단하려면 위 실행 화면에서 "실행 중단"을 누르세요.</p>
     {% else %}
     <form class="run-form" method="post" action="/runs">
       <label>분석 시점 라벨 (now) — 산출물 파일명에 사용

@@ -45,4 +45,35 @@ PBR (Public_Bicycle_Relocation)
 		- step4 imbalance.py: route_summary() 추가 — 클러스터별 방문수·처리대수·총이동거리·
 			총이동/작업/소요시간을 route_summary*.csv로 저장.
 		- 정리: 일회성 test 스크립트를 experiments/로 이동, .env.example 추가.
+1.2.1 : (2026-08-10) Python 3.14 환경에서 실제 설치·구동 검증 및 그에 따른 수정.
+		- 의존성: requirements.txt의 2023년 고정 버전(pandas 2.0.3, numpy 1.24.4 등)이
+			Python 3.14의 C 확장 ABI와 맞지 않아 import 단계에서 전부 실패했다.
+			3.14 휠이 있는 버전으로 갱신하고 하한(>=) 고정으로 변경.
+			(검증 버전: pandas 3.0.5, numpy 2.5.2, scipy 1.18.0, scikit-learn 1.9.0)
+		- K-Medoids 교체: scikit-learn-extra는 아카이브된 프로젝트로 Python 3.12+ 휠이 없고
+			소스 빌드에 MSVC C++ 빌드툴을 요구해 설치 불가. Rust 구현(FasterPAM)의
+			kmedoids 패키지로 교체(API 호환). 합성 데이터로 클러스터링·결정성·수렴 검증.
+		- webapp 수정: Starlette 1.x에서 구 TemplateResponse(name, {...}) 시그니처가
+			제거되어 전 페이지가 500 오류. TemplateResponse(request, name, {...})로 6곳 수정.
+		- 검증 결과: py_compile 27개 통과, 전 모듈 import OK, --dry-run 13단계 exit 0,
+			웹 라우트 전부 정상(경로 탈출 차단 확인), 폼 실행→로그→상태추적 동작 확인.
+		- 전체 파이프라인 E2E 검증: 타슈 CSV 스키마를 재현한 합성 데이터
+			(대여소 90곳, 대여이력 14,000건)로 step0~step2·step4를 전부 실행해 exit 0 확인.
+			ILP는 CBC에서 Optimal, step4 평균 개선률 75%, 경로요약 총 192km/최장 95분 산출.
+			검증 후 합성 데이터는 실제 파일명을 흉내 내므로 삭제함.
+			외부 API 키가 필요한 step0/tashu_api.py와 step3/main.py(TMAP)는 미검증.
+1.2.2 : (2026-08-10) 웹 대시보드 코드 리뷰 후 결함 수정.
+		- [버그] 작업 ID가 초 단위(%Y%m%d-%H%M%S)여서 같은 초에 두 번 실행하면
+			이전 작업 기록과 로그 파일이 덮어써졌다. 밀리초 + 필요 시 일련번호로 유일성 보장.
+		- 실행 중단 기능 추가: _running_proc를 추적만 하고 쓰지 않던 것을 cancel_job()으로 연결.
+			run_pipeline이 각 단계를 다시 subprocess로 띄우므로 부모만 죽이면 고아가 남는다.
+			Windows는 taskkill /F /T로 프로세스 트리를 정리하고 상태를 cancelled로 기록.
+		- 동시 실행 요청 시 409 JSON 대신 안내 문구를 담은 실행 화면을 반환(폼 사용자 UX).
+		- 미리보기가 200행만 보여주면서 CSV 전체를 read_csv 하던 것을 nrows로 제한하고,
+			총 행 수는 개행만 세어 산출(대용량 파일 대비).
+		- 이력 무한 누적 방지: runs.json 최근 100건 유지(실행 중 작업은 항상 보존).
+		- 조회 함수에 락 적용(RLock으로 교착 회피), Popen 실패 시 로그 파일 누수 방지,
+			favicon 204 응답, meta refresh를 <head>로 이동.
+		- 검증: XSS 이스케이프(악성 대여소명), ID 유일성, 409 안내, 취소 동작,
+			취소 엣지케이스(없는 작업 404 / 끝난 작업 재취소 무해) 모두 확인.
 
