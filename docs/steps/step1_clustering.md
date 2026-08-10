@@ -14,8 +14,9 @@
    - Pick(음수)·Drop(양수) 각각 작업량 내림차순 상위 50개 컷
    - 누적합(cumsum)이 `min(|총 Pick|, 총 Drop)` 이내가 되도록 잘라 Pick·Drop 총량 균형 맞춤
 2. **클러스터링** `make_clustering()`
-   - K-Medoids (`metric='manhattan'`, `random_state=42`)
+   - K-Medoids (`kmedoids` 패키지, `method='fasterpam'`, `metric='manhattan'`, `random_state=42`)
    - `K = ceil(대상 대여소 수 / target_cluster_size(7))`
+   - 좌표는 스케일링하지 않는다 (위경도 자체가 거리 단위)
 3. **군집 조정** `adjust_clustering()`
    - 목적함수: `α·balance² + β·size분산 + γ·거리합` (α=1, β=100, γ=10)
    - 군집별 |balance| ≤ 3(THRESHOLD)이면 종료, 최대 200회 노드 이동
@@ -56,5 +57,8 @@
 - [x] ~~이미 포맷된 경로에 `.format()` 재호출 정리~~ (1.0.3)
 - [x] ~~duration 다중 실행 시 st_visualization 연동~~ — 두 파일 모두 `duration_list(config)` 사용 (1.0.3)
 - [x] ~~docstring 거리 표기 정정(유클리드→맨해튼), test.py를 experiments/로 이동~~ (1.2.0)
+- [x] ~~`sklearn_extra.cluster.KMedoids` → `kmedoids.KMedoids` 교체~~ (1.2.1)
+      — 합성 데이터 60개로 검증: K=9 생성, 재실행 결정성 확인,
+      `adjust_clustering` 수렴(|balance| 최대 33 → 4)
 - [ ] `compute_objective` 증분 계산(이동 노드가 속한 두 군집만 재계산)으로 성능 개선
 - [ ] 선정 기준(상위 N, |rebal_qty| 임계값)·군집 파라미터를 설정/CLI로 노출

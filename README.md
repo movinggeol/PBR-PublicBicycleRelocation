@@ -52,7 +52,7 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 | 0 | `api_to_info.py` | 대여소·재고·거치대 정보 통합 | `st_info*.csv` |
 | 0 | `raw_to_net.py` | 대여·반납 이력에서 순수요 계산 | `st_net_daily*.csv` |
 | 0 | `calculate_target_qty.py` | 목표 재고·재배치량 계산 | `rebal_qty*.csv` |
-| 1 | `1.top_st_clustering.py` | 불균형 대여소 선정·K-Medoids 군집화 | `top*.csv` |
+| 1 | `1.top_st_clustering.py` | 불균형 대여소 선정·K-Medoids(kmedoids) 군집화 | `top*.csv` |
 | 1 | `st_visualization.py` | Pick/Drop·클러스터 지도 | HTML 지도 |
 | 2 | `ilp.py` | Pick→Drop 이동 수량 최적화 | `ILP_plan*.csv` |
 | 2 | `vrp.py` | 차량 방문 순서 계산 | `VRP_plan*.csv` |
@@ -67,7 +67,26 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
-PuLP는 내장 CBC solver를 사용하므로 별도 solver 설치가 필요 없습니다.
+### 검증된 환경 (2026-08-10, 전체 파이프라인 E2E 확인)
+
+| 구분 | 버전 |
+| --- | --- |
+| Python | **3.14.7** (Windows 11) |
+| 데이터 | pandas 3.0.5 · numpy 2.5.2 · scipy 1.18.0 |
+| 최적화·군집 | scikit-learn 1.9.0 · kmedoids 0.5.5 · PuLP 3.3.2 (CBC 내장) |
+| 시각화 | folium 0.20.0 · matplotlib 3.11.1 |
+| 웹 | fastapi 0.141.1 · uvicorn 0.52.1 · jinja2 3.1.6 · python-multipart 0.0.32 |
+| 기타 | requests 2.34.2 · python-dotenv 1.2.2 |
+
+> ⚠️ **Python 3.11 이하에서 쓰던 구버전 조합(pandas 2.0.3 / numpy 1.24.4 등)은
+> 3.12+에서 설치되지 않거나 import가 실패합니다.** 반드시 위 버전 이상을 사용하세요.
+
+- PuLP는 내장 CBC solver를 사용하므로 별도 solver 설치가 필요 없습니다.
+- K-Medoids는 `kmedoids`(Rust FasterPAM) 패키지를 씁니다. 과거에 쓰던
+  `scikit-learn-extra`는 프로젝트가 아카이브되어 Python 3.12+ 휠이 없고
+  C++ 빌드툴을 요구하므로 교체했습니다.
+- `requirements.txt`는 하한(`>=`)으로 고정합니다. 상한을 걸면 새 Python 버전에서
+  휠이 없어 설치가 깨집니다.
 
 ## 환경변수
 

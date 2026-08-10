@@ -60,6 +60,14 @@ step4                   : imbalance
 4. **depot·차량 적재 용량은 project_config의 공통 상수**(DEPOT_ID/LAT/LON/NAME,
    VEHICLE_CAPACITY)다. step2·step3에서 별도 하드코딩하지 마라.
 5. **일회성 스크립트는 `experiments/`에 둔다** — step 폴더나 루트에 test.py를 만들지 마라.
+6. **가상환경은 `.venv`** (검증 환경: Python 3.14.7). 명령은 `.\.venv\Scripts\python.exe ...`로
+   실행하라 — 시스템 `python`에는 의존성이 없다.
+7. **K-Medoids는 `kmedoids` 패키지**(FasterPAM)다. `sklearn_extra`는 아카이브되어
+   Python 3.12+에서 설치되지 않으므로 되돌리지 마라.
+8. **Starlette 1.x 템플릿 응답은 `TemplateResponse(request, name, {...})`** 형식만 동작한다.
+   구 형식(`TemplateResponse(name, {"request": ...})`)으로 쓰면 500 오류가 난다.
+9. **requirements.txt는 하한(`>=`) 고정**을 유지하라. 상한을 걸면 새 Python 버전에서
+   휠이 없어 설치가 통째로 깨진다(1.2.1에서 실제로 겪음).
 
 ## 실행 방법
 

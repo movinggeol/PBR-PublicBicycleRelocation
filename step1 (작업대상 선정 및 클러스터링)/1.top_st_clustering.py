@@ -3,9 +3,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sklearn_extra.cluster import KMedoids
-from sklearn.preprocessing import StandardScaler
-from scipy.spatial.distance import cdist
+# kmedoids 패키지(Rust 구현, FasterPAM). 기존 sklearn_extra.cluster.KMedoids는
+# 프로젝트가 아카이브되어 Python 3.12+ 휠이 없으므로 교체했다. (버전관리 1.2.1)
+from kmedoids import KMedoids
 import pandas as pd
 import numpy as np
 from adjust_module import compute_medoids, compute_objective, select_cluster_candidates, \
@@ -98,19 +98,18 @@ def make_clustering(pick_drop: pd.DataFrame, target_cluster_size: int = 7) -> pd
     K = int(np.ceil(len(pick_drop) / target_cluster_size))
     print(f"군집 개수 K = {K}")
 
-    # K-Medoids 클러스터링
+    # K-Medoids 클러스터링 (좌표는 스케일링하지 않는다 — 위경도 자체가 거리 단위)
     X = pick_drop[['lat', 'lon']].values
-    #print(X); print(X.shape)
-    #X_scaled = StandardScaler().fit_transform(X)
 
     model = KMedoids(
-        n_clusters=K, 
+        n_clusters=K,
         metric='manhattan',
+        method='fasterpam',
         random_state=42
     )
-    
+
     pick_drop['cluster'] = model.fit_predict(X)
-    
+
     return pick_drop
 
 
