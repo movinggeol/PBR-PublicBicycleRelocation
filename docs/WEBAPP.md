@@ -25,6 +25,7 @@ uvicorn webapp.app:app --reload
 | --- | --- |
 | `/` | 실행 폼 + **DB 실행 이력(run_label)** + 작업 이력 + 최신 산출물 |
 | `/runs/{id}` | 실행 상태·로그 (실행 중엔 3초마다 자동 갱신) + **실행 중단** 버튼 |
+| `/vehicles` | 차량별 누적 작업량·회차 배정 이력 ([FLEET.md](FLEET.md)) |
 | `/maps` | step1·step3·step4가 생성한 folium 지도 목록 → iframe 열람(`/view/...`) 또는 새 창 |
 | `/data` | 단계별 CSV 산출물 목록 → 미리보기(200행)·다운로드 |
 | `/api/docs` | FastAPI 자동 API 문서 (Swagger UI) |
@@ -42,6 +43,8 @@ uvicorn webapp.app:app --reload
 | `GET /api/metrics` | 불균형 개선 지표 |
 | `GET /api/route-summary` | 클러스터별 총 이동거리·운행시간 |
 | `GET /api/pipeline-runs` | DB에 기록된 실행 이력(run_label 목록) |
+| `GET /api/vehicles` | 차량별 누적 작업량 (출동 횟수·처리 대수·거리·시간) |
+| `GET /api/vehicles/assignments` | 회차별 차량 배정 이력 (`vehicle_id`·`run_label`로 필터) |
 | `GET /api/runs/{id}` | 웹에서 띄운 **작업**의 상태 폴링 (위와 다른 개념) |
 
 산출물 API는 `?run_label=...&duration=...` 쿼리를 받습니다. 생략하면 **최신 실행분**입니다.

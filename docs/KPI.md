@@ -89,8 +89,13 @@ stock(t) = clip(stock(0) + Σ(반납 − 대여), 0, parking_lot)
 | 클러스터별 총 소요시간 (분) | 이동 + 작업 | ✅ `route_summary` |
 | **시간 예산 준수율** | 소요시간 ≤ 목표(120분)인 클러스터 비율 | 🟡 계산 가능 |
 | 차량당 처리 대수 | 처리대수 / 클러스터 | ✅ `route_summary` |
+| **차량 부하 편차** | 차량별 누적 작업시간의 최대 − 최소 | ✅ `/vehicles` |
+| **차량 가동률** | 출동한 차량 / 보유 21대 | ✅ `/vehicles` |
 | 공차 이동 비율 | 적재 0인 구간의 이동거리 비율 | 🟡 `vrp_plan`으로 계산 가능 |
 | depot 복귀 횟수 | `action = 'return'` 건수 | 🟡 계산 가능 |
+
+차량 부하 편차와 가동률은 [FLEET.md](FLEET.md)의 로테이션이 제대로 도는지 보는 지표입니다.
+편차가 계속 벌어지면 배정 규칙이나 회차 구성을 손봐야 한다는 신호입니다.
 
 **시간 예산 준수율이 가장 중요합니다.** [메모.txt](메모.txt)의 트러블슈팅 기록에
 "수요 예측이 5시간짜리인데 작업에 4시간이 걸리면 의미가 없다"는 문제가 적혀 있습니다.
@@ -146,6 +151,8 @@ CREATE TABLE kpi_summary (
     total_distance_km    REAL,
     max_cluster_minutes  REAL,
     time_budget_met      REAL,   -- 소요시간 <= 임계값 비율
+    vehicles_used        INTEGER,-- 투입 차량 수
+    vehicle_load_gap     REAL,   -- 차량 누적 시간 편차(형평성)
     -- D. 효율
     improvement_per_km   REAL,
     -- E. 품질
@@ -200,5 +207,6 @@ FROM kpi_summary WHERE duration = '_05_10' ORDER BY run_label;
 ## 관련 문서
 
 - [steps/step4_metrics.md](steps/step4_metrics.md) — 현재 지표 계산 코드
+- [FLEET.md](FLEET.md) — 차량 부하 편차·가동률의 근거가 되는 로테이션 설계
 - [DB_PLAN.md](DB_PLAN.md) — 5단계(실행 이력 비교)가 이 문서의 4·5장과 이어집니다
 - [TODO.md](TODO.md) — 미구현 항목 추적
