@@ -27,7 +27,7 @@ from fastapi.templating import Jinja2Templates
 
 from project_config import (
     DEFAULT_DURATION, DEFAULT_NOW, DEFAULT_PERIOD, DEFAULT_RAW_FILE,
-    FLEET_SIZE, VEHICLES_PER_ROUND,
+    FLEET_SIZE, TIME_BUDGET_MINUTES, VEHICLES_PER_ROUND,
 )
 from webapp import catalog, jobs, store
 
@@ -141,12 +141,26 @@ def vehicles_page(request: Request, run_label: Optional[str] = None):
             "gap_minutes": round(float(workload["minutes"].max() - workload["minutes"].min()), 1),
         }
 
+    # 시간 예산 준수율 — 회차 단위로 본다(차량 누적이 아니라 한 번의 작업 기준).
+    budget = None
+    if not assignments.empty:
+        within = int((assignments["minutes"] <= TIME_BUDGET_MINUTES).sum())
+        budget = {
+            "limit": TIME_BUDGET_MINUTES,
+            "within": within,
+            "total": len(assignments),
+            "rate": round(within / len(assignments) * 100),
+            "over": len(assignments) - within,
+        }
+
     return templates.TemplateResponse(request, "vehicles.html", {
         "fleet_size": FLEET_SIZE,
         "per_round": VEHICLES_PER_ROUND,
+        "time_budget": TIME_BUDGET_MINUTES,
         "workload": store.records(workload),
         "assignments": store.records(assignments.head(60)),
         "balance": balance,
+        "budget": budget,
         "selected_run": run_label,
         "runs": store.records(store.run_labels()),
     })

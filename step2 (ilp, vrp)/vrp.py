@@ -18,7 +18,7 @@ from ilp import haversine_km
 
 import db
 from project_config import (
-    DEPOT_ID, DEPOT_LAT, DEPOT_LON, PROJECT_ROOT, VEHICLE_CAPACITY,
+    DEPOT_ID, DEPOT_LAT, DEPOT_LON, PROJECT_ROOT, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY,
     duration_list, ensure_output_dirs, get_runtime_config,
 )
 
@@ -205,15 +205,26 @@ def run_vrp_plan(ilp_plan: pd.DataFrame, duration: str):
 
 
 def cluster_workload(vrp_result: pd.DataFrame) -> pd.DataFrame:
-    """클러스터별 작업량(방문 대여소 수·처리 대수·이동거리·소요시간)."""
+    """클러스터별 작업량(방문 대여소 수·옮긴 자전거 수·이동거리·소요시간).
+
+    `bikes`는 **실제로 옮긴 자전거 수**다. 한 대는 한 번 실리고 한 번 내려지므로
+    pick과 drop의 qty를 모두 더하면 2배가 된다(ILP 계획 대수와 어긋남).
+    그래서 pick만 센다. 반면 작업시간은 싣기·내리기가 각각 드는 게 맞으므로
+    `work_sec`는 두 동작을 모두 반영한다.
+    """
     if vrp_result.empty:
         return pd.DataFrame(columns=["cluster", "stations", "bikes", "distance_km", "minutes"])
 
     work = vrp_result[vrp_result["action"] != "return"]
     summary = work.groupby("cluster").agg(
         stations=("to_id", "nunique"),
-        bikes=("qty", "sum"),
     ).reset_index()
+
+    moved = (vrp_result[vrp_result["action"] == "pick"]
+             .groupby("cluster")["qty"].sum()
+             .rename("bikes").reset_index())
+    summary = summary.merge(moved, on="cluster", how="left")
+    summary["bikes"] = summary["bikes"].fillna(0).astype(int)
 
     # 이동거리·소요시간은 depot 복귀 구간까지 포함해야 실제 운행량이 된다.
     totals = vrp_result.groupby("cluster").agg(
@@ -261,10 +272,20 @@ def _assign_fleet(vrp_result: pd.DataFrame, duration: str) -> pd.DataFrame:
     vrp_result["vehicle_id"] = vrp_result["cluster"].map(mapping)
 
     print(f"\n차량 배정 ({duration}, {len(mapping)}대):")
+    over = 0
     for row in workload.sort_values("minutes", ascending=False).itertuples():
+        exceeded = row.minutes > TIME_BUDGET_MINUTES
+        over += exceeded
         print(f"  {mapping[int(row.cluster)]}  클러스터 {int(row.cluster):<3d}"
               f" 대여소 {int(row.stations):>3d}곳  {int(row.bikes):>3d}대"
-              f"  {row.distance_km:>6.2f}km  {row.minutes:>6.1f}분")
+              f"  {row.distance_km:>6.2f}km  {row.minutes:>6.1f}분"
+              + ("  ⚠ 시간 예산 초과" if exceeded else ""))
+
+    if over:
+        print(f"\n[경고] {len(workload)}개 중 {over}개가 시간 예산"
+              f" {TIME_BUDGET_MINUTES:.0f}분을 넘었습니다.")
+        print("  작업이 늦어지면 수요 예측 시간대가 이미 지나가 계획의 효과가 줄어듭니다.")
+        print("  클러스터를 더 잘게 나누거나(VEHICLES_PER_ROUND 확대) 대상 대여소를 줄이세요.")
     return vrp_result
 
 

@@ -38,6 +38,10 @@ VRP 결과의 distance_km·travel_sec·work_sec·cum_sec 컬럼(1.2.0에서 추�
 집계해 방문수·처리대수·총이동거리(km)·총이동/작업/소요시간(분)을 산출합니다.
 구버전 VRP 결과(시간 컬럼 없음)면 건너뜁니다.
 
+**시간 예산 준수율**도 함께 출력합니다 — `TIME_BUDGET_MINUTES`(기본 120분) 안에
+끝나는 클러스터 비율입니다. 초과분은 수요 예측 시간대가 지나간 뒤 작업이 끝나므로
+계획의 효과가 줄어듭니다 ([FLEET.md](../FLEET.md)의 시간 예산 절 참고).
+
 ### 지도 (`demand_satisfaction_map`)
 
 - Drop=빨강, Pick=파랑 CircleMarker

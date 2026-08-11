@@ -25,7 +25,7 @@ uvicorn webapp.app:app --reload
 | --- | --- |
 | `/` | 실행 폼 + **DB 실행 이력(run_label)** + 작업 이력 + 최신 산출물 |
 | `/runs/{id}` | 실행 상태·로그 (실행 중엔 3초마다 자동 갱신) + **실행 중단** 버튼 |
-| `/vehicles` | 차량별 누적 작업량·회차 배정 이력 ([FLEET.md](FLEET.md)) |
+| `/vehicles` | 차량별 누적 작업량·형평성·시간 예산 준수율·회차 배정 이력 ([FLEET.md](FLEET.md)) |
 | `/maps` | step1·step3·step4가 생성한 folium 지도 목록 → iframe 열람(`/view/...`) 또는 새 창 |
 | `/data` | 단계별 CSV 산출물 목록 → 미리보기(200행)·다운로드 |
 | `/api/docs` | FastAPI 자동 API 문서 (Swagger UI) |

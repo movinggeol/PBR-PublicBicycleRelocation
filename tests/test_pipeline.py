@@ -158,6 +158,24 @@ def test_vrp_assigns_real_vehicles(pipeline_run, smoke_db):
         assert (workload["rounds"] > 0).sum() == len(history)
 
 
+def test_assigned_bikes_match_ilp_plan(pipeline_run, smoke_db):
+    """기록된 '처리 대수'가 실제로 옮긴 자전거 수와 같아야 한다.
+
+    pick과 drop의 qty를 모두 더하면 한 대를 두 번 세어 2배가 된다(과거 결함).
+    ILP 계획 대수가 정답이다.
+    """
+    import db
+
+    ilp_total = pd.read_csv(
+        _out("ILP/ILP_plan{duration} ({label}).csv"), encoding="utf-8")["qty"].sum()
+
+    with db.session(smoke_db) as conn:
+        assigned_total = db.assignment_history(conn, run_label=LABEL)["bikes"].sum()
+
+    assert assigned_total == ilp_total, \
+        f"배정 기록 {assigned_total}대 vs ILP 계획 {ilp_total}대"
+
+
 def test_route_summary_schema(pipeline_run):
     df = pd.read_csv(_out("성능 지표/route_summary{duration} ({label}).csv"), encoding="utf-8")
     for col in ["cluster", "방문수", "처리대수", "총이동거리_km", "총소요시간_분"]:

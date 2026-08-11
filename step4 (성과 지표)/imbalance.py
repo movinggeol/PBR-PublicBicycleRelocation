@@ -7,7 +7,9 @@ import folium
 import pandas as pd
 
 import db
-from project_config import PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config
+from project_config import (
+    PROJECT_ROOT, TIME_BUDGET_MINUTES, duration_list, ensure_output_dirs, get_runtime_config,
+)
 
 file_path = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")
 vrp_plan_file = str(PROJECT_ROOT / "data/pp_data/VRP/VRP_plan{duration} ({now}).csv")
@@ -86,8 +88,15 @@ def route_summary(duration: str):
     print("-" * 50)
     print("클러스터별 경로 요약:")
     print(summary.to_string(index=False))
+
+    within = (summary['총소요시간_분'] <= TIME_BUDGET_MINUTES).sum()
+    rate = within / len(summary) * 100 if len(summary) else 0
     print(f"전체: {summary['총이동거리_km'].sum():.2f} km, "
           f"최장 소요 {summary['총소요시간_분'].max():.1f} 분")
+    print(f"시간 예산({TIME_BUDGET_MINUTES:.0f}분) 준수: "
+          f"{within}/{len(summary)} 클러스터 ({rate:.0f}%)")
+    if within < len(summary):
+        print("  ⚠ 초과한 클러스터는 수요 예측 시간대가 지나간 뒤 작업이 끝납니다.")
     print("-" * 50)
 
     summary.to_csv(route_summary_file.format(duration=duration, now=now), index=False, encoding='utf-8')

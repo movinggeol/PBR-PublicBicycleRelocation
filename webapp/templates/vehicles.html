@@ -27,6 +27,24 @@
 </div>
 {% endif %}
 
+{% if budget %}
+<div class="card" style="margin-bottom:1rem">
+  <h2 style="margin-top:0">시간 예산 준수 ({{ budget.limit | round | int }}분)</h2>
+  <p style="font-size:1.6rem; margin:0.2rem 0">
+    {{ budget.rate }}%<span class="muted" style="font-size:1rem">
+      · {{ budget.within }}/{{ budget.total }} 회차 작업</span>
+  </p>
+  {% if budget.over %}
+  <div class="alert" style="margin-top:0.6rem">
+    ⚠️ {{ budget.over }}건이 예산을 넘었습니다. 작업이 늦어지면 수요 예측 시간대가
+    이미 지나가 계획의 효과가 줄어듭니다. 아래 표에서 붉게 표시된 행입니다.
+  </div>
+  {% else %}
+  <p class="muted">모든 작업이 예산 안에서 끝납니다.</p>
+  {% endif %}
+</div>
+{% endif %}
+
 <h2>차량별 누적</h2>
 <div class="card">
   {% if workload %}
@@ -75,7 +93,8 @@
       <th>대여소</th><th>대수</th><th>거리</th><th>시간</th>
     </tr>
     {% for a in assignments %}
-    <tr>
+    {% set over = a.minutes > time_budget %}
+    <tr{% if over %} class="over-budget"{% endif %}>
       <td class="muted">{{ a.run_label }}</td>
       <td>{{ a.duration }}</td>
       <td><b>{{ a.vehicle_id }}</b></td>
@@ -83,7 +102,9 @@
       <td>{{ a.stations }}</td>
       <td>{{ a.bikes }}</td>
       <td class="muted">{{ a.distance_km }} km</td>
-      <td class="muted">{{ a.minutes }} 분</td>
+      <td{% if not over %} class="muted"{% endif %}>
+        {{ a.minutes }} 분{% if over %} ⚠{% endif %}
+      </td>
     </tr>
     {% endfor %}
   </table>

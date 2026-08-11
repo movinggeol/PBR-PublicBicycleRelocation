@@ -35,6 +35,12 @@ FLEET_SIZE = int(os.getenv("PBR_FLEET_SIZE", "21"))            # 보유 차량 �
 VEHICLES_PER_ROUND = int(os.getenv("PBR_VEHICLES_PER_ROUND", "10"))  # 한 회차 투입 대수(상한)
 VEHICLE_ID_FORMAT = "V{:02d}"                                   # V01 ~ V21
 
+# 한 회차 작업이 끝나야 하는 시한(분).
+# target_qty는 특정 시간 창(예: 05~10시)의 수요를 전제로 계산되므로, 작업이 늦어지면
+# 자전거가 '필요했던 시각이 지난 뒤'에 도착한다. 현재는 제약이 아니라 사후 점검 기준이다.
+# (docs/FLEET.md, docs/KPI.md)
+TIME_BUDGET_MINUTES = float(os.getenv("PBR_TIME_BUDGET_MINUTES", "120"))
+
 
 def vehicle_ids(size: int = None) -> list:
     """차량 식별자 목록(V01, V02, ...)."""

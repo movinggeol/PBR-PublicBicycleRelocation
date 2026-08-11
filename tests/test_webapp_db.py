@@ -142,11 +142,13 @@ def fleet_client(tmp_path, monkeypatch):
     with db.session() as conn:
         db.ensure_fleet(conn)
         db.record_run(conn, NEW, period="25년 11월", duration=DURATION)
-        for duration, vehicles in [("_05_10", ["V01", "V02"]), ("_10_15", ["V03"])]:
+        # V03만 시간 예산(120분)을 넘기도록 둔다.
+        for duration, rows in [("_05_10", [("V01", 60.0), ("V02", 80.0)]),
+                               ("_10_15", [("V03", 150.0)])]:
             db.save_assignments(conn, NEW, duration, [{
                 "vehicle_id": v, "cluster": i, "stations": 5,
-                "bikes": 40, "distance_km": 20.0, "minutes": 60.0,
-            } for i, v in enumerate(vehicles)])
+                "bikes": 40, "distance_km": 20.0, "minutes": minutes,
+            } for i, (v, minutes) in enumerate(rows)])
 
     with TestClient(app) as c:
         yield c
@@ -184,3 +186,14 @@ def test_vehicles_page_without_data(client):
     res = client.get("/vehicles")
     assert res.status_code == 200
     assert "차량 운용" in res.text
+
+
+def test_time_budget_flags_overrun(fleet_client):
+    """시간 예산을 넘긴 작업이 화면에 표시된다."""
+    html = fleet_client.get("/vehicles").text
+
+    assert "시간 예산 준수" in html
+    assert "over-budget" in html, "초과 행이 강조되지 않았다"
+    # 3건 중 2건만 예산 내 → 67%
+    assert "67%" in html
+    assert "1건이 예산을 넘었습니다" in html
