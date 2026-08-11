@@ -214,13 +214,21 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 개선률 = 개선량 / 재배치 전 불균형
 ```
 
+여기에 클러스터별 총 이동거리·소요시간(`route_summary`)이 더해집니다.
+
+> ⚠️ 위 개선률은 **계획 달성률**입니다. `rebal_qty`가 `target_qty − stock`에서
+> 파생되므로 "계획이 자기 목표를 얼마나 채웠는가"를 재는 값이고, 이용자가 실제로
+> 자전거를 탈 수 있었는지와는 다릅니다. 지표 체계의 한계와 개선안은
+> [docs/KPI.md](docs/KPI.md)에 정리했습니다.
+
 ## 문서
 
 | 문서 | 내용 |
 | --- | --- |
 | [docs/PROJECT_PIPELINE.md](docs/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/WEBAPP.md](docs/WEBAPP.md) | 웹 대시보드 실행·구조·API |
-| [docs/DB_PLAN.md](docs/DB_PLAN.md) | SQLite 도입 결정·스키마·이관 계획 |
+| [docs/DB_PLAN.md](docs/DB_PLAN.md) | SQLite 도입 결정·스키마·이관 계획·성능 측정 |
+| [docs/KPI.md](docs/KPI.md) | 성과 지표 체계 설계 (현재 지표의 한계와 개선안) |
 | [docs/TODO.md](docs/TODO.md) | 해야 할 것·고쳐야 할 것 (우선순위별) |
 | [docs/steps/step0_raw.md](docs/steps/step0_raw.md) | Step 0: 수집·전처리·순수요·재배치량 |
 | [docs/steps/step0_eda.md](docs/steps/step0_eda.md) | Step 0: 이력 병합·EDA |

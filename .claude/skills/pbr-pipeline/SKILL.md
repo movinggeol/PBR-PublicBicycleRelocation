@@ -16,7 +16,8 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/PROJECT_PIPELINE.md` | 파이프라인 전체 구조 |
 | `docs/steps/step*.md` | 단계별 입출력·문제점·작업 목록 |
 | `docs/WEBAPP.md` | 웹 대시보드(webapp/) 실행·구조·API |
-| `docs/DB_PLAN.md` | SQLite 도입 결정·스키마·이관 단계 (CSV→DB 작업 시 필독) |
+| `docs/DB_PLAN.md` | SQLite 도입 결정·스키마·이관 단계·성능 측정 (CSV→DB 작업 시 필독) |
+| `docs/KPI.md` | 성과 지표 체계 설계 (지표를 건드리기 전 필독) |
 | `docs/버전관리.txt` | 버전 이력, 수정 이유 기록 |
 
 ## 파이프라인 구조 (실행 순서 = 데이터 의존 순서)
@@ -126,6 +127,14 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
   (실측은 DB_PLAN.md 4단계).
 - **저장소를 바꾸는 수정을 하면 CSV 경로와 DB 경로의 산출물이 같은지 반드시 확인하라.**
   `tests/test_rentals.py`의 동일성 테스트가 그 역할이며, 실제로 dtype 결함을 잡아냈다.
+
+## 성과 지표를 다룰 때
+
+- **`improvement_rate`는 "계획 달성률"이지 실제 효과가 아니다.** `rebal_qty`가
+  `target_qty − stock`에서 파생되므로 구조적으로 높게 나온다. 이 값을 대외 성과로
+  인용할 때는 성격을 밝혀라. 자세한 근거와 개선안은 `docs/KPI.md`.
+- 지표를 추가할 때는 **효과·비용·효율을 함께** 둬라. 개선률만 올리면 소요시간이 늘어난다.
+- 시간대(`duration`)가 다르면 수요 구조가 반대이므로 섞어서 평균 내지 마라.
 
 ## 테스트
 
