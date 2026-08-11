@@ -44,9 +44,17 @@
 | --- | --- | --- |
 | `VEHICLE_CAPACITY` | 10대 | project_config 공통 상수 (대전교통공사 확인값) |
 | `DEPOT_*` | ST0001 타슈 관제센터 | project_config 공통 상수 (step3와 공유) |
-| `VEHICLE_TOTAL` | 21대 | **선언만, 미사용** — 실제는 클러스터당 1대 |
+| `FLEET_SIZE` | 21대 | project_config. 보유 차량 총 대수 |
+| `VEHICLES_PER_ROUND` | 10대 | project_config. 회차당 투입 상한 = step1의 클러스터 수 상한 |
 | `VEHICLE_SPEED_KMPH` | 30 | 시간 계산에 사용 (ILP 25km/h와 다름 — 결정 대기) |
 | `PICK/DROP_TIME_SEC` | 30초 | 자전거 1대당 작업시간으로 사용 |
+
+### 차량 배정 (로테이션)
+
+경로 계산이 끝나면 클러스터별 작업량을 산출해 **실제 차량을 배정**합니다.
+누적 작업이 적은 차량부터 뽑으므로 직전 회차에 나간 차량은 다음 회차에서 뒤로 밀립니다.
+배정 결과는 `vehicle_assignment` 테이블에 남고 `vrp_plan`에 `vehicle_id`로 붙습니다.
+규칙과 운영 모델은 [FLEET.md](../FLEET.md) 참고.
 
 ## 현재 문제점
 

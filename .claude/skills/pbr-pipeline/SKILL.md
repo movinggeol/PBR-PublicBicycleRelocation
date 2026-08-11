@@ -18,6 +18,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/WEBAPP.md` | 웹 대시보드(webapp/) 실행·구조·API |
 | `docs/DB_PLAN.md` | SQLite 도입 결정·스키마·이관 단계·성능 측정 (CSV→DB 작업 시 필독) |
 | `docs/KPI.md` | 성과 지표 체계 설계 (지표를 건드리기 전 필독) |
+| `docs/FLEET.md` | 차량 로테이션·형평성 (차량/클러스터 수를 건드리기 전 필독) |
 | `docs/버전관리.txt` | 버전 이력, 수정 이유 기록 |
 
 ## 파이프라인 구조 (실행 순서 = 데이터 의존 순서)
@@ -58,8 +59,12 @@ step4                   : imbalance
    구문 수준(`python -m py_compile`)까지만 가능하다.
 3. **API 키는 `.env`** (`TASHU_API_KEY`=타슈, `API_KEY`=TMAP). 절대 커밋 금지.
    템플릿은 `.env.example`.
-4. **depot·차량 적재 용량은 project_config의 공통 상수**(DEPOT_ID/LAT/LON/NAME,
-   VEHICLE_CAPACITY)다. step2·step3에서 별도 하드코딩하지 마라.
+4. **depot·차량 상수는 project_config에 있다**(DEPOT_ID/LAT/LON/NAME, VEHICLE_CAPACITY,
+   FLEET_SIZE, VEHICLES_PER_ROUND). step2·step3에서 별도 하드코딩하지 마라.
+   **클러스터 1개 = 차량 1대**이므로 step1의 K는 `VEHICLES_PER_ROUND`를 넘을 수 없다.
+   차량 배정·로테이션은 `db.assign_vehicles()`가 담당한다 (docs/FLEET.md).
+   하루 여러 회차를 돌리므로 **한쪽 후보만 있는 시간대는 크래시가 아니라 건너뛴다** —
+   step1/step2/step4의 건너뛰기 가드를 지우지 마라.
 5. **일회성 스크립트는 `experiments/`에 둔다** — step 폴더나 루트에 test.py를 만들지 마라.
 6. **가상환경은 `.venv`** (검증 환경: Python 3.14.7). 명령은 `.\.venv\Scripts\python.exe ...`로
    실행하라 — 시스템 `python`에는 의존성이 없다.

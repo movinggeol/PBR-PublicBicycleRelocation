@@ -135,6 +135,29 @@ def test_vrp_plan_has_time_columns(pipeline_run):
     assert (df["cum_sec"] >= 0).all()
 
 
+def test_vrp_assigns_real_vehicles(pipeline_run, smoke_db):
+    """클러스터마다 실제 차량이 배정되고 기록된다 (docs/FLEET.md)."""
+    import db
+
+    plan = pd.read_csv(_out("VRP/VRP_plan{duration} ({label}).csv"), encoding="utf-8")
+    assert "vehicle_id" in plan.columns
+    assert plan["vehicle_id"].notna().all(), "배정되지 않은 구간이 있다"
+
+    # 클러스터 1개 = 차량 1대 (중복 배정 금지)
+    pairs = plan[["cluster", "vehicle_id"]].drop_duplicates()
+    assert pairs["cluster"].is_unique
+    assert pairs["vehicle_id"].is_unique
+
+    with db.session(smoke_db) as conn:
+        history = db.assignment_history(conn, run_label=LABEL)
+        assert len(history) == plan["cluster"].nunique()
+        assert (history["minutes"] > 0).all()
+        assert (history["bikes"] > 0).all()
+
+        workload = db.vehicle_workload(conn)
+        assert (workload["rounds"] > 0).sum() == len(history)
+
+
 def test_route_summary_schema(pipeline_run):
     df = pd.read_csv(_out("성능 지표/route_summary{duration} ({label}).csv"), encoding="utf-8")
     for col in ["cluster", "방문수", "처리대수", "총이동거리_km", "총소요시간_분"]:

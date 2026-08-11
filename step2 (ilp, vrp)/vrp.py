@@ -189,9 +189,14 @@ def run_vrp_plan(ilp_plan: pd.DataFrame, duration: str):
             current_lon = node['lon']
 
     # -------------------------
-    # 저장
+    # 차량 배정 (로테이션) — docs/FLEET.md
     # -------------------------
     vrp_result = pd.DataFrame(results)
+    vrp_result = _assign_fleet(vrp_result, duration)
+
+    # -------------------------
+    # 저장
+    # -------------------------
     vrp_result.to_csv(vrp_plan_file.format(duration=duration, now=now), index=False)
     print(f"\nvrp_plan_path 파일이 저장되었습니다. ({vrp_plan_file.format(duration=duration, now=now)})")
 
@@ -199,10 +204,84 @@ def run_vrp_plan(ilp_plan: pd.DataFrame, duration: str):
     db.save_output("vrp_plan", vrp_result, run_label=now, duration=duration)
 
 
+def cluster_workload(vrp_result: pd.DataFrame) -> pd.DataFrame:
+    """클러스터별 작업량(방문 대여소 수·처리 대수·이동거리·소요시간)."""
+    if vrp_result.empty:
+        return pd.DataFrame(columns=["cluster", "stations", "bikes", "distance_km", "minutes"])
+
+    work = vrp_result[vrp_result["action"] != "return"]
+    summary = work.groupby("cluster").agg(
+        stations=("to_id", "nunique"),
+        bikes=("qty", "sum"),
+    ).reset_index()
+
+    # 이동거리·소요시간은 depot 복귀 구간까지 포함해야 실제 운행량이 된다.
+    totals = vrp_result.groupby("cluster").agg(
+        distance_km=("distance_km", "sum"),
+        seconds=("cum_sec", "max"),
+    ).reset_index()
+
+    summary = summary.merge(totals, on="cluster", how="left")
+    summary["distance_km"] = summary["distance_km"].round(2)
+    summary["minutes"] = (summary.pop("seconds") / 60).round(1)
+    return summary
+
+
+def _assign_fleet(vrp_result: pd.DataFrame, duration: str) -> pd.DataFrame:
+    """클러스터에 실제 차량을 배정하고 결과에 vehicle_id를 붙인다.
+
+    누적 작업이 적은 차량부터 뽑으므로, 직전 회차에 나간 차량은 다음 회차에서
+    뒤로 밀린다(로테이션). 배정 근거와 회차별 작업량은 DB에 남는다.
+    """
+    workload = cluster_workload(vrp_result)
+    if workload.empty:
+        vrp_result["vehicle_id"] = pd.Series(dtype="object")
+        return vrp_result
+
+    loads = dict(zip(workload["cluster"], workload["minutes"]))
+
+    try:
+        with db.session() as conn:
+            mapping = db.assign_vehicles(conn, loads, run_label=now, duration=duration)
+            rows = [{
+                "vehicle_id": mapping[int(row.cluster)],
+                "cluster": int(row.cluster),
+                "stations": int(row.stations),
+                "bikes": int(row.bikes),
+                "distance_km": float(row.distance_km),
+                "minutes": float(row.minutes),
+            } for row in workload.itertuples()]
+            db.save_assignments(conn, run_label=now, duration=duration, rows=rows)
+    except Exception as err:
+        # 배정은 부가 기능이다 — 실패해도 경로 계획 자체는 살린다.
+        print(f"[경고] 차량 배정 실패: {type(err).__name__}: {err}")
+        vrp_result["vehicle_id"] = pd.Series(dtype="object")
+        return vrp_result
+
+    vrp_result["vehicle_id"] = vrp_result["cluster"].map(mapping)
+
+    print(f"\n차량 배정 ({duration}, {len(mapping)}대):")
+    for row in workload.sort_values("minutes", ascending=False).itertuples():
+        print(f"  {mapping[int(row.cluster)]}  클러스터 {int(row.cluster):<3d}"
+              f" 대여소 {int(row.stations):>3d}곳  {int(row.bikes):>3d}대"
+              f"  {row.distance_km:>6.2f}km  {row.minutes:>6.1f}분")
+    return vrp_result
+
+
 if __name__ == '__main__':
     ensure_output_dirs()
 
     for duration in duration_list(config):
-        ilp_plan = pd.read_csv(ilp_plan_file.format(duration=duration, now=now), encoding='utf-8', low_memory=False)
+        plan_path = Path(ilp_plan_file.format(duration=duration, now=now))
+        if not plan_path.is_file():
+            # 앞 단계가 '대상 없음'으로 건너뛴 시간대.
+            print(f"\n[건너뜀] {duration}: ILP 계획이 없습니다 ({plan_path.name})")
+            continue
+
+        ilp_plan = pd.read_csv(plan_path, encoding='utf-8', low_memory=False)
+        if ilp_plan.empty:
+            print(f"\n[건너뜀] {duration}: ILP 계획이 비어 있습니다(이동할 자전거 없음)")
+            continue
+
         run_vrp_plan(ilp_plan, duration)
         print("VRP 완료")

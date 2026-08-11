@@ -32,6 +32,15 @@ STOCK_FILE = "data/pp_data/대여소별 재고/대여소별_자전거대수 ({no
 DEFAULT_RAW = "data/raw_data/합성_대여이력.csv"
 
 
+# 하루 3회차 운용(docs/FLEET.md)에 맞춰, 회차마다 방향이 다른 흐름을 만든다.
+#   (시작시, 끝시, 방향)  방향 +1 = 앞쪽→뒤쪽 대여소, -1 = 반대
+FLOW_WINDOWS = [
+    (5, 10, +1),    # 출근: 주거지 → 도심
+    (10, 15, -1),   # 낮: 완만한 역류
+    (15, 20, -1),   # 퇴근: 도심 → 주거지
+]
+
+
 def generate(
     now: str = DEFAULT_NOW,
     period: str = DEFAULT_PERIOD,
@@ -43,8 +52,9 @@ def generate(
 ) -> dict:
     """합성 재고 CSV와 대여이력 CSV를 만들고 경로를 돌려준다.
 
-    05~10시에 편향된 흐름을 만들어 Pick/Drop 불균형이 실제로 생기도록 한다.
-    (앞쪽 절반 대여소는 유출, 뒤쪽 절반은 유입)
+    시간대마다 방향이 다른 흐름을 만들어 회차별로 Pick/Drop 불균형이 생기게 한다
+    (출근엔 도심으로 몰리고 퇴근엔 주거지로 돌아오는 형태).
+    재고는 거치대 수에 비례해 넓게 흩어 두어 한쪽 후보만 나오는 일이 없게 한다.
     """
     rng = np.random.default_rng(seed)
     ensure_output_dirs()
@@ -62,8 +72,10 @@ def generate(
                          for i, r in zip(range(1, stations + 1), racks)],
         "lat": lat,
         "lon": lon,
-        "stock": rng.integers(0, 25, stations),
-    })
+        # 거치대 수에 비례해 0~90% 사이로 넓게 흩어 둔다. 재고가 한쪽으로 쏠리면
+        # Pick 후보만 나오고 Drop 후보가 없어 재배치가 성립하지 않는다.
+        "stock": (racks * 10 + 5) * rng.uniform(0.0, 0.9, stations),
+    }).astype({"stock": int})
 
     stock_path = PROJECT_ROOT / STOCK_FILE.format(now=now)
     stock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -75,16 +87,26 @@ def generate(
 
     rows = []
     bike_no = 0
+    window_share = 0.85 / len(FLOW_WINDOWS)     # 15%는 그 외 시간대에 흩뿌린다
     for day in pd.bdate_range("2025-11-03", periods=days):
         for _ in range(rentals_per_day):
             bike_no += 1
-            peak = rng.random() < 0.6
-            hour = int(rng.integers(5, 10)) if peak else int(rng.integers(10, 24))
+            draw = rng.random()
 
-            if peak:
-                src, dst = rng.choice(source_pool), rng.choice(sink_pool)
-            else:
+            window = None
+            for index, spec in enumerate(FLOW_WINDOWS):
+                if draw < window_share * (index + 1):
+                    window = spec
+                    break
+
+            if window is None:
+                hour = int(rng.integers(20, 24))
                 src, dst = rng.choice(station_ids, 2, replace=False)
+            else:
+                start, end, direction = window
+                hour = int(rng.integers(start, end))
+                origin, target = (source_pool, sink_pool) if direction > 0 else (sink_pool, source_pool)
+                src, dst = rng.choice(origin), rng.choice(target)
 
             start = day + pd.Timedelta(hours=hour, minutes=int(rng.integers(0, 60)))
             dur = int(rng.integers(5, 45))

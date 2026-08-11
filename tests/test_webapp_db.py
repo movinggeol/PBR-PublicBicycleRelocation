@@ -130,3 +130,57 @@ def test_missing_table_returns_404(client):
     """DB에도 CSV에도 없는 산출물은 404 (500이 아니다)."""
     assert client.get("/api/plans/vrp").status_code == 404
     assert client.get("/api/route-summary").status_code == 404
+
+
+# ---------------- 차량 운용 (docs/FLEET.md) ----------------
+
+@pytest.fixture
+def fleet_client(tmp_path, monkeypatch):
+    """차량 배정 이력이 있는 상태의 클라이언트."""
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "fleet_api.db"))
+
+    with db.session() as conn:
+        db.ensure_fleet(conn)
+        db.record_run(conn, NEW, period="25년 11월", duration=DURATION)
+        for duration, vehicles in [("_05_10", ["V01", "V02"]), ("_10_15", ["V03"])]:
+            db.save_assignments(conn, NEW, duration, [{
+                "vehicle_id": v, "cluster": i, "stations": 5,
+                "bikes": 40, "distance_km": 20.0, "minutes": 60.0,
+            } for i, v in enumerate(vehicles)])
+
+    with TestClient(app) as c:
+        yield c
+
+
+def test_vehicles_page_renders(fleet_client):
+    html = fleet_client.get("/vehicles").text
+
+    assert "차량 운용" in html
+    assert "V01" in html
+    assert "형평성" in html
+
+
+def test_vehicles_api_lists_whole_fleet(fleet_client):
+    body = fleet_client.get("/api/vehicles").json()
+
+    assert body["fleet_size"] == 21
+    assert body["count"] == 21, "출동하지 않은 차량도 0으로 나와야 한다"
+    worked = [r for r in body["rows"] if r["rounds"] > 0]
+    assert {r["vehicle_id"] for r in worked} == {"V01", "V02", "V03"}
+
+
+def test_vehicle_assignments_api_filters(fleet_client):
+    everything = fleet_client.get("/api/vehicles/assignments").json()
+    assert everything["count"] == 3
+
+    one = fleet_client.get("/api/vehicles/assignments",
+                           params={"vehicle_id": "V01"}).json()
+    assert one["count"] == 1
+    assert one["rows"][0]["vehicle_id"] == "V01"
+
+
+def test_vehicles_page_without_data(client):
+    """배정 이력이 없어도 화면이 뜬다(빈 상태 안내)."""
+    res = client.get("/vehicles")
+    assert res.status_code == 200
+    assert "차량 운용" in res.text

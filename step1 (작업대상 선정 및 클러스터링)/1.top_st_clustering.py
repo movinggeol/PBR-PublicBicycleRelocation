@@ -12,7 +12,9 @@ from adjust_module import compute_medoids, compute_objective, select_cluster_can
                             make_cluster_pairs, get_movable_nodes, check_size_constraint, try_move_node
 
 import db
-from project_config import PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config
+from project_config import (
+    PROJECT_ROOT, VEHICLES_PER_ROUND, duration_list, ensure_output_dirs, get_runtime_config,
+)
 
 # read_csv
 file_path = str(PROJECT_ROOT / "data/pp_data/재배치 정보/rebal_qty{duration} ({now}).csv")
@@ -94,10 +96,19 @@ def select_top_unbalanced_st(file_path:str, duration:str, st_info:pd.DataFrame) 
 def make_clustering(pick_drop: pd.DataFrame, target_cluster_size: int = 7) -> pd.DataFrame:
     '''
     # 2차 : 클러스터링(K-Medoids)
+
+    군집 1개 = 차량 1대가 맡는 작업이므로, 군집 수는 한 회차에 투입할 수 있는
+    차량 수를 넘을 수 없다. 상한에 걸리면 군집이 커지고 차량당 작업량이 늘어난다.
+    (docs/FLEET.md)
     '''
-    
-    K = int(np.ceil(len(pick_drop) / target_cluster_size))
-    print(f"군집 개수 K = {K}")
+
+    wanted = int(np.ceil(len(pick_drop) / target_cluster_size))
+    K = min(wanted, VEHICLES_PER_ROUND)
+
+    if K < wanted:
+        print(f"군집 개수 K = {K} (희망 {wanted} → 회차당 가용 차량 {VEHICLES_PER_ROUND}대로 제한)")
+    else:
+        print(f"군집 개수 K = {K}")
 
     # K-Medoids 클러스터링 (좌표는 스케일링하지 않는다 — 위경도 자체가 거리 단위)
     X = pick_drop[['lat', 'lon']].values
@@ -246,6 +257,14 @@ if __name__ == '__main__':
         
         # 1차 : 재배치 대상 대여소 선택
         pick_drop = select_top_unbalanced_st(file_path.format(duration=duration, now=now), duration, st_info)
+
+        # Pick과 Drop이 둘 다 있어야 재배치가 성립한다. 한쪽만 있는 시간대
+        # (예: 모든 대여소가 과잉이라 받아줄 곳이 없음)에는 할 작업이 없다.
+        # 하루 여러 회차를 돌리면 실제로 생기는 상황이므로 크래시 대신 건너뛴다.
+        if pick_drop.empty:
+            print(f"\n[건너뜀] {duration}: 재배치 대상이 없습니다 "
+                  f"(Pick 또는 Drop 후보가 없어 옮길 곳이 없음)")
+            continue
 
         # 2차 : 클러스터링
         pick_drop = make_clustering(pick_drop).copy()

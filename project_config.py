@@ -28,6 +28,18 @@ DEPOT_LAT = 36.406607
 DEPOT_LON = 127.306457
 VEHICLE_CAPACITY = 10        # 차량 최대 적재 대수 (대전교통공사 확인값, 버전관리 1.0.1)
 
+# ---- 차량 운용 (docs/FLEET.md) ----
+# 보유 차량은 21대지만 한 회차에 전부 투입하지 않는다. 하루 약 3회차를 돌리며
+# 회차마다 일부만 나가고 나머지는 다음 회차를 맡는 로테이션 방식이다.
+FLEET_SIZE = int(os.getenv("PBR_FLEET_SIZE", "21"))            # 보유 차량 총 대수
+VEHICLES_PER_ROUND = int(os.getenv("PBR_VEHICLES_PER_ROUND", "10"))  # 한 회차 투입 대수(상한)
+VEHICLE_ID_FORMAT = "V{:02d}"                                   # V01 ~ V21
+
+
+def vehicle_ids(size: int = None) -> list:
+    """차량 식별자 목록(V01, V02, ...)."""
+    return [VEHICLE_ID_FORMAT.format(i) for i in range(1, (size or FLEET_SIZE) + 1)]
+
 
 @dataclass(frozen=True)
 class RuntimeConfig:

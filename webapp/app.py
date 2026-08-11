@@ -25,7 +25,10 @@ from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from project_config import DEFAULT_DURATION, DEFAULT_NOW, DEFAULT_PERIOD, DEFAULT_RAW_FILE
+from project_config import (
+    DEFAULT_DURATION, DEFAULT_NOW, DEFAULT_PERIOD, DEFAULT_RAW_FILE,
+    FLEET_SIZE, VEHICLES_PER_ROUND,
+)
 from webapp import catalog, jobs, store
 
 app = FastAPI(title="PBR 파이프라인 대시보드", docs_url="/api/docs")
@@ -118,6 +121,59 @@ def maps_page(request: Request):
 def data_page(request: Request):
     return templates.TemplateResponse(request, "data.html", {
         "groups": catalog.list_csvs(),
+    })
+
+
+@app.get("/vehicles")
+def vehicles_page(request: Request, run_label: Optional[str] = None):
+    """차량별 누적 작업량과 회차 배정 이력 (docs/FLEET.md)."""
+    workload = store.vehicle_workload()
+    assignments = store.vehicle_assignments(run_label=run_label)
+
+    balance = None
+    if not workload.empty and workload["rounds"].sum() > 0:
+        worked = workload[workload["rounds"] > 0]
+        balance = {
+            "used": len(worked),
+            "idle": int((workload["rounds"] == 0).sum()),
+            "min_minutes": float(workload["minutes"].min()),
+            "max_minutes": float(workload["minutes"].max()),
+            "gap_minutes": round(float(workload["minutes"].max() - workload["minutes"].min()), 1),
+        }
+
+    return templates.TemplateResponse(request, "vehicles.html", {
+        "fleet_size": FLEET_SIZE,
+        "per_round": VEHICLES_PER_ROUND,
+        "workload": store.records(workload),
+        "assignments": store.records(assignments.head(60)),
+        "balance": balance,
+        "selected_run": run_label,
+        "runs": store.records(store.run_labels()),
+    })
+
+
+@app.get("/api/vehicles")
+def api_vehicles():
+    """차량별 누적 작업량."""
+    workload = store.vehicle_workload()
+    return JSONResponse({
+        "fleet_size": FLEET_SIZE,
+        "vehicles_per_round": VEHICLES_PER_ROUND,
+        "count": len(workload),
+        "rows": store.records(workload),
+    })
+
+
+@app.get("/api/vehicles/assignments")
+def api_vehicle_assignments(vehicle_id: Optional[str] = None,
+                            run_label: Optional[str] = None):
+    """회차별 차량 배정 이력. vehicle_id·run_label로 좁힐 수 있다."""
+    history = store.vehicle_assignments(vehicle_id=vehicle_id, run_label=run_label)
+    return JSONResponse({
+        "vehicle_id": vehicle_id,
+        "run_label": run_label,
+        "count": len(history),
+        "rows": store.records(history),
     })
 
 

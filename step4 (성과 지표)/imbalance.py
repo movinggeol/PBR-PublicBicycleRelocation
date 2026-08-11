@@ -212,7 +212,13 @@ if __name__ == "__main__":
     ensure_output_dirs()
 
     for duration in duration_list(config):
-        reloc_df = pd.read_csv(file_path.format(duration=duration, now=now), encoding='utf-8')
+        candidates = Path(file_path.format(duration=duration, now=now))
+        if not candidates.is_file():
+            # step1이 '대상 없음'으로 건너뛴 시간대.
+            print(f"\n[건너뜀] {duration}: 후보 파일이 없습니다 ({candidates.name})")
+            continue
+
+        reloc_df = pd.read_csv(candidates, encoding='utf-8')
         print(reloc_df.head())
 
         imbalance_df = demand_satisfaction(reloc_df).copy()

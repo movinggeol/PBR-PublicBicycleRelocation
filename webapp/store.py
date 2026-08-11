@@ -56,6 +56,28 @@ def load(table: str, run_label: Optional[str] = None,
     return pd.DataFrame(), "none"
 
 
+def vehicle_workload() -> pd.DataFrame:
+    """차량별 누적 작업량(로테이션 형평성 확인용)."""
+    try:
+        with db.session() as conn:
+            db.ensure_fleet(conn)
+            return db.vehicle_workload(conn)
+    except Exception as err:
+        print(f"[경고] 차량 부하 조회 실패: {type(err).__name__}: {err}")
+        return pd.DataFrame()
+
+
+def vehicle_assignments(vehicle_id: Optional[str] = None,
+                        run_label: Optional[str] = None) -> pd.DataFrame:
+    """회차별 차량 배정 이력."""
+    try:
+        with db.session() as conn:
+            return db.assignment_history(conn, vehicle_id=vehicle_id, run_label=run_label)
+    except Exception as err:
+        print(f"[경고] 배정 이력 조회 실패: {type(err).__name__}: {err}")
+        return pd.DataFrame()
+
+
 def run_labels() -> pd.DataFrame:
     """DB에 기록된 실행 이력(최신순). DB가 없으면 빈 DataFrame."""
     try:

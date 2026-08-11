@@ -27,7 +27,7 @@ from typing import Dict, Iterator, Optional, Sequence, Tuple
 
 import pandas as pd
 
-from project_config import DATA_ROOT
+from project_config import DATA_ROOT, FLEET_SIZE, VEHICLES_PER_ROUND, vehicle_ids
 
 # 기본 DB 위치. 환경변수 PBR_DB_PATH로 바꿀 수 있다
 # (테스트가 실제 DB를 건드리지 않도록 별도 파일을 가리키는 데 쓴다).
@@ -196,6 +196,7 @@ CREATE TABLE IF NOT EXISTS vrp_plan (
     duration     TEXT NOT NULL,
     seq          INTEGER NOT NULL,
     cluster      INTEGER,
+    vehicle_id   TEXT,
     from_id      TEXT,
     from_lat     REAL,
     from_lon     REAL,
@@ -244,6 +245,29 @@ CREATE TABLE IF NOT EXISTS route_summary (
     total_min    REAL,
     PRIMARY KEY (run_label, duration, cluster)
 );
+
+-- 차량 마스터. 정비 등으로 빠지면 active=0으로 두면 배정에서 제외된다.
+CREATE TABLE IF NOT EXISTS vehicle (
+    vehicle_id  TEXT PRIMARY KEY,
+    active      INTEGER NOT NULL DEFAULT 1,
+    note        TEXT
+);
+
+-- 회차(run_label + duration)별 차량 배정과 그 회차에 실제로 한 작업량.
+-- 로테이션은 이 누적치를 보고 정하므로, 형평성 추적의 원장 역할을 한다.
+CREATE TABLE IF NOT EXISTS vehicle_assignment (
+    run_label    TEXT NOT NULL,
+    duration     TEXT NOT NULL,
+    vehicle_id   TEXT NOT NULL,
+    cluster      INTEGER NOT NULL,
+    stations     INTEGER,   -- 방문 대여소 수
+    bikes        INTEGER,   -- 처리한 자전거 대수
+    distance_km  REAL,
+    minutes      REAL,      -- 이동 + 작업 소요시간
+    PRIMARY KEY (run_label, duration, vehicle_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_assignment_vehicle ON vehicle_assignment(vehicle_id);
 
 -- 원천 대여이력(대용량). 원본 CSV 12개 컬럼을 그대로 미러링한다.
 -- 대여소명·좌표는 station_info와 중복이지만, api_to_info가 이 값을 집계해
@@ -454,6 +478,117 @@ def save_output(table: str, df: pd.DataFrame, run_label: Optional[str] = None,
 def list_runs(conn: sqlite3.Connection) -> pd.DataFrame:
     """실행 이력을 최신순으로 돌려준다."""
     return pd.read_sql("SELECT * FROM runs ORDER BY run_label DESC", conn)
+
+
+# ---------------- 차량 운용 (로테이션과 형평성) ----------------
+
+def ensure_fleet(conn: sqlite3.Connection, size: int = None) -> None:
+    """차량 마스터를 만든다(이미 있으면 그대로 둔다). V01 ~ V{size}."""
+    for vehicle_id in vehicle_ids(size or FLEET_SIZE):
+        conn.execute(
+            "INSERT OR IGNORE INTO vehicle (vehicle_id, active) VALUES (?, 1)",
+            (vehicle_id,))
+    conn.commit()
+
+
+def vehicle_workload(conn: sqlite3.Connection, only_active: bool = True) -> pd.DataFrame:
+    """차량별 누적 작업량. 한 번도 안 나간 차량도 0으로 포함한다.
+
+    컬럼: vehicle_id, active, rounds, bikes, distance_km, minutes, last_run, last_duration
+    """
+    where = "WHERE v.active = 1" if only_active else ""
+    return pd.read_sql(f"""
+        SELECT v.vehicle_id,
+               v.active,
+               COUNT(a.vehicle_id)                AS rounds,
+               COALESCE(SUM(a.bikes), 0)          AS bikes,
+               ROUND(COALESCE(SUM(a.distance_km), 0), 2) AS distance_km,
+               ROUND(COALESCE(SUM(a.minutes), 0), 1)     AS minutes,
+               MAX(a.run_label)                   AS last_run,
+               MAX(a.duration)                    AS last_duration
+        FROM vehicle v
+        LEFT JOIN vehicle_assignment a ON a.vehicle_id = v.vehicle_id
+        {where}
+        GROUP BY v.vehicle_id, v.active
+        ORDER BY v.vehicle_id
+    """, conn)
+
+
+def assign_vehicles(conn: sqlite3.Connection, cluster_loads: Dict[int, float],
+                    run_label: str, duration: str) -> Dict[int, str]:
+    """클러스터에 차량을 배정한다. 반환: {cluster: vehicle_id}
+
+    로테이션 규칙:
+      1. 누적 소요시간이 적은 차량부터 뽑는다(동률이면 출동 횟수 → ID 순).
+         → 직전 회차에 나간 차량은 누적이 늘어 뒤로 밀리므로 자연히 교대가 된다.
+      2. 뽑은 차량 중 **가장 한가한 차량에 가장 무거운 클러스터**를 준다.
+         → 한 회차 안에서도, 회차를 거듭해도 부하가 고르게 수렴한다.
+
+    같은 회차를 다시 계산하면 그 회차의 기존 배정은 제외하고 계산하므로
+    재실행해도 결과가 같다(멱등).
+    """
+    ensure_fleet(conn)
+
+    # 이 회차의 기존 배정은 누적에서 빼야 재실행 시 같은 결과가 나온다.
+    workload = pd.read_sql("""
+        SELECT v.vehicle_id,
+               COALESCE(SUM(CASE WHEN a.run_label IS NOT NULL THEN a.minutes END), 0) AS minutes,
+               COUNT(a.vehicle_id) AS rounds
+        FROM vehicle v
+        LEFT JOIN vehicle_assignment a
+               ON a.vehicle_id = v.vehicle_id
+              AND NOT (a.run_label = ? AND a.duration = ?)
+        WHERE v.active = 1
+        GROUP BY v.vehicle_id
+        ORDER BY minutes ASC, rounds ASC, v.vehicle_id ASC
+    """, conn, params=[run_label, duration])
+
+    if workload.empty:
+        raise RuntimeError("운용 가능한 차량이 없습니다(vehicle 테이블 확인).")
+
+    needed = len(cluster_loads)
+    available = len(workload)
+    if needed > available:
+        raise ValueError(
+            f"클러스터 {needed}개에 배정할 차량이 부족합니다(가용 {available}대). "
+            f"클러스터 수를 줄이거나 차량을 추가하세요.")
+
+    picked = workload["vehicle_id"].tolist()[:needed]
+
+    # 무거운 클러스터 ↔ 한가한 차량 (picked는 이미 한가한 순)
+    ordered_clusters = sorted(cluster_loads, key=lambda c: cluster_loads[c], reverse=True)
+    return dict(zip(ordered_clusters, picked))
+
+
+def save_assignments(conn: sqlite3.Connection, run_label: str, duration: str,
+                     rows: Sequence[dict]) -> int:
+    """회차 배정 결과를 기록한다(같은 회차를 다시 저장하면 대체)."""
+    conn.execute("DELETE FROM vehicle_assignment WHERE run_label = ? AND duration = ?",
+                 (run_label, duration))
+    conn.executemany(
+        "INSERT INTO vehicle_assignment"
+        " (run_label, duration, vehicle_id, cluster, stations, bikes, distance_km, minutes)"
+        " VALUES (:run_label, :duration, :vehicle_id, :cluster, :stations, :bikes,"
+        "         :distance_km, :minutes)",
+        [dict(row, run_label=run_label, duration=duration) for row in rows])
+    conn.commit()
+    return len(rows)
+
+
+def assignment_history(conn: sqlite3.Connection, vehicle_id: Optional[str] = None,
+                       run_label: Optional[str] = None) -> pd.DataFrame:
+    """배정 이력(최신순). 차량이나 실행으로 좁힐 수 있다."""
+    conditions, params = [], []
+    if vehicle_id:
+        conditions.append("vehicle_id = ?")
+        params.append(vehicle_id)
+    if run_label:
+        conditions.append("run_label = ?")
+        params.append(run_label)
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    return pd.read_sql(
+        f"SELECT * FROM vehicle_assignment {where}"
+        " ORDER BY run_label DESC, duration ASC, vehicle_id ASC", conn, params=params)
 
 
 # ---------------- 대여이력 (대용량 원천 데이터) ----------------

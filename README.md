@@ -163,6 +163,7 @@ python -m webapp        # http://127.0.0.1:8000
 ```
 
 - `/` 실행 폼·DB 실행 이력·작업 이력·최신 산출물
+- `/vehicles` 차량별 누적 작업량·회차 배정 이력 (로테이션 형평성)
 - `/maps` folium 지도 결과(HTML)를 브라우저에서 바로 열람
 - `/data` CSV 산출물 미리보기·다운로드
 - `/api/docs` JSON API 문서 (GeoJSON 대여소, ILP/VRP 계획, 성과 지표)
@@ -229,6 +230,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/WEBAPP.md](docs/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/DB_PLAN.md](docs/DB_PLAN.md) | SQLite 도입 결정·스키마·이관 계획·성능 측정 |
 | [docs/KPI.md](docs/KPI.md) | 성과 지표 체계 설계 (현재 지표의 한계와 개선안) |
+| [docs/FLEET.md](docs/FLEET.md) | 차량 운용 — 하루 3회차 로테이션과 형평성 기록 |
 | [docs/TODO.md](docs/TODO.md) | 해야 할 것·고쳐야 할 것 (우선순위별) |
 | [docs/steps/step0_raw.md](docs/steps/step0_raw.md) | Step 0: 수집·전처리·순수요·재배치량 |
 | [docs/steps/step0_eda.md](docs/steps/step0_eda.md) | Step 0: 이력 병합·EDA |

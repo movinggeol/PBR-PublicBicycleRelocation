@@ -181,6 +181,12 @@ if __name__ == "__main__":
     solver = pulp.PULP_CBC_CMD(msg=True, timeLimit=600, gapRel=0.02)
 
     for duration in duration_list(config):
-        metrics = pd.read_csv(metrics_path.format(duration=duration, now=now), encoding='utf-8', low_memory=False)
+        candidates = Path(metrics_path.format(duration=duration, now=now))
+        if not candidates.is_file():
+            # step1이 '대상 없음'으로 건너뛴 시간대. 여기서도 건너뛴다.
+            print(f"\n[건너뜀] {duration}: 후보 파일이 없습니다 ({candidates.name})")
+            continue
+
+        metrics = pd.read_csv(candidates, encoding='utf-8', low_memory=False)
         print(f"\n=== [ILP @ {duration}] ===")
         run_ilp_plan(metrics, duration, solver)
