@@ -9,7 +9,11 @@ import folium
 from folium import plugins
 from dotenv import load_dotenv
 
+import module
 from module import (
+    TmapBudgetExceeded,
+    TmapQuotaExceeded,
+    call_count,
     seconds_to_hms,
     call_tmap_chunked,
     merge_tmap_results,
@@ -179,12 +183,22 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
                 "viaY": str(p["lat"])
             })
 
-        # 경유지가 30개를 넘으면 module이 구간을 분할 호출한 뒤 병합
-        geo_list = call_tmap_chunked(start, end, via,
-                                     headers=headers,
-                                     url=tmap_url)
-        merged = merge_tmap_results(geo_list)
-        elapsed_list = merged["elapsed_sec"]
+        # 경유지가 100개를 넘으면 module이 구간을 분할 호출한 뒤 병합.
+        # TMAP은 호출 한도가 있는 유료 API이므로, 한도·예산이 걸리면 지도만
+        # 직선 경로로 낮춰 그리고 파이프라인은 계속 진행한다.
+        merged = None
+        try:
+            geo_list = call_tmap_chunked(start, end, via,
+                                         headers=headers,
+                                         url=tmap_url)
+            merged = merge_tmap_results(geo_list)
+        except (TmapQuotaExceeded, TmapBudgetExceeded) as exc:
+            print(f"  ⚠ 클러스터 {c}: {exc}")
+            print("    → 이 경로는 직선으로 그립니다 (도로 경로·도착 시각 없음)")
+        except RuntimeError as exc:
+            print(f"  ⚠ 클러스터 {c}: TMAP 호출 실패 ({exc}) → 직선으로 그립니다")
+
+        elapsed_list = merged["elapsed_sec"] if merged else []
 
         def _arrival_txt(order: int) -> str:
             idx = order - 1
@@ -193,30 +207,38 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
             return "-"
 
         # --------- 도로 선 그리기 ----------
-        for feat in merged["features"]:
-            geom = feat.get("geometry", {})
-            if geom.get("type")=="LineString":
-                coords = geom["coordinates"]
-                latlon = [[c[1], c[0]] for c in coords]
+        if merged:
+            segments = [
+                [[pt[1], pt[0]] for pt in feat["geometry"]["coordinates"]]
+                for feat in merged["features"]
+                if feat.get("geometry", {}).get("type") == "LineString"
+            ]
+            dashed = None
+        else:
+            # 대체 표시: 방문 순서대로 이은 직선 하나 (점선으로 구분)
+            segments = [[[p["lat"], p["lon"]] for p in route_pts]]
+            dashed = "8,6"
 
-                poly = folium.PolyLine(
-                    latlon,
-                    weight=5,
-                    color=color,
-                    opacity=0.7
-                ).add_to(fg)
+        for latlon in segments:
+            poly = folium.PolyLine(
+                latlon,
+                weight=5,
+                color=color,
+                opacity=0.7,
+                dash_array=dashed,
+            ).add_to(fg)
 
-                plugins.PolyLineTextPath(
-                    poly,
-                    "▶     ",
-                    repeat=True,
-                    offset=6,
-                    attributes={
-                        "fill": color,
-                        "font-weight": "bold",
-                        "font-size": "12"
-                    }
-                ).add_to(fg)
+            plugins.PolyLineTextPath(
+                poly,
+                "▶     ",
+                repeat=True,
+                offset=6,
+                attributes={
+                    "fill": color,
+                    "font-weight": "bold",
+                    "font-size": "12"
+                }
+            ).add_to(fg)
 
         # --------- 마커 + 적재량 ----------
         visit_counter = {}
@@ -391,7 +413,12 @@ if __name__ == "__main__":
     if not API_KEY:
         raise RuntimeError("API_KEY 환경변수 설정 필요")
 
-    TMAP_URL = "https://apis.openapi.sk.com/tmap/routes/routeSequential30"
+    # routeSequential30은 일일 호출 한도가 작아 3회차 한 번에 소진된다(실측 QUOTA_EXCEEDED).
+    # 100은 한도가 넉넉하고 경유지도 100개까지 받아 클러스터 하나가 호출 한 번으로 끝난다.
+    TMAP_URL = os.getenv(
+        "PBR_TMAP_URL",
+        "https://apis.openapi.sk.com/tmap/routes/routeSequential100",
+    )
     HEADERS  = {
         "accept":"application/json",
         "appKey":API_KEY,
@@ -412,3 +439,5 @@ if __name__ == "__main__":
         )
 
         make_vrp_map(depot, pick_drop, vrp_plan, duration, HEADERS, TMAP_URL)
+
+    print(f"\nTMAP 호출 {call_count()}건 (예산 {module.MAX_CALLS}건)")

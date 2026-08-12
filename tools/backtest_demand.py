@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 import db
+from project_config import TARGET_Z
 
 DURATIONS = ["_05_10", "_10_15", "_15_20", "_20_05"]
 
@@ -100,7 +101,8 @@ def _required_z(merged: pd.DataFrame, target: float) -> float:
 def main() -> int:
     parser = argparse.ArgumentParser(description="수요 예측(mu) 백테스트")
     parser.add_argument("--duration", help="시간대 하나만 (예: _05_10)")
-    parser.add_argument("--z", type=float, default=1.65, help="커버리지 판정 계수")
+    parser.add_argument("--z", type=float, default=TARGET_Z,
+                        help=f"커버리지 판정 계수 (기본 {TARGET_Z})")
     args, _ = parser.parse_known_args()
 
     durations = [args.duration] if args.duration else DURATIONS
@@ -174,8 +176,10 @@ def main() -> int:
             else:
                 print(f"  {duration}: 기준선 대비 {row['기준선대비']:+.1f}% ·"
                       f" 커버리지 {row['커버리지']:.1f}%")
-        print(f"\n  z=1.65는 정규분포 가정값이다. 실측 분포의 꼬리가 두꺼워"
-              f" 95%를 덮으려면 z≈{total['z_for_95'].mean():.2f}이 필요하다.")
+        print(f"\n  참고: 월별 '필요 z'의 평균은 {total['z_for_95'].mean():.2f}지만,"
+              f" 그 값을 실제로 적용했을 때의 커버리지는 따로 확인해야 한다.")
+        print(f"  커버리지는 z에 대해 비선형이라 두 값이 일치하지 않는다"
+              f" — python experiments/z_sweep.py 로 z별 실제 커버리지를 볼 수 있다.")
     return 0
 
 

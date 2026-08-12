@@ -13,7 +13,13 @@ import numpy as np
 import pandas as pd
 
 import db
-from project_config import PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config
+from project_config import (
+    PROJECT_ROOT,
+    TARGET_Z,
+    duration_list,
+    ensure_output_dirs,
+    get_runtime_config,
+)
 
 # read_csv
 st_info_file = str(PROJECT_ROOT / "data/pp_data/대여소 정보/st_info ({now}).csv")
@@ -25,12 +31,16 @@ out_file_path = str(PROJECT_ROOT / "data/pp_data/재배치 정보/rebal_qty{dura
 MAX_CAPACITY = 10
 
 
-# 시간대에 따른 target_qty(목표대수)와 rebal_qty(재배치대수)를 계산한다. (z=1.65)
-def calculate_rebal_qty(stats: pd.DataFrame, duration: str, now: str, z=1.65, up_limit=1.5, low_limit=0.2):
+# 시간대에 따른 target_qty(목표대수)와 rebal_qty(재배치대수)를 계산한다.
+def calculate_rebal_qty(stats: pd.DataFrame, duration: str, now: str, z=None, up_limit=1.5, low_limit=0.2):
     '''
     대여소별의 시간대별(_05_10, _10_15, _15_20, _20_05) mu, sigma 를 통해 목표 stock량(target_qty)에 따른 작업량(rebal_qty)를 산출해 저장
     기본 파라미터 : 신뢰구간 z, 상한/하한 비율
+
+    z를 지정하지 않으면 project_config.TARGET_Z(기본 1.99)를 쓴다.
+    환경변수 PBR_TARGET_Z로 바꿀 수 있다 — 근거는 docs/EXPERIMENTS.md 1장.
     '''
+    z = TARGET_Z if z is None else z
     # 1. ---------- target_qty 계산 ----------
     # 평균 순수요(mu)가 양수(자전거가 부족한 상황)인지 확인하는 조건
     cond_pos = stats['mu'] >= 0
@@ -81,7 +91,7 @@ def calculate_rebal_qty(stats: pd.DataFrame, duration: str, now: str, z=1.65, up
     ).astype(int)
 
     stats.to_csv(out_file_path.format(duration=duration, now=now) + '.csv', encoding='utf-8', index=False)
-    print(f"rebal{duration}가 저장되었습니다. (저장 위치 : {out_file_path.format(duration=duration, now=now) + '.csv'})")
+    print(f"rebal{duration}가 저장되었습니다. (z={z}, 저장 위치 : {out_file_path.format(duration=duration, now=now) + '.csv'})")
 
     # CSV·DB 이중 기록 (DB_PLAN 2단계). CSV가 아직 정본이다.
     db.save_output("rebalance_plan", stats, run_label=now, duration=duration)

@@ -1,12 +1,52 @@
 """step3 지도 생성 보조 모듈: 시간 표기, TMAP 경유지 최적화 API 호출.
 
-TMAP routeSequential30은 경유지를 최대 30개까지 받으므로,
-그보다 긴 경로는 call_tmap_chunked()가 구간을 나눠 호출하고
-merge_tmap_results()가 결과를 이어 붙인다.
+**엔드포인트는 `routeSequential100`이다.** 원래 쓰던 `routeSequential30`은
+일일 호출 한도가 작아 3회차를 한 번 돌리면 소진된다(실측: QUOTA_EXCEEDED).
+100은 경유지도 100개까지 받으므로, 클러스터 하나가 한 번의 호출로 끝난다
+(회차당 대여소가 30개를 넘는 일이 없으므로 분할 호출도 사실상 사라진다).
+
+호출 한도가 있는 유료 API이므로 두 가지 안전장치를 둔다.
+
+  · **호출 예산** — 한 프로세스에서 MAX_CALLS(기본 25)회를 넘기지 않는다.
+    넘으면 TmapBudgetExceeded를 올리고, 호출한 쪽이 직선 경로로 대체한다.
+  · **한도 초과 즉시 중단** — 429 중 QUOTA_EXCEEDED는 재시도해도 소용없으므로
+    (하루가 지나야 풀린다) 기다리지 않고 TmapQuotaExceeded를 올린다.
+
+둘 다 지도 품질만 떨어뜨릴 뿐 파이프라인을 멈추지 않는다.
 """
+import os
 import time
 
 import requests
+
+# 한 프로세스에서 허용할 TMAP 호출 횟수.
+# 정규 실행은 회차당 클러스터 10개 × 3회차 = 30건이므로 여유를 조금 두고 35로 잡았다.
+# (경유지 100개까지 한 번에 보내므로 클러스터 하나당 정확히 1건이다.)
+# 예산을 넘기면 남은 경로는 직선으로 그리고 실행은 계속한다.
+MAX_CALLS = int(os.getenv("PBR_TMAP_MAX_CALLS", "35"))
+
+# 최대 경유지 수 (routeSequential100 기준)
+MAX_VIA = int(os.getenv("PBR_TMAP_MAX_VIA", "100"))
+
+_call_count = 0
+
+
+class TmapQuotaExceeded(RuntimeError):
+    """TMAP 일일 호출 한도를 소진했다 (429 QUOTA_EXCEEDED)."""
+
+
+class TmapBudgetExceeded(RuntimeError):
+    """이 실행에 허용된 호출 예산(MAX_CALLS)을 다 썼다."""
+
+
+def call_count() -> int:
+    """이 프로세스가 지금까지 보낸 TMAP 호출 수."""
+    return _call_count
+
+
+def reset_call_count() -> None:
+    _call_count = 0
+    globals()["_call_count"] = 0
 
 
 def seconds_to_hms(sec):
@@ -33,11 +73,22 @@ def call_tmap_sequential(start, end, via_points, start_time="201709121938", head
         "endName": end["name"], "endX": str(end["X"]), "endY": str(end["Y"]),
         "searchOption": "0", "carType": "4", "viaPoints": via_points,
     }
+    global _call_count
+
     for attempt in range(retries + 1):
+        if _call_count >= MAX_CALLS:
+            raise TmapBudgetExceeded(
+                f"TMAP 호출 예산 {MAX_CALLS}건을 다 썼습니다"
+                f" (PBR_TMAP_MAX_CALLS로 조정)")
         try:
+            _call_count += 1
             r = requests.post(url, json=payload, headers=headers, timeout=timeout)
             if r.status_code == 429:
-                time.sleep(1.5)
+                # 일일 한도 초과는 기다려도 풀리지 않는다 — 즉시 포기한다.
+                if "QUOTA_EXCEEDED" in r.text:
+                    raise TmapQuotaExceeded(
+                        f"TMAP 일일 호출 한도 소진 ({_call_count}번째 호출): {r.text[:200]}")
+                time.sleep(1.5)     # 순간적인 속도 제한은 재시도할 값어치가 있다
                 continue
             r.raise_for_status()
             return r.json()
@@ -54,12 +105,17 @@ def call_tmap_sequential(start, end, via_points, start_time="201709121938", head
     raise RuntimeError("Tmap API 호출 실패")
 
 
-def call_tmap_chunked(start, end, via_points, headers=None, url=None, max_via=30):
+def call_tmap_chunked(start, end, via_points, headers=None, url=None, max_via=None):
     """경유지가 max_via를 넘으면 구간을 나눠 여러 번 호출한다.
 
     각 구간의 마지막 경유지를 그 구간의 도착지로 삼고,
     다음 구간의 출발지로 이어 붙인다. 반환: GeoJSON 응답 리스트(순서대로).
+
+    max_via 기본값은 MAX_VIA(=100). routeSequential100을 쓰므로 현실적인
+    클러스터 크기(최대 26곳)에서는 분할이 일어나지 않는다.
     """
+    max_via = MAX_VIA if max_via is None else max_via
+
     if len(via_points) <= max_via:
         return [call_tmap_sequential(start, end, via_points, headers=headers, url=url)]
 

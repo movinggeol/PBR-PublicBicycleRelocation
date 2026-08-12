@@ -48,15 +48,29 @@ TIME_BUDGET_MINUTES = float(os.getenv("PBR_TIME_BUDGET_MINUTES", "120"))
 #   거리합  : 각 대여소 ~ 메도이드 맨해튼 거리 (위경도 '도' 단위, 1도 ≈ 111km)
 # 거리 항의 값이 작아(1~2) balance(수백~수만)에 묻히기 쉬우므로 GAMMA를 크게 잡는다.
 #
-# GAMMA=1000은 실데이터 실험으로 정한 값이다(25년 11월, 3회차). 기존 10에서는
-# 거리 항이 balance에 묻혀 군집이 흩어졌고, 그 결과 이동거리가 길어져
-# 시간 예산을 넘는 회차가 생겼다. 1000으로 올리자 3회차 모두에서
-# 최장 소요 121.0→110.6분, 예산 초과 1건→0건, 총 이동거리 866→814km(-6%)로
-# 개선됐다. 대가는 balance 최대 5→6, 처리 대수 684→681로 미미하다.
-# 근거: docs/steps/step1_clustering.md의 '거리 가중치' 절
+# GAMMA는 두 번의 실데이터 실험으로 정했다(둘 다 25년 11월, 3회차 전부 확인).
+#   10 → 1000  : 거리 항이 balance에 묻혀 군집이 흩어졌다. 올리자 최장 소요
+#                121.0→110.6분, 예산 초과 1건→0건, 총 이동거리 866→814km.
+#   1000 → 3000: z를 1.99로 올려 작업량이 늘자 _15_20이 137분으로 예산을 넘었다.
+#                3000에서 최장 소요(전 회차) 137.0→115.8분, 예산 초과 1건→0건,
+#                총 이동거리 870→854km. 대가는 처리 대수 756→748(-1%).
+# 주의: γ=2000은 γ=1000보다 나빴다(160.9분). 군집 조정이 탐욕적 국소 탐색이라
+# 목적함수 지형이 γ에 대해 매끄럽지 않다 — 중간값을 보간해 추정하면 안 된다.
+# 근거: docs/EXPERIMENTS.md 4장, docs/steps/step1_clustering.md의 '거리 가중치' 절
 CLUSTER_ALPHA = float(os.getenv("PBR_CLUSTER_ALPHA", "1"))
 CLUSTER_BETA = float(os.getenv("PBR_CLUSTER_BETA", "100"))
-CLUSTER_GAMMA = float(os.getenv("PBR_CLUSTER_GAMMA", "1000"))
+CLUSTER_GAMMA = float(os.getenv("PBR_CLUSTER_GAMMA", "3000"))
+
+# ---- step0 목표 재고 안전계수 ----
+# target_qty = mu + z·sigma 의 z. 값이 클수록 수요가 몰리는 날까지 덮지만
+# 그만큼 채워야 할 대수가 늘어난다.
+#
+# 1.65는 "정규분포에서 95%"라는 이유로 쓰였으나, 12개월 백테스트에서 실제 커버리지가
+# 91.7~92.8%에 그쳤다. 순수요 분포의 꼬리가 정규분포보다 두껍기 때문이다.
+# z=1.99로 올리면 평균 94.9%가 되고, 대가는 처리 상한 +30%다. 다만 회차마다 대가가
+# 다르다 — pick 가능량이 이미 병목인 _05_10은 작업량이 늘지 않는다(-1.8%).
+# 근거·재현: docs/EXPERIMENTS.md 1장, python experiments/z_sweep.py
+TARGET_Z = float(os.getenv("PBR_TARGET_Z", "1.99"))
 
 
 def vehicle_ids(size: int = None) -> list:

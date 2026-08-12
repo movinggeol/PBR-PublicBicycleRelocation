@@ -70,14 +70,23 @@ python tools/load_rentals.py --status         # 기간별 적재 현황
 - **처리**: 평일 기준, 날짜×대여소×시간대(0~23시)별 `순수요 = 대여량 − 반납량`
 - **출력**: `data/pp_data/순수요/st_net_daily ({period}).csv` (net_00 ~ net_23 컬럼)
 
-> ⚠️ **`z = 1.65`는 검증 결과 부족합니다.** 백테스트(2025-04~2026-03)에서 실제 커버리지가
-> 91.7~92.8%로 설계 의도(95%)에 못 미쳤고, 실측으로 구한 필요값은 **z ≈ 1.99**입니다.
-> 또 `_10_15` 시간대의 `mu`는 "순수요 0"이라고 찍는 것과 차이가 없습니다.
-> 근거는 [KPI.md](../KPI.md) 3-E, 재현은 `python tools/backtest_demand.py`.
+> **`z`는 1.99입니다** (기존 1.65). 백테스트(2025-04~2026-03)에서 z=1.65의 실제
+> 커버리지가 91.7~92.8%로 설계 의도(95%)에 못 미쳤습니다. 순수요 분포의 꼬리가
+> 정규분포보다 두껍기 때문입니다. z=1.99에서 94.9%가 됩니다.
+> 근거·재현은 [EXPERIMENTS.md](../EXPERIMENTS.md) 1장 (`python experiments/z_sweep.py`).
+>
+> `_10_15` 시간대의 `mu`가 "순수요 0"과 차이가 없다던 결과는 **측정 오류였습니다.**
+> 전체 대여소 평균이라 파이프라인이 손대지 않는 곳(72.8%가 `|mu| < 0.5`)에
+> 희석된 것이고, 작업 대상 31곳만 보면 오차를 40.2% 줄입니다
+> ([EXPERIMENTS.md](../EXPERIMENTS.md) 2장).
+>
+> 남은 약점은 **계절 전환기**입니다. 2월→3월처럼 수요가 1.5배 뛰는 구간은
+> z를 올려도 커버리지가 90% 언저리에 머뭅니다. 분석 달 초 실적으로 배율을 보정하면
+> 95%대로 회복되지만 아직 구현하지 않았습니다 ([EXPERIMENTS.md](../EXPERIMENTS.md) 3장).
 
 ### 5. `calculate_target_qty.py`
 - **입력**: st_info, st_net_daily
-- **처리** (시간대 duration별, z=1.65):
+- **처리** (시간대 duration별, `z = project_config.TARGET_Z` 기본 1.99, `PBR_TARGET_Z`로 변경):
   - `mu ≥ 0`(부족 경향): `target_qty = mu + z·sigma`
   - `mu < 0`(과잉 경향): `target_qty = stock + mu`
   - target_qty를 `[0, parking_lot × 1.5]`로 제한
