@@ -214,3 +214,125 @@ def test_compare_runs_with_sql(conn):
 
     assert list(compared["run_label"]) == ["R1", "R2"]
     assert compared["avg_rate"].tolist() == pytest.approx([0.6, 0.8])
+
+
+# ---------------- 스키마 마이그레이션 ----------------
+#
+# CREATE TABLE IF NOT EXISTS는 기존 테이블을 고쳐 주지 않는다. SCHEMA에 컬럼을
+# 추가하면 예전에 DB를 만든 사용자에게는 그 컬럼이 없어 기록이 실패했다
+# (kpi_summary에서 실제로 일어났다). init_schema가 이제 빠진 컬럼을 채운다.
+
+# 1.9.3 시절 kpi_summary — 이후 추가된 stockout_hours_*·demand_mae가 없다.
+_OLD_KPI_DDL = """
+CREATE TABLE kpi_summary (
+    run_label            TEXT NOT NULL,
+    duration             TEXT NOT NULL,
+    computed_at          TEXT NOT NULL,
+    stations             INTEGER,
+    avg_improvement_rate REAL,
+    PRIMARY KEY (run_label, duration)
+)
+"""
+
+
+def _legacy_db(tmp_path, ddl=_OLD_KPI_DDL):
+    """구버전 스키마가 든 DB를 만든다(마이그레이션 전 상태)."""
+    connection = db.connect(tmp_path / "legacy.db")
+    connection.execute("DROP TABLE IF EXISTS kpi_summary")
+    connection.executescript(ddl)
+    connection.commit()
+    return connection
+
+
+def test_migration_adds_missing_columns(tmp_path):
+    """구버전 DB에 새 컬럼이 채워지고, 기존 데이터는 남는다."""
+    connection = _legacy_db(tmp_path)
+    connection.execute(
+        "INSERT INTO kpi_summary (run_label, duration, computed_at, stations,"
+        " avg_improvement_rate) VALUES ('R1', '_05_10', '2026-08-12', 80, 0.7)")
+    connection.commit()
+
+    added = db.migrate_schema(connection)
+
+    assert "kpi_summary.stockout_hours_before" in added
+    assert "kpi_summary.demand_mae" in added
+
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(kpi_summary)")}
+    assert set(db.KPI_FIELDS) <= columns, "KPI_FIELDS 전부가 컬럼으로 있어야 한다"
+
+    kept = connection.execute("SELECT stations, avg_improvement_rate FROM kpi_summary").fetchone()
+    assert kept == (80, 0.7), "마이그레이션이 기존 행을 지우면 안 된다"
+    connection.close()
+
+
+def test_save_kpi_works_after_migration(tmp_path):
+    """구버전 DB에서도 init_schema를 거치면 지표가 기록된다(회귀: no such column)."""
+    connection = _legacy_db(tmp_path)
+    db.init_schema(connection)
+
+    db.save_kpi(connection, "R1", "_05_10",
+                {"stations": 80, "stockout_hours_before": 12.5, "demand_mae": 1.2})
+
+    row = db.load_kpi(connection).iloc[0]
+    assert row["stockout_hours_before"] == 12.5
+    assert row["demand_mae"] == 1.2
+    connection.close()
+
+
+def test_migration_is_idempotent(conn):
+    """최신 스키마에서는 추가할 것이 없다(두 번 돌려도 마찬가지)."""
+    assert db.migrate_schema(conn) == []
+    assert db.migrate_schema(conn) == []
+
+
+def test_migration_skips_rental_history(tmp_path):
+    """rental_history는 빈 컬럼을 붙이지 않는다 — 재적재가 정답인 테이블이다."""
+    connection = db.connect(tmp_path / "legacy2.db")
+    connection.executescript("""
+        CREATE TABLE rental_history (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            period  TEXT NOT NULL,
+            rent_at TEXT NOT NULL
+        )
+    """)
+    connection.commit()
+
+    added = db.migrate_schema(connection)
+
+    assert not [item for item in added if item.startswith("rental_history.")], \
+        "빈 컬럼을 붙이면 재적재가 필요한 상태를 정상으로 착각하게 된다"
+    connection.close()
+
+
+def test_expected_columns_covers_every_table(conn):
+    """SCHEMA가 만드는 테이블이 전부 마이그레이션 대상에 잡히는지."""
+    created = {row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")}
+
+    assert created == set(db.expected_columns())
+    assert "rental_history" in created, "제외 테이블도 목록에는 있어야 한다"
+
+
+def test_not_null_column_without_default_is_reported(tmp_path, monkeypatch, capsys):
+    """자동 추가할 수 없는 컬럼은 조용히 넘어가지 않고 경고로 알린다.
+
+    SQLite는 기본값 없는 NOT NULL 컬럼을 ADD COLUMN으로 붙이지 못한다.
+    말없이 건너뛰면 마이그레이션 이전과 똑같이 'no such column'으로 실패한다.
+    """
+    connection = db.connect(tmp_path / "blocked.db")
+    connection.executescript("CREATE TABLE 시험 (a TEXT)")
+    connection.commit()
+
+    # PRAGMA table_info 형식: (cid, name, type, notnull, dflt_value, pk)
+    monkeypatch.setattr(db, "expected_columns", lambda: {
+        "시험": [(0, "a", "TEXT", 0, None, 0),
+                 (1, "b", "TEXT", 1, None, 0),      # NOT NULL, 기본값 없음 → 불가
+                 (2, "c", "INTEGER", 1, "0", 0)],   # NOT NULL + 기본값 → 가능
+    })
+
+    added = db.migrate_schema(connection)
+    출력 = capsys.readouterr().out
+
+    assert added == ["시험.c"]
+    assert "시험.b" in 출력 and "경고" in 출력
+    connection.close()

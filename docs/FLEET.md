@@ -265,5 +265,6 @@ step1이 건너뛰면 step2·step4도 입력이 없는 것을 보고 함께 건�
 ## 관련 문서
 
 - [KPI.md](KPI.md) — 시간 예산 준수율 등 운영 지표
+- [DB_SCHEMA.md](DB_SCHEMA.md) — `vehicle`·`vehicle_assignment` 스키마와 조인 예시
 - [DB_PLAN.md](DB_PLAN.md) — 저장소 구조
 - [steps/step2_ilp_vrp.md](steps/step2_ilp_vrp.md) — VRP 단계 상세

@@ -348,9 +348,85 @@ def connect(db_path: Optional[Path] = None) -> sqlite3.Connection:
     return conn
 
 
+# 컬럼 자동 추가에서 제외하는 테이블.
+# rental_history는 _ensure_rental_schema()가 '지우고 다시 만들기'로 다룬다.
+# 여기에 빈 컬럼을 붙이면 재적재가 필요한 상태를 정상으로 착각하게 된다.
+MIGRATION_EXCLUDED = ("rental_history",)
+
+_EXPECTED_COLUMNS: Optional[Dict[str, list]] = None
+
+
+def expected_columns() -> Dict[str, list]:
+    """SCHEMA가 정의하는 테이블별 컬럼 정보. `{테이블: [PRAGMA table_info 행, ...]}`
+
+    DDL을 직접 파싱하지 않고 임시 메모리 DB에 스키마를 만들어 SQLite에게 물어본다 —
+    SCHEMA 문자열이 바뀌어도 따로 손볼 곳이 없다. 결과는 한 번만 계산해 재사용한다.
+    """
+    global _EXPECTED_COLUMNS
+    if _EXPECTED_COLUMNS is None:
+        probe = sqlite3.connect(":memory:")
+        try:
+            probe.executescript(SCHEMA)
+            tables = [row[0] for row in probe.execute(
+                "SELECT name FROM sqlite_master"
+                " WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")]
+            _EXPECTED_COLUMNS = {
+                table: list(probe.execute(f"PRAGMA table_info({table})"))
+                for table in tables
+            }
+        finally:
+            probe.close()
+    return _EXPECTED_COLUMNS
+
+
+def migrate_schema(conn: sqlite3.Connection) -> list:
+    """이미 있는 테이블에 빠진 컬럼을 채운다. 추가한 `테이블.컬럼` 목록을 돌려준다.
+
+    `CREATE TABLE IF NOT EXISTS`는 기존 테이블을 고쳐 주지 않는다. 그래서 나중에
+    SCHEMA에 컬럼을 추가하면, 예전에 DB를 만든 사용자에게는 그 컬럼이 없어
+    `no such column`으로 기록이 실패한다(실제로 kpi_summary에서 일어났다).
+
+    **컬럼 추가만 자동으로 한다.** 이름 변경·삭제·타입 변경은 데이터를 잃을 수 있어
+    사람이 판단할 일이므로 손대지 않는다.
+    """
+    added, blocked = [], []
+
+    for table, columns in expected_columns().items():
+        if table in MIGRATION_EXCLUDED:
+            continue
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if not existing:
+            continue                      # 아직 없는 테이블은 CREATE가 만든다
+
+        for _, name, decl_type, notnull, default, _pk in columns:
+            if name in existing:
+                continue
+            # SQLite의 ADD COLUMN 제약: NOT NULL은 기본값이 있어야 붙일 수 있다.
+            if notnull and default is None:
+                blocked.append(f"{table}.{name}")
+                continue
+            clause = f"{name} {decl_type}"
+            if default is not None:
+                clause += f" DEFAULT {default}"
+            if notnull:
+                clause += " NOT NULL"
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {clause}")
+            added.append(f"{table}.{name}")
+
+    if added:
+        conn.commit()
+        print(f"[안내] DB 스키마에 컬럼을 추가했습니다: {', '.join(added)}")
+    if blocked:
+        # 조용히 넘어가면 예전과 똑같이 'no such column'으로 실패하므로 반드시 알린다.
+        print(f"[경고] 기본값이 없는 NOT NULL 컬럼은 자동 추가할 수 없습니다: "
+              f"{', '.join(blocked)}. 해당 테이블을 다시 만들거나 마이그레이션이 필요합니다.")
+    return added
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
-    """테이블과 인덱스를 만든다(이미 있으면 그대로 둔다)."""
+    """테이블과 인덱스를 만들고(이미 있으면 그대로), 빠진 컬럼을 채운다."""
     conn.executescript(SCHEMA)
+    migrate_schema(conn)
     conn.commit()
 
 

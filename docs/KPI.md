@@ -358,5 +358,6 @@ km당 개선은 오히려 가장 높습니다(2.08 vs 1.55). **효과·비용·�
 
 - [steps/step4_metrics.md](steps/step4_metrics.md) — 현재 지표 계산 코드
 - [FLEET.md](FLEET.md) — 차량 부하 편차·가동률의 근거가 되는 로테이션 설계
+- [DB_SCHEMA.md](DB_SCHEMA.md) — `kpi_summary` 컬럼 레퍼런스
 - [DB_PLAN.md](DB_PLAN.md) — 5단계(실행 이력 비교)가 이 문서의 4·5장과 이어집니다
 - [TODO.md](TODO.md) — 미구현 항목 추적

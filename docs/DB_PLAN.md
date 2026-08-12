@@ -37,21 +37,30 @@ SQLAlchemy 엔진 모두에서 동일하게 동작하므로, 데이터 접근 �
 
 ## 스키마 (1단계에서 구현됨 — `db.py`)
 
+> **ERD·컬럼 레퍼런스·조인 예시는 [DB_SCHEMA.md](DB_SCHEMA.md)에 있습니다.**
+> 아래는 이관 계획 관점의 개요입니다.
+
 ```text
 data/bike_system.db  (WAL 모드)
-├── runs             (실행 이력: run_label, period, duration, raw_file, created_at)
-├── station_stock    (TASHU API 재고 스냅샷)          ← step0 산출
-├── station_info     (대여소 마스터)                  ← step0 산출
-├── parking_lot      (거치대 수)                      ← step0 산출
-├── net_demand       (순수요, period 스코프)          ← step0 산출
-├── rebalance_plan   (rebal_qty)                     ← step0 산출
-├── pick_drop        (Pick/Drop 후보 + 클러스터)      ← step1 산출
-├── ilp_plan         (Pick→Drop 이동 계획)           ← step2 산출
-├── vrp_plan         (방문 순서 + 거리·시간, seq 보존) ← step2 산출
-├── metrics          (재배치 전후 불균형 개선)         ← step4 산출
-├── route_summary    (클러스터별 이동거리·소요시간)     ← step4 산출
-└── rental_history   (대여이력 원본, 대여일시 인덱스)   ← raw CSV (5단계에서 적재)
+├── runs               (실행 이력: run_label, period, duration, raw_file, created_at)
+├── station_stock      (TASHU API 재고 스냅샷)          ← step0 산출
+├── station_info       (대여소 마스터)                  ← step0 산출
+├── parking_lot        (거치대 수)                      ← step0 산출
+├── net_demand         (순수요, period 스코프)          ← step0 산출
+├── rebalance_plan     (rebal_qty)                     ← step0 산출
+├── pick_drop          (Pick/Drop 후보 + 클러스터)      ← step1 산출
+├── ilp_plan           (Pick→Drop 이동 계획)           ← step2 산출
+├── vrp_plan           (방문 순서 + 거리·시간, seq 보존) ← step2 산출
+├── metrics            (재배치 전후 불균형 개선)         ← step4 산출
+├── route_summary      (클러스터별 이동거리·소요시간)     ← step4 산출
+├── vehicle            (차량 마스터, 전역 스코프)         ← 1.8.0에서 추가
+├── vehicle_assignment (회차별 배정·작업량)              ← step2 vrp 산출, 1.8.0
+├── kpi_summary        (회차 1건 = 1행 지표)            ← step4 산출, 1.9.3
+└── rental_history     (대여이력 원본, 대여일시 인덱스)   ← raw CSV (4단계에서 적재)
 ```
+
+> 위 3개(`vehicle`·`vehicle_assignment`·`kpi_summary`)는 이관 계획 이후에 추가된
+> 테이블입니다. 이관 단계와 무관하게 [FLEET.md](FLEET.md)·[KPI.md](KPI.md)에서 생겼습니다.
 
 설계 시 실제 산출물 CSV의 컬럼을 뽑아 맞췄습니다. 주의할 점 3가지:
 

@@ -42,7 +42,19 @@
 5. **데이터 관리**: CSV → SQLite 이관 — **1~4단계 완료**
    (저장소 + 이중 기록 + 웹 API 전환 + 대여이력 적재).
    남은 단계는 [DB_PLAN.md](DB_PLAN.md) 참고
-   (5. 실행 이력 비교 화면 → CSV 기록·폴백 제거).
+   (5. 실행 이력 비교 화면 → CSV 기록·폴백 제거). 스키마 상세는 [DB_SCHEMA.md](DB_SCHEMA.md).
+   - **외래키 미선언** — 이중 기록 중이라 일부러 안 걸었다(DB 기록 실패가 연쇄 실패가
+     되면 안 됨). CSV를 정본에서 내리는 5단계에서 `runs` 부모 + `ON DELETE CASCADE`로
+     선언 검토. 지금 `PRAGMA foreign_keys=ON`은 선언된 FK가 없어 무동작이다.
+   - **`idx_metrics_run` 중복** — `metrics`의 PK `(run_label, duration, station_id)`가
+     만드는 자동 인덱스의 왼쪽 접두사와 같다(`EXPLAIN QUERY PLAN`으로 확인).
+     지워도 조회 계획이 같고 쓰기 비용만 줄지만, 이득이 미미해 보류.
+   - ~~**마이그레이션 장치 없음**~~ → 해소(1.13.1). `init_schema()`가 `migrate_schema()`로
+     빠진 컬럼을 `ALTER TABLE ADD COLUMN` 한다. 1.10.0 이전 DB에서 `kpi_summary`의
+     `stockout_hours_*`가 없어 지표가 조용히 안 쌓이던 문제가 사라졌다.
+     **남은 것**: 컬럼 이름 변경·삭제·타입 변경은 여전히 수동이다(데이터 손실 위험이라
+     의도적으로 자동화하지 않음). 기본값 없는 NOT NULL 추가도 SQLite 제약으로 불가 —
+     경고만 낸다. 그런 변경이 실제로 필요해지면 그때 테이블 재생성 절차를 만들 것.
 6. **EDA 시각화**: `month_graph`에 matplotlib 그래프 통합
    (`experiments/matplotlib_month_graph.py`의 한글 폰트 설정 참고).
 7. **step1 매직 넘버**: 상위 50개 컷, `|rebal_qty| > 2`, target_cluster_size=7 등을 설정으로 추출.

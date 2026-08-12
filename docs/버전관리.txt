@@ -472,3 +472,44 @@ PBR (Public_Bicycle_Relocation)
 			테스트 131개(신규 14개: 축소/확대/조회 무영향 3, 웹 폼 11) 전부 통과.
 		- 문서: docs/FLEET.md(설정 절), docs/WEBAPP.md(설계 결정), TODO.md,
 			TESTING.md, steps/step2_ilp_vrp.md, .env.example, SKILL.md 갱신.
+
+1.13.1 : (2026-08-12) DB 스키마 문서화(ERD)와 그 과정에서 찾은 마이그레이션 결함 수정.
+		- docs/DB_SCHEMA.md 신설. DB_PLAN.md가 '왜 SQLite인가·어떻게 이관했는가'라면
+			이쪽은 '지금 무엇이 어떻게 들어 있는가'다. ERD(mermaid) 2장 — 실행(run) 축과
+			대여소·클러스터·차량 축으로 나눴다. 15개 테이블을 한 장에 그리면 안 읽힌다.
+			스코프 4종(실행 / 실행+회차 / 기간 / 전역), 테이블별 컬럼 레퍼런스,
+			인덱스, 한글->ASCII 변환표, 조인 쿼리 예시, 스키마 변경 절차.
+
+		[버그] 기존 테이블에 추가된 컬럼이 예전 DB에 생기지 않던 문제.
+		- CREATE TABLE IF NOT EXISTS는 이미 있는 테이블을 고치지 않는다. kpi_summary의
+			stockout_hours_*·demand_mae가 1.10.0·1.11.0에서 추가됐으므로, 그 이전에 DB를
+			만든 사용자는 save_kpi()가 no such column으로 실패했다. step4가 예외를 잡아
+			경고만 남기므로 **조용히 지표가 안 쌓였다** (설계상 DB 실패는 파이프라인을
+			멈추지 않기 때문에 더 눈에 안 띄었다).
+		- migrate_schema() 신설. init_schema()가 함께 부른다. SCHEMA에 있는데 실제
+			테이블에 없는 컬럼을 ALTER TABLE ADD COLUMN으로 채운다.
+		- 기대 컬럼은 DDL을 파싱하지 않고 임시 메모리 DB에 SCHEMA를 만들어
+			PRAGMA table_info로 물어본다(expected_columns, 결과 캐시). SCHEMA 문자열을
+			고쳐도 따로 손볼 곳이 없다.
+		- 자동으로 하지 않는 것 셋:
+			1) 이름 변경·삭제·타입 변경 — 데이터를 잃을 수 있어 사람이 판단할 일이다.
+			2) 기본값 없는 NOT NULL — SQLite가 막는다. 조용히 건너뛰면 예전과 똑같이
+			   실패하므로 경고로 알린다.
+			3) rental_history — MIGRATION_EXCLUDED. _ensure_rental_schema()가 지우고
+			   다시 만드는 편이 맞는 테이블이다(원천에서 재적재 가능). 빈 컬럼을 붙이면
+			   재적재가 필요한 상태를 정상으로 착각하게 된다.
+		- 비용 측정: migrate_schema 1회 0.28ms (연결 자체가 2.5ms). session()마다
+			돌려도 문제없다.
+
+		[문서화가 찾은 나머지 둘] 코드는 고치지 않고 기록만 했다.
+		- 외래키가 한 개도 선언돼 있지 않다. connect()의 PRAGMA foreign_keys=ON은
+			선언된 FK가 없어 현재 무동작. 이중 기록 구조의 귀결이라 결함으로 보지 않는다 —
+			DB 기록 실패가 FK 위반으로 연쇄되면 '파이프라인을 멈추지 않는다'가 무너진다.
+			CSV를 정본에서 내리는 DB_PLAN 5단계에서 선언 검토.
+		- idx_metrics_run은 metrics PK (run_label, duration, station_id)가 만드는
+			자동 인덱스의 왼쪽 접두사와 중복. EXPLAIN QUERY PLAN으로 확인(지우면
+			sqlite_autoindex_metrics_1로 같은 계획). 이득이 미미해 보류.
+		- DB_PLAN.md의 테이블 트리가 12개로 낡아 있었다(vehicle·vehicle_assignment·
+			kpi_summary 누락). 15개로 갱신.
+		- 테스트 137개(신규 6개: 컬럼 추가·데이터 보존·save_kpi 회귀·멱등성·
+			rental_history 제외·NOT NULL 경고) 전부 통과.

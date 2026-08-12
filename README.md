@@ -65,7 +65,7 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 ├── tools/                                 # 합성 데이터 생성기 등 보조 도구
 ├── experiments/                           # 일회성 학습·검증 스크립트
 ├── project_config.py                      # 공통 설정(now/period/duration/raw_file)
-├── db.py                                  # SQLite 저장소 (CSV와 이중 기록, DB_PLAN.md)
+├── db.py                                  # SQLite 저장소 (CSV와 이중 기록, DB_SCHEMA.md)
 ├── run_pipeline.py                        # 전체 단계 일괄 실행기
 └── requirements.txt                       # 고정된 패키지 버전
 ```
@@ -204,6 +204,7 @@ GET /api/pipeline-runs                        # 실행 이력 목록
 ## 데이터 저장
 
 파이프라인은 CSV와 SQLite에 **동시에** 기록합니다(이중 기록). CSV가 아직 정본이며,
+스키마(ERD·테이블 레퍼런스)는 [docs/DB_SCHEMA.md](docs/DB_SCHEMA.md),
 DB 이관 계획은 [docs/DB_PLAN.md](docs/DB_PLAN.md)에 있습니다.
 
 ```python
@@ -253,10 +254,11 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | --- | --- |
 | [docs/RETROSPECTIVE.md](docs/RETROSPECTIVE.md) | **작업 회고** — 전체 조망, 측정이 뒤집은 가설, 설계 결정 |
 | [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
-| [docs/TESTING.md](docs/TESTING.md) | **테스트** — 131개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
+| [docs/TESTING.md](docs/TESTING.md) | **테스트** — 137개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/PROJECT_PIPELINE.md](docs/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/WEBAPP.md](docs/WEBAPP.md) | 웹 대시보드 실행·구조·API |
-| [docs/DB_PLAN.md](docs/DB_PLAN.md) | SQLite 도입 결정·스키마·이관 계획·성능 측정 |
+| [docs/DB_SCHEMA.md](docs/DB_SCHEMA.md) | **DB 스키마** — ERD, 테이블 15개 컬럼 레퍼런스, 조인 쿼리 |
+| [docs/DB_PLAN.md](docs/DB_PLAN.md) | SQLite 도입 결정·이관 계획·성능 측정 |
 | [docs/KPI.md](docs/KPI.md) | 성과 지표 체계 설계 (현재 지표의 한계와 개선안) |
 | [docs/FLEET.md](docs/FLEET.md) | 차량 운용 — 하루 3회차 로테이션과 형평성 기록 |
 | [docs/TODO.md](docs/TODO.md) | 해야 할 것·고쳐야 할 것 (우선순위별) |

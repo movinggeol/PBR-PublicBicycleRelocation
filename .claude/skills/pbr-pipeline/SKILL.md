@@ -14,12 +14,13 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | --- | --- |
 | `docs/RETROSPECTIVE.md` | 전체 조망·측정이 뒤집은 가설·설계 결정 (처음 오면 여기부터) |
 | `docs/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
-| `docs/TESTING.md` | 테스트 131개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/TESTING.md` | 테스트 137개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/PROJECT_PIPELINE.md` | 파이프라인 전체 구조 |
 | `docs/steps/step*.md` | 단계별 입출력·문제점·작업 목록 |
 | `docs/WEBAPP.md` | 웹 대시보드(webapp/) 실행·구조·API |
-| `docs/DB_PLAN.md` | SQLite 도입 결정·스키마·이관 단계·성능 측정 (CSV→DB 작업 시 필독) |
+| `docs/DB_SCHEMA.md` | ERD·테이블 15개 컬럼·스코프 규칙 (**DB를 건드리기 전 필독**) |
+| `docs/DB_PLAN.md` | SQLite 도입 결정·이관 단계·성능 측정 (CSV→DB 작업 시 필독) |
 | `docs/KPI.md` | 성과 지표 체계 설계 (지표를 건드리기 전 필독) |
 | `docs/FLEET.md` | 차량 로테이션·형평성 (차량/클러스터 수를 건드리기 전 필독) |
 | `docs/버전관리.txt` | 버전 이력, 수정 이유 기록 |
@@ -139,6 +140,10 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
   멈추지 않는다. 이 동작을 예외로 바꾸지 마라 — 전환기 설계다 (DB_PLAN 2단계).
 - 새 테이블을 추가할 때는 `db.TABLES`에 스코프·컬럼 변환을 등록하고 `SCHEMA`에
   DDL을 넣어라. 한글 컬럼은 ASCII로 변환한다(변환표가 `db.TABLES`에 모여 있다).
+- **컬럼 추가는 `SCHEMA`만 고치면 된다** — `init_schema()`의 `migrate_schema()`가
+  기존 DB에 `ALTER TABLE ADD COLUMN` 한다. 이름 변경·삭제·타입 변경은 자동이 아니다
+  (데이터 손실 위험). `rental_history`는 `MIGRATION_EXCLUDED` — 재적재가 정답이라
+  빈 컬럼을 붙이면 안 된다.
 - 연결은 `db.session()`(스키마 보장 + 자동 close)을 써라. `sqlite3.connect`를 직접
   부르지 마라 — 다른 DB로 옮길 때 `db.connect()` 한 곳만 바꾸면 되도록 격리해 뒀다.
 - **`PBR_DB_PATH`로 DB 경로를 재정의**할 수 있다. 테스트는 이 변수로 임시 DB를 쓴다 —
@@ -167,7 +172,7 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
 ## 테스트
 
 ```powershell
-python -m pytest                 # 131개, 약 28초 (tests/ 만 수집)
+python -m pytest                 # 137개, 약 28초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 
