@@ -13,6 +13,7 @@ from project_config import (
 
 file_path = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")
 vrp_plan_file = str(PROJECT_ROOT / "data/pp_data/VRP/VRP_plan{duration} ({now}).csv")
+net_demand_file = str(PROJECT_ROOT / "data/pp_data/순수요/st_net_daily ({period}).csv")
 
 result_file_path = str(PROJECT_ROOT / "data/pp_data/성능 지표/verification{duration} ({now}).csv")
 route_summary_file = str(PROJECT_ROOT / "data/pp_data/성능 지표/route_summary{duration} ({now}).csv")
@@ -119,6 +120,118 @@ def route_summary(duration: str):
     return summary
 
 
+def duration_hours(duration: str) -> list:
+    '''시간대 문자열(_05_10)을 시간 목록으로. 자정을 넘기면 이어서 돈다.'''
+    start, end = int(duration.split('_')[1]), int(duration.split('_')[2])
+    return list(range(start, end)) if start < end else \
+        list(range(start, 24)) + list(range(0, end))
+
+
+def load_net_demand() -> pd.DataFrame:
+    '''시간대별 순수요를 읽는다(DB 우선, 없으면 CSV).'''
+    try:
+        with db.session() as conn:
+            frame = db.load_frame(conn, 'net_demand', period=config.period)
+        if not frame.empty:
+            return frame.rename(columns={'date': '날짜'})
+    except Exception as err:
+        print(f"[경고] 순수요 DB 조회 실패: {type(err).__name__}: {err}")
+
+    path = Path(net_demand_file.format(period=config.period))
+    if path.is_file():
+        return pd.read_csv(path, encoding='utf-8')
+    return pd.DataFrame()
+
+
+def _stockout_hours(net: pd.DataFrame, initial: pd.Series,
+                    capacity: pd.Series, hours: list) -> pd.Series:
+    '''재고 궤적을 복원해 대여소별 결품 시간(행 단위 합)을 센다.
+
+        stock(t+1) = clip(stock(t) - net(t), 0, 거치대 수)
+
+    순수요(net)는 대여 - 반납이므로 양수면 재고가 준다.
+    0에서 잘라내는 것은 물리적 현실이다 — 없는 자전거는 빌릴 수 없고,
+    그 못 빌린 수요는 사라진다(그래서 이 값은 결품의 하한이다).
+    '''
+    stock = initial.astype(float).copy()
+    out = pd.Series(0, index=net.index, dtype=int)
+    for hour in hours:
+        column = f'net_{hour:02d}'
+        if column not in net.columns:
+            continue
+        stock = (stock - net[column]).clip(lower=0).clip(upper=capacity)
+        out += (stock <= 0).astype(int)
+    return out
+
+
+def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
+    '''재배치 전후의 결품 시간을 비교한다. (docs/KPI.md 3-B, 4단계)
+
+    지금까지의 지표는 전부 "계획이 목표 재고를 얼마나 채웠나"(계획 달성률)였다.
+    이 지표는 **이용자가 실제로 자전거를 탈 수 있었는지**에 한 걸음 다가간다.
+    다만 실측이 아니라 순수요로 복원한 시뮬레이션이며, 재배치를 실제 집행한 뒤
+    관측한 값이 아니라는 점은 분명히 해 둔다.
+
+    비교 대상은 작업 대상 대여소뿐이다(나머지는 전후가 같다).
+    Drop은 재고가 늘어 결품이 줄지만 Pick은 재고가 줄어 늘 수 있으므로,
+    합산 결과가 이 재배치가 이용자에게 이로웠는지를 말해 준다.
+    '''
+    net = load_net_demand()
+    if net.empty:
+        print("순수요 데이터가 없어 결품 시뮬레이션을 건너뜁니다.")
+        return {}
+
+    hours = duration_hours(duration)
+    stations = imbalance_df[['station_id', 'stock', 'rebal_qty']].copy()
+
+    # 거치대 수는 후보 파일에 있다(imbalance_df에는 없을 수 있음)
+    candidates = pd.read_csv(file_path.format(duration=duration, now=now), encoding='utf-8')
+    stations = stations.merge(candidates[['station_id', 'parking_lot']],
+                              on='station_id', how='left')
+    stations['parking_lot'] = stations['parking_lot'].fillna(stations['stock'] * 2 + 1)
+
+    merged = net.merge(stations, on='station_id', how='inner')
+    if merged.empty:
+        print("순수요와 작업 대상 대여소가 겹치지 않아 결품 시뮬레이션을 건너뜁니다.")
+        return {}
+
+    before = _stockout_hours(merged, merged['stock'], merged['parking_lot'], hours)
+    after = _stockout_hours(merged, merged['stock'] + merged['rebal_qty'],
+                            merged['parking_lot'], hours)
+
+    days = merged['날짜'].nunique() if '날짜' in merged.columns else 1
+    count = merged['station_id'].nunique()
+    denominator = max(count * days, 1)
+
+    per_station = pd.DataFrame({
+        'station_id': merged['station_id'],
+        'rebal_qty': merged['rebal_qty'],
+        'before': before, 'after': after,
+    }).groupby(['station_id', 'rebal_qty'], as_index=False).sum()
+    per_station['delta'] = per_station['after'] - per_station['before']
+
+    result = {
+        'stockout_hours_before': float(before.sum() / denominator),
+        'stockout_hours_after': float(after.sum() / denominator),
+    }
+
+    improved = int((per_station['delta'] < 0).sum())
+    worsened = int((per_station['delta'] > 0).sum())
+    pick_delta = int(per_station.loc[per_station['rebal_qty'] < 0, 'delta'].sum())
+    drop_delta = int(per_station.loc[per_station['rebal_qty'] > 0, 'delta'].sum())
+
+    change = result['stockout_hours_after'] - result['stockout_hours_before']
+    print(f"\n결품 시뮬레이션 ({duration}, {count}곳 × {days}일, {len(hours)}시간 창):")
+    print(f"  대여소·일 평균 결품 시간: {result['stockout_hours_before']:.2f}h"
+          f" → {result['stockout_hours_after']:.2f}h ({change:+.2f}h)")
+    print(f"  개선 {improved}곳 · 악화 {worsened}곳"
+          f"  (Pick {pick_delta:+d}h / Drop {drop_delta:+d}h)")
+    if pick_delta > 0:
+        print(f"  ⚠ Pick 대여소에서 결품이 {pick_delta}시간 늘었습니다 —"
+              f" 회수량이 과한지 target_qty를 확인하세요.")
+    return result
+
+
 def save_kpi_summary(duration: str, imbalance_df: pd.DataFrame,
                      summary: pd.DataFrame) -> None:
     '''
@@ -153,6 +266,9 @@ def save_kpi_summary(duration: str, imbalance_df: pd.DataFrame,
                                      .sum().abs().max()),
     }
 
+    # 결품 시뮬레이션 (KPI.md 4단계). 순수요가 없으면 빈 dict라 컬럼은 NULL로 남는다.
+    metrics.update(stockout_simulation(duration, imbalance_df))
+
     try:
         with db.session() as conn:
             assigned = db.assignment_history(conn, run_label=now)
@@ -170,6 +286,9 @@ def save_kpi_summary(duration: str, imbalance_df: pd.DataFrame,
     print(f"  이동 {distance:.0f}km · 최장 {minutes.max():.0f}분"
           f" · 예산준수 {metrics['time_budget_met'] * 100:.0f}%"
           f" · 차량 {metrics.get('vehicles_used', 0)}대")
+    if 'stockout_hours_before' in metrics:
+        print(f"  결품 {metrics['stockout_hours_before']:.2f}h"
+              f" → {metrics['stockout_hours_after']:.2f}h (대여소·일 평균)")
 
 
 def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, duration: str):

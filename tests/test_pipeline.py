@@ -245,6 +245,10 @@ def test_kpi_summary_written(pipeline_run, smoke_db):
     assert 0 <= row["time_budget_met"] <= 1
     assert row["total_distance_km"] > 0
 
+    # 결품 시뮬레이션 (KPI.md 4단계) — 재배치 후가 전보다 나빠지면 안 된다
+    assert pd.notna(row["stockout_hours_before"]), "결품 시뮬레이션이 실행되지 않았다"
+    assert row["stockout_hours_after"] <= row["stockout_hours_before"] + 1e-9
+
     # 다른 산출물과 숫자가 맞아야 한다
     plan = pd.read_csv(_out("VRP/VRP_plan{duration} ({label}).csv"), encoding="utf-8")
     assert row["bikes_moved"] == plan[plan["action"] == "pick"]["qty"].sum()

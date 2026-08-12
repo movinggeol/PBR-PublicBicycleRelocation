@@ -146,6 +146,13 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
         w = frame[weight].fillna(0)
         return float((frame[column] * w).sum() / w.sum()) if w.sum() else None
 
+    stockout = None
+    if latest is not None and not latest["stockout_hours_before"].isna().all():
+        before = headline(latest, "stockout_hours_before", "stations")
+        after = headline(latest, "stockout_hours_after", "stations")
+        if before is not None and after is not None:
+            stockout = {"before": before, "after": after, "cut": before - after}
+
     cards = []
     if latest is not None:
         for label, column, weight, fmt in [
@@ -166,6 +173,7 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
     return templates.TemplateResponse(request, "kpi.html", {
         "rows": store.records(rows),
         "cards": cards,
+        "stockout": stockout,
         "latest_label": latest["run_label"].iloc[0] if latest is not None else None,
         "previous_label": previous["run_label"].iloc[0] if previous is not None else None,
         "selected_run": run_label,

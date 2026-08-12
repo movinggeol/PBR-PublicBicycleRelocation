@@ -10,7 +10,22 @@
   - `data/pp_data/성능 지표/route_summary{duration} ({now}).csv` (클러스터별 이동거리·운행시간)
   - `data/pp_data/성능 지표/visualization/imbalance_map{duration} ({now}).html` (개선 지도)
   - SQLite `metrics`·`route_summary` 테이블 (이중 기록, 한글 컬럼은 ASCII로 변환)
+  - SQLite `kpi_summary` 테이블 (실행 1건 = 1행, [KPI.md](../KPI.md))
   - 콘솔에 전체·Pick·Drop 평균 개선률과 경로 요약 출력
+
+### 결품 시뮬레이션 (`stockout_simulation`)
+
+순수요로 시간대별 재고 궤적을 복원해 재배치 전후의 **결품 시간**을 비교합니다.
+
+```text
+stock(t+1) = clip(stock(t) − 순수요(t), 0, 거치대 수)
+결품 시간 = stock(t) ≤ 0 인 시간대 수
+```
+
+개선률이 "계획 달성률"인 것과 달리, 이 지표는 **이용자가 자전거를 못 타는 시간**에
+한 걸음 다가갑니다. 다만 실제 집행 후 관측이 아니라 시뮬레이션이며,
+초기 재고와 순수요의 시점이 다르고, 재고를 0에서 자르므로 **하한**입니다
+(자세한 한계는 [KPI.md](../KPI.md) 3-B).
 
 ### 지표 정의
 

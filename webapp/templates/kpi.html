@@ -33,6 +33,23 @@
   {% endfor %}
 </div>
 
+{% if stockout %}
+<div class="card" style="margin-bottom:1rem">
+  <h2 style="margin-top:0; font-size:0.95rem">결품 시간 (대여소·일 평균)</h2>
+  <p style="font-size:1.7rem; margin:0.2rem 0">
+    {{ stockout.before | round(2) }}h
+    <span class="muted" style="font-size:1.1rem">→</span>
+    {{ stockout.after | round(2) }}h
+    <span style="font-size:0.9rem; color:#16a34a">▼ {{ stockout.cut | round(2) }}h</span>
+  </p>
+  <p class="muted">
+    재고가 0이 되는 시간을 순수요로 복원해 재배치 전후를 비교합니다.
+    <b>지금까지의 지표 중 이용자 편익에 가장 가까운 값</b>이지만,
+    실제 집행 후 관측이 아니라 <b>시뮬레이션</b>입니다.
+  </p>
+</div>
+{% endif %}
+
 <div class="card" style="margin-bottom:1rem">
   <p class="muted" style="margin:0">
     ⓘ <b>평균 개선률은 계획 달성률</b>입니다(계획이 목표 재고를 얼마나 채웠는가).
@@ -57,7 +74,7 @@
     <tr>
       <th>실행</th><th>회차</th><th>대여소</th><th>클러스터</th><th>차량</th><th>처리</th>
       <th>개선률</th><th>목표도달</th><th>이동거리</th><th>최장</th>
-      <th>예산준수</th><th>km당 개선</th>
+      <th>예산준수</th><th>km당 개선</th><th>결품(전→후)</th>
     </tr>
     {% for r in rows %}
     <tr>
@@ -75,6 +92,11 @@
       </td>
       <td>{{ fmt(r.time_budget_met, "pct") }}</td>
       <td>{{ fmt(r.improvement_per_km, "num") }}</td>
+      <td class="muted">
+        {% if r.stockout_hours_before is not none %}
+          {{ r.stockout_hours_before | round(2) }} → {{ r.stockout_hours_after | round(2) }}h
+        {% else %}—{% endif %}
+      </td>
     </tr>
     {% endfor %}
   </table>
