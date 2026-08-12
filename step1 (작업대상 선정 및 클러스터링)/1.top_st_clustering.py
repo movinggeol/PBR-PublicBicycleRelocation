@@ -13,7 +13,8 @@ from adjust_module import compute_medoids, compute_objective, select_cluster_can
 
 import db
 from project_config import (
-    PROJECT_ROOT, VEHICLES_PER_ROUND, duration_list, ensure_output_dirs, get_runtime_config,
+    CLUSTER_ALPHA, CLUSTER_BETA, CLUSTER_GAMMA, PROJECT_ROOT, VEHICLES_PER_ROUND,
+    duration_list, ensure_output_dirs, get_runtime_config,
 )
 
 # read_csv
@@ -172,9 +173,11 @@ def adjust_clustering(pick_drop):
     MIN_SIZE = int(np.floor(K_SIZE - 1))
     MAX_SIZE = int(np.ceil(K_SIZE + 1))
 
-    alpha = 1           # 군집 내 불균형도 (balance_term)
-    beta = 100          # 군집 크기 (size_term)
-    gamma = 10          # 군집 내 노드별 거리 (distance_term)
+    # 목적함수 가중치 (project_config, 환경변수 PBR_CLUSTER_ALPHA/BETA/GAMMA로 조정)
+    alpha = CLUSTER_ALPHA   # 군집 내 불균형도 (balance_term)
+    beta = CLUSTER_BETA     # 군집 크기 (size_term)
+    gamma = CLUSTER_GAMMA   # 군집 내 노드별 거리 (distance_term)
+    print(f"목적함수 가중치: alpha={alpha}, beta={beta}, gamma={gamma}")
 
 
     # < 메인 반복문 (최대 MAX_ITER 만큼의 대여소 이동 발생) >

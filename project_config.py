@@ -41,6 +41,23 @@ VEHICLE_ID_FORMAT = "V{:02d}"                                   # V01 ~ V21
 # (docs/FLEET.md, docs/KPI.md)
 TIME_BUDGET_MINUTES = float(os.getenv("PBR_TIME_BUDGET_MINUTES", "120"))
 
+# ---- step1 군집 조정 목적함수 가중치 ----
+# score = ALPHA·balance² + BETA·size분산 + GAMMA·거리합
+#   balance : 군집별 rebal_qty 합 (대 단위)
+#   size    : 군집 크기 편차
+#   거리합  : 각 대여소 ~ 메도이드 맨해튼 거리 (위경도 '도' 단위, 1도 ≈ 111km)
+# 거리 항의 값이 작아(1~2) balance(수백~수만)에 묻히기 쉬우므로 GAMMA를 크게 잡는다.
+#
+# GAMMA=1000은 실데이터 실험으로 정한 값이다(25년 11월, 3회차). 기존 10에서는
+# 거리 항이 balance에 묻혀 군집이 흩어졌고, 그 결과 이동거리가 길어져
+# 시간 예산을 넘는 회차가 생겼다. 1000으로 올리자 3회차 모두에서
+# 최장 소요 121.0→110.6분, 예산 초과 1건→0건, 총 이동거리 866→814km(-6%)로
+# 개선됐다. 대가는 balance 최대 5→6, 처리 대수 684→681로 미미하다.
+# 근거: docs/steps/step1_clustering.md의 '거리 가중치' 절
+CLUSTER_ALPHA = float(os.getenv("PBR_CLUSTER_ALPHA", "1"))
+CLUSTER_BETA = float(os.getenv("PBR_CLUSTER_BETA", "100"))
+CLUSTER_GAMMA = float(os.getenv("PBR_CLUSTER_GAMMA", "1000"))
+
 
 def vehicle_ids(size: int = None) -> list:
     """차량 식별자 목록(V01, V02, ...)."""
