@@ -12,6 +12,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 
 | 문서 | 내용 |
 | --- | --- |
+| `docs/RETROSPECTIVE.md` | 전체 조망·측정이 뒤집은 가설·설계 결정 (처음 오면 여기부터) |
 | `docs/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/PROJECT_PIPELINE.md` | 파이프라인 전체 구조 |
 | `docs/steps/step*.md` | 단계별 입출력·문제점·작업 목록 |
