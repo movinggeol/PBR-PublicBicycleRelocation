@@ -27,7 +27,8 @@ from fastapi.templating import Jinja2Templates
 
 from project_config import (
     DEFAULT_DURATION, DEFAULT_NOW, DEFAULT_PERIOD, DEFAULT_RAW_FILE,
-    FLEET_SIZE, TIME_BUDGET_MINUTES, VEHICLES_PER_ROUND,
+    FLEET_SIZE, MAX_FLEET_SIZE, TIME_BUDGET_MINUTES, VEHICLES_PER_ROUND,
+    normalize_fleet_size, normalize_per_round,
 )
 from webapp import catalog, jobs, store
 
@@ -44,7 +45,11 @@ def _index_context(error: Optional[str] = None) -> dict:
             "period": DEFAULT_PERIOD,
             "duration": DEFAULT_DURATION,
             "raw_file": DEFAULT_RAW_FILE,
+            # 환경변수(PBR_FLEET_SIZE 등)를 걸어 뒀으면 그 값이, 아니면 기본값이 뜬다.
+            "fleet_size": FLEET_SIZE,
+            "vehicles_per_round": VEHICLES_PER_ROUND,
         },
+        "max_fleet_size": MAX_FLEET_SIZE,
         "running": jobs.running_job(),
         "jobs": jobs.list_jobs()[:15],
         "latest": catalog.latest_outputs(),
@@ -65,6 +70,8 @@ def create_run(
     period: str = Form(""),
     duration: str = Form(""),
     raw_file: str = Form(""),
+    fleet_size: str = Form(""),
+    vehicles_per_round: str = Form(""),
     skip_api: Optional[str] = Form(None),
     skip_eda: Optional[str] = Form(None),
 ):
@@ -74,6 +81,28 @@ def create_run(
         value = value.strip()
         if value:
             args.extend([flag, value])
+
+    # 차량 대수는 숫자여야 하므로 파이프라인을 띄우기 전에 폼 단계에서 거른다.
+    def invalid(message: str):
+        return templates.TemplateResponse(
+            request, "index.html", _index_context(error=message), status_code=400)
+
+    fleet, per_round = FLEET_SIZE, VEHICLES_PER_ROUND
+    try:
+        if fleet_size.strip():
+            fleet = normalize_fleet_size(fleet_size)
+            args.extend(["--fleet-size", str(fleet)])
+        if vehicles_per_round.strip():
+            per_round = normalize_per_round(vehicles_per_round)
+            args.extend(["--vehicles-per-round", str(per_round)])
+    except ValueError as err:
+        return invalid(str(err))
+
+    # 보유 대수보다 많이 투입할 수는 없다. 상수 경로는 조용히 잘리지만, 사용자가
+    # 두 값을 직접 적은 경우에는 잘라 버리는 대신 되돌려서 알려 준다.
+    if per_round > fleet:
+        return invalid(f"회차당 투입 대수({per_round}대)가 보유 차량 대수({fleet}대)보다 많습니다.")
+
     if skip_api:
         args.append("--skip-api")
     if skip_eda:
@@ -222,9 +251,13 @@ def vehicles_page(request: Request, run_label: Optional[str] = None):
             "over": len(assignments) - within,
         }
 
+    # 보유 대수는 실행마다 바뀔 수 있으므로(웹 실행 폼의 '차량 대수') 설정 상수가
+    # 아니라 DB의 운용 가능 차량 수를 보여준다.
+    fleet_size = len(workload) if not workload.empty else FLEET_SIZE
+
     return templates.TemplateResponse(request, "vehicles.html", {
-        "fleet_size": FLEET_SIZE,
-        "per_round": VEHICLES_PER_ROUND,
+        "fleet_size": fleet_size,
+        "per_round": min(VEHICLES_PER_ROUND, fleet_size),
         "time_budget": TIME_BUDGET_MINUTES,
         "workload": store.records(workload),
         "assignments": store.records(assignments.head(60)),
@@ -239,9 +272,11 @@ def vehicles_page(request: Request, run_label: Optional[str] = None):
 def api_vehicles():
     """차량별 누적 작업량."""
     workload = store.vehicle_workload()
+    fleet_size = len(workload) if not workload.empty else FLEET_SIZE
     return JSONResponse({
-        "fleet_size": FLEET_SIZE,
-        "vehicles_per_round": VEHICLES_PER_ROUND,
+        "fleet_size": fleet_size,          # DB의 운용 가능 대수(실행마다 바뀔 수 있음)
+        "configured_fleet_size": FLEET_SIZE,   # 웹 프로세스의 설정값(폼 기본값)
+        "vehicles_per_round": min(VEHICLES_PER_ROUND, fleet_size),
         "count": len(workload),
         "rows": store.records(workload),
     })

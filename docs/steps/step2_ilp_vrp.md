@@ -44,8 +44,8 @@
 | --- | --- | --- |
 | `VEHICLE_CAPACITY` | 10대 | project_config 공통 상수 (대전교통공사 확인값) |
 | `DEPOT_*` | ST0001 타슈 관제센터 | project_config 공통 상수 (step3와 공유) |
-| `FLEET_SIZE` | 21대 | project_config. 보유 차량 총 대수 |
-| `VEHICLES_PER_ROUND` | 10대 | project_config. 회차당 투입 상한 = step1의 클러스터 수 상한 |
+| `FLEET_SIZE` | 21대 | 기본값. 웹 실행 폼·`--fleet-size`(`PBR_FLEET_SIZE`)로 실행마다 조정 |
+| `VEHICLES_PER_ROUND` | 10대 | 회차당 투입 상한 = step1의 클러스터 수 상한. 보유 대수로 잘린다 |
 | `VEHICLE_SPEED_KMPH` | 30 | 시간 계산에 사용 (ILP 25km/h와 다름 — 결정 대기) |
 | `PICK/DROP_TIME_SEC` | 30초 | 자전거 1대당 작업시간으로 사용 |
 

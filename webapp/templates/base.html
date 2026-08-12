@@ -62,10 +62,12 @@
     td.over-budget { color: var(--bad); font-weight: 600; }
     .muted { color: var(--sub); font-size: 0.85rem; }
     form.run-form label { display: block; font-size: 0.85rem; color: var(--sub); margin-top: 0.7rem; }
-    form.run-form input[type=text] {
+    form.run-form input[type=text], form.run-form input[type=number] {
       width: 100%; padding: 0.45rem 0.6rem; border: 1px solid var(--line);
       border-radius: 6px; font-size: 0.95rem;
     }
+    form.run-form input[type=number] { width: 7rem; }
+    form.run-form label .muted { display: block; margin-top: 0.25rem; }
     form.run-form .checks { margin-top: 0.8rem; }
     form.run-form .checks label { display: inline-block; margin-right: 1.2rem; color: var(--ink); }
     pre.log {

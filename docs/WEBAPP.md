@@ -109,6 +109,13 @@ webapp/
   `.html`/`.csv`만 허용합니다 (경로 탈출 검증 포함).
 - **EDA 기본 생략**: 실행 폼에서 "EDA 생략"이 기본 체크되어 있습니다
   (1년치 병합 파일이 없는 환경에서도 매끄럽게 돌도록).
+- **차량 대수는 폼에서 조정**(보유 21대 / 회차당 10대, 각 1~99):
+  `--fleet-size`·`--vehicles-per-round`로 넘기면 `run_pipeline.py`가 하위 단계에
+  `PBR_FLEET_SIZE`·`PBR_VEHICLES_PER_ROUND` 환경변수로 전달합니다. 다른 설정과 달리
+  명령행 인자로 내려보내지 않는 이유는, `project_config`가 이 값을 **모듈 import
+  시점의 상수**로 읽기 때문입니다. 범위를 벗어나거나 숫자가 아니거나 회차당 대수가
+  보유 대수보다 많으면 파이프라인을 띄우기 전에 400으로 되돌립니다
+  ([FLEET.md](FLEET.md#설정)).
 - **TemplateResponse 시그니처**: Starlette 1.x는 `TemplateResponse(request, name, context)`
   형식만 지원합니다(구 `TemplateResponse(name, {"request": ...})`는 제거됨).
   새 페이지 라우트를 추가할 때 이 형식을 지켜야 500 오류가 나지 않습니다.

@@ -29,6 +29,17 @@
       <label>원천 대여 이력 CSV (프로젝트 루트 기준)
         <input type="text" name="raw_file" value="{{ defaults.raw_file }}">
       </label>
+      <label>보유 차량 대수 (1~{{ max_fleet_size }})
+        <input type="number" name="fleet_size" min="1" max="{{ max_fleet_size }}"
+               step="1" value="{{ defaults.fleet_size }}">
+        <span class="muted">줄이면 남는 차량은 배정에서 빠지고, 다시 늘리면 돌아옵니다.</span>
+      </label>
+      <label>회차당 투입 대수 (상한)
+        <input type="number" name="vehicles_per_round" min="1" max="{{ max_fleet_size }}"
+               step="1" value="{{ defaults.vehicles_per_round }}">
+        <span class="muted">한 회차에 나가는 차량 수 = step1의 군집 수 상한입니다.
+          보유 대수보다 클 수 없습니다.</span>
+      </label>
       <div class="checks">
         <label><input type="checkbox" name="skip_api" value="1"> API 수집 생략</label>
         <label><input type="checkbox" name="skip_eda" value="1" checked> EDA 생략</label>

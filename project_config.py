@@ -31,8 +31,46 @@ VEHICLE_CAPACITY = 10        # 차량 최대 적재 대수 (대전교통공사 �
 # ---- 차량 운용 (docs/FLEET.md) ----
 # 보유 차량은 21대지만 한 회차에 전부 투입하지 않는다. 하루 약 3회차를 돌리며
 # 회차마다 일부만 나가고 나머지는 다음 회차를 맡는 로테이션 방식이다.
-FLEET_SIZE = int(os.getenv("PBR_FLEET_SIZE", "21"))            # 보유 차량 총 대수
-VEHICLES_PER_ROUND = int(os.getenv("PBR_VEHICLES_PER_ROUND", "10"))  # 한 회차 투입 대수(상한)
+# 두 대수 모두 웹 실행 폼에서 바꿀 수 있다
+# (--fleet-size → PBR_FLEET_SIZE, --vehicles-per-round → PBR_VEHICLES_PER_ROUND).
+MAX_FLEET_SIZE = 99                # VEHICLE_ID_FORMAT이 두 자리 고정이라 V99가 상한
+DEFAULT_FLEET_SIZE = 21            # 보유 차량 총 대수 기본값 (웹 폼 기본값도 이 값)
+DEFAULT_VEHICLES_PER_ROUND = 10    # 한 회차 투입 대수(상한) 기본값
+
+
+def normalize_vehicle_count(value, label: str = "차량 대수") -> int:
+    """차량 대수를 1~MAX_FLEET_SIZE 범위의 정수로 정규화한다.
+
+    범위를 벗어나거나 숫자가 아니면 ValueError. 웹 폼·CLI·환경변수가
+    같은 규칙으로 검증하고 같은 문구를 보여주도록 한 곳에 모아 둔다.
+    """
+    message = f"{label}는 1~{MAX_FLEET_SIZE} 사이의 정수여야 합니다 (입력: {value})."
+    try:
+        count = int(str(value).strip())
+    except (TypeError, ValueError):
+        raise ValueError(message) from None
+    if not 1 <= count <= MAX_FLEET_SIZE:
+        raise ValueError(message)
+    return count
+
+
+def normalize_fleet_size(value) -> int:
+    """보유 차량 대수."""
+    return normalize_vehicle_count(value, "차량 대수")
+
+
+def normalize_per_round(value) -> int:
+    """한 회차 투입 대수(상한). 보유 대수와의 비교는 호출부에서 한다."""
+    return normalize_vehicle_count(value, "회차당 투입 대수")
+
+
+FLEET_SIZE = normalize_fleet_size(os.getenv("PBR_FLEET_SIZE", DEFAULT_FLEET_SIZE))
+# 보유 대수보다 많이 투입할 수는 없다. 대수를 10대 미만으로 줄이면 회차 투입
+# 상한도 함께 내려간다(안 그러면 step1이 만든 클러스터에 배정할 차가 모자라 step2가 죽는다).
+VEHICLES_PER_ROUND = min(
+    normalize_per_round(os.getenv("PBR_VEHICLES_PER_ROUND", DEFAULT_VEHICLES_PER_ROUND)),
+    FLEET_SIZE,
+)
 VEHICLE_ID_FORMAT = "V{:02d}"                                   # V01 ~ V21
 
 # 한 회차 작업이 끝나야 하는 시한(분).

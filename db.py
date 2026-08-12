@@ -564,12 +564,44 @@ def load_kpi(conn: sqlite3.Connection, run_label: Optional[str] = None,
 
 # ---------------- 차량 운용 (로테이션과 형평성) ----------------
 
+'''차량 대수를 줄여서 배정에서 뺀 차량에 남기는 표시.
+정비(active=0, 사용자가 적은 note)와 구분해야 대수를 되돌릴 때 정비 차량까지
+살아나지 않는다.'''
+FLEET_SHRINK_NOTE = "보유 대수 축소로 제외"
+
+
 def ensure_fleet(conn: sqlite3.Connection, size: int = None) -> None:
-    """차량 마스터를 만든다(이미 있으면 그대로 둔다). V01 ~ V{size}."""
+    """차량 마스터에 없는 차량을 채운다(있으면 그대로 둔다). V01 ~ V{size}.
+
+    **읽기 경로용이다.** 대수를 실제로 맞추는 것은 sync_fleet이다 — 웹 대시보드가
+    화면을 열 때마다 직전 실행이 정한 보유 대수를 되돌리면 안 되기 때문이다.
+    """
     for vehicle_id in vehicle_ids(size or FLEET_SIZE):
         conn.execute(
             "INSERT OR IGNORE INTO vehicle (vehicle_id, active) VALUES (?, 1)",
             (vehicle_id,))
+    conn.commit()
+
+
+def sync_fleet(conn: sqlite3.Connection, size: int = None) -> None:
+    """차량 마스터를 보유 대수(size)에 맞춘다. 파이프라인 실행 경로에서 부른다.
+
+    대수를 **늘리면** 새 차량이 추가되고, **줄이면** 범위를 벗어난 차량이
+    active=0으로 빠진다(행은 남긴다 — 형평성 이력이 지워지면 안 된다).
+    다시 늘리면 축소로 뺐던 차량만 복귀하고, 정비로 빼 둔 차량은 그대로 둔다.
+    """
+    ids = vehicle_ids(size or FLEET_SIZE)
+    ensure_fleet(conn, size)
+
+    placeholders = ",".join("?" * len(ids))
+    conn.execute(
+        f"UPDATE vehicle SET active = 0, note = ?"
+        f" WHERE active = 1 AND vehicle_id NOT IN ({placeholders})",
+        [FLEET_SHRINK_NOTE, *ids])
+    conn.execute(
+        f"UPDATE vehicle SET active = 1, note = NULL"
+        f" WHERE active = 0 AND note = ? AND vehicle_id IN ({placeholders})",
+        [FLEET_SHRINK_NOTE, *ids])
     conn.commit()
 
 
@@ -609,7 +641,8 @@ def assign_vehicles(conn: sqlite3.Connection, cluster_loads: Dict[int, float],
     같은 회차를 다시 계산하면 그 회차의 기존 배정은 제외하고 계산하므로
     재실행해도 결과가 같다(멱등).
     """
-    ensure_fleet(conn)
+    # 이 프로세스의 FLEET_SIZE(=이번 실행의 --fleet-size)에 마스터를 맞춘다.
+    sync_fleet(conn)
 
     # 이 회차의 기존 배정은 누적에서 빼야 재실행 시 같은 결과가 나온다.
     workload = pd.read_sql("""

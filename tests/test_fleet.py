@@ -123,6 +123,49 @@ def test_too_many_clusters_raises(conn):
                            run_label="R1", duration="_05_10")
 
 
+def test_shrinking_fleet_removes_extra_vehicles(conn, monkeypatch):
+    """보유 대수를 줄이면 남는 차량이 배정에서 빠진다 (웹 폼의 '차량 대수').
+
+    실제로는 --fleet-size가 PBR_FLEET_SIZE로 전달되어 단계 프로세스의
+    FLEET_SIZE가 바뀐다. 여기서는 그 상황을 상수 교체로 흉내 낸다.
+    """
+    monkeypatch.setattr(db, "FLEET_SIZE", 5)
+    db.sync_fleet(conn)
+
+    workload = db.vehicle_workload(conn)
+    assert workload["vehicle_id"].tolist() == ["V01", "V02", "V03", "V04", "V05"]
+
+    mapping = _round(conn, "R1", "_05_10", {c: 30.0 for c in range(5)})
+    assert set(mapping.values()) <= {"V01", "V02", "V03", "V04", "V05"}
+
+    with pytest.raises(ValueError, match="차량이 부족"):
+        db.assign_vehicles(conn, {c: 30.0 for c in range(6)},
+                           run_label="R1", duration="_10_15")
+
+
+def test_growing_fleet_restores_and_adds(conn):
+    """다시 늘리면 축소로 뺐던 차량은 돌아오고, 정비 차량은 그대로 빠져 있다."""
+    conn.execute("UPDATE vehicle SET active = 0, note = '정비 입고' WHERE vehicle_id = 'V03'")
+    conn.commit()
+
+    db.sync_fleet(conn, 5)
+    db.sync_fleet(conn, 25)
+
+    active = db.vehicle_workload(conn)["vehicle_id"].tolist()
+    assert "V25" in active, "늘린 만큼 차량이 추가되어야 한다"
+    assert "V21" in active, "축소로 뺐던 차량은 복귀해야 한다"
+    assert "V03" not in active, "정비로 뺀 차량까지 살아나면 안 된다"
+    assert len(active) == 24
+
+
+def test_read_path_does_not_resize_fleet(conn):
+    """조회용 ensure_fleet은 대수를 되돌리지 않는다(웹 화면이 실행 설정을 덮지 않게)."""
+    db.sync_fleet(conn, 5)
+    db.ensure_fleet(conn, FLEET_SIZE)
+
+    assert len(db.vehicle_workload(conn)) == 5
+
+
 def test_assignment_history_filters(conn):
     _round(conn, "R1", "_05_10", {0: 60.0, 1: 50.0})
     _round(conn, "R2", "_05_10", {0: 60.0})

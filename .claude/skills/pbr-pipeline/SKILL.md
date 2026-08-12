@@ -14,7 +14,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | --- | --- |
 | `docs/RETROSPECTIVE.md` | 전체 조망·측정이 뒤집은 가설·설계 결정 (처음 오면 여기부터) |
 | `docs/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
-| `docs/TESTING.md` | 테스트 117개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/TESTING.md` | 테스트 131개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/PROJECT_PIPELINE.md` | 파이프라인 전체 구조 |
 | `docs/steps/step*.md` | 단계별 입출력·문제점·작업 목록 |
@@ -65,7 +65,12 @@ step4                   : imbalance
 4. **depot·차량 상수는 project_config에 있다**(DEPOT_ID/LAT/LON/NAME, VEHICLE_CAPACITY,
    FLEET_SIZE, VEHICLES_PER_ROUND). step2·step3에서 별도 하드코딩하지 마라.
    **클러스터 1개 = 차량 1대**이므로 step1의 K는 `VEHICLES_PER_ROUND`를 넘을 수 없다.
+   두 대수 모두 **실행마다 바뀐다** — 웹 실행 폼/`--fleet-size`/`--vehicles-per-round`가
+   `PBR_FLEET_SIZE`·`PBR_VEHICLES_PER_ROUND`로 전달되고 후자는 전자로 잘린다.
    차량 배정·로테이션은 `db.assign_vehicles()`가 담당한다 (docs/FLEET.md).
+   마스터를 대수에 맞추는 것은
+   `db.sync_fleet()`(실행 경로)뿐이고 **조회 경로는 `db.ensure_fleet()`를 쓴다** —
+   바꾸면 화면을 여는 것만으로 직전 실행의 보유 대수가 되돌아간다.
    하루 여러 회차를 돌리므로 **한쪽 후보만 있는 시간대는 크래시가 아니라 건너뛴다** —
    step1/step2/step4의 건너뛰기 가드를 지우지 마라.
 5. **일회성 스크립트는 `experiments/`에 둔다** — step 폴더나 루트에 test.py를 만들지 마라.
@@ -85,6 +90,7 @@ python run_pipeline.py --dry-run          # 실행 목록 확인 (파일 존재 
 python run_pipeline.py                    # 전체 실행 (기본 설정)
 python run_pipeline.py --skip-api --skip-eda  # 수집·EDA 생략
 python run_pipeline.py --now "2026-05-21 18" --period "25년 11월" --duration "_05_10,_10_15"
+python run_pipeline.py --fleet-size 15 --vehicles-per-round 6   # 차량 대수 (기본 21 / 10)
 python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8000)
 ```
 
@@ -161,7 +167,7 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
 ## 테스트
 
 ```powershell
-python -m pytest                 # 34개, 약 20초 (tests/ 만 수집)
+python -m pytest                 # 131개, 약 28초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

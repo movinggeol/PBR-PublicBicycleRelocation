@@ -14,12 +14,16 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
 from typing import Iterable
 
-from project_config import ensure_output_dirs
+from project_config import (
+    DEFAULT_FLEET_SIZE, DEFAULT_VEHICLES_PER_ROUND, ensure_output_dirs,
+    normalize_fleet_size, normalize_per_round,
+)
 
 
 # 이 파일이 있는 디렉터리가 프로젝트 루트입니다.
@@ -75,6 +79,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--duration", help="시간대 구간. 예: _05_10")
     parser.add_argument("--raw-file", help="원천 CSV 경로(프로젝트 루트 기준)")
 
+    # 차량 대수는 다른 공통 설정과 달리 CLI 인자가 아니라 환경변수로 하위 단계에
+    # 전달한다 — project_config가 모듈 import 시점에 읽는 상수라서, 각 단계
+    # 프로세스의 환경에 심어야 반영된다.
+    parser.add_argument(
+        "--fleet-size",
+        type=int,
+        help=f"보유 차량 대수 (기본 {DEFAULT_FLEET_SIZE}). 회차 투입 상한도 이 값을 넘지 않는다",
+    )
+    parser.add_argument(
+        "--vehicles-per-round",
+        type=int,
+        help=f"한 회차 투입 대수 상한 (기본 {DEFAULT_VEHICLES_PER_ROUND})."
+             " step1의 클러스터 수 상한이 된다",
+    )
+
     # API와 EDA는 이미 산출물이 있는 경우 선택적으로 생략할 수 있습니다.
     parser.add_argument("--skip-api", action="store_true", help="API 수집 생략")
     parser.add_argument("--skip-eda", action="store_true", help="EDA 생략")
@@ -115,6 +134,21 @@ def build_command(script: Path, args: argparse.Namespace) -> list[str]:
     return command
 
 
+def build_env(args: argparse.Namespace) -> dict:
+    """하위 단계에 물려줄 환경변수를 만듭니다.
+
+    차량 대수는 project_config가 import 시점에 읽는 상수이므로 명령행이 아니라
+    환경변수(PBR_FLEET_SIZE / PBR_VEHICLES_PER_ROUND)로 전달합니다.
+    """
+
+    env = dict(os.environ)
+    if args.fleet_size is not None:
+        env["PBR_FLEET_SIZE"] = str(normalize_fleet_size(args.fleet_size))
+    if args.vehicles_per_round is not None:
+        env["PBR_VEHICLES_PER_ROUND"] = str(normalize_per_round(args.vehicles_per_round))
+    return env
+
+
 def selected_scripts(args: argparse.Namespace) -> Iterable[Path]:
     """옵션에 맞는 단계 파일을 의존성 순서대로 반환합니다."""
 
@@ -140,7 +174,22 @@ def main() -> int:
     args = parse_args()
     scripts = list(selected_scripts(args))
 
+    # 잘못된 차량 대수는 단계를 하나라도 돌리기 전에 걸러냅니다.
+    try:
+        env = build_env(args)
+        fleet = normalize_fleet_size(env.get("PBR_FLEET_SIZE", DEFAULT_FLEET_SIZE))
+        per_round = min(
+            normalize_per_round(env.get("PBR_VEHICLES_PER_ROUND", DEFAULT_VEHICLES_PER_ROUND)),
+            fleet,
+        )
+    except ValueError as err:
+        print(f"설정 오류: {err}")
+        return 2
+
     print("=== Public Bike Rebalancing Pipeline ===")
+    if args.fleet_size is not None or args.vehicles_per_round is not None:
+        # 회차 투입 상한은 보유 대수로 잘리므로, 실제 적용되는 값을 보여줍니다.
+        print(f"보유 차량 {fleet}대 · 회차당 투입 상한 {per_round}대로 실행합니다.")
     for index, script in enumerate(scripts, start=1):
         print(f"[{index}/{len(scripts)}] {script}")
 
@@ -168,7 +217,7 @@ def main() -> int:
         print(f"\n[{index}/{len(scripts)}] 실행: {' '.join(command)}")
 
         # cwd를 ROOT로 고정해야 data/ 상대 경로가 모든 단계에서 동일합니다.
-        completed = subprocess.run(command, cwd=ROOT)
+        completed = subprocess.run(command, cwd=ROOT, env=env)
 
         if completed.returncode == 0:
             print(f"완료: {script}")

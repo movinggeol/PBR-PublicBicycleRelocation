@@ -10,6 +10,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from project_config import FLEET_SIZE, VEHICLES_PER_ROUND
+from webapp import jobs
 from webapp.app import app
 
 
@@ -30,6 +32,69 @@ def test_index_has_run_form(client):
     res = client.get("/")
     assert "파이프라인 실행" in res.text
     assert 'action="/runs"' in res.text
+
+
+def test_index_has_vehicle_count_fields(client):
+    """차량 대수를 웹에서 조정할 수 있어야 한다(기본 21대 / 회차당 10대)."""
+    res = client.get("/")
+    assert 'name="fleet_size"' in res.text
+    assert 'name="vehicles_per_round"' in res.text
+    assert f'value="{FLEET_SIZE}"' in res.text
+    assert f'value="{VEHICLES_PER_ROUND}"' in res.text
+
+
+def _capture_start(monkeypatch) -> list:
+    """jobs.start_job을 가로채 실제 파이프라인 대신 인자만 받아 둔다."""
+    captured = []
+
+    def fake_start(args):
+        captured.append(list(args))
+        return jobs.Job(id="테스트작업", args=list(args))
+
+    monkeypatch.setattr(jobs, "start_job", fake_start)
+    return captured
+
+
+def test_vehicle_counts_are_passed_to_pipeline(client, monkeypatch):
+    """폼의 두 대수가 run_pipeline 인자로 전달된다."""
+    captured = _capture_start(monkeypatch)
+    res = client.post("/runs",
+                      data={"fleet_size": "15", "vehicles_per_round": "6"},
+                      follow_redirects=False)
+
+    assert res.status_code == 303
+    args = captured[0]
+    assert args[args.index("--fleet-size") + 1] == "15"
+    assert args[args.index("--vehicles-per-round") + 1] == "6"
+
+
+def _reject_start(monkeypatch) -> None:
+    def fail(args):
+        raise AssertionError("잘못된 입력으로 파이프라인이 실행되면 안 된다")
+
+    monkeypatch.setattr(jobs, "start_job", fail)
+
+
+@pytest.mark.parametrize("field", ["fleet_size", "vehicles_per_round"])
+@pytest.mark.parametrize("value", ["0", "100", "열다섯", "3.5"])
+def test_invalid_vehicle_count_is_rejected(client, monkeypatch, field, value):
+    """범위를 벗어나거나 숫자가 아니면 파이프라인을 띄우지 않는다."""
+    _reject_start(monkeypatch)
+    res = client.post("/runs", data={field: value}, follow_redirects=False)
+
+    assert res.status_code == 400
+    assert "정수여야 합니다" in res.text
+
+
+def test_per_round_over_fleet_is_rejected(client, monkeypatch):
+    """회차당 투입 대수가 보유 대수보다 많으면 조용히 자르지 않고 되돌린다."""
+    _reject_start(monkeypatch)
+    res = client.post("/runs",
+                      data={"fleet_size": "5", "vehicles_per_round": "10"},
+                      follow_redirects=False)
+
+    assert res.status_code == 400
+    assert "보유 차량 대수" in res.text
 
 
 def test_favicon_no_content(client):
