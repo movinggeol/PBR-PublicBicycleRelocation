@@ -70,6 +70,11 @@ python tools/load_rentals.py --status         # 기간별 적재 현황
 - **처리**: 평일 기준, 날짜×대여소×시간대(0~23시)별 `순수요 = 대여량 − 반납량`
 - **출력**: `data/pp_data/순수요/st_net_daily ({period}).csv` (net_00 ~ net_23 컬럼)
 
+> ⚠️ **`z = 1.65`는 검증 결과 부족합니다.** 백테스트(2025-04~2026-03)에서 실제 커버리지가
+> 91.7~92.8%로 설계 의도(95%)에 못 미쳤고, 실측으로 구한 필요값은 **z ≈ 1.99**입니다.
+> 또 `_10_15` 시간대의 `mu`는 "순수요 0"이라고 찍는 것과 차이가 없습니다.
+> 근거는 [KPI.md](../KPI.md) 3-E, 재현은 `python tools/backtest_demand.py`.
+
 ### 5. `calculate_target_qty.py`
 - **입력**: st_info, st_net_daily
 - **처리** (시간대 duration별, z=1.65):
