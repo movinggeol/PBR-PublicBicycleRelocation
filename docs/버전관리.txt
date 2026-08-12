@@ -435,3 +435,9 @@ PBR (Public_Bicycle_Relocation)
 			14~16번 신설), steps/step0_raw.md, steps/step1_clustering.md,
 			steps/step3_visualization.md, README, SKILL.md, .env.example 갱신.
 		- 테스트 117개 전부 통과.
+		- docs/TESTING.md 신설. 테스트 117개가 각각 무엇을 지키는지, 실데이터를
+			건드리지 않는 격리 장치 3겹, 합성 데이터에 방향성 수요를 심는 이유,
+			그리고 외부 API(TASHU/TMAP)를 자동화하지 않고 수동 검증하는 절차를 적었다.
+			TMAP 검증은 이번에 실제로 밟은 절차를 그대로 기록했다(총 37회 호출).
+			PBR_TMAP_MAX_CALLS=0으로 두면 HTTP 요청 전에 예외가 나므로,
+			쿼터를 한 건도 쓰지 않고 폴백 경로를 확인할 수 있다.

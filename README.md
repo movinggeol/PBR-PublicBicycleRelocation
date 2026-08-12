@@ -253,6 +253,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | --- | --- |
 | [docs/RETROSPECTIVE.md](docs/RETROSPECTIVE.md) | **작업 회고** — 전체 조망, 측정이 뒤집은 가설, 설계 결정 |
 | [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
+| [docs/TESTING.md](docs/TESTING.md) | **테스트** — 117개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/PROJECT_PIPELINE.md](docs/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/WEBAPP.md](docs/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/DB_PLAN.md](docs/DB_PLAN.md) | SQLite 도입 결정·스키마·이관 계획·성능 측정 |
