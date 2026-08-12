@@ -124,6 +124,67 @@ def data_page(request: Request):
     })
 
 
+@app.get("/kpi")
+def kpi_page(request: Request, run_label: Optional[str] = None):
+    """실행별 성과 지표와 실행 간 비교 (docs/KPI.md)."""
+    rows = store.kpi(run_label=run_label)
+
+    latest = None
+    previous = None
+    if not rows.empty:
+        labels = rows["run_label"].drop_duplicates().tolist()
+        latest = rows[rows["run_label"] == labels[0]]
+        if len(labels) > 1:
+            previous = rows[rows["run_label"] == labels[1]]
+
+    def headline(frame, column, weight=None):
+        """회차별 값을 하나로 요약한다(가중평균 또는 합계)."""
+        if frame is None or frame.empty or frame[column].isna().all():
+            return None
+        if weight is None:
+            return float(frame[column].sum())
+        w = frame[weight].fillna(0)
+        return float((frame[column] * w).sum() / w.sum()) if w.sum() else None
+
+    cards = []
+    if latest is not None:
+        for label, column, weight, fmt in [
+            ("평균 개선률", "avg_improvement_rate", "stations", "pct"),
+            ("목표 도달 비율", "target_met_ratio", "stations", "pct"),
+            ("km당 개선", "improvement_per_km", "total_distance_km", "num"),
+            ("시간 예산 준수", "time_budget_met", "clusters", "pct"),
+        ]:
+            now_value = headline(latest, column, weight)
+            before = headline(previous, column, weight) if previous is not None else None
+            cards.append({
+                "label": label,
+                "value": now_value,
+                "delta": (now_value - before) if (now_value is not None and before is not None) else None,
+                "fmt": fmt,
+            })
+
+    return templates.TemplateResponse(request, "kpi.html", {
+        "rows": store.records(rows),
+        "cards": cards,
+        "latest_label": latest["run_label"].iloc[0] if latest is not None else None,
+        "previous_label": previous["run_label"].iloc[0] if previous is not None else None,
+        "selected_run": run_label,
+        "runs": store.records(store.run_labels()),
+    })
+
+
+@app.get("/api/kpi")
+def api_kpi(run_label: Optional[str] = None, duration: Optional[str] = None):
+    """실행별 성과 지표. run_label·duration으로 좁힐 수 있다."""
+    rows = store.kpi(run_label=run_label, duration=duration)
+    return JSONResponse({
+        "run_label": run_label,
+        "duration": duration,
+        "count": len(rows),
+        "rows": store.records(rows),
+    })
+
+
 @app.get("/vehicles")
 def vehicles_page(request: Request, run_label: Optional[str] = None):
     """차량별 누적 작업량과 회차 배정 이력 (docs/FLEET.md)."""

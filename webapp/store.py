@@ -56,6 +56,16 @@ def load(table: str, run_label: Optional[str] = None,
     return pd.DataFrame(), "none"
 
 
+def kpi(run_label: Optional[str] = None, duration: Optional[str] = None) -> pd.DataFrame:
+    """실행별 성과 지표 (docs/KPI.md의 kpi_summary)."""
+    try:
+        with db.session() as conn:
+            return db.load_kpi(conn, run_label=run_label, duration=duration)
+    except Exception as err:
+        print(f"[경고] KPI 조회 실패: {type(err).__name__}: {err}")
+        return pd.DataFrame()
+
+
 def vehicle_workload() -> pd.DataFrame:
     """차량별 누적 작업량(로테이션 형평성 확인용)."""
     try:

@@ -269,6 +269,40 @@ CREATE TABLE IF NOT EXISTS vehicle_assignment (
 
 CREATE INDEX IF NOT EXISTS idx_assignment_vehicle ON vehicle_assignment(vehicle_id);
 
+-- 실행 1건(run_label + duration) = 1행. 흩어져 있는 지표를 한 줄로 모아
+-- 실행 간 비교를 쿼리 하나로 만든다. (docs/KPI.md)
+CREATE TABLE IF NOT EXISTS kpi_summary (
+    run_label             TEXT NOT NULL,
+    duration              TEXT NOT NULL,
+    computed_at           TEXT NOT NULL,
+    -- 규모
+    stations              INTEGER,   -- 작업 대상 대여소 수
+    clusters              INTEGER,
+    vehicles_used         INTEGER,
+    bikes_moved           INTEGER,   -- 실제로 옮긴 자전거 수
+    -- A. 계획 (계획이 목표를 얼마나 채웠나)
+    avg_improvement_rate  REAL,
+    pick_improvement_rate REAL,
+    drop_improvement_rate REAL,
+    target_met_ratio      REAL,      -- 재배치 후 불균형 <= 1인 대여소 비율
+    -- C. 운영 (현장에서 실행 가능한가)
+    total_distance_km     REAL,
+    max_cluster_minutes   REAL,
+    avg_cluster_minutes   REAL,
+    time_budget_minutes   REAL,      -- 판정 기준(바뀔 수 있으므로 함께 기록)
+    time_budget_met       REAL,      -- 예산 안에 끝난 클러스터 비율
+    vehicle_load_gap      REAL,      -- 회차 내 최대-최소 소요시간
+    -- D. 효율 (투입 대비 산출)
+    improvement_per_km    REAL,      -- 1km 이동으로 줄인 불균형 대수
+    -- E. 품질
+    cluster_max_imbalance INTEGER,
+    -- B. 실측 — KPI.md 4·5단계에서 채운다(지금은 NULL)
+    stockout_hours_before REAL,
+    stockout_hours_after  REAL,
+    demand_mae            REAL,
+    PRIMARY KEY (run_label, duration)
+);
+
 -- 원천 대여이력(대용량). 원본 CSV 12개 컬럼을 그대로 미러링한다.
 -- 대여소명·좌표는 station_info와 중복이지만, api_to_info가 이 값을 집계해
 -- 대여소 정보를 만들기 때문에 여기 있어야 결과가 달라지지 않는다.
@@ -478,6 +512,54 @@ def save_output(table: str, df: pd.DataFrame, run_label: Optional[str] = None,
 def list_runs(conn: sqlite3.Connection) -> pd.DataFrame:
     """실행 이력을 최신순으로 돌려준다."""
     return pd.read_sql("SELECT * FROM runs ORDER BY run_label DESC", conn)
+
+
+# ---------------- 성과 지표 (docs/KPI.md) ----------------
+
+# kpi_summary에 저장할 수 있는 컬럼(키·시각 제외). 넘겨받은 dict에서 이것만 골라 쓴다.
+KPI_FIELDS = (
+    "stations", "clusters", "vehicles_used", "bikes_moved",
+    "avg_improvement_rate", "pick_improvement_rate", "drop_improvement_rate",
+    "target_met_ratio", "total_distance_km", "max_cluster_minutes",
+    "avg_cluster_minutes", "time_budget_minutes", "time_budget_met",
+    "vehicle_load_gap", "improvement_per_km", "cluster_max_imbalance",
+    "stockout_hours_before", "stockout_hours_after", "demand_mae",
+)
+
+
+def save_kpi(conn: sqlite3.Connection, run_label: str, duration: str,
+             metrics: Dict[str, object]) -> None:
+    """실행 1건의 지표를 기록한다(같은 실행·회차면 덮어쓴다).
+
+    metrics의 키 중 KPI_FIELDS에 있는 것만 저장하므로, 계산하지 못한 지표는
+    그냥 빼고 넘기면 된다(해당 컬럼은 NULL).
+    """
+    known = {k: metrics[k] for k in KPI_FIELDS if k in metrics}
+    columns = ["run_label", "duration", "computed_at", *known]
+    placeholders = ", ".join(["?", "?", "datetime('now', 'localtime')"]
+                             + ["?"] * len(known))
+    conn.execute(
+        f"INSERT OR REPLACE INTO kpi_summary ({', '.join(columns)})"
+        f" VALUES ({placeholders})",
+        (run_label, duration, *known.values()),
+    )
+    conn.commit()
+
+
+def load_kpi(conn: sqlite3.Connection, run_label: Optional[str] = None,
+             duration: Optional[str] = None) -> pd.DataFrame:
+    """지표를 읽는다(최신 실행순). 인자를 주면 그 실행·회차로 좁힌다."""
+    conditions, params = [], []
+    if run_label:
+        conditions.append("run_label = ?")
+        params.append(run_label)
+    if duration:
+        conditions.append("duration = ?")
+        params.append(duration)
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    return pd.read_sql(
+        f"SELECT * FROM kpi_summary {where} ORDER BY run_label DESC, duration ASC",
+        conn, params=params)
 
 
 # ---------------- 차량 운용 (로테이션과 형평성) ----------------

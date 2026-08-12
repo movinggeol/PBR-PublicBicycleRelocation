@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}성과 지표 — PBR 대시보드{% endblock %}
+
+{% macro fmt(value, kind) -%}
+  {%- if value is none -%}—
+  {%- elif kind == "pct" -%}{{ (value * 100) | round(0) | int }}%
+  {%- else -%}{{ value | round(2) }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+<h1>성과 지표</h1>
+
+{% if cards %}
+<p class="muted">
+  최신 실행 <b>{{ latest_label }}</b>
+  {% if previous_label %} · 직전 <b>{{ previous_label }}</b> 대비 증감{% endif %}
+</p>
+
+<div class="grid2" style="margin-bottom:1rem">
+  {% for c in cards %}
+  <div class="card">
+    <h2 style="margin-top:0; font-size:0.95rem">{{ c.label }}</h2>
+    <p style="font-size:1.7rem; margin:0.2rem 0">
+      {{ fmt(c.value, c.fmt) }}
+      {% if c.delta is not none and c.delta | abs > 0.001 %}
+        <span style="font-size:0.9rem; color:{{ '#16a34a' if c.delta > 0 else '#dc2626' }}">
+          {{ '▲' if c.delta > 0 else '▼' }} {{ fmt(c.delta | abs, c.fmt) }}
+        </span>
+      {% endif %}
+    </p>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card" style="margin-bottom:1rem">
+  <p class="muted" style="margin:0">
+    ⓘ <b>평균 개선률은 계획 달성률</b>입니다(계획이 목표 재고를 얼마나 채웠는가).
+    <b>목표 도달 비율</b>과 함께 보세요 — 개선률이 높아도 목표 도달이 낮으면
+    "조금씩만 채워진" 상태입니다. 자세한 내용은 docs/KPI.md.
+  </p>
+</div>
+{% endif %}
+
+<h2>실행·회차별 지표</h2>
+<div class="card">
+  {% if runs %}
+  <p class="muted">
+    실행 선택: <a href="/kpi">전체</a>
+    {% for r in runs %} · <a href="/kpi?run_label={{ r.run_label | urlencode }}">{{ r.run_label }}</a>{% endfor %}
+  </p>
+  {% endif %}
+
+  {% if rows %}
+  <div style="overflow-x:auto">
+  <table>
+    <tr>
+      <th>실행</th><th>회차</th><th>대여소</th><th>클러스터</th><th>차량</th><th>처리</th>
+      <th>개선률</th><th>목표도달</th><th>이동거리</th><th>최장</th>
+      <th>예산준수</th><th>km당 개선</th>
+    </tr>
+    {% for r in rows %}
+    <tr>
+      <td class="muted">{{ r.run_label }}</td>
+      <td>{{ r.duration }}</td>
+      <td class="muted">{{ r.stations }}</td>
+      <td class="muted">{{ r.clusters }}</td>
+      <td class="muted">{{ r.vehicles_used }}</td>
+      <td>{{ r.bikes_moved }}</td>
+      <td><b>{{ fmt(r.avg_improvement_rate, "pct") }}</b></td>
+      <td>{{ fmt(r.target_met_ratio, "pct") }}</td>
+      <td class="muted">{{ r.total_distance_km | round(0) | int }} km</td>
+      <td{% if r.time_budget_minutes and r.max_cluster_minutes > r.time_budget_minutes %} class="over-budget"{% endif %}>
+        {{ r.max_cluster_minutes | round(0) | int }} 분
+      </td>
+      <td>{{ fmt(r.time_budget_met, "pct") }}</td>
+      <td>{{ fmt(r.improvement_per_km, "num") }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">기록된 지표가 없습니다. 파이프라인의 step4를 실행하면 쌓입니다.</p>
+  {% endif %}
+</div>
+
+<p class="muted">지표 설계와 한계는 docs/KPI.md 참고. 결품 시간·수요 예측 오차는 아직 미구현입니다.</p>
+{% endblock %}

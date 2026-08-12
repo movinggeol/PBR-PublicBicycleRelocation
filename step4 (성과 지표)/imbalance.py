@@ -116,6 +116,60 @@ def route_summary(duration: str):
 
     # CSV·DB 이중 기록 (DB_PLAN 2단계). 한글 컬럼은 db가 ASCII로 변환한다.
     db.save_output("route_summary", summary, run_label=now, duration=duration)
+    return summary
+
+
+def save_kpi_summary(duration: str, imbalance_df: pd.DataFrame,
+                     summary: pd.DataFrame) -> None:
+    '''
+    흩어져 있는 지표를 실행 1건 = 1행으로 모아 kpi_summary에 기록한다. (docs/KPI.md)
+
+    지금까지는 개선률은 콘솔에, 이동거리·시간은 route_summary CSV에, 차량 배정은
+    또 다른 테이블에 있어 실행 간 비교를 매번 손으로 맞춰야 했다.
+    '''
+    rate = imbalance_df['improvement_rate']
+    minutes = summary['총소요시간_분']
+    distance = summary['총이동거리_km'].sum()
+    improvement = imbalance_df['improvement'].sum()
+
+    metrics = {
+        'stations': int(len(imbalance_df)),
+        'clusters': int(len(summary)),
+        'bikes_moved': int(summary['처리대수'].sum()),
+        'avg_improvement_rate': float(rate.mean()),
+        'pick_improvement_rate': float(rate[imbalance_df['rebal_qty'] < 0].mean()),
+        'drop_improvement_rate': float(rate[imbalance_df['rebal_qty'] > 0].mean()),
+        # 목표에 사실상 도달한 대여소 비율 (평균 개선률이 감추는 분포를 보완)
+        'target_met_ratio': float((imbalance_df['af_imbalance'] <= 1).mean()),
+        'total_distance_km': float(distance),
+        'max_cluster_minutes': float(minutes.max()),
+        'avg_cluster_minutes': float(minutes.mean()),
+        'time_budget_minutes': float(TIME_BUDGET_MINUTES),
+        'time_budget_met': float((minutes <= TIME_BUDGET_MINUTES).mean()),
+        'vehicle_load_gap': float(minutes.max() - minutes.min()),
+        # 1km 이동으로 줄인 불균형 대수 — 효과와 비용을 한 지표로 묶는다
+        'improvement_per_km': float(improvement / distance) if distance else None,
+        'cluster_max_imbalance': int(imbalance_df.groupby('cluster')['rebal_qty']
+                                     .sum().abs().max()),
+    }
+
+    try:
+        with db.session() as conn:
+            assigned = db.assignment_history(conn, run_label=now)
+            metrics['vehicles_used'] = int(
+                assigned[assigned['duration'] == duration]['vehicle_id'].nunique())
+            db.save_kpi(conn, run_label=now, duration=duration, metrics=metrics)
+    except Exception as err:
+        print(f"[경고] KPI 기록 실패: {type(err).__name__}: {err}")
+        return
+
+    print(f"\nKPI 요약 ({duration}):")
+    print(f"  개선률 {metrics['avg_improvement_rate'] * 100:.0f}%"
+          f" · 목표도달 {metrics['target_met_ratio'] * 100:.0f}%"
+          f" · km당 개선 {metrics['improvement_per_km']:.2f}대")
+    print(f"  이동 {distance:.0f}km · 최장 {minutes.max():.0f}분"
+          f" · 예산준수 {metrics['time_budget_met'] * 100:.0f}%"
+          f" · 차량 {metrics.get('vehicles_used', 0)}대")
 
 
 def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, duration: str):
@@ -253,4 +307,6 @@ if __name__ == "__main__":
         db.save_output("metrics", imbalance_df, run_label=now,
                        period=config.period, duration=duration)
 
-        route_summary(duration)
+        summary = route_summary(duration)
+        if summary is not None:
+            save_kpi_summary(duration, imbalance_df, summary)

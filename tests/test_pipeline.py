@@ -225,6 +225,32 @@ def test_database_matches_csv(pipeline_run, smoke_db):
             assert set(stored["run_label"]) == {LABEL}
 
 
+def test_kpi_summary_written(pipeline_run, smoke_db):
+    """step4가 실행 지표를 kpi_summary에 한 줄로 기록한다 (docs/KPI.md)."""
+    import db
+
+    with db.session(smoke_db) as conn:
+        rows = db.load_kpi(conn, run_label=LABEL, duration=DURATION)
+
+    assert len(rows) == 1, "실행 1건 = 1행이어야 한다"
+    row = rows.iloc[0]
+
+    for column in ["stations", "clusters", "vehicles_used", "bikes_moved",
+                   "avg_improvement_rate", "target_met_ratio",
+                   "total_distance_km", "max_cluster_minutes",
+                   "time_budget_met", "improvement_per_km"]:
+        assert pd.notna(row[column]), f"{column}이 비어 있다"
+
+    assert 0 <= row["avg_improvement_rate"] <= 1
+    assert 0 <= row["time_budget_met"] <= 1
+    assert row["total_distance_km"] > 0
+
+    # 다른 산출물과 숫자가 맞아야 한다
+    plan = pd.read_csv(_out("VRP/VRP_plan{duration} ({label}).csv"), encoding="utf-8")
+    assert row["bikes_moved"] == plan[plan["action"] == "pick"]["qty"].sum()
+    assert row["clusters"] == plan["cluster"].nunique()
+
+
 def test_run_registry_populated(pipeline_run, smoke_db):
     """실행 라벨이 runs 테이블에 기록되고, 라벨 생략 조회가 최신을 찾는다."""
     import db
