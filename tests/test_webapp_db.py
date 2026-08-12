@@ -46,6 +46,21 @@ def _metrics(n, rate):
     })
 
 
+@pytest.fixture(autouse=True)
+def isolate_csv_fallback(tmp_path, monkeypatch):
+    """CSV 폴백이 실제 data/pp_data를 보지 않도록 빈 폴더를 가리킨다.
+
+    사용자가 실데이터를 넣어 두면 '산출물이 없을 때 404'를 검사하는 테스트가
+    폴백에서 진짜 파일을 찾아 200을 돌려주며 실패한다. 테스트는 사용자 데이터
+    유무에 좌우되면 안 된다.
+    """
+    from webapp import catalog
+
+    empty = tmp_path / "empty_pp"
+    empty.mkdir(exist_ok=True)
+    monkeypatch.setattr(catalog, "PP_ROOT", empty)
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     """임시 DB에 두 번의 실행분을 심고 API 클라이언트를 준다."""

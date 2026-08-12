@@ -617,21 +617,33 @@ def _ensure_rental_schema(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
-def bulk_load_rentals(csv_path: Path, period: str, db_path: Optional[Path] = None,
-                      chunksize: int = 100_000) -> int:
+def month_label(timestamp) -> str:
+    """대여일시 → 'YY년 MM월' (project_config의 period 형식과 같다)."""
+    return f"{timestamp.year % 100:02d}년 {timestamp.month:02d}월"
+
+
+def bulk_load_rentals(csv_path: Path, period: Optional[str] = None,
+                      db_path: Optional[Path] = None, chunksize: int = 100_000,
+                      split_by_month: bool = False) -> Dict[str, int]:
     """원천 대여이력 CSV를 rental_history에 적재한다.
 
-    60만 행 규모를 염두에 두고 세 가지를 신경 쓴다.
+    수백만 행 규모를 염두에 두고 세 가지를 신경 쓴다.
     1. 청크 단위로 읽고 넣어 메모리에 전체를 올리지 않는다.
     2. 적재 전에 인덱스를 지우고 끝난 뒤 다시 만든다
        (인덱스가 걸린 채로 대량 삽입하면 매 행마다 B-Tree를 갱신해 훨씬 느리다).
     3. 같은 period를 다시 적재하면 기존 행을 지우고 넣는다(멱등).
 
-    반환값은 적재한 행 수.
+    split_by_month=True면 대여일시에서 월을 뽑아 period를 행마다 정한다.
+    1년치 병합 파일을 넣고 한 달씩 분석할 때 쓴다 — 계절이 다른 달을 섞어
+    평균을 내면 목표 재고가 엉뚱해지기 때문이다.
+
+    반환값은 {period: 적재 행 수}.
     """
     csv_path = Path(csv_path)
     if not csv_path.is_file():
         raise FileNotFoundError(f"원천 CSV가 없습니다: {csv_path}")
+    if not split_by_month and not period:
+        raise ValueError("period를 지정하거나 split_by_month=True를 쓰세요.")
 
     conn = connect(db_path)
     try:
@@ -640,25 +652,38 @@ def bulk_load_rentals(csv_path: Path, period: str, db_path: Optional[Path] = Non
 
         for name in _RENTAL_INDEXES:
             conn.execute(f"DROP INDEX IF EXISTS {name}")
-        conn.execute("DELETE FROM rental_history WHERE period = ?", (period,))
+        if not split_by_month:
+            conn.execute("DELETE FROM rental_history WHERE period = ?", (period,))
         conn.commit()
 
-        total = 0
-        for chunk in pd.read_csv(csv_path, encoding="utf-8", low_memory=False,
+        loaded: Dict[str, int] = {}
+        cleared: set = set()
+
+        for chunk in pd.read_csv(csv_path, encoding="utf-8-sig", low_memory=False,
                                  chunksize=chunksize):
-            frame = _normalize_rentals(chunk, period)
+            frame = _normalize_rentals(chunk, period, split_by_month)
+
+            if split_by_month:
+                # 각 월의 기존 데이터를 처음 만났을 때 한 번만 지운다(멱등).
+                for label in frame["period"].dropna().unique():
+                    if label not in cleared:
+                        conn.execute("DELETE FROM rental_history WHERE period = ?", (label,))
+                        cleared.add(label)
+
             frame.to_sql("rental_history", conn, if_exists="append", index=False)
-            total += len(frame)
+            for label, count in frame["period"].value_counts().items():
+                loaded[label] = loaded.get(label, 0) + int(count)
 
         for statement in _RENTAL_INDEXES.values():
             conn.execute(statement)
         conn.commit()
-        return total
+        return loaded
     finally:
         conn.close()
 
 
-def _normalize_rentals(chunk: pd.DataFrame, period: str) -> pd.DataFrame:
+def _normalize_rentals(chunk: pd.DataFrame, period: Optional[str],
+                       split_by_month: bool = False) -> pd.DataFrame:
     """CSV 한 청크를 테이블 컬럼 구성으로 바꾼다."""
     available = {k: v for k, v in RENTAL_COLUMNS.items() if k in chunk.columns}
     missing = set(RENTAL_COLUMNS) - set(available)
@@ -668,12 +693,16 @@ def _normalize_rentals(chunk: pd.DataFrame, period: str) -> pd.DataFrame:
     frame = chunk[list(available)].rename(columns=available)
 
     # 문자열 비교로 기간 조회가 되도록 형식을 통일한다.
+    parsed_rent = pd.to_datetime(frame["rent_at"], errors="coerce")
     for column in ("rent_at", "return_at"):
         if column in frame.columns:
-            parsed = pd.to_datetime(frame[column], errors="coerce")
+            parsed = parsed_rent if column == "rent_at" else pd.to_datetime(
+                frame[column], errors="coerce")
             frame[column] = parsed.dt.strftime(DATETIME_FORMAT)
 
-    frame.insert(0, "period", period)
+    labels = parsed_rent.map(lambda t: month_label(t) if pd.notna(t) else None) \
+        if split_by_month else period
+    frame.insert(0, "period", labels)
     return frame.astype(object).where(pd.notna(frame), None)
 
 
@@ -722,5 +751,8 @@ def read_rental_source(period: str, csv_path: Optional[Path] = None,
     if csv_path is None:
         return pd.DataFrame(), "none"
 
-    frame = pd.read_csv(csv_path, encoding="utf-8", low_memory=False, usecols=requested)
+    # utf-8-sig: BOM이 있으면 벗기고, 없으면 일반 utf-8로 읽는다.
+    # 공공데이터 CSV는 BOM이 붙어 오는 경우가 많은데, 그냥 utf-8로 읽으면
+    # 첫 컬럼명에 '﻿'가 붙어 컬럼을 못 찾는다.
+    frame = pd.read_csv(csv_path, encoding="utf-8-sig", low_memory=False, usecols=requested)
     return frame[requested], "csv"      # usecols는 파일 순서를 따르므로 다시 정렬

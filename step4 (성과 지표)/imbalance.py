@@ -72,14 +72,26 @@ def route_summary(duration: str):
         print("VRP 결과에 거리·시간 컬럼이 없습니다(구버전). step2 vrp.py를 다시 실행하세요.")
         return
 
-    summary = vrp.groupby('cluster').agg(
-        방문수=('action', 'size'),
-        처리대수=('qty', 'sum'),
+    # 방문수는 depot 복귀를 빼고 실제로 들른 대여소 수,
+    # 처리대수는 pick 기준(pick+drop을 더하면 한 대를 두 번 세어 2배가 된다).
+    # step2의 vehicle_assignment와 같은 기준이라 두 산출물의 숫자가 맞는다.
+    visited = vrp[vrp['action'] != 'return']
+    summary = visited.groupby('cluster').agg(방문수=('to_id', 'nunique')).reset_index()
+
+    moved = (vrp[vrp['action'] == 'pick'].groupby('cluster')['qty']
+             .sum().rename('처리대수').reset_index())
+
+    totals = vrp.groupby('cluster').agg(
         총이동거리_km=('distance_km', 'sum'),
         총이동시간_분=('travel_sec', 'sum'),
         총작업시간_분=('work_sec', 'sum'),
         총소요시간_분=('cum_sec', 'max'),
     ).reset_index()
+
+    summary = summary.merge(moved, on='cluster', how='left').merge(totals, on='cluster', how='left')
+    summary['처리대수'] = summary['처리대수'].fillna(0).astype(int)
+    summary = summary[['cluster', '방문수', '처리대수', '총이동거리_km',
+                       '총이동시간_분', '총작업시간_분', '총소요시간_분']]
 
     for col in ['총이동시간_분', '총작업시간_분', '총소요시간_분']:
         summary[col] = (summary[col] / 60).round(1)

@@ -37,8 +37,8 @@ def sample(tmp_path_factory):
 def loaded_db(sample, tmp_path_factory):
     """대여이력을 적재한 DB 경로."""
     db_path = tmp_path_factory.mktemp("db") / "rentals.db"
-    rows = db.bulk_load_rentals(sample, period=PERIOD, db_path=db_path, chunksize=500)
-    assert rows > 0
+    loaded = db.bulk_load_rentals(sample, period=PERIOD, db_path=db_path, chunksize=500)
+    assert loaded[PERIOD] > 0
     return db_path
 
 
@@ -102,6 +102,23 @@ def test_read_source_returns_original_columns(sample, loaded_db):
     assert source == "db"
     assert set(db_frame.columns) == set(csv_frame.columns)
     assert len(db_frame) == len(csv_frame)
+
+
+def test_split_by_month_assigns_period_per_row(sample, tmp_path):
+    """병합 파일을 월별로 나눠 적재한다 — 계절이 다른 달을 섞지 않기 위해서다."""
+    loaded = db.bulk_load_rentals(sample, db_path=tmp_path / "split.db",
+                                  chunksize=500, split_by_month=True)
+
+    assert loaded, "적재된 기간이 없다"
+    assert all(label.endswith("월") for label in loaded), f"기간 라벨 형식 오류: {list(loaded)}"
+
+    with db.session(tmp_path / "split.db") as conn:
+        for label, count in loaded.items():
+            assert db.rental_count(conn, label) == count
+        # 각 기간의 대여일시가 실제로 그 달인지
+        row = conn.execute(
+            "SELECT period, rent_at FROM rental_history LIMIT 1").fetchone()
+        assert db.month_label(pd.Timestamp(row[1])) == row[0]
 
 
 def test_read_source_falls_back_to_csv(sample, tmp_path):

@@ -31,9 +31,16 @@ CSV가 아직 정본이며 DB 기록 실패는 경고만 남긴다.
 원천 대여이력을 먼저 적재해 두면 됩니다.
 
 ```powershell
-python tools/load_rentals.py            # 원천 CSV → rental_history
-python tools/load_rentals.py --status   # 기간별 적재 현황
+python tools/load_rentals.py                  # 원천 CSV → rental_history
+python tools/load_rentals.py --split-by-month # 여러 달이 든 병합 파일 (월별 분리)
+python tools/load_rentals.py --status         # 기간별 적재 현황
 ```
+
+**여러 달이 든 파일은 반드시 `--split-by-month`로 넣으세요.** 계절이 다른 달을 섞어
+평균을 내면 목표 재고가 엉뚱해집니다(실측: 겨울 27만행 vs 여름 54만행으로 2배 차이).
+
+원천 CSV는 utf-8-sig(BOM)로 읽습니다 — 공공데이터 CSV는 BOM이 붙어 오는 경우가 많고,
+그냥 utf-8로 읽으면 첫 컬럼명에 BOM이 붙어 컬럼을 못 찾습니다.
 
 적재돼 있지 않으면 원천 CSV로 폴백하므로, 적재하지 않아도 파이프라인은 그대로 돕니다.
 1년치를 적재해 두고 한 달씩 분석할 때 DB 쪽이 유리합니다(성능 비교는 [DB_PLAN.md](../DB_PLAN.md) 4단계).

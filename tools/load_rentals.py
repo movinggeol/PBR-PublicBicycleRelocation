@@ -6,7 +6,11 @@ DB에서 읽는다(두 스크립트가 매 실행마다 같은 파일을 통째�
 실행:
     python tools/load_rentals.py                      # project_config 기본값
     python tools/load_rentals.py --period "25년 11월" --raw-file "data/raw_data/....csv"
+    python tools/load_rentals.py --split-by-month     # 1년치 파일을 월별로 나눠 적재
     python tools/load_rentals.py --status             # 적재 현황만 확인
+
+여러 달이 든 병합 파일은 --split-by-month 로 넣으세요. 계절이 다른 달을 섞어
+평균을 내면 목표 재고(target_qty)가 엉뚱해집니다.
 """
 from __future__ import annotations
 
@@ -45,6 +49,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(add_help=True, description="대여이력 CSV -> SQLite 적재")
     parser.add_argument("--status", action="store_true", help="적재 현황만 출력")
     parser.add_argument("--chunksize", type=int, default=100_000, help="한 번에 처리할 행 수")
+    parser.add_argument("--split-by-month", action="store_true",
+                        help="대여일시에서 월을 뽑아 period를 행마다 정한다(병합 파일용)")
     args, _ = parser.parse_known_args()
 
     if args.status:
@@ -58,17 +64,27 @@ def main() -> int:
         print("--raw-file 로 경로를 지정하거나 data/raw_data/에 파일을 두세요.")
         return 1
 
-    print(f"적재 시작: {raw_path.name}  (period={config.period!r})")
-    started = time.monotonic()
-    rows = db.bulk_load_rentals(raw_path, period=config.period, chunksize=args.chunksize)
-    elapsed = time.monotonic() - started
+    if args.split_by_month:
+        print(f"적재 시작: {raw_path.name}  (월별 분리)")
+    else:
+        print(f"적재 시작: {raw_path.name}  (period={config.period!r})")
 
-    print(f"완료: {rows:,}행 / {elapsed:.1f}초"
-          + (f" ({rows / elapsed:,.0f} 행/초)" if elapsed > 0 else ""))
-    print(f"DB: {db.DB_PATH}")
+    started = time.monotonic()
+    loaded = db.bulk_load_rentals(
+        raw_path, period=None if args.split_by_month else config.period,
+        chunksize=args.chunksize, split_by_month=args.split_by_month)
+    elapsed = time.monotonic() - started
+    total = sum(loaded.values())
+
+    print(f"\n완료: {total:,}행 / {elapsed:.1f}초"
+          + (f" ({total / elapsed:,.0f} 행/초)" if elapsed > 0 else ""))
+    if len(loaded) > 1:
+        print("\n기간별 적재:")
+        for label in sorted(loaded):
+            print(f"  {label}  {loaded[label]:>10,}행")
+    print(f"\nDB: {db.DB_PATH}")
     print("\n이제 step0가 CSV 대신 DB에서 읽습니다:")
-    print('  python "step0 (raw데이터 처리)/raw_to_net.py"')
-    print('  python "step0 (raw데이터 처리)/api_to_info.py"')
+    print('  python "step0 (raw데이터 처리)/raw_to_net.py" --period "25년 11월"')
     return 0
 
 
