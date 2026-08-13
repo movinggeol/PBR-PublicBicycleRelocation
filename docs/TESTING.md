@@ -1,11 +1,11 @@
 # 테스트
 
 이 프로젝트는 처음에 테스트가 하나도 없었고, **의존성이 전부 깨진 상태**로
-파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 137개 테스트입니다.
+파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 148개 테스트입니다.
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 137개 (약 26~42초)
+python -m pytest              # 전체 148개 (약 26~42초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -24,9 +24,13 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_webapp_db.py](../tests/test_webapp_db.py) | 14 | 웹 API가 CSV 대신 DB를 읽는지 |
 | [tests/test_rentals.py](../tests/test_rentals.py) | 10 | 대여이력 적재와 **CSV·DB 결과 동일성** |
 | [tests/test_fleet.py](../tests/test_fleet.py) | 13 | 차량 로테이션·형평성과 보유 대수 변경 ([FLEET.md](FLEET.md)) |
+| [tests/test_tmap.py](../tests/test_tmap.py) | 11 | TMAP 엔드포인트 선택·폴백 ([steps/step3_visualization.md](steps/step3_visualization.md)) |
 
 **API 키가 필요한 두 단계는 자동 테스트에서 제외**했습니다 —
 `step0/tashu_api.py`(TASHU)와 `step3/main.py`(TMAP). 검증 방법은 4장에 있습니다.
+다만 **엔드포인트 선택·폴백 규칙은 네트워크 없이 검증합니다**(`test_tmap.py`) —
+`requests.post`를 가로채 어느 URL로 보냈는지만 보면 되고, 검증 대상이 응답 내용이
+아니라 규칙이기 때문입니다. 쿼터는 한 건도 쓰지 않습니다.
 
 ### 특히 중요한 것들
 

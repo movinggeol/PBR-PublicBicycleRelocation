@@ -413,12 +413,11 @@ if __name__ == "__main__":
     if not API_KEY:
         raise RuntimeError("API_KEY 환경변수 설정 필요")
 
-    # routeSequential30은 일일 호출 한도가 작아 3회차 한 번에 소진된다(실측 QUOTA_EXCEEDED).
-    # 100은 한도가 넉넉하고 경유지도 100개까지 받아 클러스터 하나가 호출 한 번으로 끝난다.
-    TMAP_URL = os.getenv(
-        "PBR_TMAP_URL",
-        "https://apis.openapi.sk.com/tmap/routes/routeSequential100",
-    )
+    # 엔드포인트는 module이 요청마다 고른다 — routeSequential30을 먼저 쓰고,
+    # 일일 한도를 소진하면(429 QUOTA_EXCEEDED) routeSequential100으로 자동 전환한다.
+    # 두 엔드포인트의 한도가 따로 잡히므로 이렇게 쓰면 하루치 호출이 늘어난다.
+    # PBR_TMAP_URL을 주면 그 엔드포인트만 쓰고 폴백하지 않는다(수동 검증용).
+    TMAP_URL = os.getenv("PBR_TMAP_URL")     # None이면 자동 선택
     HEADERS  = {
         "accept":"application/json",
         "appKey":API_KEY,
@@ -441,3 +440,5 @@ if __name__ == "__main__":
         make_vrp_map(depot, pick_drop, vrp_plan, duration, HEADERS, TMAP_URL)
 
     print(f"\nTMAP 호출 {call_count()}건 (예산 {module.MAX_CALLS}건)")
+    남은_엔드포인트 = [e.name for e in module.available_endpoints()]
+    print(f"  사용 가능한 엔드포인트: {', '.join(남은_엔드포인트) or '없음(모두 한도 소진)'}")

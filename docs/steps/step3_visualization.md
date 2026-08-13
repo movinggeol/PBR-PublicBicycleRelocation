@@ -9,47 +9,74 @@ VRP 경로를 TMAP Routes API로 실제 도로 경로로 변환해 Folium 지도
 - **출력**: `data/pp_data/VRP/visualization/vrp_map{duration} ({now}).html`
 - **처리 흐름**:
   1. 클러스터별로 depot → 방문지들 → depot 경로 포인트 구성
-  2. TMAP `routeSequential100` API로 도로 경로(GeoJSON) 요청
+  2. TMAP 경유지 최적화 API로 도로 경로(GeoJSON) 요청
+     (`routeSequential30` 우선, 한도 소진 시 `routeSequential100`으로 자동 전환)
   3. Folium에 경로 폴리라인(방향 화살표), 방문 순서 마커(DivIcon), 적재량·누적 도착시간 팝업 표시
   4. 클러스터별 레이어 토글 + 범례
 
 ### `module.py`
 - `seconds_to_hms()`: 초 → HH:MM:SS
-- `call_tmap_sequential()`: TMAP 경유지 최적화 API 1회 호출 (429 재시도, 4xx 즉시 실패)
-- `call_tmap_chunked()`: 경유지 100개 초과 시 구간 분할 호출 (구간 끝 경유지를 도착지로 연결)
+- `pick_endpoint()`: 요청을 보낼 엔드포인트 선택 (한 번에 담기는 가장 작은 것)
+- `call_tmap_sequential()`: 1회 호출 + **엔드포인트 폴백** (순간 429 재시도, 4xx 즉시 실패)
+- `call_tmap_chunked()`: 선택된 엔드포인트의 상한을 넘으면 구간 분할 호출
+  (구간 끝 경유지를 도착지로 연결)
 - `extract_cumulative_times()`: GeoJSON 선분의 `time` 속성을 누적해 포인트별 도착시간 계산
 - `merge_tmap_results()`: 분할 호출 결과의 경로·누적시간을 하나로 병합 (경계 중복 제거)
 
-## TMAP 호출 한도 (1.12.0)
+## TMAP 엔드포인트와 호출 한도
 
-**`routeSequential30`은 일일 한도가 작아 3회차를 한 번 돌리면 소진됩니다.**
-실제로 파이프라인이 이 단계에서 멈췄고, 응답은 `429 QUOTA_EXCEEDED`였습니다.
+### 두 엔드포인트를 번갈아 씁니다 (1.13.3)
+
+TMAP 경유지 최적화 API는 경유지 상한별로 엔드포인트가 나뉘고,
+**일일 호출 한도가 엔드포인트마다 따로 잡힙니다.**
+
+| 엔드포인트 | 경유지 상한 | 이 프로젝트에서의 역할 |
+| --- | --- | --- |
+| `routeSequential30` | 30개 | **기본.** 현실 클러스터(최대 26곳)는 여기로 충분 |
+| `routeSequential100` | 100개 | 경유지가 30을 넘거나, 30이 한도를 소진했을 때 |
+
+규칙은 두 줄입니다.
+
+1. **한 번에 담기는 가장 작은 엔드포인트를 쓴다.** 경유지 30 이하면 30으로,
+   넘으면 처음부터 100으로 보냅니다 — 30으로 쪼개 두 번 부르면 쿼터를 두 번 쓰지만
+   100은 한 번이면 끝납니다.
+2. **한도를 소진하면 남은 엔드포인트로 자동 전환한다.** 429 `QUOTA_EXCEEDED`를
+   받으면 그 엔드포인트를 이번 실행에서 접고 같은 요청을 다음 것으로 다시 보냅니다.
+   **소진된 엔드포인트는 다시 부르지 않습니다** — 하루가 지나야 풀리기 때문입니다.
 
 ```text
-[routeSequential30]  HTTP 429  {"error":{"code":"QUOTA_EXCEEDED","message":"Limit Exceeded"}}
-[routeSequential100] HTTP 200  features: 5
+[안내] routeSequential30 일일 한도 소진 → routeSequential100로 전환합니다.
 ```
 
-**`routeSequential100`으로 바꿨습니다.** 한도가 넉넉할 뿐 아니라 경유지를 100개까지
-받으므로, 현실적인 클러스터 크기(최대 26곳)에서는 **클러스터 하나가 호출 한 번**으로
-끝납니다. 분할 호출은 사실상 일어나지 않습니다.
+**한도가 따로 잡히므로 작은 쪽을 먼저 쓰면 하루치 호출이 그만큼 늘어납니다.**
+이전(1.12.0)에는 30이 소진되자 100으로 **완전히 갈아탔는데**, 그러면 다음 날
+30의 한도가 회복돼도 쓰지 않게 됩니다.
 
-유료 API인 만큼 안전장치를 두 겹 뒀습니다.
+> 이 문제는 실제로 겪었습니다 — `routeSequential30`의 일일 한도(100건)를 넘겨
+> 파이프라인이 step3에서 멈췄고, 두 엔드포인트를 1회씩 찔러 확인했습니다.
+> `routeSequential30` → **429 QUOTA_EXCEEDED**, `routeSequential100` → **200 OK**.
+
+### 안전장치
+
+유료 API인 만큼 세 겹을 뒀습니다.
 
 | 장치 | 동작 | 설정 |
 | --- | --- | --- |
+| 엔드포인트 폴백 | 30 소진 시 100으로 전환. 둘 다 소진되면 포기 | — |
 | 호출 예산 | 한 프로세스에서 N건을 넘으면 중단 | `PBR_TMAP_MAX_CALLS` (기본 35) |
-| 한도 초과 즉시 포기 | `QUOTA_EXCEEDED`는 재시도해도 하루가 지나야 풀리므로 기다리지 않음 | — |
+| 한도 초과 재시도 안 함 | `QUOTA_EXCEEDED`는 하루가 지나야 풀리므로 같은 엔드포인트로 기다리지 않음 | — |
 
-**둘 다 파이프라인을 멈추지 않습니다.** 걸리면 그 클러스터만 도로 경로 대신
+**전부 파이프라인을 멈추지 않습니다.** 걸리면 그 클러스터만 도로 경로 대신
 **방문 순서를 이은 직선(점선)** 으로 그리고 도착 시각은 `-`로 둡니다.
 지도 품질만 떨어질 뿐 이후 단계는 정상 진행됩니다.
 
 기본 예산 35는 정규 실행량(클러스터 10개 × 3회차 = 30건)에 여유를 조금 둔 값입니다.
+실행이 끝나면 남은 엔드포인트를 함께 출력합니다.
 
 ```powershell
 $env:PBR_TMAP_MAX_CALLS="0"    # 호출 없이 직선 지도만 (쿼터 소모 0)
-$env:PBR_TMAP_URL="https://apis.openapi.sk.com/tmap/routes/routeSequential30"  # 엔드포인트 교체
+# 특정 엔드포인트만 쓰고 폴백을 끄고 싶을 때 (수동 검증용)
+$env:PBR_TMAP_URL="https://apis.openapi.sk.com/tmap/routes/routeSequential100"
 ```
 
 ## 현재 문제점
@@ -70,4 +97,5 @@ $env:PBR_TMAP_URL="https://apis.openapi.sk.com/tmap/routes/routeSequential30"  #
 - [x] ~~경유지 30개 초과 시 분할 요청~~ — `call_tmap_chunked` + `merge_tmap_results` (1.2.0)
 - [x] ~~일일 한도 소진으로 파이프라인 중단~~ — `routeSequential100` 전환 + 호출 예산 +
   직선 폴백 (1.12.0)
+- [x] ~~한 엔드포인트만 쓰느라 나머지 한도를 놀림~~ — 30 우선 + 소진 시 100 자동 전환 (1.13.3)
 - [x] ~~module.py 죽은 코드 삭제~~ (1.2.0)

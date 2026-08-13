@@ -545,3 +545,26 @@ PBR (Public_Bicycle_Relocation)
 
 		- 문서: FLEET.md(운용 모델·시간 예산·설정 표), TODO.md, PROJECT_PIPELINE.md,
 			steps/step2_ilp_vrp.md, SKILL.md 갱신. 테스트 137개 전부 통과.
+
+1.13.3 : (2026-08-13) TMAP 엔드포인트 폴백 — routeSequential30 우선, 소진 시 100.
+		- 배경: 어제(1.12.0) routeSequential30의 일일 한도(100건)를 넘겨 step3가 죽었고,
+			routeSequential100으로 '완전히 갈아탔다'. 그런데 두 엔드포인트는 일일 한도가
+			따로 잡힌다. 갈아타 버리면 다음 날 30의 한도가 회복돼도 쓰지 않게 된다.
+		- 이제 요청마다 고른다:
+			1) 한 번에 담기는 가장 작은 엔드포인트를 쓴다. 경유지 30 이하는 30으로,
+			   넘으면 처음부터 100으로. 30으로 쪼개 두 번 부르면 쿼터를 두 번 쓰지만
+			   100은 한 번이면 끝나기 때문이다.
+			2) 429 QUOTA_EXCEEDED를 받으면 그 엔드포인트를 이번 실행에서 접고 같은 요청을
+			   남은 것으로 다시 보낸다. 소진된 엔드포인트는 다시 부르지 않는다
+			   (하루가 지나야 풀린다).
+		- module.py에 TmapEndpoint/ENDPOINTS/pick_endpoint/available_endpoints 신설.
+			URL과 경유지 상한이 함께 움직여야 하는데 예전에는 url은 main.py가 넘기고
+			MAX_VIA는 module 상수라 갈라져 있었다 — 폴백을 넣으려면 한 쪽으로 모아야 했다.
+		- PBR_TMAP_URL을 주면 그 엔드포인트만 쓰고 폴백하지 않는다(수동 검증용 탈출구).
+		- 실행 끝에 남은 엔드포인트를 출력한다.
+		- tests/test_tmap.py 신설(11개). requests.post를 가로채 **어느 URL로 보냈는지만**
+			본다 — 검증 대상이 응답 내용이 아니라 선택·폴백 규칙이라 네트워크도 쿼터도
+			쓰지 않는다. 상한별 선택 4개 + 폴백 + 소진 후 재시도 안 함 + 둘 다 소진 +
+			URL 고정 시 폴백 없음 + 40개 경유지 단일 호출 + reset + 예산 0.
+		- 문서: steps/step3_visualization.md(엔드포인트 절 재작성), TESTING.md,
+			.env.example. 테스트 148개 전부 통과.
