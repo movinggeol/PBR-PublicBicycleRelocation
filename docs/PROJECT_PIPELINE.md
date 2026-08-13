@@ -140,7 +140,7 @@ step2 (ilp, vrp)/ilp.py는 클러스터별 Pick 대여소에서 Drop 대여소�
 
 목적함수는 대여소 간 Haversine 거리에서 환산한 이동시간과 이동 수량의 합을 최소화합니다.
 
-- 기본 차량 속도: 25 km/h
+- 기본 차량 속도: 25 km/h (`project_config.VEHICLE_SPEED_KMPH`)
 - solver: PuLP CBC
 - 출력: data/pp_data/ILP/ILP_plan{duration} ({now}).csv
 
@@ -158,7 +158,7 @@ vrp.py는 ILP 결과를 실제 차량이 수행할 방문 순서로 바꿉니다
 현재 코드의 운영 가정 (depot·적재 용량은 project_config 공통 상수):
 
 - 차량 적재 용량: 10대 (대전교통공사 확인값, 버전관리.txt 1.0.1)
-- 차량 속도: 30 km/h (ILP의 25 km/h와 다름 — 통일 여부는 운영 데이터로 결정)
+- 차량 속도: 25 km/h (`project_config.VEHICLE_SPEED_KMPH` — ILP와 같은 값, 1.13.2에서 통일)
 - Pick·Drop 작업 시간: 자전거 1대당 각 30초 (가정값)
 - depot: 타슈 관제센터 (ST0001)
 - 보유 차량 21대(`FLEET_SIZE`), 회차당 투입 상한 10대(`VEHICLES_PER_ROUND`)

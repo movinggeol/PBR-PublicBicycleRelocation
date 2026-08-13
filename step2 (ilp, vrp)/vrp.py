@@ -19,7 +19,7 @@ from ilp import haversine_km
 import db
 from project_config import (
     DEPOT_ID, DEPOT_LAT, DEPOT_LON, PROJECT_ROOT, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY,
-    duration_list, ensure_output_dirs, get_runtime_config,
+    VEHICLE_SPEED_KMPH, duration_list, ensure_output_dirs, get_runtime_config,
 )
 
 # read_csv
@@ -31,10 +31,13 @@ vrp_plan_file = str(PROJECT_ROOT / "data/pp_data/VRP/VRP_plan{duration} ({now}).
 config = get_runtime_config()
 now = config.now
 
-VEHICLE_TOTAL = 21          # TODO: 아직 미사용 — 현재는 클러스터당 차량 1대 가정 (docs/TODO.md 참고)
-VEHICLE_SPEED_KMPH = 30     # ILP(25km/h)와 다름 — 통일 여부는 운영 데이터로 결정 (docs/TODO.md)
+# 이동 속도는 project_config의 VEHICLE_SPEED_KMPH를 쓴다 — ILP와 같은 값이어야 한다.
+# (1.13.2 이전에는 여기서 30을 따로 쓰고 ILP는 25를 써서 두 단계가 어긋나 있었다.)
 PICK_TIME_SEC = 30.0        # 자전거 1대 싣는 시간
 DROP_TIME_SEC = 30.0        # 자전거 1대 내리는 시간
+
+# 한 회차에 차량 1대가 클러스터 1개를 맡고 depot으로 복귀한다(사용자 결정, 1.13.2).
+# 여러 클러스터를 이어 도는 구조는 채택하지 않았다 — docs/FLEET.md '운용 모델' 참고.
 
 
 def _travel_sec(km: float) -> float:

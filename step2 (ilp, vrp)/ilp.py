@@ -8,7 +8,9 @@ import numpy as np
 import pulp
 
 import db
-from project_config import PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config
+from project_config import (
+    PROJECT_ROOT, VEHICLE_SPEED_KMPH, duration_list, ensure_output_dirs, get_runtime_config,
+)
 
 # read_csv
 metrics_path = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")   # lat/lon 포함된 metrics
@@ -18,7 +20,7 @@ ilp_plan_path = str(PROJECT_ROOT / "data/pp_data/ILP/ILP_plan{duration} ({now}).
 config = get_runtime_config()
 now = config.now
 
-vehicle_speed_kmph = 25                                  # 이동 속도(km/h)
+vehicle_speed_kmph = VEHICLE_SPEED_KMPH   # 이동 속도(km/h) — VRP와 같은 값을 써야 한다
 
 def haversine_km(lat1, lon1, lat2, lon2) -> float:
     '''
@@ -42,7 +44,7 @@ def haversine_km(lat1, lon1, lat2, lon2) -> float:
     return float(R*c)
 
 
-def km_to_travel_seconds(km: float, speed_kmph: float = 25.0) -> float:
+def km_to_travel_seconds(km: float, speed_kmph: float = VEHICLE_SPEED_KMPH) -> float:
     '''
     거리(km) -> 이동시간(초)
     '대여소 간 거리'를 '차량이 몇 초 걸려서 이동'할 수 있을지 구할 때 사용

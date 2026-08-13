@@ -116,7 +116,8 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
   `rebal_qty`(양수=Drop 필요, 음수=Pick 가능), `target_qty`, `cluster`.
 - 좌표: TASHU API는 `x_pos`=위도, `y_pos`=경도 (뒤집혀 있음 — 변환 코드 존재).
 - 운영 상수(변경 시 근거 기록): 차량 적재 용량 10대(대전교통공사 확인),
-  ILP 속도 25km/h, VRP 속도 30km/h, depot=타슈 관제센터(ST0001).
+  차량 속도 25km/h(`VEHICLE_SPEED_KMPH` — **ILP·VRP가 반드시 같은 값**),
+  depot=타슈 관제센터(ST0001). 한 회차에 차량 1대 = 클러스터 1개 + depot 복귀.
 - **모델 파라미터는 실측 실험으로 정해져 있다** — `TARGET_Z = 1.99`,
   `CLUSTER_GAMMA = 3000`. 근거는 `docs/EXPERIMENTS.md`이고 재현 스크립트는
   `experiments/`에 있다. **바꾸려면 같은 방식으로 재실험할 것.** 특히:
