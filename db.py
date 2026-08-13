@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS runs (
     period      TEXT,
     duration    TEXT,
     raw_file    TEXT,
+    day_type    TEXT,     -- weekday | weekend. 산출물 파일명에는 안 들어가므로 여기 남긴다
     created_at  TEXT NOT NULL
 );
 
@@ -529,18 +530,21 @@ def latest_label(conn: sqlite3.Connection, table: str) -> Optional[str]:
 
 
 def record_run(conn: sqlite3.Connection, run_label: str, period: Optional[str] = None,
-               duration: Optional[str] = None, raw_file: Optional[str] = None) -> None:
+               duration: Optional[str] = None, raw_file: Optional[str] = None,
+               day_type: Optional[str] = None) -> None:
     """실행 메타데이터를 기록한다(같은 라벨이면 덮어쓴다)."""
     conn.execute(
-        "INSERT OR REPLACE INTO runs (run_label, period, duration, raw_file, created_at)"
-        " VALUES (?, ?, ?, ?, datetime('now', 'localtime'))",
-        (run_label, period, duration, raw_file),
+        "INSERT OR REPLACE INTO runs"
+        " (run_label, period, duration, raw_file, day_type, created_at)"
+        " VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))",
+        (run_label, period, duration, raw_file, day_type),
     )
     conn.commit()
 
 
 def ensure_run(conn: sqlite3.Connection, run_label: str, period: Optional[str] = None,
-               duration: Optional[str] = None, raw_file: Optional[str] = None) -> None:
+               duration: Optional[str] = None, raw_file: Optional[str] = None,
+               day_type: Optional[str] = None) -> None:
     """실행 행이 없으면 만들고, 새로 알게 된 값만 채운다.
 
     단계 스크립트는 저마다 아는 정보가 다르다(순수요 단계는 period만, 최적화 단계는
@@ -552,19 +556,24 @@ def ensure_run(conn: sqlite3.Connection, run_label: str, period: Optional[str] =
         " VALUES (?, datetime('now', 'localtime'))",
         (run_label,),
     )
+    # day_type만 인자가 우선이다(COALESCE의 순서가 반대인 것에 주의).
+    # 나머지는 '먼저 기록된 값을 지킨다'가 맞지만, day_type은 **산출물의 성격을
+    # 규정**한다 — 같은 라벨을 다른 요일 구분으로 다시 돌리면 산출물이 덮어써지므로
+    # 기록도 따라가야 한다. 안 그러면 주말 산출물에 '평일'이라고 적혀 남는다.
     conn.execute(
         "UPDATE runs SET period = COALESCE(period, ?),"
         "                duration = COALESCE(duration, ?),"
-        "                raw_file = COALESCE(raw_file, ?)"
+        "                raw_file = COALESCE(raw_file, ?),"
+        "                day_type = COALESCE(?, day_type)"
         " WHERE run_label = ?",
-        (period, duration, raw_file, run_label),
+        (period, duration, raw_file, day_type, run_label),
     )
     conn.commit()
 
 
 def save_output(table: str, df: pd.DataFrame, run_label: Optional[str] = None,
                 period: Optional[str] = None, duration: Optional[str] = None,
-                db_path: Optional[Path] = None) -> int:
+                db_path: Optional[Path] = None, day_type: Optional[str] = None) -> int:
     """단계 산출물을 DB에 기록한다 (CSV·DB 이중 기록 전환기용).
 
     아직 **CSV가 정본**이므로 DB 기록이 실패해도 파이프라인을 멈추지 않는다.
@@ -576,7 +585,8 @@ def save_output(table: str, df: pd.DataFrame, run_label: Optional[str] = None,
     try:
         with session(db_path) as conn:
             if run_label:
-                ensure_run(conn, run_label, period=period, duration=duration)
+                ensure_run(conn, run_label, period=period, duration=duration,
+                           day_type=day_type)
             rows = save_frame(conn, table, df, run_label=run_label,
                               period=period, duration=duration)
         return rows

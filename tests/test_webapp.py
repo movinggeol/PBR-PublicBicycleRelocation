@@ -97,6 +97,32 @@ def test_per_round_over_fleet_is_rejected(client, monkeypatch):
     assert "보유 차량 대수" in res.text
 
 
+def test_index_has_day_type_select(client):
+    """평일/주말을 웹에서 고를 수 있어야 한다(기본 평일)."""
+    res = client.get("/")
+    assert 'name="day_type"' in res.text
+    assert "평일" in res.text and "주말" in res.text
+
+
+def test_day_type_is_passed_to_pipeline(client, monkeypatch):
+    """폼의 요일 구분이 run_pipeline의 --day-type으로 전달된다."""
+    captured = _capture_start(monkeypatch)
+    res = client.post("/runs", data={"day_type": "weekend"}, follow_redirects=False)
+
+    assert res.status_code == 303
+    args = captured[0]
+    assert args[args.index("--day-type") + 1] == "weekend"
+
+
+def test_invalid_day_type_is_rejected(client, monkeypatch):
+    """평일/주말 외의 값은 파이프라인을 띄우기 전에 거른다 ('all'을 포함해서)."""
+    _reject_start(monkeypatch)
+    res = client.post("/runs", data={"day_type": "all"}, follow_redirects=False)
+
+    assert res.status_code == 400
+    assert "요일 구분" in res.text
+
+
 def test_favicon_no_content(client):
     assert client.get("/favicon.ico").status_code == 204
 

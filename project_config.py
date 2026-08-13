@@ -16,6 +16,19 @@ PP_ROOT = DATA_ROOT / "pp_data"
 DEFAULT_NOW = os.getenv("PBR_NOW", "2026-05-21 18")
 DEFAULT_PERIOD = os.getenv("PBR_PERIOD", "25년 11월")
 DEFAULT_DURATION = os.getenv("PBR_DURATION", "_05_10")
+
+# ---- 요일 구분 (평일/주말) ----
+# 평일과 주말은 수요 구조가 다르므로 **한 통계로 섞지 않는다.** 실측(12개월):
+# `_10_15`·`_15_20`에서 대여소의 33~37%가 평일과 주말에 **부호가 반대**였다
+# (평일엔 채워야 할 곳이 주말엔 빼 와야 할 곳). 섞어서 평균 내면 둘 다 0에
+# 가까워져 작업 대상에서 빠진다. 근거: experiments/weekend_profile.py
+#
+# 그래서 시간대(duration)와 같은 급의 실행 설정으로 둔다 — 한 번의 실행은
+# 평일 계획이거나 주말 계획이지, 둘을 합친 무언가가 아니다.
+# 'all'을 두지 않은 것도 같은 이유다(섞는 선택지를 아예 만들지 않는다).
+DAY_TYPES = ("weekday", "weekend")
+DEFAULT_DAY_TYPE = os.getenv("PBR_DAY_TYPE", "weekday")
+DAY_TYPE_LABELS = {"weekday": "평일", "weekend": "주말"}
 DEFAULT_RAW_FILE = os.getenv(
     "PBR_RAW_FILE",
     "data/raw_data/대전시 공영자전거 타슈 대여이력 정보(25년11월).csv",
@@ -128,10 +141,16 @@ class RuntimeConfig:
     period: str = DEFAULT_PERIOD
     duration: str = DEFAULT_DURATION
     raw_file: str = DEFAULT_RAW_FILE
+    day_type: str = DEFAULT_DAY_TYPE
 
     @property
     def raw_path(self) -> Path:
         return PROJECT_ROOT / self.raw_file
+
+    @property
+    def day_label(self) -> str:
+        """출력 메시지용 한국어 표기(평일/주말)."""
+        return DAY_TYPE_LABELS.get(self.day_type, self.day_type)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -143,6 +162,12 @@ def _parser() -> argparse.ArgumentParser:
         "--raw-file",
         default=None,
         help="원천 대여 이력 CSV 경로(프로젝트 루트 기준)",
+    )
+    parser.add_argument(
+        "--day-type",
+        default=None,
+        choices=DAY_TYPES,
+        help=f"요일 구분. {' | '.join(DAY_TYPES)} (기본 {DEFAULT_DAY_TYPE})",
     )
     return parser
 
@@ -160,7 +185,29 @@ def get_runtime_config(argv: Optional[list[str]] = None) -> RuntimeConfig:
         period=args.period or DEFAULT_PERIOD,
         duration=args.duration or DEFAULT_DURATION,
         raw_file=args.raw_file or DEFAULT_RAW_FILE,
+        day_type=normalize_day_type(args.day_type or DEFAULT_DAY_TYPE),
     )
+
+
+def normalize_day_type(value) -> str:
+    """요일 구분 값을 검증한다. 환경변수로 오타가 들어와도 여기서 걸린다."""
+    day_type = str(value).strip().lower()
+    if day_type not in DAY_TYPES:
+        raise ValueError(
+            f"요일 구분은 {' 또는 '.join(DAY_TYPES)} 여야 합니다 (입력: {value}).")
+    return day_type
+
+
+def select_day_type(frame, date_column: str, day_type: str):
+    """날짜 컬럼을 보고 평일 또는 주말 행만 남긴다.
+
+    `duration_list()`와 같은 급의 헬퍼다 — 어느 단계에서 걸러도 규칙이 같아야
+    하므로 한 곳에 둔다. 공휴일은 아직 반영하지 않는다(토·일 기준).
+    """
+    import pandas as pd     # 설정 모듈이 pandas에 항상 의존하지 않도록 지역 import
+
+    weekend = pd.to_datetime(frame[date_column]).dt.dayofweek >= 5
+    return frame[weekend if normalize_day_type(day_type) == "weekend" else ~weekend]
 
 
 def duration_list(config: RuntimeConfig) -> Tuple[str, ...]:

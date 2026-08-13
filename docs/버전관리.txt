@@ -568,3 +568,52 @@ PBR (Public_Bicycle_Relocation)
 			URL 고정 시 폴백 없음 + 40개 경유지 단일 호출 + reset + 예산 0.
 		- 문서: steps/step3_visualization.md(엔드포인트 절 재작성), TESTING.md,
 			.env.example. 테스트 148개 전부 통과.
+
+1.14.0 : (2026-08-13) 주말 재배치 지원 — 평일/주말을 나눠 계획한다.
+		[발견] 파이프라인이 첫 커밋(a60a871)부터 주말을 버리고 있었다.
+		- raw_to_net.py의 `평일유무` 필터와 api_to_info.py의 같은 필터. 두 곳 다
+			설계 선택이었지만(step0_raw.md에 '평일만 필터'로 적혀 있었다), 그 결과가
+			어디에도 정리돼 있지 않아 '이 파이프라인은 평일 전용'이라는 사실이 묻혀 있었다.
+		- 버려지던 양: 전체 이용의 21~31%(12개월 실측). net_demand에 주말이 0일이었다.
+
+		[측정] 섞어도 되는가? -> 안 된다. experiments/weekend_profile.py (12개월)
+		- `_10_15`·`_15_20`에서 대여소의 33~37%가 평일과 주말에 **부호가 반대**다.
+			평일엔 채워야 할 곳이 주말엔 빼 와야 할 곳이다.
+		- 25년 11월 실데이터로 계획을 뽑아 대조:
+			회차      평일 대상  주말 대상  부호역전  섞으면 소멸
+			_05_10      341곳     248곳       2곳        11곳
+			_10_15      189곳     295곳      10곳        57곳
+			_15_20      200곳     221곳      14곳        35곳
+		- `_10_15`는 **주말이 평일보다 바쁘다**(295 vs 189). 그동안 통째로 못 보던 수요다.
+		- 섞었다면 `_10_15`에서 57곳이 상쇄돼 작업 대상에서 사라졌을 것이다.
+			그래서 day_type에 'all'을 두지 않았다 — 섞는 선택지를 아예 만들지 않는다.
+
+		[구현] duration과 같은 급의 실행 설정으로 올렸다.
+		- project_config: DAY_TYPES/DEFAULT_DAY_TYPE/normalize_day_type/select_day_type,
+			RuntimeConfig.day_type(+ day_label). --day-type / PBR_DAY_TYPE.
+		- raw_to_net.py: 평일 필터 제거 — **두 요일을 모두 계산**한다.
+		- calculate_target_qty.py: select_day_type으로 **한쪽만 골라** mu/sigma를 낸다.
+		- api_to_info.py: 같은 필터를 day_type에 맞췄다. 평일 고정이면 주말에만 쓰이는
+			대여소가 st_info에서 통째로 빠져 주말 계획에서 사라진다.
+		- run_pipeline --day-type, 웹 실행 폼에 '요일 구분' 선택, 실행 이력 표에 요일 열.
+		- runs 테이블에 day_type 컬럼(기존 DB는 migrate_schema가 자동으로 채운다 —
+			1.13.1에 넣은 마이그레이션이 바로 값을 했다). ensure_run에서 day_type만 COALESCE 순서가 반대다: 요일 구분은
+			산출물의 성격을 규정하므로 다시 돌리면 기록도 따라가야 한다.
+		- 요일 구분은 **파일명에 넣지 않았다.** 파일명 규약(`이름{duration} ({now}).csv`)을
+			전 단계에서 바꿔야 하는데, 평일 계획과 주말 계획은 어차피 다른 날 돌리는
+			다른 실행이라 --now 라벨로 갈리는 편이 자연스럽다. 대신 runs에 남긴다.
+
+		[합성 데이터] tools/make_sample_data.py가 bdate_range라 주말이 아예 없었다.
+		- date_range로 바꾸고 기본 일수 20 -> 28(4주 = 평일 20 + 주말 8).
+		- 주말 흐름의 방향을 평일과 반대로 뒀다. 실데이터의 부호역전을 흉내 내야
+			'섞으면 상쇄된다'를 테스트로 잡을 수 있다.
+
+		- tests/test_day_type.py 신설(12개): 설정 헬퍼 검증('all' 거부 포함),
+			net_demand에 주말이 남는지(평일 필터 회귀 방지), 두 요일의 계획이 실제로
+			다른지, 부호가 뒤집히는 대여소가 나오는지, runs에 day_type이 남는지.
+			웹 폼 3개 추가. 테스트 163개 전부 통과.
+		- 실데이터 검증: 25년 11월 net_demand를 재생성(평일 20일 + 주말 10일),
+			두 요일로 각각 계획 산출 후 대조(위 표). 검증용 산출물과 DB 행은 정리했다.
+		- 남은 것: 공휴일은 아직 평일로 센다(토·일 기준). 외부 달력이 필요하다.
+		- 문서: steps/step0_raw.md(분리 근거·실측표), PROJECT_PIPELINE.md, DB_SCHEMA.md,
+			TESTING.md, SKILL.md 갱신.

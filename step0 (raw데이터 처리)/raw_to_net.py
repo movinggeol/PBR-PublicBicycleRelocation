@@ -1,5 +1,9 @@
 """원천 대여 이력에서 날짜·대여소·시간대별 순수요(대여 − 반납)를 계산한다.
 
+**평일과 주말을 모두 계산한다.** 어느 쪽으로 계획할지는 다음 단계
+(calculate_target_qty)가 `--day-type`으로 고른다 — 두 요일 구분은 수요 구조가
+달라 한 통계로 섞으면 안 되기 때문이다(docs/steps/step0_raw.md).
+
 입력: DB의 rental_history(해당 period가 적재돼 있으면) 또는 원천 CSV
       적재는 `python tools/load_rentals.py`
 출력: data/pp_data/순수요/st_net_daily ({period}).csv  (net_00 ~ net_23)
@@ -34,10 +38,12 @@ def main() -> None:
 
     data['대여일시'] = pd.to_datetime(data['대여일시'])
     data['반납일시'] = pd.to_datetime(data['반납일시'])
-    data['평일유무'] = data['대여일시'].dt.weekday < 5
 
-    d_data = data[data['평일유무']].copy()
-
+    # 평일·주말을 **모두** 계산해 둔다. 어느 쪽으로 계획할지는 다음 단계
+    # (calculate_target_qty)가 --day-type으로 고른다.
+    # 예전에는 여기서 주말을 버렸는데, 그러면 전체 이용의 21~31%가 사라지고
+    # 주말 계획을 아예 만들 수 없었다 (버전관리 1.14.0).
+    d_data = data.copy()
     d_data['날짜'] = d_data['대여일시'].dt.date
 
     rent = (
@@ -76,7 +82,11 @@ def main() -> None:
     # csv파일로 저장
     ensure_output_dirs()
     net_daily.to_csv(out_file_path.format(period=period), encoding='utf-8', index=False)
-    print("날짜별 대여소당 순수요 데이터 저장")
+
+    날짜 = pd.to_datetime(net_daily['날짜'])
+    주말일수 = 날짜[날짜.dt.dayofweek >= 5].nunique()
+    print(f"날짜별 대여소당 순수요 데이터 저장 "
+          f"(평일 {날짜.dt.date.nunique() - 주말일수}일 + 주말 {주말일수}일)")
     print(f"\n{out_file_path.format(period=period)} 가 저장되었습니다.")
 
     # CSV·DB 이중 기록 (DB_PLAN 2단계).

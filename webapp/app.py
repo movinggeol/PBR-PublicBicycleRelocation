@@ -26,9 +26,10 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.templating import Jinja2Templates
 
 from project_config import (
-    DEFAULT_DURATION, DEFAULT_NOW, DEFAULT_PERIOD, DEFAULT_RAW_FILE,
-    FLEET_SIZE, MAX_FLEET_SIZE, TIME_BUDGET_MINUTES, VEHICLES_PER_ROUND,
-    normalize_fleet_size, normalize_per_round,
+    DAY_TYPES, DAY_TYPE_LABELS, DEFAULT_DAY_TYPE, DEFAULT_DURATION, DEFAULT_NOW,
+    DEFAULT_PERIOD, DEFAULT_RAW_FILE, FLEET_SIZE, MAX_FLEET_SIZE,
+    TIME_BUDGET_MINUTES, VEHICLES_PER_ROUND,
+    normalize_day_type, normalize_fleet_size, normalize_per_round,
 )
 from webapp import catalog, jobs, store
 
@@ -48,8 +49,11 @@ def _index_context(error: Optional[str] = None) -> dict:
             # 환경변수(PBR_FLEET_SIZE 등)를 걸어 뒀으면 그 값이, 아니면 기본값이 뜬다.
             "fleet_size": FLEET_SIZE,
             "vehicles_per_round": VEHICLES_PER_ROUND,
+            "day_type": DEFAULT_DAY_TYPE,
         },
         "max_fleet_size": MAX_FLEET_SIZE,
+        # 평일과 주말은 수요 구조가 달라 한 실행에 섞지 않는다 (docs/steps/step0_raw.md).
+        "day_types": [{"value": v, "label": DAY_TYPE_LABELS[v]} for v in DAY_TYPES],
         "running": jobs.running_job(),
         "jobs": jobs.list_jobs()[:15],
         "latest": catalog.latest_outputs(),
@@ -70,6 +74,7 @@ def create_run(
     period: str = Form(""),
     duration: str = Form(""),
     raw_file: str = Form(""),
+    day_type: str = Form(""),
     fleet_size: str = Form(""),
     vehicles_per_round: str = Form(""),
     skip_api: Optional[str] = Form(None),
@@ -86,6 +91,12 @@ def create_run(
     def invalid(message: str):
         return templates.TemplateResponse(
             request, "index.html", _index_context(error=message), status_code=400)
+
+    if day_type.strip():
+        try:
+            args.extend(["--day-type", normalize_day_type(day_type)])
+        except ValueError as err:
+            return invalid(str(err))
 
     fleet, per_round = FLEET_SIZE, VEHICLES_PER_ROUND
     try:

@@ -34,18 +34,29 @@ DEFAULT_RAW = "data/raw_data/합성_대여이력.csv"
 
 # 하루 3회차 운용(docs/FLEET.md)에 맞춰, 회차마다 방향이 다른 흐름을 만든다.
 #   (시작시, 끝시, 방향)  방향 +1 = 앞쪽→뒤쪽 대여소, -1 = 반대
-FLOW_WINDOWS = [
-    (5, 10, +1),    # 출근: 주거지 → 도심
-    (10, 15, -1),   # 낮: 완만한 역류
-    (15, 20, -1),   # 퇴근: 도심 → 주거지
-]
+#
+# **평일과 주말의 방향을 다르게 둔다.** 실데이터에서 `_10_15`·`_15_20`은 대여소의
+# 33~37%가 평일과 주말에 부호가 반대였다(experiments/weekend_profile.py).
+# 합성 데이터도 그 구조를 흉내 내야 "섞으면 상쇄된다"를 테스트할 수 있다.
+FLOW_WINDOWS = {
+    "weekday": [
+        (5, 10, +1),    # 출근: 주거지 → 도심
+        (10, 15, -1),   # 낮: 완만한 역류
+        (15, 20, -1),   # 퇴근: 도심 → 주거지
+    ],
+    "weekend": [
+        (5, 10, -1),    # 출근 흐름이 없다 (실데이터에서 평일의 57% 수준)
+        (10, 15, +1),   # 낮 나들이 — 평일과 반대 방향
+        (15, 20, +1),   # 귀가 — 평일과 반대 방향
+    ],
+}
 
 
 def generate(
     now: str = DEFAULT_NOW,
     period: str = DEFAULT_PERIOD,
     stations: int = 90,
-    days: int = 20,
+    days: int = 28,        # 4주 = 평일 20일 + 주말 8일 (주말 경로도 검증해야 한다)
     rentals_per_day: int = 700,
     raw_path: Optional[Path] = None,
     seed: int = 7,
@@ -54,6 +65,8 @@ def generate(
 
     시간대마다 방향이 다른 흐름을 만들어 회차별로 Pick/Drop 불균형이 생기게 한다
     (출근엔 도심으로 몰리고 퇴근엔 주거지로 돌아오는 형태).
+    **주말은 방향이 평일과 다르다** — 두 요일 구분을 섞으면 안 된다는 것을
+    합성 데이터에서도 재현하기 위해서다.
     재고는 거치대 수에 비례해 넓게 흩어 두어 한쪽 후보만 나오는 일이 없게 한다.
     """
     rng = np.random.default_rng(seed)
@@ -87,14 +100,17 @@ def generate(
 
     rows = []
     bike_no = 0
-    window_share = 0.85 / len(FLOW_WINDOWS)     # 15%는 그 외 시간대에 흩뿌린다
-    for day in pd.bdate_range("2025-11-03", periods=days):
+    window_share = 0.85 / 3                     # 15%는 그 외 시간대에 흩뿌린다
+    # bdate_range(평일만)가 아니라 date_range를 쓴다 — 주말이 없으면
+    # --day-type weekend 경로를 검증할 수 없다.
+    for day in pd.date_range("2025-11-03", periods=days):
+        windows = FLOW_WINDOWS["weekend" if day.dayofweek >= 5 else "weekday"]
         for _ in range(rentals_per_day):
             bike_no += 1
             draw = rng.random()
 
             window = None
-            for index, spec in enumerate(FLOW_WINDOWS):
+            for index, spec in enumerate(windows):
                 if draw < window_share * (index + 1):
                     window = spec
                     break

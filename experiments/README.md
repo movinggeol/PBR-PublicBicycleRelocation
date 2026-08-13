@@ -22,6 +22,23 @@ python experiments/seasonal_window.py    # 학습 창 비교
 셋 다 DB의 `net_demand`를 읽으므로 **여러 달의 순수요가 적재돼 있어야** 합니다
 (연속된 달이 최소 2개). 적재는 `tools/load_rentals.py --split-by-month` 참고.
 
+## 구조 결정을 위한 측정 (1.14.0)
+
+파라미터가 아니라 **설계를 정하기 위해** 잰 것들입니다. 결과는
+[docs/steps/step0_raw.md](../docs/steps/step0_raw.md)에 정리돼 있습니다.
+
+| 파일 | 물음 | 결론 |
+| --- | --- | --- |
+| `net_vs_volume.py` | 이용량이 흔들리면 재배치 필요량도 흔들리나 | 그렇다(R² 0.88~0.96). 날씨를 붙일 값어치가 있다 |
+| `weekend_profile.py` | 평일과 주말을 한 통계로 묶어도 되나 | 안 된다. 33~37%가 부호 반대 — 섞으면 상쇄된다 |
+
+```powershell
+python experiments/net_vs_volume.py     # 이용량 ↔ 필요량 상관
+python experiments/weekend_profile.py   # 평일/주말 수요 구조 비교
+```
+
+둘 다 `rental_history`를 읽습니다(`net_vs_volume.py`는 `net_demand`도 함께).
+
 ## 학습용 스크립트
 
 | 파일 | 내용 | 원래 위치 |

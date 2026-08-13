@@ -62,6 +62,7 @@ erDiagram
         TEXT period "순수요 입력 기간"
         TEXT duration "시간대(마지막 기록값)"
         TEXT raw_file "원천 CSV 경로"
+        TEXT day_type "weekday / weekend"
         TEXT created_at "기록 시각"
     }
     net_demand {
@@ -176,11 +177,17 @@ DB 기록이 실패해도 파이프라인을 멈추지 않습니다(DB_PLAN 2단
 | `period` | TEXT | 순수요 입력 기간 |
 | `duration` | TEXT | 시간대 |
 | `raw_file` | TEXT | 원천 CSV 경로 |
+| `day_type` | TEXT | `weekday` / `weekend`. **파일명에 안 들어가므로 여기가 유일한 기록** |
 | `created_at` | TEXT NOT NULL | 기록 시각 |
 
 **단계마다 아는 정보가 다릅니다** — 순수요 단계는 `period`만, 최적화 단계는 `duration`만
 압니다. 그래서 `ensure_run()`이 `COALESCE`로 **빈 값만 채우고** 먼저 기록된 값을
 덮어쓰지 않습니다. 전체를 확정해 덮어쓸 때만 `record_run()`을 씁니다.
+
+⚠️ **`day_type`만 반대입니다** (`COALESCE(?, day_type)` — 인자가 우선).
+요일 구분은 **산출물의 성격을 규정**하므로, 같은 라벨을 다른 요일로 다시 돌리면
+산출물이 덮어써지는 만큼 기록도 따라가야 합니다. 안 그러면 주말 산출물에
+'평일'이라고 적혀 남습니다.
 
 ### 4-2. step0 산출 — 대여소 상태와 수요
 
@@ -234,7 +241,11 @@ DB 기록이 실패해도 파이프라인을 멈추지 않습니다(DB_PLAN 2단
 | `period` | TEXT **PK** | 원천 기간. **`run_label`이 아님** |
 | `date` | TEXT **PK** | CSV의 `날짜` |
 | `station_id` | TEXT **PK** | |
-| `net_00` ~ `net_23` | INTEGER × 24 | 시간대별 순수요(반납−대여) |
+| `net_00` ~ `net_23` | INTEGER × 24 | 시간대별 순수요(대여−반납) |
+
+**평일과 주말이 모두 들어 있습니다**(1.14.0부터). 어느 쪽으로 계획할지는
+`calculate_target_qty`가 `--day-type`으로 고릅니다 — 두 요일을 한 통계로 섞으면
+부호가 반대인 대여소끼리 상쇄됩니다([steps/step0_raw.md](steps/step0_raw.md)).
 
 **세로(long)가 아니라 가로(wide) 24컬럼**입니다. 현재 계산 코드가 wide 형태를 기대해
 그대로 보존했습니다. 정규화하려면 `(period, date, station_id, hour, net)` 4컬럼이

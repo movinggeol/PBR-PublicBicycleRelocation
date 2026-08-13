@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Iterable
 
 from project_config import (
-    DEFAULT_FLEET_SIZE, DEFAULT_VEHICLES_PER_ROUND, ensure_output_dirs,
-    normalize_fleet_size, normalize_per_round,
+    DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_FLEET_SIZE, DEFAULT_VEHICLES_PER_ROUND,
+    ensure_output_dirs, normalize_fleet_size, normalize_per_round,
 )
 
 
@@ -78,6 +78,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--period", help="순수요 입력 기간. 예: 25년 11월")
     parser.add_argument("--duration", help="시간대 구간. 예: _05_10")
     parser.add_argument("--raw-file", help="원천 CSV 경로(프로젝트 루트 기준)")
+    parser.add_argument("--day-type", choices=DAY_TYPES,
+                        help=f"요일 구분 (기본 {DEFAULT_DAY_TYPE}). 평일과 주말은 섞지 않는다")
 
     # 차량 대수는 다른 공통 설정과 달리 CLI 인자가 아니라 환경변수로 하위 단계에
     # 전달한다 — project_config가 모듈 import 시점에 읽는 상수라서, 각 단계
@@ -128,6 +130,7 @@ def build_command(script: Path, args: argparse.Namespace) -> list[str]:
         ("--period", args.period),
         ("--duration", args.duration),
         ("--raw-file", args.raw_file),
+        ("--day-type", args.day_type),
     ):
         if value:
             command.extend([option, value])
@@ -187,6 +190,8 @@ def main() -> int:
         return 2
 
     print("=== Public Bike Rebalancing Pipeline ===")
+    if args.day_type:
+        print(f"요일 구분: {args.day_type} (평일과 주말은 섞지 않습니다)")
     if args.fleet_size is not None or args.vehicles_per_round is not None:
         # 회차 투입 상한은 보유 대수로 잘리므로, 실제 적용되는 값을 보여줍니다.
         print(f"보유 차량 {fleet}대 · 회차당 투입 상한 {per_round}대로 실행합니다.")

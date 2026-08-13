@@ -13,7 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 
 import db
-from project_config import PROJECT_ROOT, ensure_output_dirs, get_runtime_config
+from project_config import (
+    PROJECT_ROOT, ensure_output_dirs, get_runtime_config, select_day_type,
+)
 
 # read_csv
 stock_file = str(PROJECT_ROOT / "data/pp_data/대여소별 재고/대여소별_자전거대수 ({now}).csv")
@@ -37,16 +39,19 @@ def main() -> None:
         raise SystemExit(f"대여이력을 찾을 수 없습니다: {config.raw_path}")
     print(f"대여이력 {len(st):,}행 로드 (출처: {source})")
 
-    # 대여일시 -> 평일만 필터링
+    # 계획하려는 요일 구분(--day-type)에 맞춰 거른다.
+    # 평일 계획이면 평일 이력만, 주말 계획이면 주말 이력만 집계해야
+    # 대여소 목록·좌표·이용량이 그 계획과 같은 세계를 가리킨다.
+    # (예전에는 평일로 고정이라 주말에만 쓰이는 대여소가 통째로 빠졌다.)
     st['대여일시'] = pd.to_datetime(st['대여일시'])
-    st = st[st['대여일시'].dt.weekday < 5].copy()
-
-    print(st.head())
+    st = select_day_type(st, '대여일시', config.day_type).copy()
+    if st.empty:
+        raise SystemExit(f"{config.day_label} 대여이력이 없습니다.")
 
     year_month = st['대여일시'].dt.to_period('M').iloc[0]
 
-    weekday_qty = st['대여일시'].dt.date.nunique()
-    print(f"{year_month}에는 {weekday_qty}개의 평일이 존재합니다.")
+    day_qty = st['대여일시'].dt.date.nunique()
+    print(f"{year_month}에는 {day_qty}개의 {config.day_label}이 존재합니다.")
 
     st = st.loc[:, ['대여일시', '대여_대여소ID', '대여_대여소명', '대여_X좌표', '대여_Y좌표',
                              '반납일시', '반납_대여소ID', '이용시간(분)', '이용거리(km)']]

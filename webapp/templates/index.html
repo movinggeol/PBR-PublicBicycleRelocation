@@ -26,6 +26,17 @@
       <label>시간대 (duration, 콤마로 여러 개)
         <input type="text" name="duration" value="{{ defaults.duration }}">
       </label>
+      <label>요일 구분
+        <select name="day_type">
+          {% for option in day_types %}
+          <option value="{{ option.value }}"
+            {% if option.value == defaults.day_type %}selected{% endif %}>
+            {{ option.label }}</option>
+          {% endfor %}
+        </select>
+        <span class="muted">평일과 주말은 수요 구조가 달라 한 실행에 섞지 않습니다.
+          둘 다 필요하면 라벨을 달리해 두 번 실행하세요.</span>
+      </label>
       <label>원천 대여 이력 CSV (프로젝트 루트 기준)
         <input type="text" name="raw_file" value="{{ defaults.raw_file }}">
       </label>
@@ -85,12 +96,13 @@
   <p class="muted">산출물은 실행 라벨(run_label)로 구분되어 DB에 저장됩니다.
     API에 <code>?run_label=...</code>을 붙이면 과거 실행분을 조회할 수 있습니다.</p>
   <table>
-    <tr><th>실행 라벨</th><th>순수요 기간</th><th>시간대</th><th>기록 시각</th><th></th></tr>
+    <tr><th>실행 라벨</th><th>순수요 기간</th><th>시간대</th><th>요일</th><th>기록 시각</th><th></th></tr>
     {% for run in pipeline_runs %}
     <tr>
       <td>{{ run.run_label }}</td>
       <td class="muted">{{ run.period or "—" }}</td>
       <td class="muted">{{ run.duration or "—" }}</td>
+      <td class="muted">{{ "주말" if run.day_type == "weekend" else ("평일" if run.day_type else "—") }}</td>
       <td class="muted">{{ run.created_at }}</td>
       <td>
         <a href="/api/metrics?run_label={{ run.run_label | urlencode }}">지표</a> ·
