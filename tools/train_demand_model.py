@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import db
 import demand_model
+from project_config import DEFAULT_WARMUP_DAYS
 
 
 def main() -> int:
@@ -29,6 +30,9 @@ def main() -> int:
                         default=demand_model.TARGET_QUANTILE,
                         help=f"목표 분위수 (기본 {demand_model.TARGET_QUANTILE})")
     parser.add_argument("--out", help="저장 경로 (기본 data/models/target_quantile.pkl)")
+    parser.add_argument("--warmup-days", type=int, default=DEFAULT_WARMUP_DAYS,
+                        help=f"계절 보정 일수 (기본 {DEFAULT_WARMUP_DAYS})."
+                             " 파이프라인과 같은 값이어야 한다")
     parser.add_argument("--dry-run", action="store_true", help="학습 없이 데이터만 확인")
     args = parser.parse_args()
 
@@ -41,7 +45,7 @@ def main() -> int:
             return 1
         net = {p: db.load_frame(conn, "net_demand", period=p) for p in periods}
 
-    frame = demand_model.training_frame(net)
+    frame = demand_model.training_frame(net, warmup_days=args.warmup_days)
     if frame.empty:
         print("학습 데이터를 만들지 못했습니다. 이어지는 달이 있는지 확인하세요.")
         return 1

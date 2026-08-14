@@ -37,8 +37,16 @@ from project_config import DATA_ROOT, DAY_TYPES, select_day_type
 
 MODEL_PATH = DATA_ROOT / "models" / "target_quantile.pkl"
 
-# 목표 분위수. target_qty의 설계 의도(95%를 덮는다)와 같은 값이다.
-TARGET_QUANTILE = 0.95
+# 학습 분위수. **목표(95%)보다 높게 잡는다.**
+#
+# q=0.95로 학습하면 표본 밖 실현 커버리지가 92~94%에 그친다 — 학습 달에서 성립한
+# 관계가 검증 달에서 그대로 유지되지 않기 때문이다(docs/DEMAND_DISTRIBUTION.md 4장).
+# 그 차이를 실측으로 메운 값이 0.97이다. **z를 1.65 → 1.99로 올린 것과 같은 성격의
+# 보정**이며, 같은 한계도 갖는다(이 데이터에서 고른 값이다).
+#
+# 검증 달 8개 중 7개에서 베이스라인보다 95%에 가깝고 과잉도 낮았다.
+# 재현: python experiments/quantile_model_eval.py --holdout "26년 03월"
+TARGET_QUANTILE = 0.97
 
 DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
 
@@ -46,9 +54,15 @@ DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
 FEATURES = [
     "prev_mu", "prev_sigma", "prev_abs_mu", "prev_median",
     "prev_q90", "prev_max", "prev_min", "prev_zero_ratio", "prev_days",
+    "warmup_ratio",
     "month", "duration_idx", "day_type_idx",
 ]
 CATEGORICAL = ["duration_idx", "day_type_idx"]
+
+# 계절 배율을 곱해야 하는 피처 — '수준'을 나타내는 것들만이다.
+# 비율(prev_zero_ratio)과 개수(prev_days)는 배율과 무관하다.
+LEVEL_FEATURES = ("prev_mu", "prev_sigma", "prev_abs_mu", "prev_median",
+                  "prev_q90", "prev_max", "prev_min")
 
 
 def window_hours(duration: str) -> list:
@@ -103,8 +117,37 @@ def add_context(frame: pd.DataFrame, duration: str, day_type: str,
     return frame
 
 
+def build_features(train_demand: pd.DataFrame, duration: str, day_type: str,
+                   month: int, ratio: Optional[float] = None) -> pd.DataFrame:
+    """직전 달 순수요 → 모델 입력 피처.
+
+    **학습과 예측이 반드시 이 함수를 거쳐야 한다.** 한쪽만 계절 배율을 곱하면
+    모델이 배운 것과 다른 세계를 예측하게 된다(train/serve skew).
+
+    `ratio`(계절 배율)를 주면 수준 피처에 곱하고 배율 자체도 피처로 넣는다 —
+    보정이 얼마나 컸는지를 모델이 알아야 "많이 보정한 달은 더 불확실하다"를
+    배울 수 있다. 배율은 호출부가 구한다(베이스라인과 **같은 값**을 써야 하므로).
+    """
+    features = summarize(train_demand)
+    if ratio:
+        for column in LEVEL_FEATURES:
+            features[column] = features[column] * ratio
+
+    features["warmup_ratio"] = ratio if ratio else 1.0
+    return add_context(features, duration, day_type, month)
+
+
+def season_ratio(train_demand: pd.DataFrame, recent: Optional[pd.DataFrame],
+                 warmup_days: int) -> Optional[float]:
+    """직전 달 통계와 계획 대상 달의 부분 실적으로 계절 배율을 구한다."""
+    if warmup_days <= 0 or recent is None or recent.empty or train_demand.empty:
+        return None
+    stats = train_demand.groupby("station_id")["demand"].mean().rename("mu").reset_index()
+    return warmup_ratio(stats, recent, warmup_days)
+
+
 def training_frame(net_by_period: dict, day_types=DAY_TYPES,
-                   durations=DURATIONS) -> pd.DataFrame:
+                   durations=DURATIONS, warmup_days: int = 0) -> pd.DataFrame:
     """(직전 달 피처 → 이번 달 실제 순수요) 표를 만든다.
 
     한 행 = (대여소, 이번 달의 하루). 타깃은 그날의 실제 순수요다.
@@ -130,7 +173,9 @@ def training_frame(net_by_period: dict, day_types=DAY_TYPES,
                 if train_demand.empty or test_demand.empty:
                     continue
 
-                features = add_context(summarize(train_demand), duration, day_type, month)
+                ratio = season_ratio(train_demand, test_demand, warmup_days)
+                features = build_features(train_demand, duration, day_type,
+                                          month, ratio)
                 merged = test_demand.merge(features, on="station_id", how="inner")
                 if not merged.empty:
                     rows.append(merged)
@@ -141,6 +186,8 @@ def training_frame(net_by_period: dict, day_types=DAY_TYPES,
 
 
 # ---------------- 계절 수준 보정 (warmup) ----------------
+# (build_features가 이 함수들을 쓴다 — 파이썬은 호출 시점에 이름을 찾으므로
+#  정의 순서는 문제가 되지 않는다.)
 #
 # ML이 아니다. 지난달 통계에 **배율 하나**를 곱하는 것뿐이다.
 # 계절이 도약하는 달(2월→3월 수요 1.5배)에는 지난달 평균이 구조적으로 낮게 나오고,

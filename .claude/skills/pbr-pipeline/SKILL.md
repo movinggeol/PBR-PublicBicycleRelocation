@@ -15,7 +15,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/RETROSPECTIVE.md` | 전체 조망·측정이 뒤집은 가설·설계 결정 (처음 오면 여기부터) |
 | `docs/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/TESTING.md` | 테스트 181개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/TESTING.md` | 테스트 182개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/PROJECT_PIPELINE.md` | 파이프라인 전체 구조 |
 | `docs/steps/step*.md` | 단계별 입출력·문제점·작업 목록 |
@@ -146,8 +146,12 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
   전체 배율을 구해 mu·sigma에 곱한다(`--warmup-days 0`으로 끔). 배율을 대여소별로
   추정하지 마라 — 며칠치로 나누면 잡음만 커진다.
 - **수요 예측을 바꾸려면 `experiments/quantile_model_eval.py`의 판정을 통과해야 한다** —
-  작업 대상만·평일/휴일 따로·표본 밖·베이스라인 초과. 분위수 모델은 1차 시도에서
-  졌고 기본으로 꺼져 있다(모델 파일이 없으면 `mu + z·sigma`로 폴백).
+  작업 대상만·평일/휴일 따로·표본 밖·베이스라인 초과.
+- **분위수 모델(q=0.97)이 채택돼 있다** — 8개 검증 달 중 7승. `data/models/`에 모델
+  파일이 있으면 `target_qty`를 그것으로 잡고, 없으면 `mu + z·sigma`로 폴백한다
+  (모델 파일은 Git에 없으니 `tools/train_demand_model.py`로 학습해야 켜진다).
+  **학습·예측은 반드시 `demand_model.build_features()` 하나를 거쳐야 한다** —
+  한쪽만 계절 배율을 곱하면 조용히 틀린 값이 나온다(테스트가 지킨다).
 - 예측 정확도는 **작업 대상 대여소(`|rebal_qty| > 2`)에서** 재야 한다. 전체 평균은
   파이프라인이 손대지 않는 대여소에 희석돼 정반대 결론이 나온 적이 있다.
 - pandas 2.x 기준으로 작성 (`.loc` 슬라이스에 inplace 연산 금지).
@@ -195,7 +199,7 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
 ## 테스트
 
 ```powershell
-python -m pytest                 # 181개, 약 50초 (tests/ 만 수집)
+python -m pytest                 # 182개, 약 55초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

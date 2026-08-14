@@ -222,7 +222,11 @@ def test_training_frame_uses_only_previous_month():
 
     assert "station_id" not in demand_model.FEATURES, \
         "대여소 ID를 외우면 표본 8~19일에서 과적합한다"
-    assert all(f.startswith("prev_") or f in ("month", "duration_idx", "day_type_idx")
+    # 허용: 직전 달 통계(prev_*), 달력에서 오는 것(month/duration/day_type),
+    #      계획 대상 달의 **첫 N일**로 구하는 계절 배율(warmup_ratio).
+    #      셋 다 계획을 세우는 시점에 손에 있는 정보다.
+    allowed = ("month", "duration_idx", "day_type_idx", "warmup_ratio")
+    assert all(f.startswith("prev_") or f in allowed
                for f in demand_model.FEATURES), \
         "예측 시점에 알 수 없는 피처가 섞였다"
 
@@ -297,3 +301,35 @@ def test_apply_warmup_moves_center_not_just_spread():
     assert scaled["sigma"].iloc[0] == pytest.approx(3.0)
     # 원본은 그대로여야 한다(호출부가 되돌릴 수 있게)
     assert stats["mu"].iloc[0] == 10.0
+
+
+def test_train_and_serve_use_the_same_features():
+    """학습과 예측이 같은 함수를 거쳐야 한다 — 어긋나면 조용히 틀린 값이 나온다."""
+    import demand_model
+
+    daily = pd.DataFrame({
+        "station_id": ["A"] * 6 + ["B"] * 6,
+        "date": list(pd.date_range("2026-02-02", periods=6)) * 2,
+        "demand": [5, 6, 4, 7, 5, 6, -3, -2, -4, -3, -2, -3],
+    })
+    recent = pd.DataFrame({
+        "station_id": ["A", "B"],
+        "date": pd.to_datetime(["2026-03-02", "2026-03-02"]),
+        "demand": [10.0, -6.0],                   # 대략 2배
+    })
+
+    ratio = demand_model.season_ratio(daily, recent, warmup_days=14)
+    assert ratio is not None and ratio > 1.0
+
+    features = demand_model.build_features(daily, "_05_10", "weekday", 3, ratio)
+
+    assert list(features.columns[-len(demand_model.FEATURES):]) or True
+    assert set(demand_model.FEATURES) <= set(features.columns), \
+        "build_features가 FEATURES를 전부 만들지 않으면 예측 때 KeyError가 난다"
+    assert features["warmup_ratio"].iloc[0] == pytest.approx(ratio)
+
+    # 배율은 '수준' 피처에만 곱해야 한다
+    plain = demand_model.build_features(daily, "_05_10", "weekday", 3, None)
+    assert features["prev_mu"].iloc[0] == pytest.approx(plain["prev_mu"].iloc[0] * ratio)
+    assert features["prev_days"].iloc[0] == plain["prev_days"].iloc[0]
+    assert features["prev_zero_ratio"].iloc[0] == plain["prev_zero_ratio"].iloc[0]

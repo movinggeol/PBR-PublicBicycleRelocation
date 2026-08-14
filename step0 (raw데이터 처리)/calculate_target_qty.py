@@ -191,34 +191,40 @@ if __name__ == '__main__':
         stats = stats.merge(st_initial_qty, how='left', on='station_id')
         stats = stats[~stats['stock'].isna()]
 
-        # 계절 배율을 곱해 **중심을 옮긴다**(분산만 부풀리는 z와 다르다).
+        # 학습 달의 날짜별 순수요 — 베이스라인과 모델이 **같은 입력**에서 출발한다.
+        daily = pd.DataFrame({
+            "station_id": net_temp["station_id"].values,
+            "date": net_temp["날짜"].values,
+            "demand": net_temp[f'sum{duration}'].values,
+        })
+
+        # 계절 배율은 한 번만 구해 양쪽에 같이 쓴다.
+        # (베이스라인과 모델이 다른 배율을 쓰면 비교 자체가 성립하지 않는다.)
+        ratio = None
         if warmup_net is not None and not warmup_net.empty:
             recent = warmup_net.copy()
             recent[f'sum{duration}'] = recent[hours].sum(axis=1)
-            ratio = demand_model.warmup_ratio(
-                stats, pd.DataFrame({
-                    "station_id": recent["station_id"].values,
-                    "date": recent["날짜"].values,
-                    "demand": recent[f'sum{duration}'].values,
-                }), config.warmup_days)
+            ratio = demand_model.season_ratio(daily, pd.DataFrame({
+                "station_id": recent["station_id"].values,
+                "date": recent["날짜"].values,
+                "demand": recent[f'sum{duration}'].values,
+            }), config.warmup_days)
             if ratio is not None:
-                stats = demand_model.apply_warmup(stats, ratio)
                 print(f"  {duration}: 계절 배율 ×{ratio:.2f}")
 
-        # 모델을 쓸 때만 추가 피처를 만든다(기본 경로에는 비용이 없다).
+        # 계절 배율을 곱해 **중심을 옮긴다**(분산만 부풀리는 z와 다르다).
+        stats = demand_model.apply_warmup(stats, ratio)
+
         model_target = None
         if bundle is not None:
-            daily = pd.DataFrame({
-                "station_id": net_temp["station_id"].values,
-                "date": net_temp["날짜"].values,
-                "demand": net_temp[f'sum{duration}'].values,
-            })
-            features = demand_model.summarize(daily)
-            merged = stats[["station_id"]].merge(features, on="station_id", how="left")
             try:
-                predicted = demand_model.predict_target(
-                    bundle, merged, duration, config.day_type,
-                    pd.to_datetime(net_temp['날짜']).dt.month.mode().iloc[0])
+                # 학습과 **같은 함수**로 피처를 만든다(train/serve 불일치 방지).
+                features = demand_model.build_features(
+                    daily, duration, config.day_type,
+                    pd.to_datetime(net_temp['날짜']).dt.month.mode().iloc[0], ratio)
+                merged = stats[["station_id"]].merge(features, on="station_id", how="left")
+                predicted = bundle["model"].predict(
+                    merged[demand_model.FEATURES].to_numpy())
                 model_target = pd.Series(predicted, index=stats.index)
             except Exception as err:      # 모델 문제로 파이프라인을 멈추지 않는다
                 print(f"[경고] 분위수 예측 실패({type(err).__name__}: {err})."

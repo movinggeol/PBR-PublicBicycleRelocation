@@ -37,6 +37,11 @@ DURATIONS = ("_05_10", "_10_15", "_15_20")
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--holdout", help="검증에 쓸 달 (기본: 가장 최근 달)")
+    parser.add_argument("--warmup-days", type=int, default=14,
+                        help="계절 보정 일수 (기본 14, 0이면 끔). 베이스라인에도 같이 적용")
+    parser.add_argument("--quantile", type=float, default=demand_model.TARGET_QUANTILE,
+                        help="학습 분위수 (기본 0.95). 실현 커버리지가 모자라면 올린다"
+                             " — z를 1.65→1.99로 올린 것과 같은 보정")
     args = parser.parse_args()
 
     with db.session() as conn:
@@ -59,22 +64,27 @@ def main() -> int:
     if len(train_periods) < 2:
         print(f"'{holdout}' 이전 기간이 부족합니다.")
         return 1
+    warm = f"warmup {args.warmup_days}일" if args.warmup_days else "warmup 없음"
     print(f"학습 {len(train_periods)}개월 ({train_periods[0]} ~ {train_periods[-1]})"
-          f" · 검증 {holdout} (학습에서 제외)\n")
+          f" · 검증 {holdout} (학습에서 제외) · {warm}\n")
 
-    train_frame = demand_model.training_frame({p: net[p] for p in train_periods})
+    train_frame = demand_model.training_frame({p: net[p] for p in train_periods},
+                                              warmup_days=args.warmup_days)
     if train_frame.empty:
         print("학습 데이터를 만들지 못했습니다.")
         return 1
-    model = demand_model.train(train_frame)
-    bundle = {"model": model, "quantile": demand_model.TARGET_QUANTILE,
+    model = demand_model.train(train_frame, quantile=args.quantile)
+    bundle = {"model": model, "quantile": args.quantile,
               "features": demand_model.FEATURES}
 
     # 검증: 직전 달로 피처를 만들고 holdout 달을 맞힌다
     eval_frame = demand_model.training_frame(
-        {p: net[p] for p in (train_periods[-1], holdout)})
+        {p: net[p] for p in (train_periods[-1], holdout)},
+        warmup_days=args.warmup_days)
     if eval_frame.empty:
-        print("검증 데이터를 만들지 못했습니다(연속된 달이 아닐 수 있습니다).")
+        print(f"검증 데이터를 만들지 못했습니다 — {train_periods[-1]} 다음이"
+              f" {holdout}가 아닙니다(빠진 달이 있습니다).")
+        print(f"  적재된 기간: {', '.join(ordered)}")
         return 1
 
     targets = eval_frame[eval_frame["prev_abs_mu"] > TARGET_CUT].copy()
@@ -82,10 +92,9 @@ def main() -> int:
         print("작업 대상 대여소가 없습니다.")
         return 1
 
+    # prev_mu·prev_sigma에는 이미 같은 계절 배율이 곱해져 있다(build_features).
+    # 그래야 베이스라인과 모델이 같은 조건에서 겨룬다.
     targets["baseline"] = targets["prev_mu"] + TARGET_Z * targets["prev_sigma"]
-    targets["model"] = demand_model.predict_target(
-        bundle, targets, "_05_10", "weekday", 0)   # 컨텍스트는 아래에서 덮어쓴다
-    # add_context가 duration/day_type/month를 덮어쓰므로 원래 값으로 다시 예측한다
     targets["model"] = bundle["model"].predict(
         targets[demand_model.FEATURES].to_numpy())
 
