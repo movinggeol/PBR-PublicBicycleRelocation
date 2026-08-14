@@ -26,10 +26,10 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.templating import Jinja2Templates
 
 from project_config import (
-    DAY_TYPES, DAY_TYPE_LABELS, DEFAULT_DAY_TYPE, DEFAULT_DURATION, DEFAULT_NOW,
-    DEFAULT_PERIOD, DEFAULT_RAW_FILE, FLEET_SIZE, MAX_FLEET_SIZE,
+    DAY_TYPE_AUTO, DAY_TYPE_LABELS, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_DURATION,
+    DEFAULT_NOW, DEFAULT_PERIOD, DEFAULT_RAW_FILE, FLEET_SIZE, MAX_FLEET_SIZE,
     TIME_BUDGET_MINUTES, VEHICLES_PER_ROUND,
-    normalize_day_type, normalize_fleet_size, normalize_per_round,
+    normalize_day_type, normalize_fleet_size, normalize_per_round, resolve_day_type,
 )
 from webapp import catalog, jobs, store
 
@@ -52,8 +52,13 @@ def _index_context(error: Optional[str] = None) -> dict:
             "day_type": DEFAULT_DAY_TYPE,
         },
         "max_fleet_size": MAX_FLEET_SIZE,
-        # 평일과 주말은 수요 구조가 달라 한 실행에 섞지 않는다 (docs/steps/step0_raw.md).
-        "day_types": [{"value": v, "label": DAY_TYPE_LABELS[v]} for v in DAY_TYPES],
+        # 평일과 휴일은 수요 구조가 달라 한 실행에 섞지 않는다 (docs/steps/step0_raw.md).
+        # auto는 계획 대상일(기본 오늘)을 달력으로 판정한다 — 운영 기본값.
+        "day_types": (
+            [{"value": DAY_TYPE_AUTO,
+              "label": f"자동 (오늘 = {DAY_TYPE_LABELS[resolve_day_type()]})"}]
+            + [{"value": v, "label": DAY_TYPE_LABELS[v]} for v in DAY_TYPES]
+        ),
         "running": jobs.running_job(),
         "jobs": jobs.list_jobs()[:15],
         "latest": catalog.latest_outputs(),

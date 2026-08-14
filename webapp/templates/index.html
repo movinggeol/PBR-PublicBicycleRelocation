@@ -34,8 +34,8 @@
             {{ option.label }}</option>
           {% endfor %}
         </select>
-        <span class="muted">평일과 주말은 수요 구조가 달라 한 실행에 섞지 않습니다.
-          둘 다 필요하면 라벨을 달리해 두 번 실행하세요.</span>
+        <span class="muted">휴일 = 주말 + 공휴일. 평일과 휴일은 수요 구조가 달라
+          한 실행에 섞지 않습니다. 둘 다 필요하면 라벨을 달리해 두 번 실행하세요.</span>
       </label>
       <label>원천 대여 이력 CSV (프로젝트 루트 기준)
         <input type="text" name="raw_file" value="{{ defaults.raw_file }}">
@@ -102,7 +102,7 @@
       <td>{{ run.run_label }}</td>
       <td class="muted">{{ run.period or "—" }}</td>
       <td class="muted">{{ run.duration or "—" }}</td>
-      <td class="muted">{{ "주말" if run.day_type == "weekend" else ("평일" if run.day_type else "—") }}</td>
+      <td class="muted">{{ "휴일" if run.day_type == "holiday" else ("평일" if run.day_type else "—") }}</td>
       <td class="muted">{{ run.created_at }}</td>
       <td>
         <a href="/api/metrics?run_label={{ run.run_label | urlencode }}">지표</a> ·

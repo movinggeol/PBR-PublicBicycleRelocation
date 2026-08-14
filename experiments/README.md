@@ -30,11 +30,13 @@ python experiments/seasonal_window.py    # 학습 창 비교
 | 파일 | 물음 | 결론 |
 | --- | --- | --- |
 | `net_vs_volume.py` | 이용량이 흔들리면 재배치 필요량도 흔들리나 | 그렇다(R² 0.88~0.96). 날씨를 붙일 값어치가 있다 |
-| `weekend_profile.py` | 평일과 주말을 한 통계로 묶어도 되나 | 안 된다. 33~37%가 부호 반대 — 섞으면 상쇄된다 |
+| `weekend_profile.py` | 평일과 휴일을 한 통계로 묶어도 되나 | 안 된다. 33~37%가 부호 반대 — 섞으면 상쇄된다 |
+| `holiday_impact.py` | 공휴일을 평일에서 빼면 얼마나 달라지나 | 연휴 낀 달의 작업 대상이 20~50% 늘어난다 |
 
 ```powershell
 python experiments/net_vs_volume.py     # 이용량 ↔ 필요량 상관
-python experiments/weekend_profile.py   # 평일/주말 수요 구조 비교
+python experiments/weekend_profile.py   # 평일/휴일 수요 구조 비교
+python experiments/holiday_impact.py    # 공휴일 제거 효과
 ```
 
 둘 다 `rental_history`를 읽습니다(`net_vs_volume.py`는 `net_demand`도 함께).

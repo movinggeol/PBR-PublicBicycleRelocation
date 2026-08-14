@@ -17,18 +17,81 @@ DEFAULT_NOW = os.getenv("PBR_NOW", "2026-05-21 18")
 DEFAULT_PERIOD = os.getenv("PBR_PERIOD", "25년 11월")
 DEFAULT_DURATION = os.getenv("PBR_DURATION", "_05_10")
 
-# ---- 요일 구분 (평일/주말) ----
-# 평일과 주말은 수요 구조가 다르므로 **한 통계로 섞지 않는다.** 실측(12개월):
-# `_10_15`·`_15_20`에서 대여소의 33~37%가 평일과 주말에 **부호가 반대**였다
-# (평일엔 채워야 할 곳이 주말엔 빼 와야 할 곳). 섞어서 평균 내면 둘 다 0에
-# 가까워져 작업 대상에서 빠진다. 근거: experiments/weekend_profile.py
+# ---- 요일 구분 (평일/휴일) ----
+# **휴일 = 주말 ∪ 공휴일**이다. 평일과 휴일은 수요 구조가 다르므로 한 통계로
+# 섞지 않는다. 실측(12개월): `_10_15`·`_15_20`에서 대여소의 33~37%가 두 구분에서
+# **부호가 반대**였다(평일엔 채워야 할 곳이 휴일엔 빼 와야 할 곳). 섞어서 평균 내면
+# 서로 상쇄돼 작업 대상에서 빠진다. 근거: experiments/weekend_profile.py
 #
 # 그래서 시간대(duration)와 같은 급의 실행 설정으로 둔다 — 한 번의 실행은
-# 평일 계획이거나 주말 계획이지, 둘을 합친 무언가가 아니다.
+# 평일 계획이거나 휴일 계획이지, 둘을 합친 무언가가 아니다.
 # 'all'을 두지 않은 것도 같은 이유다(섞는 선택지를 아예 만들지 않는다).
-DAY_TYPES = ("weekday", "weekend")
-DEFAULT_DAY_TYPE = os.getenv("PBR_DAY_TYPE", "weekday")
-DAY_TYPE_LABELS = {"weekday": "평일", "weekend": "주말"}
+DAY_TYPES = ("weekday", "holiday")
+DAY_TYPE_LABELS = {"weekday": "평일", "holiday": "휴일"}
+
+# 'auto'는 계획 대상일(--target-date, 기본 오늘)을 달력으로 판정한다.
+# 실행 시점에 따라 알아서 갈리므로 운영에서는 이쪽이 기본이다.
+DAY_TYPE_AUTO = "auto"
+DEFAULT_DAY_TYPE = os.getenv("PBR_DAY_TYPE", DAY_TYPE_AUTO)
+
+_holiday_cache: dict = {}
+
+
+def korean_holidays(*years):
+    """대한민국 공휴일 달력(holidays 패키지, public 카테고리).
+
+    대체공휴일·임시공휴일까지 포함한다. 달력을 손으로 관리하지 않으려고 패키지를
+    쓴다 — 규칙이 해마다 바뀐다(2026년만 해도 22일이고 제헌절이 되살아났다).
+
+    **연도를 반드시 명시해서 만든다.** 연도 없이 만들면 holidays가 조회 시점에
+    지연 확장하는데, 그 경로에서 내부 연도가 실수로 넘어가 TypeError가 난다.
+    연도별로 한 번만 만들어 캐시한다.
+    """
+    import holidays
+
+    wanted = tuple(sorted({int(y) for y in years}))
+    if wanted not in _holiday_cache:
+        _holiday_cache[wanted] = holidays.SouthKorea(years=list(wanted))
+    return _holiday_cache[wanted]
+
+
+def is_public_holiday(date) -> bool:
+    """법정공휴일인가(주말은 포함하지 않는다)."""
+    import pandas as pd
+
+    stamp = pd.Timestamp(date)
+    return stamp.date() in korean_holidays(stamp.year)
+
+
+def is_holiday(date) -> bool:
+    """**휴일인가 = 주말이거나 공휴일인가.**"""
+    import pandas as pd
+
+    stamp = pd.Timestamp(date)
+    return stamp.dayofweek >= 5 or stamp.date() in korean_holidays(stamp.year)
+
+
+def target_stamp(target_date=None):
+    """계획 대상일을 Timestamp로. 비어 있으면 오늘.
+
+    빈 문자열을 그대로 pd.Timestamp에 넘기면 NaT가 되어 연도가 NaN이 된다.
+    여기서 한 번에 걸러 둔다.
+    """
+    import pandas as pd
+
+    if not target_date:
+        return pd.Timestamp.today().normalize()
+    stamp = pd.Timestamp(target_date)
+    if pd.isna(stamp):
+        raise ValueError(f"계획 대상일을 읽을 수 없습니다: {target_date!r} (YYYY-MM-DD)")
+    return stamp
+
+
+def resolve_day_type(target_date=None) -> str:
+    """계획 대상일이 평일인지 휴일인지 판정한다(기본: 오늘)."""
+    return "holiday" if is_holiday(target_stamp(target_date)) else "weekday"
+
+
 DEFAULT_RAW_FILE = os.getenv(
     "PBR_RAW_FILE",
     "data/raw_data/대전시 공영자전거 타슈 대여이력 정보(25년11월).csv",
@@ -141,7 +204,9 @@ class RuntimeConfig:
     period: str = DEFAULT_PERIOD
     duration: str = DEFAULT_DURATION
     raw_file: str = DEFAULT_RAW_FILE
-    day_type: str = DEFAULT_DAY_TYPE
+    # day_type은 항상 해석된 값(weekday|holiday)이다 — 'auto'는 여기까지 오지 않는다.
+    day_type: str = "weekday"
+    target_date: str = ""       # 계획 대상일(YYYY-MM-DD). 빈 값이면 오늘
 
     @property
     def raw_path(self) -> Path:
@@ -149,8 +214,18 @@ class RuntimeConfig:
 
     @property
     def day_label(self) -> str:
-        """출력 메시지용 한국어 표기(평일/주말)."""
+        """출력 메시지용 한국어 표기(평일/휴일)."""
         return DAY_TYPE_LABELS.get(self.day_type, self.day_type)
+
+    @property
+    def day_reason(self) -> str:
+        """왜 이 요일 구분인지 한 줄로 — 로그에 남겨 나중에 재현할 수 있게 한다."""
+        stamp = target_stamp(self.target_date)
+        if is_public_holiday(stamp):
+            name = korean_holidays(stamp.year).get(stamp.date())
+            return f"{stamp:%Y-%m-%d} {name} → 휴일"
+        weekday_name = "월화수목금토일"[stamp.dayofweek]
+        return f"{stamp:%Y-%m-%d}({weekday_name}) → {self.day_label}"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -166,8 +241,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--day-type",
         default=None,
-        choices=DAY_TYPES,
-        help=f"요일 구분. {' | '.join(DAY_TYPES)} (기본 {DEFAULT_DAY_TYPE})",
+        choices=(*DAY_TYPES, DAY_TYPE_AUTO),
+        help=f"요일 구분. {' | '.join(DAY_TYPES)} | {DAY_TYPE_AUTO}"
+             f" (기본 {DEFAULT_DAY_TYPE}). auto는 --target-date를 달력으로 판정한다",
+    )
+    parser.add_argument(
+        "--target-date",
+        default=None,
+        help="계획 대상일(YYYY-MM-DD, 기본 오늘). --day-type auto의 판정 기준",
     )
     return parser
 
@@ -180,34 +261,55 @@ def get_runtime_config(argv: Optional[list[str]] = None) -> RuntimeConfig:
     """
 
     args, _ = _parser().parse_known_args(argv)
+    target_date = args.target_date or os.getenv("PBR_TARGET_DATE", "")
     return RuntimeConfig(
         now=args.now or DEFAULT_NOW,
         period=args.period or DEFAULT_PERIOD,
         duration=args.duration or DEFAULT_DURATION,
         raw_file=args.raw_file or DEFAULT_RAW_FILE,
-        day_type=normalize_day_type(args.day_type or DEFAULT_DAY_TYPE),
+        day_type=normalize_day_type(args.day_type or DEFAULT_DAY_TYPE, target_date),
+        target_date=target_date,
     )
 
 
-def normalize_day_type(value) -> str:
-    """요일 구분 값을 검증한다. 환경변수로 오타가 들어와도 여기서 걸린다."""
+def normalize_day_type(value, target_date=None) -> str:
+    """요일 구분 값을 검증하고 'auto'를 실제 값으로 풀어 준다.
+
+    반환값은 항상 weekday 또는 holiday다 — 하위 코드가 'auto'를 볼 일이 없다.
+    """
     day_type = str(value).strip().lower()
+    if day_type == DAY_TYPE_AUTO:
+        return resolve_day_type(target_date)
     if day_type not in DAY_TYPES:
         raise ValueError(
-            f"요일 구분은 {' 또는 '.join(DAY_TYPES)} 여야 합니다 (입력: {value}).")
+            f"요일 구분은 {' 또는 '.join(DAY_TYPES)}"
+            f"(또는 {DAY_TYPE_AUTO}) 여야 합니다 (입력: {value}).")
     return day_type
 
 
+def holiday_mask(dates):
+    """날짜 시리즈 → 휴일이면 True (주말 ∪ 공휴일).
+
+    한 건씩 달력을 조회하면 느리므로, 데이터에 있는 연도만 펼쳐 집합으로 만든 뒤
+    벡터 연산으로 판정한다.
+    """
+    import pandas as pd
+
+    stamps = pd.to_datetime(dates)
+    years = {int(y) for y in stamps.dt.year.dropna().unique()}
+    public = set(korean_holidays(*years)) if years else set()
+    return (stamps.dt.dayofweek >= 5) | stamps.dt.date.isin(public)
+
+
 def select_day_type(frame, date_column: str, day_type: str):
-    """날짜 컬럼을 보고 평일 또는 주말 행만 남긴다.
+    """날짜 컬럼을 보고 평일 또는 휴일 행만 남긴다.
 
     `duration_list()`와 같은 급의 헬퍼다 — 어느 단계에서 걸러도 규칙이 같아야
-    하므로 한 곳에 둔다. 공휴일은 아직 반영하지 않는다(토·일 기준).
+    하므로 한 곳에 둔다. **휴일 = 주말 ∪ 공휴일**이며, 공휴일은 holidays 패키지를
+    따른다(대체공휴일·임시공휴일 포함).
     """
-    import pandas as pd     # 설정 모듈이 pandas에 항상 의존하지 않도록 지역 import
-
-    weekend = pd.to_datetime(frame[date_column]).dt.dayofweek >= 5
-    return frame[weekend if normalize_day_type(day_type) == "weekend" else ~weekend]
+    mask = holiday_mask(frame[date_column])
+    return frame[mask if normalize_day_type(day_type) == "holiday" else ~mask]
 
 
 def duration_list(config: RuntimeConfig) -> Tuple[str, ...]:

@@ -141,7 +141,9 @@ step2 (ilp, vrp)/ilp.py는 클러스터별 Pick 대여소에서 Drop 대여소�
 목적함수는 대여소 간 Haversine 거리에서 환산한 이동시간과 이동 수량의 합을 최소화합니다.
 
 - 기본 차량 속도: 25 km/h (`project_config.VEHICLE_SPEED_KMPH`)
-- 요일 구분: `--day-type weekday|weekend` (기본 weekday). 평일과 주말은 수요 구조가 달라 한 실행에 섞지 않습니다 ([steps/step0_raw.md](steps/step0_raw.md))
+- 요일 구분: `--day-type weekday|holiday|auto` (기본 auto = 계획 대상일로 판정).
+  **휴일 = 주말 ∪ 공휴일**이며, 평일과 휴일은 수요 구조가 달라 한 실행에 섞지 않습니다
+  ([steps/step0_raw.md](steps/step0_raw.md))
 - solver: PuLP CBC
 - 출력: data/pp_data/ILP/ILP_plan{duration} ({now}).csv
 

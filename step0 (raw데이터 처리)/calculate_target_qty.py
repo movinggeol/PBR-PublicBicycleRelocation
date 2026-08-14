@@ -1,8 +1,8 @@
 """시간대(duration)별 목표 재고(target_qty)와 재배치량(rebal_qty)을 계산한다.
 
-**평일과 주말 중 한쪽만 골라 계산한다**(`--day-type`, 기본 weekday).
-두 요일 구분은 수요 구조가 달라 섞으면 안 된다 — 실측에서 대여소의 33~37%가
-평일과 주말에 부호가 반대였다(experiments/weekend_profile.py). 섞어서 평균 내면
+**평일과 휴일 중 한쪽만 골라 계산한다**(`--day-type`, 기본 auto = 오늘로 판정).
+휴일 = 주말 ∪ 공휴일이다. 두 구분은 수요 구조가 달라 섞으면 안 된다 — 실측에서
+대여소의 33~37%가 부호가 반대였다(experiments/weekend_profile.py). 섞어서 평균 내면
 서로 상쇄돼 작업 대상에서 빠진다.
 
 입력: st_info ({now}).csv, st_net_daily ({period}).csv
@@ -126,7 +126,8 @@ if __name__ == '__main__':
             f"{config.day_label} 데이터가 없습니다 (기간 {period})."
             " raw_to_net.py를 다시 돌려 주말을 포함시켰는지 확인하세요.")
     사용일수 = pd.to_datetime(net_daily['날짜']).dt.date.nunique()
-    print(f"{config.day_label} 기준으로 계산합니다 ({사용일수}일 / 전체 {전체일수}일)")
+    print(f"{config.day_label} 기준으로 계산합니다 "
+          f"({사용일수}일 / 전체 {전체일수}일) — {config.day_reason}")
 
     # 재배치 시간은 05시, 15시로 2회, 재배치 시간은 대충 2시간으로 잡고,
     # 05~07시 재배치 기준은(05~14:59), 15~17시 재배치 기준은(15~04:59) 동안 사용할 양이다.

@@ -21,8 +21,9 @@ from pathlib import Path
 from typing import Iterable
 
 from project_config import (
-    DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_FLEET_SIZE, DEFAULT_VEHICLES_PER_ROUND,
-    ensure_output_dirs, normalize_fleet_size, normalize_per_round,
+    DAY_TYPE_AUTO, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_FLEET_SIZE,
+    DEFAULT_VEHICLES_PER_ROUND, ensure_output_dirs, get_runtime_config,
+    normalize_fleet_size, normalize_per_round,
 )
 
 
@@ -78,8 +79,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--period", help="순수요 입력 기간. 예: 25년 11월")
     parser.add_argument("--duration", help="시간대 구간. 예: _05_10")
     parser.add_argument("--raw-file", help="원천 CSV 경로(프로젝트 루트 기준)")
-    parser.add_argument("--day-type", choices=DAY_TYPES,
-                        help=f"요일 구분 (기본 {DEFAULT_DAY_TYPE}). 평일과 주말은 섞지 않는다")
+    parser.add_argument("--day-type", choices=(*DAY_TYPES, DAY_TYPE_AUTO),
+                        help=f"요일 구분 (기본 {DEFAULT_DAY_TYPE}). 평일과 휴일은 섞지 않는다."
+                             " auto는 --target-date를 달력으로 판정")
+    parser.add_argument("--target-date",
+                        help="계획 대상일(YYYY-MM-DD, 기본 오늘). auto 판정의 기준")
 
     # 차량 대수는 다른 공통 설정과 달리 CLI 인자가 아니라 환경변수로 하위 단계에
     # 전달한다 — project_config가 모듈 import 시점에 읽는 상수라서, 각 단계
@@ -131,6 +135,7 @@ def build_command(script: Path, args: argparse.Namespace) -> list[str]:
         ("--duration", args.duration),
         ("--raw-file", args.raw_file),
         ("--day-type", args.day_type),
+        ("--target-date", args.target_date),
     ):
         if value:
             command.extend([option, value])
@@ -190,8 +195,12 @@ def main() -> int:
         return 2
 
     print("=== Public Bike Rebalancing Pipeline ===")
-    if args.day_type:
-        print(f"요일 구분: {args.day_type} (평일과 주말은 섞지 않습니다)")
+    # 요일 구분은 auto일 수 있으므로 **해석된 값**을 보여준다.
+    # 로그만 보고 "왜 이 계획이 나왔나"를 알 수 있어야 한다.
+    resolved = get_runtime_config(
+        ([f"--day-type={args.day_type}"] if args.day_type else [])
+        + ([f"--target-date={args.target_date}"] if args.target_date else []))
+    print(f"요일 구분: {resolved.day_label} ({resolved.day_reason})")
     if args.fleet_size is not None or args.vehicles_per_round is not None:
         # 회차 투입 상한은 보유 대수로 잘리므로, 실제 적용되는 값을 보여줍니다.
         print(f"보유 차량 {fleet}대 · 회차당 투입 상한 {per_round}대로 실행합니다.")

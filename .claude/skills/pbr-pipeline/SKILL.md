@@ -14,7 +14,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | --- | --- |
 | `docs/RETROSPECTIVE.md` | 전체 조망·측정이 뒤집은 가설·설계 결정 (처음 오면 여기부터) |
 | `docs/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
-| `docs/TESTING.md` | 테스트 163개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/TESTING.md` | 테스트 171개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/PROJECT_PIPELINE.md` | 파이프라인 전체 구조 |
 | `docs/steps/step*.md` | 단계별 입출력·문제점·작업 목록 |
@@ -44,10 +44,14 @@ step4                   : imbalance
 - 모든 step 스크립트는 루트의 `project_config.get_runtime_config()`에서
   `now`/`period`/`duration`/`raw_file`/`day_type`을 읽는다. 우선순위: CLI 인자(`--now` 등) →
   환경변수(`PBR_NOW` 등) → 기본값.
-- **평일과 주말은 절대 섞지 마라.** `--day-type weekday|weekend`(기본 weekday)로
-  한쪽만 골라 통계를 낸다. 실데이터에서 `_10_15`는 두 요일을 묶으면 57곳이 상쇄돼
-  작업 대상에서 사라졌다(그리고 주말이 평일보다 바쁘다 — 295곳 vs 189곳).
-  `all` 같은 선택지를 만들지 마라. 거르는 것은 `select_day_type()` 하나를 써라.
+- **평일과 휴일은 절대 섞지 마라.** `--day-type weekday|holiday|auto`(기본 auto)로
+  한쪽만 골라 통계를 낸다. **휴일 = 주말 ∪ 공휴일**이고 공휴일은 `holidays` 패키지를
+  따른다. 실데이터에서 `_10_15`는 둘을 묶으면 57곳이 상쇄돼 사라졌고(휴일이 평일보다
+  바쁘다 — 295곳 vs 189곳), 공휴일을 평일에서 빼자 연휴 낀 달의 작업 대상이 20~50%
+  늘었다. `all` 같은 선택지를 만들지 마라. 거르는 것은 `select_day_type()` 하나,
+  판정은 `is_holiday()`/`holiday_mask()` 하나를 써라.
+- `auto`는 `--target-date`(기본 오늘)를 달력으로 판정한다. `RuntimeConfig.day_type`은
+  **항상 해석된 값**이라 하위 코드가 'auto'를 볼 일이 없다.
 - **`now`는 실행 시각이 아니라 파이프라인 실행을 묶는 라벨이다.** `datetime.now()`나
   하드코딩 값을 코드에 넣지 마라 — 단계 간 파일명이 어긋난다.
 - 각 스크립트는 독립 실행되며(상호 import 없음) 실행 로직은
@@ -96,7 +100,9 @@ python run_pipeline.py                    # 전체 실행 (기본 설정)
 python run_pipeline.py --skip-api --skip-eda  # 수집·EDA 생략
 python run_pipeline.py --now "2026-05-21 18" --period "25년 11월" --duration "_05_10,_10_15"
 python run_pipeline.py --fleet-size 15 --vehicles-per-round 6   # 차량 대수 (기본 21 / 10)
-python run_pipeline.py --day-type weekend --now "260813 주말"   # 주말 계획 (기본 weekday)
+python run_pipeline.py --day-type holiday --now "260813 휴일"   # 휴일 계획 (기본 auto)
+python run_pipeline.py --target-date 2026-09-25                # 그날로 자동 판정
+python tools/rebuild_net_demand.py            # 전 기간 순수요 재계산(휴일 포함)
 python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8000)
 ```
 
@@ -178,7 +184,7 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
 ## 테스트
 
 ```powershell
-python -m pytest                 # 163개, 약 32초 (tests/ 만 수집)
+python -m pytest                 # 171개, 약 46초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 
