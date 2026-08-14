@@ -6,10 +6,15 @@
 
 이 도구는 한 달로 만든 `mu`가 다음 달 실제 순수요를 얼마나 맞히는지 잰다.
 
+**평일과 휴일은 따로 잰다**(`--day-type`, 기본 weekday). 두 구분은 수요 구조가
+달라 섞으면 학습·검증 양쪽이 오염된다(docs/steps/step0_raw.md).
+
 실행:
-    python tools/backtest_demand.py                     # 전 시간대, 가능한 모든 월 쌍
-    python tools/backtest_demand.py --duration _05_10   # 특정 시간대만
-    python tools/backtest_demand.py --z 1.65            # 커버리지 판정 계수
+    python tools/backtest_demand.py                       # 평일, 전 시간대
+    python tools/backtest_demand.py --day-type holiday    # 휴일
+    python tools/backtest_demand.py --duration _05_10     # 특정 시간대만
+    python tools/backtest_demand.py --min-demand 2        # 작업 대상 대여소만
+    python tools/backtest_demand.py --z 1.65              # 커버리지 판정 계수
 """
 from __future__ import annotations
 
@@ -23,7 +28,9 @@ import numpy as np
 import pandas as pd
 
 import db
-from project_config import TARGET_Z
+from project_config import (
+    DAY_TYPE_AUTO, DAY_TYPES, TARGET_Z, normalize_day_type, select_day_type,
+)
 
 DURATIONS = ["_05_10", "_10_15", "_15_20", "_20_05"]
 
@@ -56,10 +63,18 @@ def consecutive_pairs(periods: list) -> list:
             or (key(a) % 100 == 12 and key(b) - key(a) == 89)]
 
 
-def evaluate(train: pd.DataFrame, test: pd.DataFrame, z: float) -> dict:
-    """학습 달의 mu/sigma로 검증 달을 예측하고 오차를 잰다."""
+def evaluate(train: pd.DataFrame, test: pd.DataFrame, z: float,
+             min_demand: float = 0.0) -> dict:
+    """학습 달의 mu/sigma로 검증 달을 예측하고 오차를 잰다.
+
+    min_demand > 0이면 **작업 대상 대여소만** 본다(|mu| > min_demand).
+    전체 평균은 파이프라인이 손대지도 않는 대여소에 희석돼 정반대 결론이 나온 적이
+    있다(docs/EXPERIMENTS.md 2장) — 정확도를 인용할 때는 이 필터를 켜야 한다.
+    """
     stats = train.groupby("station_id")["demand"].agg(mu="mean", sigma="std").fillna(0)
     global_mu = train["demand"].mean()
+    if min_demand > 0:
+        stats = stats[stats["mu"].abs() > min_demand]
 
     merged = test.merge(stats, on="station_id", how="inner")
     if merged.empty:
@@ -103,9 +118,15 @@ def main() -> int:
     parser.add_argument("--duration", help="시간대 하나만 (예: _05_10)")
     parser.add_argument("--z", type=float, default=TARGET_Z,
                         help=f"커버리지 판정 계수 (기본 {TARGET_Z})")
+    parser.add_argument("--day-type", default="weekday",
+                        choices=(*DAY_TYPES, DAY_TYPE_AUTO),
+                        help="요일 구분 (기본 weekday). 평일과 휴일은 따로 잰다")
+    parser.add_argument("--min-demand", type=float, default=0.0,
+                        help="작업 대상만 보려면 2 (|mu| > 2). 기본 0 = 전체 대여소")
     args, _ = parser.parse_known_args()
 
     durations = [args.duration] if args.duration else DURATIONS
+    day_type = normalize_day_type(args.day_type)
 
     with db.session() as conn:
         periods = [r[0] for r in conn.execute(
@@ -115,21 +136,36 @@ def main() -> int:
             print("여러 달의 순수요를 먼저 만드세요:")
             print('  python "step0 (raw데이터 처리)/raw_to_net.py" --period "25년 10월"')
             return 1
-        net = {p: db.load_frame(conn, "net_demand", period=p) for p in periods}
+        net = {p: select_day_type(db.load_frame(conn, "net_demand", period=p),
+                                  "date", day_type)
+               for p in periods}
+
+    empty = [p for p, frame in net.items() if frame.empty]
+    if empty:
+        print(f"'{day_type}' 데이터가 없는 기간: {', '.join(sorted(empty))}")
+        print("  tools/rebuild_net_demand.py 로 순수요를 다시 만드세요"
+              " (1.14.0 이전 산출물에는 휴일이 없습니다).\n")
+        net = {p: f for p, f in net.items() if not f.empty}
+        periods = sorted(net)
+        if len(periods) < 2:
+            return 1
 
     pairs = consecutive_pairs(periods)
     if not pairs:
         print(f"이어지는 달이 없습니다: {sorted(periods)}")
         return 1
 
-    print(f"기간 {len(periods)}개 · 연속 쌍 {len(pairs)}개 · z={args.z}\n")
+    scope = f"작업 대상만(|mu| > {args.min_demand})" if args.min_demand else "전체 대여소"
+    print(f"기간 {len(periods)}개 · 연속 쌍 {len(pairs)}개 · z={args.z}"
+          f" · 요일 {day_type} · {scope}\n")
 
     all_rows = []
     for duration in durations:
         rows = []
         for train_period, test_period in pairs:
             result = evaluate(daily_window_demand(net[train_period], duration),
-                              daily_window_demand(net[test_period], duration), args.z)
+                              daily_window_demand(net[test_period], duration),
+                              args.z, args.min_demand)
             if result:
                 rows.append({"duration": duration,
                              "학습": train_period, "검증": test_period, **result})

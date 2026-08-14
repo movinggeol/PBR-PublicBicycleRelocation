@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 import db
+import demand_model
 from project_config import (
     PROJECT_ROOT,
     TARGET_Z,
@@ -39,7 +40,8 @@ MAX_CAPACITY = 10
 
 # 시간대에 따른 target_qty(목표대수)와 rebal_qty(재배치대수)를 계산한다.
 def calculate_rebal_qty(stats: pd.DataFrame, duration: str, now: str, z=None,
-                        up_limit=1.5, low_limit=0.2, day_type=None):
+                        up_limit=1.5, low_limit=0.2, day_type=None,
+                        model_target=None):
     '''
     대여소별의 시간대별(_05_10, _10_15, _15_20, _20_05) mu, sigma 를 통해 목표 stock량(target_qty)에 따른 작업량(rebal_qty)를 산출해 저장
     기본 파라미터 : 신뢰구간 z, 상한/하한 비율
@@ -52,10 +54,17 @@ def calculate_rebal_qty(stats: pd.DataFrame, duration: str, now: str, z=None,
     # 평균 순수요(mu)가 양수(자전거가 부족한 상황)인지 확인하는 조건
     cond_pos = stats['mu'] >= 0
 
-    # mu > 0 : 목표 재고량(target_qty) = 평균(mu) + 신뢰계수 (z : 1.65) * 표준편차(sigma)
-    stats.loc[cond_pos, 'target_qty'] = (
-        (stats.loc[cond_pos, 'mu'] + z * stats.loc[cond_pos, 'sigma'])
-    )
+    # mu > 0 : 목표 재고량(target_qty) = 평균(mu) + 신뢰계수 (z : 1.99) * 표준편차(sigma)
+    #
+    # model_target이 오면 그 값이 **mu + z·sigma를 대신한다** — 분위수 모델이
+    # 다음 기간 순수요의 95분위를 직접 예측한 것이다(docs/DEMAND_DISTRIBUTION.md).
+    # 모델이 없으면(기본) 여기로 오지 않으므로 기존 동작이 그대로다.
+    if model_target is not None:
+        stats.loc[cond_pos, 'target_qty'] = model_target[cond_pos]
+    else:
+        stats.loc[cond_pos, 'target_qty'] = (
+            (stats.loc[cond_pos, 'mu'] + z * stats.loc[cond_pos, 'sigma'])
+        )
     # mu < 0 : 목표 재고량(target_qty) = 재고(stock) + 평균(mu)
     stats.loc[~cond_pos, 'target_qty'] = (
         stats.loc[~cond_pos, 'stock'] + stats.loc[~cond_pos, 'mu']
@@ -98,7 +107,9 @@ def calculate_rebal_qty(stats: pd.DataFrame, duration: str, now: str, z=None,
     ).astype(int)
 
     stats.to_csv(out_file_path.format(duration=duration, now=now) + '.csv', encoding='utf-8', index=False)
-    print(f"rebal{duration}가 저장되었습니다. (z={z}, 저장 위치 : {out_file_path.format(duration=duration, now=now) + '.csv'})")
+    방식 = "분위수 모델" if model_target is not None else f"mu + {z}·sigma"
+    print(f"rebal{duration}가 저장되었습니다. ({방식}, 저장 위치 : "
+          f"{out_file_path.format(duration=duration, now=now) + '.csv'})")
 
     # CSV·DB 이중 기록 (DB_PLAN 2단계). CSV가 아직 정본이다.
     db.save_output("rebalance_plan", stats, run_label=now, duration=duration,
@@ -129,6 +140,14 @@ if __name__ == '__main__':
     print(f"{config.day_label} 기준으로 계산합니다 "
           f"({사용일수}일 / 전체 {전체일수}일) — {config.day_reason}")
 
+    # 분위수 모델이 학습돼 있으면 target_qty를 그것으로 잡는다.
+    # **없는 것이 기본이다** — 현재 모델은 베이스라인을 이기지 못했다
+    # (docs/DEMAND_DISTRIBUTION.md 5장). 학습은 tools/train_demand_model.py.
+    bundle = demand_model.load()
+    if bundle is not None:
+        print(f"분위수 모델을 사용합니다 (q={bundle['quantile']:.0%})."
+              " 모델 파일을 지우면 mu + z·sigma로 돌아갑니다.")
+
     # 재배치 시간은 05시, 15시로 2회, 재배치 시간은 대충 2시간으로 잡고,
     # 05~07시 재배치 기준은(05~14:59), 15~17시 재배치 기준은(15~04:59) 동안 사용할 양이다.
     # 시간대 목록은 project_config의 --duration(콤마 구분)으로 지정한다. 예: "_05_10,_10_15"
@@ -157,4 +176,24 @@ if __name__ == '__main__':
         stats = stats.merge(st_initial_qty, how='left', on='station_id')
         stats = stats[~stats['stock'].isna()]
 
-        calculate_rebal_qty(stats, duration, now, day_type=config.day_type)
+        # 모델을 쓸 때만 추가 피처를 만든다(기본 경로에는 비용이 없다).
+        model_target = None
+        if bundle is not None:
+            daily = pd.DataFrame({
+                "station_id": net_temp["station_id"].values,
+                "date": net_temp["날짜"].values,
+                "demand": net_temp[f'sum{duration}'].values,
+            })
+            features = demand_model.summarize(daily)
+            merged = stats[["station_id"]].merge(features, on="station_id", how="left")
+            try:
+                predicted = demand_model.predict_target(
+                    bundle, merged, duration, config.day_type,
+                    pd.to_datetime(net_temp['날짜']).dt.month.mode().iloc[0])
+                model_target = pd.Series(predicted, index=stats.index)
+            except Exception as err:      # 모델 문제로 파이프라인을 멈추지 않는다
+                print(f"[경고] 분위수 예측 실패({type(err).__name__}: {err})."
+                      " mu + z·sigma로 계산합니다.")
+
+        calculate_rebal_qty(stats, duration, now, day_type=config.day_type,
+                            model_target=model_target)

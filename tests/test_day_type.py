@@ -173,3 +173,55 @@ def test_day_type_is_recorded_in_runs(prepared):
             "SELECT day_type FROM runs WHERE run_label = ?", (LABEL,)).fetchone()
 
     assert row is not None and row[0] == "holiday"
+
+
+# ---------------- 분위수 모델 (docs/DEMAND_DISTRIBUTION.md) ----------------
+#
+# 현재 모델은 베이스라인을 이기지 못해 **기본으로 켜지 않는다**.
+# 그래서 여기서 지켜야 할 핵심은 "모델이 없어도, 깨져 있어도 파이프라인이 돈다"이다.
+
+def test_model_absent_falls_back(tmp_path):
+    """모델 파일이 없으면 None을 돌려준다 — 호출부가 기존 공식으로 간다."""
+    import demand_model
+
+    assert demand_model.load(tmp_path / "없는모델.pkl") is None
+
+
+def test_corrupt_model_falls_back(tmp_path, capsys):
+    """읽을 수 없는 모델이 파이프라인을 멈추지 않는다(경고만)."""
+    import demand_model
+
+    broken = tmp_path / "broken.pkl"
+    broken.write_bytes(b"this is not a pickle")
+
+    assert demand_model.load(broken) is None
+    assert "경고" in capsys.readouterr().out
+
+
+def test_stale_feature_set_falls_back(tmp_path, capsys):
+    """피처 구성이 바뀐 옛 모델은 쓰지 않는다 — 조용히 틀린 예측을 하면 안 된다."""
+    import pickle
+
+    import demand_model
+
+    stale = tmp_path / "stale.pkl"
+    with stale.open("wb") as handle:
+        pickle.dump({"model": None, "quantile": 0.95,
+                     "features": ["옛피처"], "durations": (), "day_types": ()}, handle)
+
+    assert demand_model.load(stale) is None
+    assert "다시 학습" in capsys.readouterr().out
+
+
+def test_training_frame_uses_only_previous_month():
+    """피처는 **직전 달 정보만** 써야 한다 — 미래를 보면 백테스트가 거짓말을 한다."""
+    import demand_model
+
+    # 이어지는 달이 없으면 학습 표가 비어야 한다(쌍을 못 만든다).
+    assert demand_model.training_frame({"25년 11월": pd.DataFrame()}).empty
+
+    assert "station_id" not in demand_model.FEATURES, \
+        "대여소 ID를 외우면 표본 8~19일에서 과적합한다"
+    assert all(f.startswith("prev_") or f in ("month", "duration_idx", "day_type_idx")
+               for f in demand_model.FEATURES), \
+        "예측 시점에 알 수 없는 피처가 섞였다"

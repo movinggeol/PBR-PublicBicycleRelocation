@@ -14,7 +14,8 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | --- | --- |
 | `docs/RETROSPECTIVE.md` | 전체 조망·측정이 뒤집은 가설·설계 결정 (처음 오면 여기부터) |
 | `docs/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
-| `docs/TESTING.md` | 테스트 171개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
+| `docs/TESTING.md` | 테스트 175개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/PROJECT_PIPELINE.md` | 파이프라인 전체 구조 |
 | `docs/steps/step*.md` | 단계별 입출력·문제점·작업 목록 |
@@ -137,6 +138,12 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
   - `z`와 `γ`는 연동된다 — z를 올리면 작업량이 늘어 시간 예산을 압박한다.
   - **개선률·목표 도달률은 `target_qty`를 분모로 삼으므로 `z` 실험의 판정 기준이
     될 수 없다.** 결품 시간으로 비교할 것.
+  - **z가 필요한 이유는 '꼬리가 두꺼워서'가 아니다** — 대여소별로 보면 거의
+    정규분포다. 진짜 원인은 지난달 통계로 이번 달을 맞히는 **추정 오차**다
+    (docs/DEMAND_DISTRIBUTION.md). 분포를 고치는 처방은 헛다리다.
+- **수요 예측을 바꾸려면 `experiments/quantile_model_eval.py`의 판정을 통과해야 한다** —
+  작업 대상만·평일/휴일 따로·표본 밖·베이스라인 초과. 분위수 모델은 1차 시도에서
+  졌고 기본으로 꺼져 있다(모델 파일이 없으면 `mu + z·sigma`로 폴백).
 - 예측 정확도는 **작업 대상 대여소(`|rebal_qty| > 2`)에서** 재야 한다. 전체 평균은
   파이프라인이 손대지 않는 대여소에 희석돼 정반대 결론이 나온 적이 있다.
 - pandas 2.x 기준으로 작성 (`.loc` 슬라이스에 inplace 연산 금지).
@@ -184,7 +191,7 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
 ## 테스트
 
 ```powershell
-python -m pytest                 # 171개, 약 46초 (tests/ 만 수집)
+python -m pytest                 # 175개, 약 49초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 
