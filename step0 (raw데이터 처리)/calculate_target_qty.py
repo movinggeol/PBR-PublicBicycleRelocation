@@ -148,6 +148,21 @@ if __name__ == '__main__':
         print(f"분위수 모델을 사용합니다 (q={bundle['quantile']:.0%})."
               " 모델 파일을 지우면 mu + z·sigma로 돌아갑니다.")
 
+    # 계절 수준 보정(warmup) — 계획 대상 달의 첫 N일 실적으로 배율을 구한다.
+    # 계절이 도약하는 달에는 지난달 통계가 구조적으로 낮다(2월→3월 수요 1.5배).
+    # 자료가 없으면 조용히 건너뛴다 — 있으면 좋고 없어도 도는 보정이다.
+    warmup_net = None
+    if config.warmup_days > 0 and config.warmup_label != period:
+        warmup_path = Path(net_file.format(period=config.warmup_label))
+        if warmup_path.exists():
+            warmup_net = select_day_type(
+                pd.read_csv(warmup_path, encoding='utf-8', low_memory=False),
+                '날짜', config.day_type)
+            print(f"계절 보정: {config.warmup_label} 첫 {config.warmup_days}일 실적을 씁니다.")
+        else:
+            print(f"[안내] 계절 보정 건너뜀 — {config.warmup_label} 순수요가 없습니다"
+                  f" ({warmup_path.name}). 지난달 통계를 그대로 씁니다.")
+
     # 재배치 시간은 05시, 15시로 2회, 재배치 시간은 대충 2시간으로 잡고,
     # 05~07시 재배치 기준은(05~14:59), 15~17시 재배치 기준은(15~04:59) 동안 사용할 양이다.
     # 시간대 목록은 project_config의 --duration(콤마 구분)으로 지정한다. 예: "_05_10,_10_15"
@@ -175,6 +190,20 @@ if __name__ == '__main__':
         # 두 df 조인 (station_id는 groupby 인덱스 — merge가 인덱스 이름으로 조인)
         stats = stats.merge(st_initial_qty, how='left', on='station_id')
         stats = stats[~stats['stock'].isna()]
+
+        # 계절 배율을 곱해 **중심을 옮긴다**(분산만 부풀리는 z와 다르다).
+        if warmup_net is not None and not warmup_net.empty:
+            recent = warmup_net.copy()
+            recent[f'sum{duration}'] = recent[hours].sum(axis=1)
+            ratio = demand_model.warmup_ratio(
+                stats, pd.DataFrame({
+                    "station_id": recent["station_id"].values,
+                    "date": recent["날짜"].values,
+                    "demand": recent[f'sum{duration}'].values,
+                }), config.warmup_days)
+            if ratio is not None:
+                stats = demand_model.apply_warmup(stats, ratio)
+                print(f"  {duration}: 계절 배율 ×{ratio:.2f}")
 
         # 모델을 쓸 때만 추가 피처를 만든다(기본 경로에는 비용이 없다).
         model_target = None

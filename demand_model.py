@@ -140,6 +140,59 @@ def training_frame(net_by_period: dict, day_types=DAY_TYPES,
     return pd.concat(rows, ignore_index=True)
 
 
+# ---------------- 계절 수준 보정 (warmup) ----------------
+#
+# ML이 아니다. 지난달 통계에 **배율 하나**를 곱하는 것뿐이다.
+# 계절이 도약하는 달(2월→3월 수요 1.5배)에는 지난달 평균이 구조적으로 낮게 나오고,
+# z를 올리는 것으로는 대체되지 않는다(z=2.10에서도 전환 달 커버리지 90.4%).
+# 근거: docs/EXPERIMENTS.md 3장.
+
+WARMUP_CLIP = (0.5, 2.0)      # 며칠치 잡음으로 배율이 과하게 튀는 것을 막는다
+
+
+def warmup_ratio(stats: pd.DataFrame, recent: pd.DataFrame, days: int) -> Optional[float]:
+    """계획 대상 달 앞 `days`일의 실적으로 **도시 전체 배율 하나**를 구한다.
+
+    stats  : 학습 달의 대여소별 통계 (station_id, mu)
+    recent : 계획 대상 달의 부분 실적 (station_id, date, demand)
+
+    대여소별로 보정하지 않는 이유는 며칠치 표본으로 나누면 잡음만 커지기 때문이다.
+    계절 효과는 도시 전체에 같은 방향으로 온다.
+
+    배율을 낼 수 없으면(자료 부족) None — 호출부가 보정을 건너뛴다.
+    """
+    if days <= 0 or recent.empty or stats.empty:
+        return None
+
+    dates = pd.to_datetime(recent["date"])
+    head = recent[dates <= dates.min() + pd.Timedelta(days=days - 1)]
+    if head.empty:
+        return None
+
+    observed = head.groupby("station_id")["demand"].mean()
+    joined = stats.set_index("station_id")[["mu"]].join(
+        observed.rename("head"), how="inner").dropna()
+    baseline = joined["mu"].abs().sum()
+    if joined.empty or baseline <= 0:
+        return None
+
+    ratio = float(joined["head"].abs().sum() / baseline)
+    return float(np.clip(ratio, *WARMUP_CLIP))
+
+
+def apply_warmup(stats: pd.DataFrame, ratio: Optional[float]) -> pd.DataFrame:
+    """mu·sigma에 배율을 곱한다. **중심을 옮기는 것**이지 분산만 부풀리는 게 아니다."""
+    if not ratio or ratio == 1.0:
+        return stats
+    scaled = stats.copy()
+    for column in ("mu", "sigma"):
+        if column in scaled.columns:
+            scaled[column] = scaled[column] * ratio
+    return scaled
+
+
+# ---------------- 분위수 모델 ----------------
+
 def train(frame: pd.DataFrame, quantile: float = TARGET_QUANTILE,
           random_state: int = 7):
     """분위수 회귀 모델을 학습한다.

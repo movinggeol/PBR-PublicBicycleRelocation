@@ -27,7 +27,9 @@ from typing import Dict, Iterator, Optional, Sequence, Tuple
 
 import pandas as pd
 
-from project_config import DATA_ROOT, FLEET_SIZE, VEHICLES_PER_ROUND, vehicle_ids
+from project_config import (
+    DATA_ROOT, FLEET_SIZE, VEHICLES_PER_ROUND, period_label, vehicle_ids,
+)
 
 # 기본 DB 위치. 환경변수 PBR_DB_PATH로 바꿀 수 있다
 # (테스트가 실제 DB를 건드리지 않도록 별도 파일을 가리키는 데 쓴다).
@@ -103,7 +105,7 @@ CREATE TABLE IF NOT EXISTS runs (
     period      TEXT,
     duration    TEXT,
     raw_file    TEXT,
-    day_type    TEXT,     -- weekday | weekend. 산출물 파일명에는 안 들어가므로 여기 남긴다
+    day_type    TEXT,     -- weekday | holiday. 산출물 파일명에는 안 들어가므로 여기 남긴다
     created_at  TEXT NOT NULL
 );
 
@@ -819,8 +821,8 @@ def _ensure_rental_schema(conn: sqlite3.Connection) -> None:
 
 
 def month_label(timestamp) -> str:
-    """대여일시 → 'YY년 MM월' (project_config의 period 형식과 같다)."""
-    return f"{timestamp.year % 100:02d}년 {timestamp.month:02d}월"
+    """대여일시 → 'YY년 MM월'. 표기 규칙은 project_config가 갖는다(중복 방지)."""
+    return period_label(timestamp)
 
 
 def bulk_load_rentals(csv_path: Path, period: Optional[str] = None,

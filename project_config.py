@@ -92,6 +92,23 @@ def resolve_day_type(target_date=None) -> str:
     return "holiday" if is_holiday(target_stamp(target_date)) else "weekday"
 
 
+def period_label(date) -> str:
+    """날짜 → 기간 라벨('26년 03월'). period·warmup_period의 표기를 한 곳에서 만든다.
+
+    db.month_label()이 이 함수를 쓴다 — 같은 규칙이 두 곳에 있으면 어긋난다.
+    """
+    stamp = target_stamp(date)
+    return f"{stamp.year % 100:02d}년 {stamp.month:02d}월"
+
+
+# ---- 계절 수준 보정 (warmup) ----
+# 계절이 바뀌는 달에는 지난달 통계가 못 따라간다(2월→3월 수요 1.5배).
+# 계획 대상 달의 **첫 N일 실적**으로 도시 전체 배율 하나를 구해 mu·sigma에 곱한다.
+# 배율을 대여소별로 추정하지 않는 이유: 며칠치로 나누면 잡음만 커지고, 계절 효과는
+# 도시 전체에 같은 방향으로 오기 때문이다. 근거: docs/EXPERIMENTS.md 3장.
+# 0이면 끈다.
+DEFAULT_WARMUP_DAYS = int(os.getenv("PBR_WARMUP_DAYS", "14"))
+
 DEFAULT_RAW_FILE = os.getenv(
     "PBR_RAW_FILE",
     "data/raw_data/대전시 공영자전거 타슈 대여이력 정보(25년11월).csv",
@@ -207,6 +224,9 @@ class RuntimeConfig:
     # day_type은 항상 해석된 값(weekday|holiday)이다 — 'auto'는 여기까지 오지 않는다.
     day_type: str = "weekday"
     target_date: str = ""       # 계획 대상일(YYYY-MM-DD). 빈 값이면 오늘
+    # 계절 수준 보정 — 계획 대상 달의 첫 N일 실적으로 배율을 구한다.
+    warmup_period: str = ""     # 빈 값이면 target_date의 달을 쓴다
+    warmup_days: int = DEFAULT_WARMUP_DAYS
 
     @property
     def raw_path(self) -> Path:
@@ -216,6 +236,11 @@ class RuntimeConfig:
     def day_label(self) -> str:
         """출력 메시지용 한국어 표기(평일/휴일)."""
         return DAY_TYPE_LABELS.get(self.day_type, self.day_type)
+
+    @property
+    def warmup_label(self) -> str:
+        """보정에 쓸 기간. 지정이 없으면 계획 대상일이 속한 달."""
+        return self.warmup_period or period_label(self.target_date)
 
     @property
     def day_reason(self) -> str:
@@ -250,6 +275,17 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="계획 대상일(YYYY-MM-DD, 기본 오늘). --day-type auto의 판정 기준",
     )
+    parser.add_argument(
+        "--warmup-period",
+        default=None,
+        help="계절 보정에 쓸 기간(기본: 계획 대상일의 달). 그 달 첫 N일 실적을 쓴다",
+    )
+    parser.add_argument(
+        "--warmup-days",
+        type=int,
+        default=None,
+        help=f"보정에 쓸 일수 (기본 {DEFAULT_WARMUP_DAYS}, 0이면 끔)",
+    )
     return parser
 
 
@@ -269,6 +305,9 @@ def get_runtime_config(argv: Optional[list[str]] = None) -> RuntimeConfig:
         raw_file=args.raw_file or DEFAULT_RAW_FILE,
         day_type=normalize_day_type(args.day_type or DEFAULT_DAY_TYPE, target_date),
         target_date=target_date,
+        warmup_period=args.warmup_period or os.getenv("PBR_WARMUP_PERIOD", ""),
+        warmup_days=(args.warmup_days if args.warmup_days is not None
+                     else DEFAULT_WARMUP_DAYS),
     )
 
 

@@ -28,6 +28,7 @@ import numpy as np
 import pandas as pd
 
 import db
+import demand_model
 from project_config import (
     DAY_TYPE_AUTO, DAY_TYPES, TARGET_Z, normalize_day_type, select_day_type,
 )
@@ -64,7 +65,7 @@ def consecutive_pairs(periods: list) -> list:
 
 
 def evaluate(train: pd.DataFrame, test: pd.DataFrame, z: float,
-             min_demand: float = 0.0) -> dict:
+             min_demand: float = 0.0, warmup_days: int = 0) -> dict:
     """학습 달의 mu/sigma로 검증 달을 예측하고 오차를 잰다.
 
     min_demand > 0이면 **작업 대상 대여소만** 본다(|mu| > min_demand).
@@ -75,6 +76,11 @@ def evaluate(train: pd.DataFrame, test: pd.DataFrame, z: float,
     global_mu = train["demand"].mean()
     if min_demand > 0:
         stats = stats[stats["mu"].abs() > min_demand]
+
+    # 계절 수준 보정 — 검증 달 첫 N일만 본다. 운영에서 그 시점에 손에 있는 자료다.
+    if warmup_days > 0:
+        ratio = demand_model.warmup_ratio(stats.reset_index(), test, warmup_days)
+        stats = demand_model.apply_warmup(stats, ratio)
 
     merged = test.merge(stats, on="station_id", how="inner")
     if merged.empty:
@@ -123,6 +129,8 @@ def main() -> int:
                         help="요일 구분 (기본 weekday). 평일과 휴일은 따로 잰다")
     parser.add_argument("--min-demand", type=float, default=0.0,
                         help="작업 대상만 보려면 2 (|mu| > 2). 기본 0 = 전체 대여소")
+    parser.add_argument("--warmup-days", type=int, default=0,
+                        help="검증 달 첫 N일로 계절 배율 보정 (기본 0 = 끔). 권장 14")
     args, _ = parser.parse_known_args()
 
     durations = [args.duration] if args.duration else DURATIONS
@@ -156,8 +164,9 @@ def main() -> int:
         return 1
 
     scope = f"작업 대상만(|mu| > {args.min_demand})" if args.min_demand else "전체 대여소"
+    warm = f" · warmup {args.warmup_days}일" if args.warmup_days else ""
     print(f"기간 {len(periods)}개 · 연속 쌍 {len(pairs)}개 · z={args.z}"
-          f" · 요일 {day_type} · {scope}\n")
+          f" · 요일 {day_type} · {scope}{warm}\n")
 
     all_rows = []
     for duration in durations:
@@ -165,7 +174,7 @@ def main() -> int:
         for train_period, test_period in pairs:
             result = evaluate(daily_window_demand(net[train_period], duration),
                               daily_window_demand(net[test_period], duration),
-                              args.z, args.min_demand)
+                              args.z, args.min_demand, args.warmup_days)
             if result:
                 rows.append({"duration": duration,
                              "학습": train_period, "검증": test_period, **result})

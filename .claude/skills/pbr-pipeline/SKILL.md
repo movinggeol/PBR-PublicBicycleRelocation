@@ -15,7 +15,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/RETROSPECTIVE.md` | 전체 조망·측정이 뒤집은 가설·설계 결정 (처음 오면 여기부터) |
 | `docs/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/TESTING.md` | 테스트 175개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/TESTING.md` | 테스트 181개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/PROJECT_PIPELINE.md` | 파이프라인 전체 구조 |
 | `docs/steps/step*.md` | 단계별 입출력·문제점·작업 목록 |
@@ -103,6 +103,7 @@ python run_pipeline.py --now "2026-05-21 18" --period "25년 11월" --duration "
 python run_pipeline.py --fleet-size 15 --vehicles-per-round 6   # 차량 대수 (기본 21 / 10)
 python run_pipeline.py --day-type holiday --now "260813 휴일"   # 휴일 계획 (기본 auto)
 python run_pipeline.py --target-date 2026-09-25                # 그날로 자동 판정
+python run_pipeline.py --warmup-period "26년 03월"             # 계절 보정 (기본 14일)
 python tools/rebuild_net_demand.py            # 전 기간 순수요 재계산(휴일 포함)
 python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8000)
 ```
@@ -141,6 +142,9 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
   - **z가 필요한 이유는 '꼬리가 두꺼워서'가 아니다** — 대여소별로 보면 거의
     정규분포다. 진짜 원인은 지난달 통계로 이번 달을 맞히는 **추정 오차**다
     (docs/DEMAND_DISTRIBUTION.md). 분포를 고치는 처방은 헛다리다.
+- **계절 보정(warmup)이 기본으로 켜져 있다** — 계획 대상 달 첫 14일 실적으로 도시
+  전체 배율을 구해 mu·sigma에 곱한다(`--warmup-days 0`으로 끔). 배율을 대여소별로
+  추정하지 마라 — 며칠치로 나누면 잡음만 커진다.
 - **수요 예측을 바꾸려면 `experiments/quantile_model_eval.py`의 판정을 통과해야 한다** —
   작업 대상만·평일/휴일 따로·표본 밖·베이스라인 초과. 분위수 모델은 1차 시도에서
   졌고 기본으로 꺼져 있다(모델 파일이 없으면 `mu + z·sigma`로 폴백).
@@ -191,7 +195,7 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
 ## 테스트
 
 ```powershell
-python -m pytest                 # 175개, 약 49초 (tests/ 만 수집)
+python -m pytest                 # 181개, 약 50초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

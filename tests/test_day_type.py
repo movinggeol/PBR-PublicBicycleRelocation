@@ -225,3 +225,75 @@ def test_training_frame_uses_only_previous_month():
     assert all(f.startswith("prev_") or f in ("month", "duration_idx", "day_type_idx")
                for f in demand_model.FEATURES), \
         "예측 시점에 알 수 없는 피처가 섞였다"
+
+
+# ---------------- 계절 수준 보정 (warmup) ----------------
+
+def test_warmup_ratio_scales_when_demand_jumps():
+    """계획 대상 달의 수요가 1.5배면 배율도 그만큼 나와야 한다."""
+    import demand_model
+
+    stats = pd.DataFrame({"station_id": ["A", "B", "C"], "mu": [10.0, -6.0, 4.0]})
+    recent = pd.DataFrame({
+        "station_id": ["A", "B", "C"] * 3,
+        "date": pd.to_datetime(["2026-03-02"] * 3 + ["2026-03-03"] * 3
+                               + ["2026-03-04"] * 3),
+        "demand": [15.0, -9.0, 6.0] * 3,          # 정확히 1.5배
+    })
+
+    ratio = demand_model.warmup_ratio(stats, recent, days=14)
+    assert ratio == pytest.approx(1.5, abs=0.01)
+
+
+def test_warmup_only_uses_the_first_n_days():
+    """뒤쪽 날짜를 보면 안 된다 — 계획 시점에 없는 자료다."""
+    import demand_model
+
+    stats = pd.DataFrame({"station_id": ["A"], "mu": [10.0]})
+    recent = pd.DataFrame({
+        "station_id": ["A", "A"],
+        "date": pd.to_datetime(["2026-03-01", "2026-03-20"]),
+        "demand": [20.0, 100.0],                  # 20일차는 창 밖
+    })
+
+    assert demand_model.warmup_ratio(stats, recent, days=7) == pytest.approx(2.0)
+
+
+def test_warmup_ratio_is_clipped():
+    """며칠치 잡음으로 배율이 튀는 것을 막는다."""
+    import demand_model
+
+    stats = pd.DataFrame({"station_id": ["A"], "mu": [1.0]})
+    recent = pd.DataFrame({"station_id": ["A"], "date": pd.to_datetime(["2026-03-01"]),
+                           "demand": [100.0]})
+
+    assert demand_model.warmup_ratio(stats, recent, days=14) == demand_model.WARMUP_CLIP[1]
+
+
+@pytest.mark.parametrize("days, recent", [
+    (0, "정상"),          # 꺼져 있으면 None
+    (14, "빈값"),         # 자료가 없으면 None
+])
+def test_warmup_returns_none_when_unusable(days, recent):
+    """배율을 낼 수 없으면 None — 호출부가 보정을 건너뛴다."""
+    import demand_model
+
+    stats = pd.DataFrame({"station_id": ["A"], "mu": [1.0]})
+    frame = (pd.DataFrame(columns=["station_id", "date", "demand"]) if recent == "빈값"
+             else pd.DataFrame({"station_id": ["A"], "date": pd.to_datetime(["2026-03-01"]),
+                                "demand": [1.0]}))
+
+    assert demand_model.warmup_ratio(stats, frame, days) is None
+
+
+def test_apply_warmup_moves_center_not_just_spread():
+    """mu와 sigma **둘 다** 곱해야 한다 — sigma만 키우면 z를 올린 것과 같다."""
+    import demand_model
+
+    stats = pd.DataFrame({"mu": [10.0], "sigma": [2.0]})
+    scaled = demand_model.apply_warmup(stats, 1.5)
+
+    assert scaled["mu"].iloc[0] == pytest.approx(15.0)
+    assert scaled["sigma"].iloc[0] == pytest.approx(3.0)
+    # 원본은 그대로여야 한다(호출부가 되돌릴 수 있게)
+    assert stats["mu"].iloc[0] == 10.0
