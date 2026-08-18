@@ -19,6 +19,16 @@ uvicorn webapp.app:app --reload
 > 검증 환경: Python 3.14.7 / Windows 11 (2026-08-10). 위 순서로 설치·구동을 확인했습니다.
 > 설치 관련 주의사항은 [README](../README.md#설치)를 참고하세요.
 
+⚠️ **반드시 `.venv`로 실행하세요.** 시스템 `python`에는 이 프로젝트의 의존성이
+없습니다. 빠진 패키지가 있으면 서버가 **뜨기 전에** 멈추고 무엇을 하면 되는지
+알려 줍니다 — 예전에는 페이지마다 500이 났습니다.
+
+```text
+실행에 필요한 패키지가 없습니다: holidays (평일/휴일 판정)
+  가상환경으로 실행:  .\.venv\Scripts\python.exe -m webapp
+  또는 지금 환경에 설치:  python -m pip install -r requirements.txt
+```
+
 ## 화면 구성
 
 | 경로 | 내용 |

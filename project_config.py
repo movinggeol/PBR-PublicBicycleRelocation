@@ -47,7 +47,16 @@ def korean_holidays(*years):
     지연 확장하는데, 그 경로에서 내부 연도가 실수로 넘어가 TypeError가 난다.
     연도별로 한 번만 만들어 캐시한다.
     """
-    import holidays
+    try:
+        import holidays
+    except ImportError as err:
+        # 의존성이 빠진 환경(대개 .venv가 아닌 시스템 python)에서 실행한 경우.
+        # 파묻힌 ImportError 대신 무엇을 하면 되는지 알려 준다.
+        raise ModuleNotFoundError(
+            "공휴일 달력을 쓰려면 holidays 패키지가 필요합니다.\n"
+            r"  가상환경으로 실행:  .\.venv\Scripts\python.exe -m webapp" "\n"
+            "  또는 지금 환경에 설치:  python -m pip install -r requirements.txt"
+        ) from err
 
     wanted = tuple(sorted({int(y) for y in years}))
     if not wanted:
