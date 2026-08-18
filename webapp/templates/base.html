@@ -312,32 +312,34 @@
     .card-head h2 { font-size: var(--fs-h3); }
 
     /* ════════ 통계 타일 ════════ */
+    /* 지표 5개가 1200px 안에서 한 줄에 들어가도록 맞춘 크기다.
+       최소 폭을 키우거나 값 글자를 키우면 4+1로 접힌다. */
     .tiles {
-      display: grid; gap: var(--sp-sm); margin-bottom: var(--sp-md);
-      grid-template-columns: repeat(auto-fit, minmax(224px, 1fr));
+      display: grid; gap: 10px; margin-bottom: var(--sp-md);
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
     }
     .tile {
       background: var(--surface); border: 1px solid var(--hairline);
-      border-radius: var(--r-lg); padding: var(--sp-md) var(--sp-lg) var(--sp-lg);
+      border-radius: var(--r-lg); padding: 13px 16px 15px;
     }
     .tile .label {
       font-size: var(--fs-fine); font-weight: 600; color: var(--ink-3);
-      letter-spacing: -.08px; margin: 0 0 6px;
+      letter-spacing: -.08px; margin: 0 0 4px; line-height: 1.4;
     }
     .tile .value {
-      font-size: 34px; font-weight: 600; letter-spacing: -.8px;
-      line-height: 1.1; margin: 0; color: var(--ink);
+      font-size: 26px; font-weight: 600; letter-spacing: -.6px;
+      line-height: 1.15; margin: 0; color: var(--ink);
       font-variant-numeric: tabular-nums;
     }
     .tile .unit {
-      font-size: var(--fs-ui); font-weight: 400; color: var(--ink-4);
-      letter-spacing: -.224px; margin-left: 3px;
+      font-size: var(--fs-fine); font-weight: 400; color: var(--ink-4);
+      letter-spacing: -.08px; margin-left: 2px;
     }
-    .tile .sub { margin: var(--sp-xs) 0 0; color: var(--ink-4); font-size: var(--fs-fine); line-height: 1.5; }
+    .tile .sub { margin: 5px 0 0; color: var(--ink-4); font-size: 11px; line-height: 1.45; }
     /* 증감은 ▲/▼ 기호를 함께 붙인다 — 색만으로 방향을 말하지 않는다.
        클래스 이름이 good/bad인 이유: 결품 시간은 내려가는 게 좋은 값이라
        up/down으로 이름 붙이면 뜻이 뒤집힌다. */
-    .delta { font-size: var(--fs-fine); font-weight: 600; margin-left: 6px; white-space: nowrap; letter-spacing: 0; }
+    .delta { font-size: 11px; font-weight: 600; margin-left: 5px; white-space: nowrap; letter-spacing: 0; }
     .delta.good { color: var(--good-ink); }
     .delta.bad { color: var(--critical-ink); }
 

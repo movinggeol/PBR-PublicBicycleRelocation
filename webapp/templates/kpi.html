@@ -12,7 +12,8 @@
 <section class="hero">
   <h1>성과 지표</h1>
   <p class="lead">계획이 목표 재고를 얼마나 채웠는지, 그러기 위해 얼마나 움직였는지를 봅니다.
-    {% if cards %}가장 최근 실행은 <b>{{ latest_label }}</b>입니다.{% endif %}</p>
+    {% if cards %}가장 최근 실행은 <b>{{ latest_label }}</b>{% if previous_label %},
+    증감은 직전 <b>{{ previous_label }}</b> 대비{% endif %}입니다.{% endif %}</p>
 </section>
 
 {% if cards %}
@@ -22,18 +23,15 @@
     <p class="label">{{ c.label }}</p>
     <p class="value">{{ fmt(c.value, c.fmt) }}{% if c.delta is not none and c.delta | abs > 0.001 %}<span
         class="delta {{ 'good' if c.delta > 0 else 'bad' }}">{{ '▲' if c.delta > 0 else '▼' }} {{ fmt(c.delta | abs, c.fmt) }}</span>{% endif %}</p>
-    {% if c.delta is not none and c.delta | abs > 0.001 %}
-    <p class="sub">직전 실행 {{ previous_label }} 대비</p>
-    {% endif %}
   </div>
   {% endfor %}
 
   {% if stockout %}
   <div class="tile">
-    <p class="label">결품 시간 (대여소·일 평균)</p>
+    <p class="label">결품 시간</p>
     <p class="value">{{ stockout.after | round(2) }}<span class="unit">시간</span><span
         class="delta good">▼ {{ stockout.cut | round(2) }}</span></p>
-    <p class="sub">재배치 전 {{ stockout.before | round(2) }}시간에서 줄어든 값</p>
+    <p class="sub">대여소·일 평균 · 재배치 전 {{ stockout.before | round(2) }}시간</p>
   </div>
   {% endif %}
 </div>
