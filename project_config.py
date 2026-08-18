@@ -50,6 +50,10 @@ def korean_holidays(*years):
     import holidays
 
     wanted = tuple(sorted({int(y) for y in years}))
+    if not wanted:
+        # 연도 없이 부르면 빈 달력이 나와 '공휴일이 하나도 없다'가 된다.
+        # 조용히 틀리느니 여기서 막는다.
+        raise ValueError("korean_holidays()는 연도를 하나 이상 받아야 합니다.")
     if wanted not in _holiday_cache:
         _holiday_cache[wanted] = holidays.SouthKorea(years=list(wanted))
     return _holiday_cache[wanted]
@@ -112,6 +116,13 @@ DEFAULT_WARMUP_DAYS = int(os.getenv("PBR_WARMUP_DAYS", "14"))
 DEFAULT_RAW_FILE = os.getenv(
     "PBR_RAW_FILE",
     "data/raw_data/대전시 공영자전거 타슈 대여이력 정보(25년11월).csv",
+)
+
+# 날씨 원천(기상자료개방포털 ASOS 시간자료, 대전 지점 133).
+# 없으면 날씨 없이 돈다 — 있으면 좋고 없어도 도는 입력이다.
+DEFAULT_WEATHER_FILE = os.getenv(
+    "PBR_WEATHER_FILE",
+    "data/raw_data/날씨/대전_ASOS_시간자료.csv",
 )
 
 # ---- 운영 상수 (step2 vrp, step3 지도에서 공유) ----

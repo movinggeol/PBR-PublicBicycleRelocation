@@ -26,6 +26,7 @@ from project_config import (
     ensure_output_dirs,
     get_runtime_config,
     select_day_type,
+    target_stamp,
 )
 
 # read_csv
@@ -129,13 +130,13 @@ if __name__ == '__main__':
 
     net_daily = pd.read_csv(net_file.format(period=period), encoding='utf-8', low_memory=False)
 
-    # 평일과 주말 중 한쪽만 남긴다. 섞으면 부호가 반대인 대여소끼리 상쇄된다.
+    # 평일과 휴일 중 한쪽만 남긴다. 섞으면 부호가 반대인 대여소끼리 상쇄된다.
     전체일수 = pd.to_datetime(net_daily['날짜']).dt.date.nunique()
     net_daily = select_day_type(net_daily, '날짜', config.day_type)
     if net_daily.empty:
         raise SystemExit(
             f"{config.day_label} 데이터가 없습니다 (기간 {period})."
-            " raw_to_net.py를 다시 돌려 주말을 포함시켰는지 확인하세요.")
+            " raw_to_net.py를 다시 돌려 휴일을 포함시켰는지 확인하세요.")
     사용일수 = pd.to_datetime(net_daily['날짜']).dt.date.nunique()
     print(f"{config.day_label} 기준으로 계산합니다 "
           f"({사용일수}일 / 전체 {전체일수}일) — {config.day_reason}")
@@ -219,12 +220,14 @@ if __name__ == '__main__':
         if bundle is not None:
             try:
                 # 학습과 **같은 함수**로 피처를 만든다(train/serve 불일치 방지).
+                # month는 **계획 대상 달**이다(학습 달이 아니다).
+                # training_frame이 검증 달의 월을 쓰므로 여기도 같아야 한다 —
+                # 학습 달의 월을 넣으면 계절 피처가 한 달 어긋난다.
                 features = demand_model.build_features(
                     daily, duration, config.day_type,
-                    pd.to_datetime(net_temp['날짜']).dt.month.mode().iloc[0], ratio)
+                    target_stamp(config.target_date).month, ratio)
                 merged = stats[["station_id"]].merge(features, on="station_id", how="left")
-                predicted = bundle["model"].predict(
-                    merged[demand_model.FEATURES].to_numpy())
+                predicted = demand_model.predict(bundle, merged)
                 model_target = pd.Series(predicted, index=stats.index)
             except Exception as err:      # 모델 문제로 파이프라인을 멈추지 않는다
                 print(f"[경고] 분위수 예측 실패({type(err).__name__}: {err})."

@@ -37,16 +37,13 @@ from project_config import DATA_ROOT, DAY_TYPES, select_day_type
 
 MODEL_PATH = DATA_ROOT / "models" / "target_quantile.pkl"
 
-# 학습 분위수. **목표(95%)보다 높게 잡는다.**
+# 학습 분위수. target_qty의 설계 의도(95%를 덮는다)와 같은 값이다.
 #
-# q=0.95로 학습하면 표본 밖 실현 커버리지가 92~94%에 그친다 — 학습 달에서 성립한
-# 관계가 검증 달에서 그대로 유지되지 않기 때문이다(docs/DEMAND_DISTRIBUTION.md 4장).
-# 그 차이를 실측으로 메운 값이 0.97이다. **z를 1.65 → 1.99로 올린 것과 같은 성격의
-# 보정**이며, 같은 한계도 갖는다(이 데이터에서 고른 값이다).
-#
-# 검증 달 8개 중 7개에서 베이스라인보다 95%에 가깝고 과잉도 낮았다.
-# 재현: python experiments/quantile_model_eval.py --holdout "26년 03월"
-TARGET_QUANTILE = 0.97
+# 1.15.2에서 0.97로 올려 '채택'했다가 1.15.3에서 되돌렸다. 그 보정은 **계절 배율이
+# 과대추정된 베이스라인**에 맞춰 고른 값이었고, 배율을 고치자 어느 분위수에서도
+# 베이스라인을 이기지 못했다(0.93/0.95/0.97 전부 확인).
+# 자세한 경위: docs/DEMAND_DISTRIBUTION.md 5장.
+TARGET_QUANTILE = 0.95
 
 DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
 
@@ -139,7 +136,11 @@ def build_features(train_demand: pd.DataFrame, duration: str, day_type: str,
 
 def season_ratio(train_demand: pd.DataFrame, recent: Optional[pd.DataFrame],
                  warmup_days: int) -> Optional[float]:
-    """직전 달 통계와 계획 대상 달의 부분 실적으로 계절 배율을 구한다."""
+    """직전 달 통계와 계획 대상 달의 부분 실적으로 계절 배율을 구한다.
+
+    **배율 계산의 유일한 진입점이다.** 백테스트와 파이프라인이 이 함수를 함께 써야
+    측정이 실제 동작을 반영한다(예전에는 한쪽만 대여소를 걸러 값이 달랐다).
+    """
     if warmup_days <= 0 or recent is None or recent.empty or train_demand.empty:
         return None
     stats = train_demand.groupby("station_id")["demand"].mean().rename("mu").reset_index()
@@ -196,8 +197,18 @@ def training_frame(net_by_period: dict, day_types=DAY_TYPES,
 
 WARMUP_CLIP = (0.5, 2.0)      # 며칠치 잡음으로 배율이 과하게 튀는 것을 막는다
 
+# 배율을 추정할 때 쓸 대여소의 최소 수요 크기(|mu|).
+#
+# **0으로 두면 안 된다.** 순수요가 0 근처인 대여소가 1,000곳 넘는데, 며칠치로
+# 잰 |평균|은 참값이 0에 가까울수록 위쪽으로 치우친다(잡음의 절댓값이 더해지므로).
+# 그런 대여소를 배율 계산에 넣으면 분자만 부풀어 **배율이 과대추정**된다.
+# 실측: 전체로 재면 전 기간 MAE가 오히려 나빠졌다(기준선 대비 44.3% -> 42.8%).
+# 파이프라인이 실제로 손대는 대여소(|rebal_qty| > 2)와 같은 기준을 쓴다.
+WARMUP_MIN_DEMAND = 2.0
 
-def warmup_ratio(stats: pd.DataFrame, recent: pd.DataFrame, days: int) -> Optional[float]:
+
+def warmup_ratio(stats: pd.DataFrame, recent: pd.DataFrame, days: int,
+                 min_demand: float = WARMUP_MIN_DEMAND) -> Optional[float]:
     """계획 대상 달 앞 `days`일의 실적으로 **도시 전체 배율 하나**를 구한다.
 
     stats  : 학습 달의 대여소별 통계 (station_id, mu)
@@ -205,6 +216,9 @@ def warmup_ratio(stats: pd.DataFrame, recent: pd.DataFrame, days: int) -> Option
 
     대여소별로 보정하지 않는 이유는 며칠치 표본으로 나누면 잡음만 커지기 때문이다.
     계절 효과는 도시 전체에 같은 방향으로 온다.
+
+    **수요가 0 근처인 대여소는 뺀다**(min_demand). 넣으면 배율이 과대추정된다 —
+    위 WARMUP_MIN_DEMAND 주석 참고.
 
     배율을 낼 수 없으면(자료 부족) None — 호출부가 보정을 건너뛴다.
     """
@@ -216,8 +230,12 @@ def warmup_ratio(stats: pd.DataFrame, recent: pd.DataFrame, days: int) -> Option
     if head.empty:
         return None
 
+    usable = stats[stats["mu"].abs() > min_demand] if min_demand > 0 else stats
+    if usable.empty:
+        return None
+
     observed = head.groupby("station_id")["demand"].mean()
-    joined = stats.set_index("station_id")[["mu"]].join(
+    joined = usable.set_index("station_id")[["mu"]].join(
         observed.rename("head"), how="inner").dropna()
     baseline = joined["mu"].abs().sum()
     if joined.empty or baseline <= 0:
@@ -294,15 +312,15 @@ def load(path: Optional[Path] = None) -> Optional[dict]:
     return bundle
 
 
-def predict_target(bundle: dict, stats: pd.DataFrame, duration: str,
-                   day_type: str, month: int) -> np.ndarray:
-    """대여소별 목표 재고(= 다음 기간 순수요의 95분위) 예측.
+def predict(bundle: dict, features: pd.DataFrame) -> np.ndarray:
+    """목표 재고 예측 = 다음 기간 순수요의 `bundle['quantile']` 분위수.
 
-    `stats`는 calculate_target_qty가 가진 대여소별 통계여야 하며,
-    최소한 summarize()가 만드는 컬럼을 갖고 있어야 한다.
+    `features`는 **build_features()가 만든 것**이어야 한다. 컬럼 순서가 학습 때와
+    같아야 하므로 FEATURES로 다시 정렬한다 — 호출부가 순서를 맞추게 두면
+    언젠가 어긋난다.
     """
-    features = add_context(stats, duration, day_type, month)
     missing = [c for c in FEATURES if c not in features.columns]
     if missing:
-        raise KeyError(f"피처가 없습니다: {missing}")
+        raise KeyError(f"피처가 없습니다: {missing}"
+                       " (build_features()를 거치지 않았을 수 있습니다)")
     return bundle["model"].predict(features[FEATURES].to_numpy())

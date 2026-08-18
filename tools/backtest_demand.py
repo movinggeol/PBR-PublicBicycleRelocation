@@ -78,9 +78,12 @@ def evaluate(train: pd.DataFrame, test: pd.DataFrame, z: float,
         stats = stats[stats["mu"].abs() > min_demand]
 
     # 계절 수준 보정 — 검증 달 첫 N일만 본다. 운영에서 그 시점에 손에 있는 자료다.
+    # 배율은 **작업 대상 필터 이전의 전체 대여소**로 구한다. 파이프라인이 그렇게
+    # 하므로 여기서도 같아야 측정이 실제 동작을 반영한다(도시 전체 배율이라는
+    # 정의에도 이쪽이 맞다).
     if warmup_days > 0:
-        ratio = demand_model.warmup_ratio(stats.reset_index(), test, warmup_days)
-        stats = demand_model.apply_warmup(stats, ratio)
+        stats = demand_model.apply_warmup(
+            stats, demand_model.season_ratio(train, test, warmup_days))
 
     merged = test.merge(stats, on="station_id", how="inner")
     if merged.empty:

@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 import db
+from project_config import holiday_mask
 
 WINDOWS = {"_05_10": range(5, 10), "_10_15": range(10, 15), "_15_20": range(15, 20)}
 
@@ -112,8 +113,8 @@ def main() -> int:
             allday = pd.concat(frames, ignore_index=True)
             allday["date"] = pd.to_datetime(allday["date"], errors="coerce")
             allday = allday.dropna(subset=["date"])
-            # 공휴일은 아직 없으므로 주말만으로 근사한다(대략적 크기 확인이 목적).
-            allday["holiday"] = allday["date"].dt.dayofweek >= 5
+            # 휴일 = 주말 ∪ 공휴일 (project_config가 판정 규칙을 갖는다).
+            allday["holiday"] = holiday_mask(allday["date"])
 
             # 기간별 수준 차이를 빼고 요일 효과만 본다(달마다 이용량 자체가 다르다).
             allday["ratio"] = allday["need"] / allday.groupby(

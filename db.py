@@ -27,9 +27,7 @@ from typing import Dict, Iterator, Optional, Sequence, Tuple
 
 import pandas as pd
 
-from project_config import (
-    DATA_ROOT, FLEET_SIZE, VEHICLES_PER_ROUND, period_label, vehicle_ids,
-)
+from project_config import DATA_ROOT, FLEET_SIZE, period_label, vehicle_ids
 
 # 기본 DB 위치. 환경변수 PBR_DB_PATH로 바꿀 수 있다
 # (테스트가 실제 DB를 건드리지 않도록 별도 파일을 가리키는 데 쓴다).
@@ -561,7 +559,7 @@ def ensure_run(conn: sqlite3.Connection, run_label: str, period: Optional[str] =
     # day_type만 인자가 우선이다(COALESCE의 순서가 반대인 것에 주의).
     # 나머지는 '먼저 기록된 값을 지킨다'가 맞지만, day_type은 **산출물의 성격을
     # 규정**한다 — 같은 라벨을 다른 요일 구분으로 다시 돌리면 산출물이 덮어써지므로
-    # 기록도 따라가야 한다. 안 그러면 주말 산출물에 '평일'이라고 적혀 남는다.
+    # 기록도 따라가야 한다. 안 그러면 휴일 산출물에 '평일'이라고 적혀 남는다.
     conn.execute(
         "UPDATE runs SET period = COALESCE(period, ?),"
         "                duration = COALESCE(duration, ?),"

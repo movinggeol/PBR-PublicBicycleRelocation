@@ -1,11 +1,11 @@
 # 테스트
 
 이 프로젝트는 처음에 테스트가 하나도 없었고, **의존성이 전부 깨진 상태**로
-파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 182개 테스트입니다.
+파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 184개 테스트입니다.
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 182개 (약 26~42초)
+python -m pytest              # 전체 184개 (약 26~42초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -25,7 +25,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_rentals.py](../tests/test_rentals.py) | 10 | 대여이력 적재와 **CSV·DB 결과 동일성** |
 | [tests/test_fleet.py](../tests/test_fleet.py) | 13 | 차량 로테이션·형평성과 보유 대수 변경 ([FLEET.md](FLEET.md)) |
 | [tests/test_tmap.py](../tests/test_tmap.py) | 11 | TMAP 엔드포인트 선택·폴백 ([steps/step3_visualization.md](steps/step3_visualization.md)) |
-| [tests/test_day_type.py](../tests/test_day_type.py) | 31 | 평일/휴일 분리·공휴일 판정·수요 모델 폴백·계절 보정 ([steps/step0_raw.md](steps/step0_raw.md)) |
+| [tests/test_day_type.py](../tests/test_day_type.py) | 33 | 평일/휴일 분리·공휴일 판정·수요 모델 폴백·계절 보정 ([steps/step0_raw.md](steps/step0_raw.md)) |
 
 **API 키가 필요한 두 단계는 자동 테스트에서 제외**했습니다 —
 `step0/tashu_api.py`(TASHU)와 `step3/main.py`(TMAP). 검증 방법은 4장에 있습니다.

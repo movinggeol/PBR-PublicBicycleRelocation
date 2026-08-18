@@ -267,9 +267,10 @@ def test_warmup_ratio_is_clipped():
     """며칠치 잡음으로 배율이 튀는 것을 막는다."""
     import demand_model
 
-    stats = pd.DataFrame({"station_id": ["A"], "mu": [1.0]})
+    # mu는 WARMUP_MIN_DEMAND(2)를 넘어야 배율 계산에 들어간다.
+    stats = pd.DataFrame({"station_id": ["A"], "mu": [3.0]})
     recent = pd.DataFrame({"station_id": ["A"], "date": pd.to_datetime(["2026-03-01"]),
-                           "demand": [100.0]})
+                           "demand": [300.0]})
 
     assert demand_model.warmup_ratio(stats, recent, days=14) == demand_model.WARMUP_CLIP[1]
 
@@ -333,3 +334,44 @@ def test_train_and_serve_use_the_same_features():
     assert features["prev_mu"].iloc[0] == pytest.approx(plain["prev_mu"].iloc[0] * ratio)
     assert features["prev_days"].iloc[0] == plain["prev_days"].iloc[0]
     assert features["prev_zero_ratio"].iloc[0] == plain["prev_zero_ratio"].iloc[0]
+
+
+def test_warmup_ratio_excludes_near_zero_stations():
+    """수요가 0 근처인 대여소는 배율 계산에서 빠져야 한다.
+
+    |평균|의 합으로 비율을 내면 참값이 0에 가까운 대여소가 분자만 부풀린다
+    (E|X̂| > |E X|). 실제로 이걸 놓쳐 배율이 과대추정되고, 그 위에서 고른
+    분위수 보정이 통째로 무너진 적이 있다 (버전관리 1.15.3).
+    """
+    import demand_model
+
+    # 신호가 있는 대여소 하나 + 0 근처 잡음 대여소 여럿
+    stats = pd.DataFrame({
+        "station_id": ["신호"] + [f"잡음{i}" for i in range(20)],
+        "mu": [10.0] + [0.1] * 20,
+    })
+    recent = pd.DataFrame({
+        "station_id": ["신호"] + [f"잡음{i}" for i in range(20)],
+        "date": pd.to_datetime(["2026-03-02"] * 21),
+        # 신호는 그대로, 잡음은 부호가 섞인 관측값(참값은 0에 가깝다)
+        "demand": [10.0] + [3.0 if i % 2 else -3.0 for i in range(20)],
+    })
+
+    걸러냄 = demand_model.warmup_ratio(stats, recent, days=14)
+    전체 = demand_model.warmup_ratio(stats, recent, days=14, min_demand=0)
+
+    assert 걸러냄 == pytest.approx(1.0, abs=0.01), "신호 대여소만 보면 배율은 1이다"
+    assert 전체 > 1.5, "0 근처 대여소를 넣으면 배율이 부풀어야 한다(이 검증의 전제)"
+    assert 걸러냄 < 전체
+
+
+def test_backtest_and_pipeline_share_one_ratio_entry_point():
+    """측정과 운영이 같은 함수를 써야 한다 — 갈라지면 측정이 거짓말을 한다."""
+    import inspect
+
+    import demand_model
+    import tools.backtest_demand as backtest
+
+    assert "season_ratio" in inspect.getsource(backtest.evaluate), \
+        "백테스트가 season_ratio를 우회하면 파이프라인과 다른 배율을 쓰게 된다"
+    assert demand_model.WARMUP_MIN_DEMAND > 0
