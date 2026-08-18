@@ -1,0 +1,76 @@
+"""실행 로그에서 진행 단계를 뽑아내는 부분에 대한 테스트.
+
+run_pipeline이 로그 맨 앞에 전체 단계 목록을 찍고, 단계마다
+'실행:' → '완료:'/'실패:'를 찍는다는 규약에 기대고 있다.
+그 규약이 깨지면 여기서 먼저 걸린다.
+"""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from webapp.app import pipeline_progress
+
+# 실제 로그에는 윈도우 경로가 들어가므로 역슬래시를 그대로 둔다.
+PLAN = "\n".join([
+    "=== Public Bike Rebalancing Pipeline ===",
+    "요일 구분: 평일 (계획 대상일 2026-08-18 기준)",
+    r"[1/3] step0 (raw데이터 처리)\raw_to_net.py",
+    r"[2/3] step2 (ilp, vrp)\ilp.py",
+    r"[3/3] step4 (성과 지표)\imbalance.py",
+])
+
+
+def test_lists_stages_before_anything_runs():
+    """계획 블록만 있으면 전부 '대기'다."""
+    steps = pipeline_progress(PLAN)
+
+    assert [s["name"] for s in steps] == ["raw_to_net.py", "ilp.py", "imbalance.py"]
+    assert {s["status"] for s in steps} == {"pending"}
+
+
+def test_shows_human_readable_stage_names():
+    """화면에는 파일 이름이 아니라 무엇을 하는 단계인지가 나와야 한다."""
+    labels = [s["label"] for s in pipeline_progress(PLAN)]
+
+    assert labels == ["순수요 계산", "이동량 최적화 (ILP)", "성과 지표 계산"]
+
+
+def test_marks_running_and_done():
+    log = "\n".join([
+        PLAN,
+        "[1/3] 실행: python raw_to_net.py",
+        r"완료: step0 (raw데이터 처리)\raw_to_net.py",
+        "[2/3] 실행: python ilp.py",
+    ])
+
+    assert [s["status"] for s in pipeline_progress(log)] == ["done", "running", "pending"]
+
+
+def test_marks_failure():
+    log = "\n".join([
+        PLAN,
+        "[1/3] 실행: python raw_to_net.py",
+        r"완료: step0 (raw데이터 처리)\raw_to_net.py",
+        "[2/3] 실행: python ilp.py",
+        r"실패: step2 (ilp, vrp)\ilp.py (exit code=1)",
+    ])
+
+    assert [s["status"] for s in pipeline_progress(log)] == ["done", "failed", "pending"]
+
+
+def test_marks_missing_file():
+    log = "\n".join([PLAN, r"파일이 없습니다: step2 (ilp, vrp)\ilp.py"])
+
+    assert pipeline_progress(log)[1]["status"] == "missing"
+
+
+def test_plan_block_is_read_only_once():
+    """계획 블록이 두 번 찍혀도 단계가 늘어나선 안 된다."""
+    assert len(pipeline_progress(PLAN + "\n" + PLAN)) == 3
+
+
+def test_is_empty_when_log_has_no_plan():
+    """로그 형식이 바뀌면 조용히 빈 목록을 준다 — 화면은 로그만 보여주면 된다."""
+    assert pipeline_progress("아무 내용이나") == []
+    assert pipeline_progress("") == []

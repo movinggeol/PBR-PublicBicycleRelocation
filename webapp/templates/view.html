@@ -1,10 +1,14 @@
 {% extends "base.html" %}
 {% block title %}{{ name }} — PBR 대시보드{% endblock %}
 {% block content %}
-<div class="card-head" style="margin-bottom:.9rem">
-  <h1 style="font-size:1.15rem; margin:0">{{ name }}</h1>
-  <a class="btn ghost" href="/files/{{ relpath | urlencode }}" target="_blank">새 창에서 열기 ↗</a>
-</div>
-<iframe class="map-frame" src="/files/{{ relpath | urlencode }}"></iframe>
+
+<section class="hero" style="padding-bottom:var(--sp-md)">
+  <div class="card-head">
+    <h1 style="font-size:var(--fs-h2); margin:0">{{ name }}</h1>
+    <a class="btn ghost sm" href="/files/{{ relpath | urlencode }}" target="_blank">새 창에서 열기 ↗</a>
+  </div>
+</section>
+
+<iframe class="map-frame" src="/files/{{ relpath | urlencode }}" title="{{ name }}"></iframe>
 <a class="back" href="/maps">← 지도 목록으로</a>
 {% endblock %}

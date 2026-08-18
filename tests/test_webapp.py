@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from project_config import FLEET_SIZE, VEHICLES_PER_ROUND
+from webapp import app as app_module
 from webapp import jobs
 from webapp.app import app
 
@@ -30,7 +31,7 @@ def test_pages_render(client, path):
 
 def test_index_has_run_form(client):
     res = client.get("/")
-    assert "파이프라인 실행" in res.text
+    assert "계획 실행" in res.text
     assert 'action="/runs"' in res.text
 
 
@@ -160,3 +161,4 @@ def test_data_apis_do_not_crash(client, path):
     """산출물이 없으면 404, 있으면 200. 500(크래시)이 나서는 안 된다."""
     res = client.get(path)
     assert res.status_code in (200, 404), f"{path} -> {res.status_code}"
+

@@ -257,6 +257,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/TESTING.md](docs/TESTING.md) | **테스트** — 184개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/PROJECT_PIPELINE.md](docs/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/WEBAPP.md](docs/WEBAPP.md) | 웹 대시보드 실행·구조·API |
+| [docs/DESIGN.md](docs/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |
 | [docs/DEMAND_DISTRIBUTION.md](docs/DEMAND_DISTRIBUTION.md) | **순수요 분포** — 정규분포 전제 검증, 커버리지 원인 정정, ML 방향 |
 | [docs/DB_SCHEMA.md](docs/DB_SCHEMA.md) | **DB 스키마** — ERD, 테이블 15개 컬럼 레퍼런스, 조인 쿼리 |
 | [docs/DB_PLAN.md](docs/DB_PLAN.md) | SQLite 도입 결정·이관 계획·성능 측정 |

@@ -1,96 +1,122 @@
 {% extends "base.html" %}
 {% block title %}실행 — PBR 대시보드{% endblock %}
 {% block content %}
-<h1>파이프라인 실행</h1>
-<p class="lede">현재 재고와 과거 순수요로 재배치 계획을 만듭니다.
-  요일 구분은 계획 대상일을 달력으로 판정합니다(휴일 = 주말 + 공휴일).</p>
+
+<section class="hero">
+  <h1>재배치 계획을 세웁니다</h1>
+  <p class="lead">지금 대여소에 자전거가 몇 대 있는지와, 과거 같은 조건에서
+    얼마나 빠져나갔는지를 놓고 어디에서 몇 대를 빼 어디로 옮길지 계산합니다.</p>
+  <div class="actions">
+    <a class="btn ghost" href="/kpi">지난 결과 보기</a>
+  </div>
+</section>
 
 {% if error %}
-<div class="alert">{{ error }}</div>
+<div class="alert bad"><span>{{ error }}</span></div>
 {% endif %}
 
 <div class="split">
-  <div class="card">
+  <div class="card" id="run">
     <div class="card-head"><h2>새 실행</h2></div>
 
     {% if running %}
-      <p class="stack">
+      <p class="row" style="margin:var(--sp-md) 0 0">
         <span class="badge running">실행 중</span>
-        <a href="/runs/{{ running.id }}">{{ running.id }}</a>
+        <a href="/runs/{{ running.id }}">{{ running.id }} 진행 상황 보기 →</a>
       </p>
-      <p class="hint">파이프라인은 공유 파일을 사용하므로 동시에 1개만 실행됩니다.
-        중단하려면 위 실행 화면에서 “실행 중단”을 누르세요.</p>
+      <p class="hint" style="margin-top:var(--sp-sm)">파이프라인은 공유 파일을 쓰기 때문에
+        한 번에 하나만 돌아갑니다. 멈추려면 위 화면에서 “실행 중단”을 누르세요.</p>
     {% else %}
-    <form class="run-form" method="post" action="/runs">
-      <div class="field">
-        <label for="f-now">분석 시점 라벨 (now)</label>
-        <input id="f-now" type="text" name="now" value="{{ defaults.now }}">
-        <span class="hint">산출물 파일명과 DB 실행 라벨에 쓰입니다.</span>
-      </div>
+    <form method="post" action="/runs">
+      <div class="form-grid" style="margin-top:var(--sp-md)">
+        <div class="field wide">
+          <label for="f-now">
+            <span class="tip" data-tip="이 실행에 붙일 이름입니다. 산출물 파일명과 DB 기록에 그대로 들어가므로, 나중에 결과를 비교할 때 이 이름으로 찾습니다.">실행 이름</span>
+          </label>
+          <input id="f-now" type="text" name="now" value="{{ defaults.now }}">
+          <span class="hint">산출물 파일명과 DB 실행 라벨에 쓰입니다.</span>
+        </div>
 
-      <div class="field-row">
         <div class="field">
-          <label for="f-period">순수요 기간</label>
+          <label for="f-period">
+            <span class="tip" data-tip="과거 수요를 어느 기간에서 뽑을지입니다. 예: _2510 은 2025년 10월 대여 이력을 씁니다.">순수요 기간</span>
+          </label>
           <input id="f-period" type="text" name="period" value="{{ defaults.period }}">
+          <span class="hint">이 기간의 대여 이력에서 수요를 추정합니다.</span>
         </div>
+
         <div class="field">
-          <label for="f-duration">시간대</label>
+          <label for="f-duration">
+            <span class="tip" data-tip="하루 중 어느 시간대를 계획할지입니다. 예: 10_15 는 10시~15시. 시간대마다 수요 방향이 달라 따로 계산합니다.">시간대</span>
+          </label>
           <input id="f-duration" type="text" name="duration" value="{{ defaults.duration }}">
-          <span class="hint">콤마로 여러 개</span>
+          <span class="hint">콤마로 여러 개를 넣으면 차례로 계획합니다.</span>
         </div>
-      </div>
 
-      <div class="field">
-        <label for="f-day">요일 구분</label>
-        <select id="f-day" name="day_type">
-          {% for option in day_types %}
-          <option value="{{ option.value }}"
-            {% if option.value == defaults.day_type %}selected{% endif %}>{{ option.label }}</option>
-          {% endfor %}
-        </select>
-        <span class="hint">휴일 = 주말 + 공휴일. 평일과 휴일은 수요 구조가 달라
-          한 실행에 섞지 않습니다 — 둘 다 필요하면 라벨을 달리해 두 번 실행하세요.</span>
-      </div>
+        <div class="field wide">
+          <label for="f-day">
+            <span class="tip" data-tip="휴일 = 주말 + 공휴일. 평일과 휴일은 자전거가 흐르는 방향 자체가 달라서, 섞으면 서로 상쇄돼 계획이 무의미해집니다.">요일 구분</span>
+          </label>
+          <select id="f-day" name="day_type">
+            {% for option in day_types %}
+            <option value="{{ option.value }}"
+              {% if option.value == defaults.day_type %}selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+          <span class="hint">둘 다 필요하면 이름을 달리해서 두 번 실행하세요.</span>
+        </div>
 
-      <div class="field-row">
         <div class="field">
-          <label for="f-fleet">보유 차량 대수</label>
+          <label for="f-fleet">
+            <span class="tip" data-tip="오늘 실제로 굴릴 수 있는 트럭 대수입니다. 줄이면 남는 차량은 배정에서 빠지고, 늘리면 다시 들어옵니다.">보유 차량 대수</span>
+          </label>
           <input id="f-fleet" type="number" name="fleet_size" min="1"
                  max="{{ max_fleet_size }}" step="1" value="{{ defaults.fleet_size }}">
-          <span class="hint">1~{{ max_fleet_size }}. 줄이면 남는 차량은 배정에서 빠집니다.</span>
+          <span class="hint">1~{{ max_fleet_size }}대</span>
         </div>
+
         <div class="field">
-          <label for="f-round">회차당 투입 대수</label>
+          <label for="f-round">
+            <span class="tip" data-tip="한 회차에 동시에 내보낼 대수입니다. 대여소를 몇 덩어리로 나눌지(군집 수)를 정하므로, 늘리면 한 대가 도는 거리는 줄고 필요한 차량은 늘어납니다.">회차당 투입 대수</span>
+          </label>
           <input id="f-round" type="number" name="vehicles_per_round" min="1"
                  max="{{ max_fleet_size }}" step="1" value="{{ defaults.vehicles_per_round }}">
-          <span class="hint">step1의 군집 수 상한. 보유 대수보다 클 수 없습니다.</span>
+          <span class="hint">보유 대수보다 클 수 없습니다.</span>
         </div>
-      </div>
 
-      <div class="field">
-        <label for="f-raw">원천 대여 이력 CSV</label>
-        <input id="f-raw" type="text" name="raw_file" value="{{ defaults.raw_file }}">
-        <span class="hint">프로젝트 루트 기준 경로</span>
+        <div class="field wide">
+          <label for="f-raw">
+            <span class="tip" data-tip="수요를 계산할 원본 대여 이력입니다. 프로젝트 폴더를 기준으로 한 상대 경로를 적습니다.">원천 대여 이력 CSV</span>
+          </label>
+          <input id="f-raw" type="text" name="raw_file" value="{{ defaults.raw_file }}">
+        </div>
       </div>
 
       <div class="checks">
-        <label><input type="checkbox" name="skip_api" value="1"> API 수집 생략</label>
-        <label><input type="checkbox" name="skip_eda" value="1" checked> EDA 생략</label>
+        <label data-tip="켜면 실시간 재고를 새로 받아오지 않고 이미 받아 둔 파일을 씁니다. 재고가 바뀌지 않았을 때만 켜세요.">
+          <input type="checkbox" name="skip_api" value="1"> API 수집 생략</label>
+        <label data-tip="탐색적 분석 그래프를 만들지 않습니다. 계획 결과에는 영향이 없고 시간만 줄어듭니다.">
+          <input type="checkbox" name="skip_eda" value="1" checked> EDA 생략</label>
       </div>
 
-      <button class="btn" type="submit">▶ 파이프라인 실행</button>
-      <p class="hint" style="margin-top:.7rem">step1 군집 조정에 수 분이 걸릴 수 있습니다.
-        실행 후 로그 화면으로 이동합니다.</p>
+      <div class="form-foot">
+        <button class="btn" type="submit">계획 실행</button>
+        <p class="hint" style="margin:var(--sp-sm) 0 0">대여소를 묶는 단계에서 몇 분이 걸릴 수 있습니다.
+          누르면 진행 상황 화면으로 넘어갑니다.</p>
+      </div>
     </form>
     {% endif %}
   </div>
 
   <div class="card flush">
-    <div class="card-head"><h2>최신 산출물</h2></div>
+    <div class="card-head">
+      <h2>최신 산출물</h2>
+      <span class="hint">가장 최근에 만들어진 파일</span>
+    </div>
     {% if latest %}
       <div class="table-wrap">
       <table>
-        <thead><tr><th>분류</th><th>파일</th><th>수정 시각</th></tr></thead>
+        <thead><tr><th>분류</th><th class="grow">파일</th><th>수정 시각</th></tr></thead>
         <tbody>
         {% for group in latest %}
           {% for e in group.entries %}
@@ -111,23 +137,20 @@
       </table>
       </div>
     {% else %}
-      <p class="empty" style="padding:0 1.35rem 1.2rem">아직 산출물이 없습니다.
-        파이프라인을 실행하면 여기에 나타납니다.</p>
+      <p class="empty">아직 산출물이 없습니다. 계획을 한 번 실행하면 여기에 나타납니다.</p>
     {% endif %}
   </div>
 </div>
 
-<h2>데이터 저장소 (SQLite)</h2>
+<h2>저장된 실행</h2>
+<p class="section-lead">실행할 때마다 결과가 이름과 함께 데이터베이스에 남습니다.
+  지난 실행의 지표와 대여소별 계획을 그대로 다시 꺼내 볼 수 있습니다.</p>
 <div class="card flush">
   {% if pipeline_runs %}
-  <div class="card-head">
-    <p class="hint" style="margin:0">산출물은 실행 라벨로 구분되어 DB에 저장됩니다.
-      API에 <code>?run_label=…</code>을 붙이면 과거 실행분을 조회할 수 있습니다.</p>
-  </div>
   <div class="table-wrap">
   <table>
     <thead><tr>
-      <th>실행 라벨</th><th>순수요 기간</th><th>시간대</th><th>요일</th><th>기록 시각</th><th></th>
+      <th>실행 이름</th><th>순수요 기간</th><th>시간대</th><th>요일</th><th>기록 시각</th><th>바로 보기</th>
     </tr></thead>
     <tbody>
     {% for run in pipeline_runs %}
@@ -147,22 +170,22 @@
   </table>
   </div>
   {% else %}
-  <p class="empty" style="padding:1.15rem 1.35rem">DB에 기록된 실행이 없습니다.
-    파이프라인을 실행하면 CSV와 함께 저장됩니다.</p>
+  <p class="empty">데이터베이스에 기록된 실행이 없습니다. 계획을 실행하면 CSV와 함께 저장됩니다.</p>
   {% endif %}
 </div>
 
 <h2>실행 이력</h2>
+<p class="section-lead">이 서버가 돌린 작업의 기록입니다. 실패했다면 여기서 로그를 열어 원인을 봅니다.</p>
 <div class="card flush">
   {% if jobs %}
   <div class="table-wrap">
   <table>
-    <thead><tr><th>ID</th><th>상태</th><th>시작</th><th>종료</th><th>인자</th></tr></thead>
+    <thead><tr><th>작업</th><th>상태</th><th>시작</th><th>종료</th><th>인자</th></tr></thead>
     <tbody>
     {% for job in jobs %}
     <tr>
       <td><a href="/runs/{{ job.id }}">{{ job.id }}</a></td>
-      <td><span class="badge {{ job.status }}">{{ job.status }}</span></td>
+      <td><span class="badge {{ job.status }}">{{ job_labels.get(job.status, job.status) }}</span></td>
       <td class="muted">{{ job.started_at }}</td>
       <td class="muted">{{ job.finished_at or "—" }}</td>
       <td class="muted">{{ " ".join(job.args) or "(기본값)" }}</td>
@@ -172,7 +195,7 @@
   </table>
   </div>
   {% else %}
-  <p class="empty" style="padding:1.15rem 1.35rem">실행 이력이 없습니다.</p>
+  <p class="empty">아직 실행한 작업이 없습니다.</p>
   {% endif %}
 </div>
 {% endblock %}

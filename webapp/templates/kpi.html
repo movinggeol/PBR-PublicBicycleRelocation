@@ -9,13 +9,13 @@
 {%- endmacro %}
 
 {% block content %}
-<h1>성과 지표</h1>
+<section class="hero">
+  <h1>성과 지표</h1>
+  <p class="lead">계획이 목표 재고를 얼마나 채웠는지, 그러기 위해 얼마나 움직였는지를 봅니다.
+    {% if cards %}가장 최근 실행은 <b>{{ latest_label }}</b>입니다.{% endif %}</p>
+</section>
 
 {% if cards %}
-<p class="lede">
-  최신 실행 <b>{{ latest_label }}</b>{% if previous_label %} · 직전 <b>{{ previous_label }}</b> 대비 증감{% endif %}
-</p>
-
 <div class="tiles">
   {% for c in cards %}
   <div class="tile">
@@ -23,7 +23,7 @@
     <p class="value">{{ fmt(c.value, c.fmt) }}{% if c.delta is not none and c.delta | abs > 0.001 %}<span
         class="delta {{ 'good' if c.delta > 0 else 'bad' }}">{{ '▲' if c.delta > 0 else '▼' }} {{ fmt(c.delta | abs, c.fmt) }}</span>{% endif %}</p>
     {% if c.delta is not none and c.delta | abs > 0.001 %}
-    <p class="sub">직전 실행 대비</p>
+    <p class="sub">직전 실행 {{ previous_label }} 대비</p>
     {% endif %}
   </div>
   {% endfor %}
@@ -31,33 +31,36 @@
   {% if stockout %}
   <div class="tile">
     <p class="label">결품 시간 (대여소·일 평균)</p>
-    <p class="value">{{ stockout.after | round(2) }}<span class="unit">h</span><span
-        class="delta good">▼ {{ stockout.cut | round(2) }}h</span></p>
-    <p class="sub">재배치 전 {{ stockout.before | round(2) }}h → 후</p>
+    <p class="value">{{ stockout.after | round(2) }}<span class="unit">시간</span><span
+        class="delta good">▼ {{ stockout.cut | round(2) }}</span></p>
+    <p class="sub">재배치 전 {{ stockout.before | round(2) }}시간에서 줄어든 값</p>
   </div>
   {% endif %}
 </div>
 
-{% if stockout %}
-<div class="note">
-  결품 시간은 재고가 0이 되는 시간을 순수요로 복원해 재배치 전후를 비교한 값입니다.
-  <b>지금까지의 지표 중 이용자 편익에 가장 가깝지만</b>, 실제 집행 후 관측이 아니라
-  <b>시뮬레이션</b>입니다.
-</div>
-{% endif %}
-
-<div class="note">
-  <b>평균 개선률은 계획 달성률</b>입니다(계획이 목표 재고를 얼마나 채웠는가).
-  <b>목표 도달 비율</b>과 함께 보세요 — 개선률이 높아도 목표 도달이 낮으면
-  “조금씩만 채워진” 상태입니다. 자세한 내용은 <code>docs/KPI.md</code>.
+<div class="grid2">
+  {% if stockout %}
+  <div class="note">
+    <b>결품 시간</b>은 대여소에 자전거가 한 대도 없어 빌리려던 사람이 그냥 돌아가는 시간입니다.
+    재고가 0이 되는 순간을 순수요로 되짚어 재배치 전후를 비교했습니다.
+    <b>지금까지의 지표 중 이용자가 실제로 겪는 불편에 가장 가깝지만</b>, 집행 후 관측이 아니라
+    <b>시뮬레이션</b>이라는 점을 감안하세요.
+  </div>
+  {% endif %}
+  <div class="note">
+    <b>평균 개선률은 “계획을 얼마나 지켰나”</b>이지 “수요를 얼마나 맞췄나”가 아닙니다.
+    <b>목표 도달 비율</b>과 같이 보세요 — 개선률이 높은데 목표 도달이 낮으면
+    여러 대여소를 조금씩만 채운 상태입니다. 설계 근거는 <code>docs/KPI.md</code>.
+  </div>
 </div>
 {% endif %}
 
 <h2>실행·회차별 지표</h2>
+<p class="section-lead">표의 각 열 제목에 커서를 대면 그 숫자가 무엇을 뜻하는지 나옵니다.</p>
 
 {% if runs %}
-<div class="chips" style="margin-bottom:.7rem">
-  <span class="hint">실행 선택</span>
+<div class="filterbar">
+  <span class="label">실행</span>
   <a class="chip" href="/kpi" {% if not selected_run %}aria-current="true"{% endif %}>전체</a>
   {% for r in runs %}
   <a class="chip" href="/kpi?run_label={{ r.run_label | urlencode }}"
@@ -71,10 +74,19 @@
   <div class="table-wrap">
   <table>
     <thead><tr>
-      <th>실행</th><th>회차</th>
-      <th class="num">대여소</th><th class="num">클러스터</th><th class="num">차량</th><th class="num">처리</th>
-      <th class="num">개선률</th><th class="num">목표도달</th><th class="num">이동거리</th><th class="num">최장</th>
-      <th class="num">예산준수</th><th class="num">km당 개선</th><th>결품(전→후)</th>
+      <th>실행</th>
+      <th><span class="tip" data-tip="계획한 시간대입니다. 예: 10_15 는 10시~15시.">회차</span></th>
+      <th class="num"><span class="tip" data-tip="이번 계획에서 손을 댄 대여소 수입니다.">대여소</span></th>
+      <th class="num"><span class="tip" data-tip="대여소를 가까운 것끼리 묶은 덩어리 수입니다. 차량 한 대가 한 덩어리를 맡습니다.">군집</span></th>
+      <th class="num"><span class="tip" data-tip="실제로 출동한 차량 수입니다.">차량</span></th>
+      <th class="num"><span class="tip" data-tip="옮긴 자전거 총 대수입니다.">옮긴 대수</span></th>
+      <th class="num"><span class="tip" data-tip="목표 재고까지 모자란 양을 계획이 몇 % 메웠는지입니다. 수요를 맞췄다는 뜻이 아니라 계획을 지켰다는 뜻입니다.">개선률</span></th>
+      <th class="num"><span class="tip" data-tip="목표 재고를 완전히 채운 대여소의 비율입니다. 개선률이 높아도 이 값이 낮으면 여러 곳을 조금씩만 채운 것입니다.">목표 도달</span></th>
+      <th class="num"><span class="tip" data-tip="모든 차량이 움직인 거리의 합입니다.">이동거리</span></th>
+      <th class="num"><span class="tip" data-tip="가장 오래 걸린 차량 한 대의 작업 시간입니다. 시간 예산을 넘으면 붉게 표시됩니다.">최장 작업</span></th>
+      <th class="num"><span class="tip" data-tip="정해진 시간 안에 끝난 회차의 비율입니다. 작업이 늦어지면 예측한 시간대가 지나가 계획의 효과가 줄어듭니다.">예산 준수</span></th>
+      <th class="num"><span class="tip" data-tip="1km 움직일 때마다 개선률이 얼마나 올랐는지입니다. 연료 대비 효율로 볼 수 있습니다.">km당 개선</span></th>
+      <th><span class="tip" data-tip="자전거가 없어 빌리지 못하는 시간이 재배치로 얼마나 줄었는지입니다(시뮬레이션).">결품 (전→후)</span></th>
     </tr></thead>
     <tbody>
     {% for r in rows %}
@@ -96,7 +108,7 @@
       <td class="num">{{ fmt(r.improvement_per_km, "num") }}</td>
       <td class="muted">
         {% if r.stockout_hours_before is not none %}
-          {{ r.stockout_hours_before | round(2) }} → {{ r.stockout_hours_after | round(2) }}h
+          {{ r.stockout_hours_before | round(2) }} → {{ r.stockout_hours_after | round(2) }}시간
         {% else %}—{% endif %}
       </td>
     </tr>
@@ -105,11 +117,10 @@
   </table>
   </div>
   {% else %}
-  <p class="empty" style="padding:1.15rem 1.35rem">기록된 지표가 없습니다.
-    파이프라인의 step4를 실행하면 쌓입니다.</p>
+  <p class="empty">기록된 지표가 없습니다. 계획을 끝까지 실행하면 여기에 쌓입니다.</p>
   {% endif %}
 </div>
 
-<p class="hint">지표 설계와 한계는 <code>docs/KPI.md</code> 참고.
-  결품 시간·수요 예측 오차는 실행에 따라 비어 있을 수 있습니다.</p>
+<p class="hint" style="margin-top:var(--sp-md)">지표 설계와 한계는 <code>docs/KPI.md</code>에 정리돼 있습니다.
+  결품 시간과 수요 예측 오차는 실행 조건에 따라 비어 있을 수 있습니다.</p>
 {% endblock %}

@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -23,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from project_config import (
@@ -34,7 +36,88 @@ from project_config import (
 from webapp import catalog, jobs, store
 
 app = FastAPI(title="PBR 파이프라인 대시보드", docs_url="/api/docs")
-templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
+
+_HERE = Path(__file__).resolve().parent
+templates = Jinja2Templates(directory=str(_HERE / "templates"))
+# 글꼴을 같이 담아 서빙한다 — 인터넷이 끊겨도 화면이 같아야 한다.
+app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
+
+# 작업 상태를 사람이 읽는 말로 — 템플릿 전역이라 어느 화면에서나 같은 낱말을 쓴다.
+JOB_STATUS_LABELS = {
+    "running": "실행 중",
+    "success": "완료",
+    "failed": "실패",
+    "cancelled": "중단됨",
+    "interrupted": "추적 끊김",
+}
+templates.env.globals["job_labels"] = JOB_STATUS_LABELS
+
+# ---------------- 진행 단계 ----------------
+
+# 단계 파일 이름을 사람이 읽는 말로. run_pipeline.STAGES와 짝을 이룬다.
+STAGE_LABELS = {
+    "tashu_api.py": "실시간 재고 수집",
+    "extract_parking_lot.py": "대여소 거치대 수 추출",
+    "api_to_info.py": "대여소 정보 정리",
+    "concat_1year_file.py": "1년치 이력 합치기",
+    "EDA.py": "탐색적 분석",
+    "raw_to_net.py": "순수요 계산",
+    "calculate_target_qty.py": "목표 재고 산정",
+    "1.top_st_clustering.py": "작업 대상 선정·군집화",
+    "st_visualization.py": "대여소 지도 생성",
+    "ilp.py": "이동량 최적화 (ILP)",
+    "vrp.py": "차량 경로 최적화 (VRP)",
+    "main.py": "결과 지도 생성",
+    "imbalance.py": "성과 지표 계산",
+}
+
+_PLAN_RE = re.compile(r"^\[(\d+)/(\d+)\] (?!실행: )(.+)$")
+_START_RE = re.compile(r"^\[(\d+)/(\d+)\] 실행: ")
+_DONE_RE = re.compile(r"^완료: (.+)$")
+_FAIL_RE = re.compile(r"^실패: (.+?) \(exit code=")
+_MISSING_RE = re.compile(r"^파일이 없습니다: (.+)$")
+
+
+def pipeline_progress(text: str) -> list[dict]:
+    """로그에서 단계별 진행 상태를 뽑는다.
+
+    run_pipeline이 맨 앞에 전체 단계 목록을 찍고, 각 단계마다
+    '실행:' → '완료:'/'실패:'를 찍는다는 점을 이용한다. 로그 형식이
+    바뀌면 목록이 비고, 화면은 진행 표시 없이 로그만 보여준다.
+    """
+    plan: list[dict] = []
+    seen: set[str] = set()
+    for line in text.splitlines():
+        m = _PLAN_RE.match(line)
+        if not m:
+            continue
+        script = m.group(3).strip()
+        if script in seen:            # 계획 블록은 한 번만 읽는다
+            continue
+        seen.add(script)
+        name = script.replace("\\", "/").rsplit("/", 1)[-1]
+        plan.append({"script": script, "name": name,
+                     "label": STAGE_LABELS.get(name, name), "status": "pending"})
+    if not plan:
+        return []
+
+    by_script = {s["script"]: s for s in plan}
+    for line in text.splitlines():
+        if (m := _START_RE.match(line)):
+            idx = int(m.group(1)) - 1
+            if 0 <= idx < len(plan) and plan[idx]["status"] == "pending":
+                plan[idx]["status"] = "running"
+        elif (m := _DONE_RE.match(line)):
+            if (s := by_script.get(m.group(1).strip())):
+                s["status"] = "done"
+        elif (m := _FAIL_RE.match(line)):
+            if (s := by_script.get(m.group(1).strip())):
+                s["status"] = "failed"
+        elif (m := _MISSING_RE.match(line)):
+            if (s := by_script.get(m.group(1).strip())):
+                s["status"] = "missing"
+    return plan
+
 
 
 # ---------------- 페이지 ----------------
@@ -152,6 +235,7 @@ def run_detail(request: Request, job_id: str):
     return templates.TemplateResponse(request, "run_detail.html", {
         "job": job,
         "log": jobs.read_log_tail(job),
+        "progress": pipeline_progress(jobs.read_log(job)),
     })
 
 

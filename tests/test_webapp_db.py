@@ -137,7 +137,7 @@ def test_index_shows_run_history(client):
     """실행 이력이 대시보드에 보인다."""
     html = client.get("/").text
 
-    assert "데이터 저장소" in html
+    assert "저장된 실행" in html
     assert NEW in html
 
 
@@ -174,7 +174,7 @@ def test_vehicles_page_renders(fleet_client):
 
     assert "차량 운용" in html
     assert "V01" in html
-    assert "형평성" in html
+    assert "작업량 차이" in html
 
 
 def test_vehicles_api_lists_whole_fleet(fleet_client):
@@ -211,4 +211,4 @@ def test_time_budget_flags_overrun(fleet_client):
     assert "over-budget" in html, "초과 행이 강조되지 않았다"
     # 3건 중 2건만 예산 내 → 67%
     assert "67%" in html
-    assert "1건이 예산을 넘었습니다" in html
+    assert "1건이 시간 예산을 넘었습니다" in html

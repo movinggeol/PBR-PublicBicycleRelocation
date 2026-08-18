@@ -134,6 +134,19 @@ def running_job() -> Optional[Job]:
         return None
 
 
+def read_log(job: Job) -> str:
+    """로그 파일 전체를 반환한다.
+
+    진행 단계 표시는 로그 맨 앞의 계획 블록을 봐야 하므로 tail로는 안 된다.
+    """
+    if not job.log_path.exists():
+        return ""
+    try:
+        return job.log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
 def read_log_tail(job: Job, max_lines: int = 300) -> str:
     """로그 파일의 마지막 max_lines 줄을 반환한다."""
     if not job.log_path.exists():
