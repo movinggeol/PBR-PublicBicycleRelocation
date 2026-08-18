@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block title %}{{ name }} 미리보기 — PBR 대시보드{% endblock %}
 {% block content %}
-<h1 style="font-size:1.1rem">{{ name }}</h1>
-<p class="muted">전체 {{ total_rows }}행 중 {{ shown_rows }}행 표시 ·
+<h1 style="font-size:1.15rem">{{ name }}</h1>
+<p class="lede">전체 {{ total_rows }}행 중 {{ shown_rows }}행 ·
   <a href="/files/{{ relpath | urlencode }}">CSV 다운로드</a></p>
 
-<div class="card" style="overflow-x:auto">
-  {{ table_html | safe }}
+<div class="card">
+  <div class="table-wrap">{{ table_html | safe }}</div>
 </div>
 
-<p><a href="/data">← 데이터 목록으로</a></p>
+<a class="back" href="/data">← 데이터 목록으로</a>
 {% endblock %}

@@ -5,101 +5,332 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}PBR 대시보드{% endblock %}</title>
   {% block head_extra %}{% endblock %}
+  <script>
+    // 첫 페인트 전에 테마를 확정한다 — 안 그러면 새로고침마다 화면이 번쩍인다.
+    (function () {
+      try {
+        var saved = localStorage.getItem("pbr-theme");
+        if (saved === "light" || saved === "dark") {
+          document.documentElement.dataset.theme = saved;
+        }
+      } catch (e) { /* 프라이빗 모드 등 — OS 설정을 그대로 따른다 */ }
+    })();
+  </script>
   <style>
+    /* ────────────────────────────────────────────────────────────
+       색 토큰 — 역할로만 쓴다. 라이트/다크가 여기서만 갈린다.
+       대비·색각 검증을 통과한 팔레트를 기준으로 삼았다.
+       상태색(good/warning/critical)은 두 모드 공통이며 **항상 아이콘·문구와
+       함께** 쓴다 — 색만으로 뜻을 전달하지 않는다.
+       ──────────────────────────────────────────────────────────── */
     :root {
-      --bg: #f6f7f9; --card: #ffffff; --ink: #1f2430; --sub: #6b7280;
-      --accent: #2563eb; --ok: #16a34a; --bad: #dc2626; --warn: #d97706;
-      --line: #e5e7eb;
+      color-scheme: light;
+      --page: #f9f9f7;
+      --surface: #fcfcfb;
+      --surface-2: #f3f2ee;
+      --ink: #0b0b0b;
+      --ink-2: #52514e;
+      --ink-3: #898781;
+      --line: #e1e0d9;
+      --line-strong: #c3c2b7;
+      --ring: rgba(11, 11, 11, .10);
+      --accent: #2a78d6;
+      --accent-ink: #ffffff;
+      --accent-soft: #eaf1fc;
+      --good: #0ca30c;
+      --good-ink: #006300;
+      --warning: #fab219;
+      --warning-ink: #8a5a00;
+      --warning-soft: #fdf4e0;
+      --critical: #d03b3b;
+      --critical-soft: #fbecec;
+      --shadow-1: 0 1px 2px rgba(11, 11, 11, .04);
+      --radius: 12px;
+      --radius-sm: 8px;
     }
-    * { box-sizing: border-box; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --page: #0d0d0d;
+        --surface: #1a1a19;
+        --surface-2: #232322;
+        --ink: #ffffff;
+        --ink-2: #c3c2b7;
+        --ink-3: #898781;
+        --line: #2c2c2a;
+        --line-strong: #383835;
+        --ring: rgba(255, 255, 255, .10);
+        --accent: #3987e5;
+        --accent-soft: #16283f;
+        --good-ink: #0ca30c;
+        --warning-ink: #fab219;
+        --warning-soft: #302713;
+        --critical-soft: #331b1b;
+        --shadow-1: 0 1px 2px rgba(0, 0, 0, .3);
+      }
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --surface-2: #232322;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --ink-3: #898781;
+      --line: #2c2c2a;
+      --line-strong: #383835;
+      --ring: rgba(255, 255, 255, .10);
+      --accent: #3987e5;
+      --accent-soft: #16283f;
+      --good-ink: #0ca30c;
+      --warning-ink: #fab219;
+      --warning-soft: #302713;
+      --critical-soft: #331b1b;
+      --shadow-1: 0 1px 2px rgba(0, 0, 0, .3);
+    }
+
+    /* ── 기본 ── */
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
     body {
-      margin: 0; background: var(--bg); color: var(--ink);
-      font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
-      font-size: 15px; line-height: 1.55;
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic",
+                   "Apple SD Gothic Neo", sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
     }
-    header {
-      background: #111827; color: #fff; padding: 0.7rem 1.2rem;
-      display: flex; align-items: center; gap: 1.4rem; flex-wrap: wrap;
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+    /* ── 헤더 ── */
+    header.topbar {
+      position: sticky; top: 0; z-index: 50;
+      background: var(--page);
+      border-bottom: 1px solid var(--line);
     }
-    header .brand { font-weight: 700; font-size: 1.05rem; }
-    header nav a {
-      color: #d1d5db; text-decoration: none; margin-right: 1rem; font-size: 0.95rem;
+    .topbar-inner {
+      max-width: 1180px; margin: 0 auto; padding: 0 1.25rem;
+      display: flex; align-items: center; gap: 1.25rem; min-height: 56px;
+      flex-wrap: wrap;
     }
-    header nav a:hover { color: #fff; }
-    main { max-width: 1080px; margin: 1.4rem auto; padding: 0 1rem; }
-    h1 { font-size: 1.35rem; margin: 0.2rem 0 1rem; }
-    h2 { font-size: 1.05rem; margin: 1.6rem 0 0.6rem; }
+    .brand {
+      font-weight: 650; font-size: .98rem; letter-spacing: -.01em;
+      color: var(--ink); display: flex; align-items: center; gap: .45rem;
+      white-space: nowrap;
+    }
+    .brand:hover { text-decoration: none; }
+    nav.main { display: flex; gap: .15rem; flex-wrap: wrap; margin-right: auto; }
+    nav.main a {
+      color: var(--ink-2); font-size: .9rem; font-weight: 500;
+      padding: .35rem .7rem; border-radius: var(--radius-sm); white-space: nowrap;
+    }
+    nav.main a:hover { background: var(--surface-2); color: var(--ink); text-decoration: none; }
+    nav.main a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
+    .theme-toggle {
+      border: 1px solid var(--line); background: var(--surface);
+      color: var(--ink-2); border-radius: var(--radius-sm);
+      width: 32px; height: 32px; cursor: pointer; font-size: .95rem;
+      display: grid; place-items: center; padding: 0;
+    }
+    .theme-toggle:hover { background: var(--surface-2); color: var(--ink); }
+
+    main { max-width: 1180px; margin: 0 auto; padding: 1.75rem 1.25rem 4rem; }
+
+    /* ── 타이포 ── */
+    h1 { font-size: 1.45rem; font-weight: 650; letter-spacing: -.02em; margin: 0 0 .4rem; }
+    h2 { font-size: 1rem; font-weight: 600; letter-spacing: -.01em; margin: 2rem 0 .7rem; }
+    .lede { color: var(--ink-2); margin: 0 0 1.5rem; max-width: 72ch; font-size: .92rem; }
+    .muted { color: var(--ink-2); font-size: .875rem; }
+    .hint { color: var(--ink-3); font-size: .82rem; }
+
+    /* ── 카드 ── */
     .card {
-      background: var(--card); border: 1px solid var(--line);
-      border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1rem;
+      background: var(--surface); border: 1px solid var(--line);
+      border-radius: var(--radius); padding: 1.15rem 1.35rem;
+      margin-bottom: 1rem; box-shadow: var(--shadow-1);
     }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--line); }
-    th { color: var(--sub); font-weight: 600; font-size: 0.85rem; }
-    a { color: var(--accent); }
+    .card > :first-child { margin-top: 0; }
+    .card > :last-child { margin-bottom: 0; }
+    .card.flush { padding: 0; overflow: hidden; }
+    .card.flush > .card-head { padding: 1rem 1.35rem .8rem; }
+    .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+    .card-head h2 { margin: 0; }
+
+    /* ── 통계 타일 ──
+       label(작게) + value(크게) + delta. 색만으로 방향을 말하지 않도록
+       ▲/▼ 기호를 함께 붙인다. */
+    .tiles {
+      display: grid; gap: .85rem; margin-bottom: 1.25rem;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    }
+    .tile {
+      background: var(--surface); border: 1px solid var(--line);
+      border-radius: var(--radius); padding: 1rem 1.15rem; box-shadow: var(--shadow-1);
+    }
+    .tile .label { font-size: .8rem; font-weight: 500; color: var(--ink-2); margin: 0 0 .3rem; }
+    .tile .value {
+      font-size: 1.85rem; font-weight: 650; letter-spacing: -.025em;
+      line-height: 1.15; margin: 0; color: var(--ink);
+    }
+    .tile .unit { font-size: .9rem; font-weight: 500; color: var(--ink-3); letter-spacing: 0; margin-left: .15rem; }
+    .tile .sub { margin: .4rem 0 0; color: var(--ink-3); font-size: .8rem; }
+    .delta { font-size: .82rem; font-weight: 600; margin-left: .4rem; white-space: nowrap; }
+    .delta.good { color: var(--good-ink); }
+    .delta.bad { color: var(--critical); }
+
+    /* ── 상태 배지 — 점 + 글자. 색만으로 구분하지 않는다 ── */
+    .badge {
+      display: inline-flex; align-items: center; gap: .35rem;
+      padding: .16rem .55rem .16rem .45rem; border-radius: 999px;
+      font-size: .78rem; font-weight: 600; line-height: 1.5;
+      border: 1px solid var(--ring); background: var(--surface-2); color: var(--ink-2);
+      vertical-align: middle;
+    }
+    .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+    .badge.running { color: var(--warning-ink); background: var(--warning-soft); border-color: transparent; }
+    .badge.success { color: var(--good-ink); background: var(--surface-2); border-color: transparent; }
+    .badge.failed { color: var(--critical); background: var(--critical-soft); border-color: transparent; }
+
+    /* ── 알림 ── */
+    .alert {
+      display: flex; gap: .6rem; align-items: flex-start;
+      background: var(--warning-soft);
+      border: 1px solid var(--warning); border-radius: var(--radius-sm);
+      padding: .75rem 1rem; margin-bottom: 1rem; color: var(--ink); font-size: .9rem;
+    }
+    .alert::before { content: "⚠"; color: var(--warning-ink); font-weight: 700; flex: none; }
+    .note {
+      border-left: 3px solid var(--line-strong); padding: .1rem 0 .1rem .9rem;
+      color: var(--ink-2); font-size: .875rem; margin: .85rem 0;
+    }
+
+    /* ── 표 ── */
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: .875rem; }
+    th, td { text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    thead th {
+      color: var(--ink-3); font-weight: 600; font-size: .78rem; letter-spacing: .02em;
+      background: var(--surface-2); position: sticky; top: 0; z-index: 1;
+    }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover td { background: var(--surface-2); }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .card.flush table th:first-child, .card.flush table td:first-child { padding-left: 1.35rem; }
+    .card.flush table th:last-child, .card.flush table td:last-child { padding-right: 1.35rem; }
+
+    tr.over-budget td { background: var(--critical-soft); }
+    tr.over-budget td:first-child { box-shadow: inset 3px 0 0 var(--critical); }
+    td.over-budget, .over { color: var(--critical); font-weight: 650; }
+
+    /* ── 버튼 ── */
     .btn {
-      display: inline-block; background: var(--accent); color: #fff; border: 0;
-      padding: 0.55rem 1.1rem; border-radius: 8px; font-size: 0.95rem;
+      display: inline-flex; align-items: center; gap: .4rem;
+      background: var(--accent); color: var(--accent-ink); border: 0;
+      padding: .58rem 1.15rem; border-radius: var(--radius-sm);
+      font-size: .92rem; font-weight: 600; font-family: inherit;
       cursor: pointer; text-decoration: none;
     }
-    .btn:disabled { background: #9ca3af; cursor: not-allowed; }
-    .badge {
-      display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px;
-      font-size: 0.8rem; font-weight: 600; color: #fff;
-    }
-    .badge.running { background: var(--warn); }
-    .badge.success { background: var(--ok); }
-    .badge.failed { background: var(--bad); }
-    .badge.cancelled { background: #6b7280; }
-    .badge.interrupted { background: #6b7280; }
-    .btn.danger { background: var(--bad); }
-    .alert {
-      background: #fef3c7; border: 1px solid #fcd34d; color: #92400e;
-      border-radius: 8px; padding: 0.7rem 1rem; margin-bottom: 1rem;
-    }
-    tr.over-budget { background: #fef2f2; }
-    tr.over-budget td { color: var(--bad); font-weight: 600; }
-    td.over-budget { color: var(--bad); font-weight: 600; }
-    .muted { color: var(--sub); font-size: 0.85rem; }
-    form.run-form label { display: block; font-size: 0.85rem; color: var(--sub); margin-top: 0.7rem; }
-    form.run-form input[type=text], form.run-form input[type=number] {
-      width: 100%; padding: 0.45rem 0.6rem; border: 1px solid var(--line);
-      border-radius: 6px; font-size: 0.95rem;
-    }
-    form.run-form input[type=number] { width: 7rem; }
+    .btn:hover { filter: brightness(1.07); text-decoration: none; }
+    .btn:disabled { background: var(--ink-3); cursor: not-allowed; }
+    .btn.danger { background: var(--critical); }
+    .btn.ghost { background: transparent; color: var(--ink-2); border: 1px solid var(--line); }
+    .btn.ghost:hover { background: var(--surface-2); color: var(--ink); filter: none; }
+
+    /* ── 폼 ── */
+    form.run-form .field { margin-bottom: .95rem; }
+    form.run-form label { display: block; font-size: .82rem; font-weight: 600; color: var(--ink-2); margin-bottom: .3rem; }
+    form.run-form input[type=text],
+    form.run-form input[type=number],
     form.run-form select {
-      padding: 0.45rem 0.6rem; border: 1px solid var(--line);
-      border-radius: 6px; font-size: 0.95rem;
+      width: 100%; padding: .5rem .7rem;
+      border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+      font-size: .92rem; font-family: inherit; background: var(--surface); color: var(--ink);
     }
-    form.run-form label .muted { display: block; margin-top: 0.25rem; }
-    form.run-form .checks { margin-top: 0.8rem; }
-    form.run-form .checks label { display: inline-block; margin-right: 1.2rem; color: var(--ink); }
+    form.run-form input:hover, form.run-form select:hover { border-color: var(--ink-3); }
+    form.run-form input[type=number] { width: 100%; }
+    form.run-form .hint { display: block; margin-top: .3rem; }
+    .field-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: .95rem; }
+    .field-row > .field { flex: 1 1 10rem; margin-bottom: 0; }
+    form.run-form .checks {
+      display: flex; gap: 1.25rem; flex-wrap: wrap;
+      margin: 1.1rem 0; padding-top: 1rem; border-top: 1px solid var(--line);
+    }
+    form.run-form .checks label {
+      display: inline-flex; align-items: center; gap: .4rem;
+      color: var(--ink); font-weight: 500; margin: 0; cursor: pointer; font-size: .9rem;
+    }
+    form.run-form .checks input { accent-color: var(--accent); }
+
+    /* ── 로그 ── */
     pre.log {
-      background: #0b1020; color: #d7e0ff; border-radius: 8px;
-      padding: 1rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.5;
+      background: #0b1020; color: #d7e0ff;
+      border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 1.1rem 1.25rem; overflow-x: auto;
+      font-size: .8rem; line-height: 1.6;
+      font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
       white-space: pre-wrap; word-break: break-all;
+      max-height: 65vh; overflow-y: auto;
     }
+
+    /* ── 레이아웃 도우미 ── */
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-    @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
-    .preview-table { font-size: 0.82rem; }
-    .preview-table th { background: #f3f4f6; }
-    iframe.map-frame { width: 100%; height: 78vh; border: 1px solid var(--line); border-radius: 8px; }
+    @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
+    .split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 4fr); gap: 1rem; align-items: start; }
+    @media (max-width: 980px) { .split { grid-template-columns: 1fr; } }
+    .chips { display: flex; gap: .35rem; flex-wrap: wrap; align-items: center; }
+    .chip {
+      font-size: .8rem; padding: .2rem .6rem; border-radius: 999px;
+      border: 1px solid var(--line); color: var(--ink-2); background: var(--surface);
+    }
+    .chip:hover { background: var(--surface-2); color: var(--ink); text-decoration: none; }
+    .chip[aria-current="true"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 600; }
+    .empty { color: var(--ink-3); font-size: .9rem; margin: 0; }
+    td.wrap, .wrap td { white-space: normal; word-break: break-all; min-width: 14rem; }
+    .stack > * + * { margin-top: .6rem; }
+
+    .preview-table { font-size: .8rem; }
+    .preview-table th { background: var(--surface-2); }
+    iframe.map-frame {
+      width: 100%; height: 78vh; border: 1px solid var(--line);
+      border-radius: var(--radius); background: var(--surface);
+    }
+    .back { display: inline-block; margin-top: 1.25rem; font-size: .88rem; }
   </style>
 </head>
 <body>
-<header>
-  <span class="brand">🚲 PBR 파이프라인 대시보드</span>
-  <nav>
-    <a href="/">실행</a>
-    <a href="/kpi">성과 지표</a>
-    <a href="/vehicles">차량 운용</a>
-    <a href="/maps">지도 결과</a>
-    <a href="/data">데이터 산출물</a>
-    <a href="/api/docs">API 문서</a>
-  </nav>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/">🚲 <span>PBR 대시보드</span></a>
+    {# 현재 위치는 요청 경로로 판단한다 — 라우트마다 변수를 넘기지 않아도 된다 #}
+    {% set path = request.url.path %}
+    <nav class="main">
+      <a href="/"{% if path == '/' or path.startswith('/runs') %} aria-current="page"{% endif %}>실행</a>
+      <a href="/kpi"{% if path.startswith('/kpi') %} aria-current="page"{% endif %}>성과 지표</a>
+      <a href="/vehicles"{% if path.startswith('/vehicles') %} aria-current="page"{% endif %}>차량 운용</a>
+      <a href="/maps"{% if path.startswith('/maps') or path.startswith('/view') %} aria-current="page"{% endif %}>지도</a>
+      <a href="/data"{% if path.startswith('/data') or path.startswith('/preview') %} aria-current="page"{% endif %}>데이터</a>
+      <a href="/api/docs">API</a>
+    </nav>
+    <button class="theme-toggle" type="button" id="theme-toggle"
+            aria-label="밝은 화면과 어두운 화면 전환" title="밝은 화면과 어두운 화면 전환">◐</button>
+  </div>
 </header>
 <main>
 {% block content %}{% endblock %}
 </main>
+<script>
+  document.getElementById("theme-toggle").addEventListener("click", function () {
+    var root = document.documentElement;
+    var dark = root.dataset.theme
+      ? root.dataset.theme === "dark"
+      : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem("pbr-theme", root.dataset.theme); } catch (e) {}
+  });
+</script>
 </body>
 </html>

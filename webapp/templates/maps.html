@@ -1,28 +1,35 @@
 {% extends "base.html" %}
 {% block title %}지도 결과 — PBR 대시보드{% endblock %}
 {% block content %}
-<h1>지도 결과 (HTML)</h1>
+<h1>지도 결과</h1>
+<p class="lede">step1·step3·step4가 만든 folium 지도입니다.
+  대시보드 안에서 보거나 새 창으로 열 수 있습니다.</p>
 
 {% for group in groups %}
 <h2>{{ group.title }}</h2>
-<div class="card">
+<div class="card flush">
   {% if group.entries %}
+  <div class="table-wrap">
   <table>
-    <tr><th>파일</th><th>수정 시각</th><th>크기</th><th></th></tr>
+    <thead><tr><th>파일</th><th>수정 시각</th><th class="num">크기</th><th></th></tr></thead>
+    <tbody>
     {% for e in group.entries %}
     <tr>
       <td>{{ e.name }}</td>
       <td class="muted">{{ e.mtime }}</td>
-      <td class="muted">{{ e.size_kb }} KB</td>
+      <td class="num muted">{{ e.size_kb }} KB</td>
       <td>
         <a href="/view/{{ e.relpath | urlencode }}">여기서 보기</a> ·
-        <a href="/files/{{ e.relpath | urlencode }}" target="_blank">새 창</a>
+        <a href="/files/{{ e.relpath | urlencode }}" target="_blank">새 창 ↗</a>
       </td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
+  </div>
   {% else %}
-  <p class="muted">산출물이 없습니다. <a href="/">파이프라인을 실행</a>하면 생성됩니다.</p>
+  <p class="empty" style="padding:1.15rem 1.35rem">산출물이 없습니다.
+    <a href="/">파이프라인을 실행</a>하면 생성됩니다.</p>
   {% endif %}
 </div>
 {% endfor %}

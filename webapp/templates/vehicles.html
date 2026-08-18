@@ -2,116 +2,116 @@
 {% block title %}차량 운용 — PBR 대시보드{% endblock %}
 {% block content %}
 <h1>차량 운용</h1>
-<p class="muted">
-  보유 {{ fleet_size }}대 · 한 회차 투입 상한 {{ per_round }}대.
-  누적 작업이 적은 차량부터 배정하므로, 직전 회차에 나간 차량은 다음 회차에서 뒤로 밀립니다.
-</p>
+<p class="lede">보유 {{ fleet_size }}대 · 한 회차 투입 상한 {{ per_round }}대.
+  누적 작업이 적은 차량부터 배정하므로, 직전 회차에 나간 차량은 다음 회차에서 뒤로 밀립니다.</p>
 
-{% if balance %}
-<div class="grid2" style="margin-bottom:1rem">
-  <div class="card">
-    <h2 style="margin-top:0">투입 현황</h2>
-    <p style="font-size:1.6rem; margin:0.2rem 0">
-      {{ balance.used }}<span class="muted" style="font-size:1rem">/{{ fleet_size }}대 출동</span>
-    </p>
-    <p class="muted">한 번도 나가지 않은 차량 {{ balance.idle }}대</p>
+<div class="tiles">
+  {% if balance %}
+  <div class="tile">
+    <p class="label">투입 현황</p>
+    <p class="value">{{ balance.used }}<span class="unit">/ {{ fleet_size }}대 출동</span></p>
+    <p class="sub">한 번도 나가지 않은 차량 {{ balance.idle }}대</p>
   </div>
-  <div class="card">
-    <h2 style="margin-top:0">형평성 (누적 작업시간)</h2>
-    <p style="font-size:1.6rem; margin:0.2rem 0">
-      편차 {{ balance.gap_minutes }}<span class="muted" style="font-size:1rem">분</span>
-    </p>
-    <p class="muted">최소 {{ balance.min_minutes }}분 · 최대 {{ balance.max_minutes }}분 —
-      편차가 작을수록 고르게 나눠진 것입니다.</p>
+  <div class="tile">
+    <p class="label">형평성 (누적 작업시간 편차)</p>
+    <p class="value">{{ balance.gap_minutes }}<span class="unit">분</span></p>
+    <p class="sub">최소 {{ balance.min_minutes }}분 · 최대 {{ balance.max_minutes }}분 —
+      작을수록 고르게 나뉜 것</p>
   </div>
-</div>
-{% endif %}
-
-{% if budget %}
-<div class="card" style="margin-bottom:1rem">
-  <h2 style="margin-top:0">시간 예산 준수 ({{ budget.limit | round | int }}분)</h2>
-  <p style="font-size:1.6rem; margin:0.2rem 0">
-    {{ budget.rate }}%<span class="muted" style="font-size:1rem">
-      · {{ budget.within }}/{{ budget.total }} 회차 작업</span>
-  </p>
-  {% if budget.over %}
-  <div class="alert" style="margin-top:0.6rem">
-    ⚠️ {{ budget.over }}건이 예산을 넘었습니다. 작업이 늦어지면 수요 예측 시간대가
-    이미 지나가 계획의 효과가 줄어듭니다. 아래 표에서 붉게 표시된 행입니다.
+  {% endif %}
+  {% if budget %}
+  <div class="tile">
+    <p class="label">시간 예산 준수 ({{ budget.limit | round | int }}분)</p>
+    <p class="value">{{ budget.rate }}%</p>
+    <p class="sub">{{ budget.within }}/{{ budget.total }} 회차 작업이 예산 안에서 완료</p>
   </div>
-  {% else %}
-  <p class="muted">모든 작업이 예산 안에서 끝납니다.</p>
   {% endif %}
 </div>
+
+{% if budget and budget.over %}
+<div class="alert">
+  <span><b>{{ budget.over }}건이 예산을 넘었습니다.</b>
+  작업이 늦어지면 수요 예측 시간대가 이미 지나가 계획의 효과가 줄어듭니다.
+  아래 표에서 붉게 표시되고 ⚠가 붙은 행입니다.</span>
+</div>
+{% elif budget %}
+<div class="note">모든 작업이 예산 안에서 끝납니다.</div>
 {% endif %}
 
 <h2>차량별 누적</h2>
-<div class="card">
+<div class="card flush">
   {% if workload %}
+  <div class="table-wrap">
   <table>
-    <tr>
-      <th>차량</th><th>출동 횟수</th><th>처리 대수</th>
-      <th>누적 거리</th><th>누적 시간</th><th>최근 작업</th><th></th>
-    </tr>
+    <thead><tr>
+      <th>차량</th><th class="num">출동</th><th class="num">처리 대수</th>
+      <th class="num">누적 거리</th><th class="num">누적 시간</th><th>최근 작업</th><th></th>
+    </tr></thead>
+    <tbody>
     {% for v in workload %}
     <tr>
       <td><b>{{ v.vehicle_id }}</b></td>
-      <td>{{ v.rounds }}</td>
-      <td>{{ v.bikes }}</td>
-      <td class="muted">{{ v.distance_km }} km</td>
-      <td class="muted">{{ v.minutes }} 분</td>
-      <td class="muted">
-        {% if v.last_run %}{{ v.last_run }} {{ v.last_duration }}{% else %}—{% endif %}
-      </td>
-      <td>
-        <a href="/api/vehicles/assignments?vehicle_id={{ v.vehicle_id }}">이력</a>
-      </td>
+      <td class="num">{{ v.rounds }}회</td>
+      <td class="num">{{ v.bikes }}</td>
+      <td class="num muted">{{ v.distance_km }} km</td>
+      <td class="num muted">{{ v.minutes }} 분</td>
+      <td class="muted">{% if v.last_run %}{{ v.last_run }} {{ v.last_duration }}{% else %}—{% endif %}</td>
+      <td><a href="/api/vehicles/assignments?vehicle_id={{ v.vehicle_id }}">이력</a></td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
+  </div>
   {% else %}
-  <p class="muted">차량 기록이 없습니다. 파이프라인(step2 VRP)을 실행하면 배정이 기록됩니다.</p>
+  <p class="empty" style="padding:1.15rem 1.35rem">차량 기록이 없습니다.
+    파이프라인(step2 VRP)을 실행하면 배정이 기록됩니다.</p>
   {% endif %}
 </div>
 
 <h2>회차별 배정 이력</h2>
-<div class="card">
-  {% if runs %}
-  <p class="muted">
-    실행 선택:
-    <a href="/vehicles">전체</a>
-    {% for r in runs %}
-      · <a href="/vehicles?run_label={{ r.run_label | urlencode }}">{{ r.run_label }}</a>
-    {% endfor %}
-  </p>
-  {% endif %}
 
+{% if runs %}
+<div class="chips" style="margin-bottom:.7rem">
+  <span class="hint">실행 선택</span>
+  <a class="chip" href="/vehicles" {% if not selected_run %}aria-current="true"{% endif %}>전체</a>
+  {% for r in runs %}
+  <a class="chip" href="/vehicles?run_label={{ r.run_label | urlencode }}"
+     {% if selected_run == r.run_label %}aria-current="true"{% endif %}>{{ r.run_label }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card flush">
   {% if assignments %}
+  <div class="table-wrap">
   <table>
-    <tr>
-      <th>실행</th><th>회차</th><th>차량</th><th>클러스터</th>
-      <th>대여소</th><th>대수</th><th>거리</th><th>시간</th>
-    </tr>
+    <thead><tr>
+      <th>실행</th><th>회차</th><th>차량</th><th class="num">클러스터</th>
+      <th class="num">대여소</th><th class="num">대수</th><th class="num">거리</th><th class="num">시간</th>
+    </tr></thead>
+    <tbody>
     {% for a in assignments %}
     {% set over = a.minutes > time_budget %}
     <tr{% if over %} class="over-budget"{% endif %}>
       <td class="muted">{{ a.run_label }}</td>
       <td>{{ a.duration }}</td>
       <td><b>{{ a.vehicle_id }}</b></td>
-      <td class="muted">{{ a.cluster }}</td>
-      <td>{{ a.stations }}</td>
-      <td>{{ a.bikes }}</td>
-      <td class="muted">{{ a.distance_km }} km</td>
-      <td{% if not over %} class="muted"{% endif %}>
+      <td class="num muted">{{ a.cluster }}</td>
+      <td class="num">{{ a.stations }}</td>
+      <td class="num">{{ a.bikes }}</td>
+      <td class="num muted">{{ a.distance_km }} km</td>
+      <td class="num{% if over %} over{% else %} muted{% endif %}">
         {{ a.minutes }} 분{% if over %} ⚠{% endif %}
       </td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
+  </div>
   {% else %}
-  <p class="muted">배정 이력이 없습니다.</p>
+  <p class="empty" style="padding:1.15rem 1.35rem">배정 이력이 없습니다.</p>
   {% endif %}
 </div>
 
-<p class="muted">설계 근거와 로테이션 규칙은 docs/FLEET.md 참고.</p>
+<p class="hint">설계 근거와 로테이션 규칙은 <code>docs/FLEET.md</code> 참고.</p>
 {% endblock %}

@@ -6,39 +6,50 @@
 {% endblock %}
 
 {% block content %}
-<h1>실행 {{ job.id }}
+<div class="card-head" style="margin-bottom:.9rem">
+  <h1 style="margin:0">실행 {{ job.id }}</h1>
   <span class="badge {{ job.status }}">{{ job.status }}</span>
-</h1>
-
-<div class="card">
-  <table>
-    <tr><th>시작</th><td>{{ job.started_at }}</td></tr>
-    <tr><th>종료</th><td>{{ job.finished_at or "—" }}</td></tr>
-    <tr><th>종료 코드</th><td>{{ job.returncode if job.returncode is not none else "—" }}</td></tr>
-    <tr><th>인자</th><td>{{ " ".join(job.args) or "(기본값)" }}</td></tr>
-  </table>
 </div>
 
 {% if job.is_running %}
-<form method="post" action="/runs/{{ job.id }}/cancel" style="display:inline">
-  <button class="btn danger" type="submit"
-          onclick="return confirm('실행 중인 파이프라인을 중단할까요? 진행 중이던 단계의 산출물이 불완전할 수 있습니다.')">
-    ■ 실행 중단
-  </button>
-</form>
-<p class="muted">⏳ 실행 중 — 이 페이지는 3초마다 자동 갱신됩니다.</p>
+<div class="card">
+  <p style="margin:0 0 .8rem">⏳ 실행 중입니다. 이 페이지는 3초마다 자동 갱신됩니다.</p>
+  <form method="post" action="/runs/{{ job.id }}/cancel" style="display:inline">
+    <button class="btn danger" type="submit"
+            onclick="return confirm('실행 중인 파이프라인을 중단할까요? 진행 중이던 단계의 산출물이 불완전할 수 있습니다.')">
+      ■ 실행 중단
+    </button>
+  </form>
+</div>
 {% elif job.status == "success" %}
-<p>✅ 완료되었습니다. <a href="/maps">지도 결과 보기</a> · <a href="/data">데이터 산출물 보기</a></p>
+<div class="card">
+  <p style="margin:0">✅ 완료되었습니다.
+    <a href="/maps">지도 결과 보기</a> · <a href="/data">데이터 산출물 보기</a> ·
+    <a href="/kpi">성과 지표 보기</a></p>
+</div>
 {% elif job.status == "failed" %}
-<p>❌ 실패했습니다. 아래 로그의 마지막 부분을 확인하세요.</p>
+<div class="alert"><span>실패했습니다. 아래 로그의 마지막 부분을 확인하세요.</span></div>
 {% elif job.status == "cancelled" %}
-<p>■ 사용자가 중단했습니다. 진행 중이던 단계의 산출물은 불완전할 수 있습니다.</p>
+<div class="note">사용자가 중단했습니다. 진행 중이던 단계의 산출물은 불완전할 수 있습니다.</div>
 {% elif job.status == "interrupted" %}
-<p>서버가 재시작되어 추적이 끊긴 작업입니다.</p>
+<div class="note">서버가 재시작되어 추적이 끊긴 작업입니다.</div>
 {% endif %}
+
+<div class="card flush">
+  <div class="table-wrap">
+  <table>
+    <tbody>
+      <tr><th style="width:8rem">시작</th><td>{{ job.started_at }}</td></tr>
+      <tr><th>종료</th><td>{{ job.finished_at or "—" }}</td></tr>
+      <tr><th>종료 코드</th><td>{{ job.returncode if job.returncode is not none else "—" }}</td></tr>
+      <tr><th>인자</th><td class="muted">{{ " ".join(job.args) or "(기본값)" }}</td></tr>
+    </tbody>
+  </table>
+  </div>
+</div>
 
 <h2>로그</h2>
 <pre class="log">{{ log }}</pre>
 
-<p><a href="/">← 실행 화면으로</a></p>
+<a class="back" href="/">← 실행 화면으로</a>
 {% endblock %}

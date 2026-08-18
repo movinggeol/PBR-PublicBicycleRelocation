@@ -1,28 +1,34 @@
 {% extends "base.html" %}
 {% block title %}데이터 산출물 — PBR 대시보드{% endblock %}
 {% block content %}
-<h1>데이터 산출물 (CSV)</h1>
+<h1>데이터 산출물</h1>
+<p class="lede">단계별 CSV입니다. 미리보기는 앞 200행만 읽습니다.</p>
 
 {% for group in groups %}
 <h2>{{ group.title }}</h2>
-<div class="card">
+<div class="card flush">
   {% if group.entries %}
+  <div class="table-wrap">
   <table>
-    <tr><th>파일</th><th>수정 시각</th><th>크기</th><th></th></tr>
+    <thead><tr><th>파일</th><th>수정 시각</th><th class="num">크기</th><th></th></tr></thead>
+    <tbody>
     {% for e in group.entries %}
     <tr>
       <td>{{ e.name }}</td>
       <td class="muted">{{ e.mtime }}</td>
-      <td class="muted">{{ e.size_kb }} KB</td>
+      <td class="num muted">{{ e.size_kb }} KB</td>
       <td>
         <a href="/preview/{{ e.relpath | urlencode }}">미리보기</a> ·
         <a href="/files/{{ e.relpath | urlencode }}">다운로드</a>
       </td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
+  </div>
   {% else %}
-  <p class="muted">산출물이 없습니다. <a href="/">파이프라인을 실행</a>하면 생성됩니다.</p>
+  <p class="empty" style="padding:1.15rem 1.35rem">산출물이 없습니다.
+    <a href="/">파이프라인을 실행</a>하면 생성됩니다.</p>
   {% endif %}
 </div>
 {% endfor %}

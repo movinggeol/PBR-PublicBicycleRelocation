@@ -12,86 +12,88 @@
 <h1>성과 지표</h1>
 
 {% if cards %}
-<p class="muted">
-  최신 실행 <b>{{ latest_label }}</b>
-  {% if previous_label %} · 직전 <b>{{ previous_label }}</b> 대비 증감{% endif %}
+<p class="lede">
+  최신 실행 <b>{{ latest_label }}</b>{% if previous_label %} · 직전 <b>{{ previous_label }}</b> 대비 증감{% endif %}
 </p>
 
-<div class="grid2" style="margin-bottom:1rem">
+<div class="tiles">
   {% for c in cards %}
-  <div class="card">
-    <h2 style="margin-top:0; font-size:0.95rem">{{ c.label }}</h2>
-    <p style="font-size:1.7rem; margin:0.2rem 0">
-      {{ fmt(c.value, c.fmt) }}
-      {% if c.delta is not none and c.delta | abs > 0.001 %}
-        <span style="font-size:0.9rem; color:{{ '#16a34a' if c.delta > 0 else '#dc2626' }}">
-          {{ '▲' if c.delta > 0 else '▼' }} {{ fmt(c.delta | abs, c.fmt) }}
-        </span>
-      {% endif %}
-    </p>
+  <div class="tile">
+    <p class="label">{{ c.label }}</p>
+    <p class="value">{{ fmt(c.value, c.fmt) }}{% if c.delta is not none and c.delta | abs > 0.001 %}<span
+        class="delta {{ 'good' if c.delta > 0 else 'bad' }}">{{ '▲' if c.delta > 0 else '▼' }} {{ fmt(c.delta | abs, c.fmt) }}</span>{% endif %}</p>
+    {% if c.delta is not none and c.delta | abs > 0.001 %}
+    <p class="sub">직전 실행 대비</p>
+    {% endif %}
   </div>
   {% endfor %}
+
+  {% if stockout %}
+  <div class="tile">
+    <p class="label">결품 시간 (대여소·일 평균)</p>
+    <p class="value">{{ stockout.after | round(2) }}<span class="unit">h</span><span
+        class="delta good">▼ {{ stockout.cut | round(2) }}h</span></p>
+    <p class="sub">재배치 전 {{ stockout.before | round(2) }}h → 후</p>
+  </div>
+  {% endif %}
 </div>
 
 {% if stockout %}
-<div class="card" style="margin-bottom:1rem">
-  <h2 style="margin-top:0; font-size:0.95rem">결품 시간 (대여소·일 평균)</h2>
-  <p style="font-size:1.7rem; margin:0.2rem 0">
-    {{ stockout.before | round(2) }}h
-    <span class="muted" style="font-size:1.1rem">→</span>
-    {{ stockout.after | round(2) }}h
-    <span style="font-size:0.9rem; color:#16a34a">▼ {{ stockout.cut | round(2) }}h</span>
-  </p>
-  <p class="muted">
-    재고가 0이 되는 시간을 순수요로 복원해 재배치 전후를 비교합니다.
-    <b>지금까지의 지표 중 이용자 편익에 가장 가까운 값</b>이지만,
-    실제 집행 후 관측이 아니라 <b>시뮬레이션</b>입니다.
-  </p>
+<div class="note">
+  결품 시간은 재고가 0이 되는 시간을 순수요로 복원해 재배치 전후를 비교한 값입니다.
+  <b>지금까지의 지표 중 이용자 편익에 가장 가깝지만</b>, 실제 집행 후 관측이 아니라
+  <b>시뮬레이션</b>입니다.
 </div>
 {% endif %}
 
-<div class="card" style="margin-bottom:1rem">
-  <p class="muted" style="margin:0">
-    ⓘ <b>평균 개선률은 계획 달성률</b>입니다(계획이 목표 재고를 얼마나 채웠는가).
-    <b>목표 도달 비율</b>과 함께 보세요 — 개선률이 높아도 목표 도달이 낮으면
-    "조금씩만 채워진" 상태입니다. 자세한 내용은 docs/KPI.md.
-  </p>
+<div class="note">
+  <b>평균 개선률은 계획 달성률</b>입니다(계획이 목표 재고를 얼마나 채웠는가).
+  <b>목표 도달 비율</b>과 함께 보세요 — 개선률이 높아도 목표 도달이 낮으면
+  “조금씩만 채워진” 상태입니다. 자세한 내용은 <code>docs/KPI.md</code>.
 </div>
 {% endif %}
 
 <h2>실행·회차별 지표</h2>
-<div class="card">
-  {% if runs %}
-  <p class="muted">
-    실행 선택: <a href="/kpi">전체</a>
-    {% for r in runs %} · <a href="/kpi?run_label={{ r.run_label | urlencode }}">{{ r.run_label }}</a>{% endfor %}
-  </p>
-  {% endif %}
 
+{% if runs %}
+<div class="chips" style="margin-bottom:.7rem">
+  <span class="hint">실행 선택</span>
+  <a class="chip" href="/kpi" {% if not selected_run %}aria-current="true"{% endif %}>전체</a>
+  {% for r in runs %}
+  <a class="chip" href="/kpi?run_label={{ r.run_label | urlencode }}"
+     {% if selected_run == r.run_label %}aria-current="true"{% endif %}>{{ r.run_label }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card flush">
   {% if rows %}
-  <div style="overflow-x:auto">
+  <div class="table-wrap">
   <table>
-    <tr>
-      <th>실행</th><th>회차</th><th>대여소</th><th>클러스터</th><th>차량</th><th>처리</th>
-      <th>개선률</th><th>목표도달</th><th>이동거리</th><th>최장</th>
-      <th>예산준수</th><th>km당 개선</th><th>결품(전→후)</th>
-    </tr>
+    <thead><tr>
+      <th>실행</th><th>회차</th>
+      <th class="num">대여소</th><th class="num">클러스터</th><th class="num">차량</th><th class="num">처리</th>
+      <th class="num">개선률</th><th class="num">목표도달</th><th class="num">이동거리</th><th class="num">최장</th>
+      <th class="num">예산준수</th><th class="num">km당 개선</th><th>결품(전→후)</th>
+    </tr></thead>
+    <tbody>
     {% for r in rows %}
     <tr>
       <td class="muted">{{ r.run_label }}</td>
-      <td>{{ r.duration }}</td>
-      <td class="muted">{{ r.stations }}</td>
-      <td class="muted">{{ r.clusters }}</td>
-      <td class="muted">{{ r.vehicles_used }}</td>
-      <td>{{ r.bikes_moved }}</td>
-      <td><b>{{ fmt(r.avg_improvement_rate, "pct") }}</b></td>
-      <td>{{ fmt(r.target_met_ratio, "pct") }}</td>
-      <td class="muted">{{ r.total_distance_km | round(0) | int }} km</td>
-      <td{% if r.time_budget_minutes and r.max_cluster_minutes > r.time_budget_minutes %} class="over-budget"{% endif %}>
-        {{ r.max_cluster_minutes | round(0) | int }} 분
+      <td><b>{{ r.duration }}</b></td>
+      <td class="num muted">{{ r.stations }}</td>
+      <td class="num muted">{{ r.clusters }}</td>
+      <td class="num muted">{{ r.vehicles_used }}</td>
+      <td class="num">{{ r.bikes_moved }}</td>
+      <td class="num"><b>{{ fmt(r.avg_improvement_rate, "pct") }}</b></td>
+      <td class="num">{{ fmt(r.target_met_ratio, "pct") }}</td>
+      <td class="num muted">{{ r.total_distance_km | round(0) | int }} km</td>
+      {% set over = r.time_budget_minutes and r.max_cluster_minutes > r.time_budget_minutes %}
+      <td class="num{% if over %} over-budget{% endif %}">
+        {{ r.max_cluster_minutes | round(0) | int }}분{% if over %} ⚠{% endif %}
       </td>
-      <td>{{ fmt(r.time_budget_met, "pct") }}</td>
-      <td>{{ fmt(r.improvement_per_km, "num") }}</td>
+      <td class="num">{{ fmt(r.time_budget_met, "pct") }}</td>
+      <td class="num">{{ fmt(r.improvement_per_km, "num") }}</td>
       <td class="muted">
         {% if r.stockout_hours_before is not none %}
           {{ r.stockout_hours_before | round(2) }} → {{ r.stockout_hours_after | round(2) }}h
@@ -99,12 +101,15 @@
       </td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
   </div>
   {% else %}
-  <p class="muted">기록된 지표가 없습니다. 파이프라인의 step4를 실행하면 쌓입니다.</p>
+  <p class="empty" style="padding:1.15rem 1.35rem">기록된 지표가 없습니다.
+    파이프라인의 step4를 실행하면 쌓입니다.</p>
   {% endif %}
 </div>
 
-<p class="muted">지표 설계와 한계는 docs/KPI.md 참고. 결품 시간·수요 예측 오차는 아직 미구현입니다.</p>
+<p class="hint">지표 설계와 한계는 <code>docs/KPI.md</code> 참고.
+  결품 시간·수요 예측 오차는 실행에 따라 비어 있을 수 있습니다.</p>
 {% endblock %}

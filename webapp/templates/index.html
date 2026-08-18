@@ -2,77 +2,101 @@
 {% block title %}실행 — PBR 대시보드{% endblock %}
 {% block content %}
 <h1>파이프라인 실행</h1>
+<p class="lede">현재 재고와 과거 순수요로 재배치 계획을 만듭니다.
+  요일 구분은 계획 대상일을 달력으로 판정합니다(휴일 = 주말 + 공휴일).</p>
 
 {% if error %}
-<div class="alert">⚠️ {{ error }}</div>
+<div class="alert">{{ error }}</div>
 {% endif %}
 
-<div class="grid2">
+<div class="split">
   <div class="card">
-    <h2 style="margin-top:0">새 실행</h2>
+    <div class="card-head"><h2>새 실행</h2></div>
+
     {% if running %}
-      <p>⏳ 실행 중인 작업이 있습니다:
-        <a href="/runs/{{ running.id }}">{{ running.id }}</a></p>
-      <p class="muted">파이프라인은 공유 파일을 사용하므로 동시에 1개만 실행됩니다.
-        중단하려면 위 실행 화면에서 "실행 중단"을 누르세요.</p>
+      <p class="stack">
+        <span class="badge running">실행 중</span>
+        <a href="/runs/{{ running.id }}">{{ running.id }}</a>
+      </p>
+      <p class="hint">파이프라인은 공유 파일을 사용하므로 동시에 1개만 실행됩니다.
+        중단하려면 위 실행 화면에서 “실행 중단”을 누르세요.</p>
     {% else %}
     <form class="run-form" method="post" action="/runs">
-      <label>분석 시점 라벨 (now) — 산출물 파일명에 사용
-        <input type="text" name="now" value="{{ defaults.now }}">
-      </label>
-      <label>순수요 기간 (period)
-        <input type="text" name="period" value="{{ defaults.period }}">
-      </label>
-      <label>시간대 (duration, 콤마로 여러 개)
-        <input type="text" name="duration" value="{{ defaults.duration }}">
-      </label>
-      <label>요일 구분
-        <select name="day_type">
+      <div class="field">
+        <label for="f-now">분석 시점 라벨 (now)</label>
+        <input id="f-now" type="text" name="now" value="{{ defaults.now }}">
+        <span class="hint">산출물 파일명과 DB 실행 라벨에 쓰입니다.</span>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="f-period">순수요 기간</label>
+          <input id="f-period" type="text" name="period" value="{{ defaults.period }}">
+        </div>
+        <div class="field">
+          <label for="f-duration">시간대</label>
+          <input id="f-duration" type="text" name="duration" value="{{ defaults.duration }}">
+          <span class="hint">콤마로 여러 개</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="f-day">요일 구분</label>
+        <select id="f-day" name="day_type">
           {% for option in day_types %}
           <option value="{{ option.value }}"
-            {% if option.value == defaults.day_type %}selected{% endif %}>
-            {{ option.label }}</option>
+            {% if option.value == defaults.day_type %}selected{% endif %}>{{ option.label }}</option>
           {% endfor %}
         </select>
-        <span class="muted">휴일 = 주말 + 공휴일. 평일과 휴일은 수요 구조가 달라
-          한 실행에 섞지 않습니다. 둘 다 필요하면 라벨을 달리해 두 번 실행하세요.</span>
-      </label>
-      <label>원천 대여 이력 CSV (프로젝트 루트 기준)
-        <input type="text" name="raw_file" value="{{ defaults.raw_file }}">
-      </label>
-      <label>보유 차량 대수 (1~{{ max_fleet_size }})
-        <input type="number" name="fleet_size" min="1" max="{{ max_fleet_size }}"
-               step="1" value="{{ defaults.fleet_size }}">
-        <span class="muted">줄이면 남는 차량은 배정에서 빠지고, 다시 늘리면 돌아옵니다.</span>
-      </label>
-      <label>회차당 투입 대수 (상한)
-        <input type="number" name="vehicles_per_round" min="1" max="{{ max_fleet_size }}"
-               step="1" value="{{ defaults.vehicles_per_round }}">
-        <span class="muted">한 회차에 나가는 차량 수 = step1의 군집 수 상한입니다.
-          보유 대수보다 클 수 없습니다.</span>
-      </label>
+        <span class="hint">휴일 = 주말 + 공휴일. 평일과 휴일은 수요 구조가 달라
+          한 실행에 섞지 않습니다 — 둘 다 필요하면 라벨을 달리해 두 번 실행하세요.</span>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="f-fleet">보유 차량 대수</label>
+          <input id="f-fleet" type="number" name="fleet_size" min="1"
+                 max="{{ max_fleet_size }}" step="1" value="{{ defaults.fleet_size }}">
+          <span class="hint">1~{{ max_fleet_size }}. 줄이면 남는 차량은 배정에서 빠집니다.</span>
+        </div>
+        <div class="field">
+          <label for="f-round">회차당 투입 대수</label>
+          <input id="f-round" type="number" name="vehicles_per_round" min="1"
+                 max="{{ max_fleet_size }}" step="1" value="{{ defaults.vehicles_per_round }}">
+          <span class="hint">step1의 군집 수 상한. 보유 대수보다 클 수 없습니다.</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="f-raw">원천 대여 이력 CSV</label>
+        <input id="f-raw" type="text" name="raw_file" value="{{ defaults.raw_file }}">
+        <span class="hint">프로젝트 루트 기준 경로</span>
+      </div>
+
       <div class="checks">
         <label><input type="checkbox" name="skip_api" value="1"> API 수집 생략</label>
         <label><input type="checkbox" name="skip_eda" value="1" checked> EDA 생략</label>
       </div>
-      <p style="margin-top:1rem">
-        <button class="btn" type="submit">▶ 파이프라인 실행</button>
-      </p>
-      <p class="muted">step1 군집 조정에 수 분이 걸릴 수 있습니다. 실행 후 로그 화면으로 이동합니다.</p>
+
+      <button class="btn" type="submit">▶ 파이프라인 실행</button>
+      <p class="hint" style="margin-top:.7rem">step1 군집 조정에 수 분이 걸릴 수 있습니다.
+        실행 후 로그 화면으로 이동합니다.</p>
     </form>
     {% endif %}
   </div>
 
-  <div class="card">
-    <h2 style="margin-top:0">최신 산출물</h2>
+  <div class="card flush">
+    <div class="card-head"><h2>최신 산출물</h2></div>
     {% if latest %}
+      <div class="table-wrap">
       <table>
-        <tr><th>분류</th><th>파일</th><th>수정 시각</th></tr>
+        <thead><tr><th>분류</th><th>파일</th><th>수정 시각</th></tr></thead>
+        <tbody>
         {% for group in latest %}
           {% for e in group.entries %}
           <tr>
-            <td>{{ group.title if loop.first else "" }}</td>
-            <td>
+            <td class="muted">{{ group.title if loop.first else "" }}</td>
+            <td class="wrap">
               {% if e.name.endswith(".html") %}
                 <a href="/files/{{ e.relpath | urlencode }}" target="_blank">{{ e.name }}</a>
               {% else %}
@@ -83,23 +107,32 @@
           </tr>
           {% endfor %}
         {% endfor %}
+        </tbody>
       </table>
+      </div>
     {% else %}
-      <p class="muted">아직 산출물이 없습니다. 파이프라인을 실행하면 여기에 나타납니다.</p>
+      <p class="empty" style="padding:0 1.35rem 1.2rem">아직 산출물이 없습니다.
+        파이프라인을 실행하면 여기에 나타납니다.</p>
     {% endif %}
   </div>
 </div>
 
 <h2>데이터 저장소 (SQLite)</h2>
-<div class="card">
+<div class="card flush">
   {% if pipeline_runs %}
-  <p class="muted">산출물은 실행 라벨(run_label)로 구분되어 DB에 저장됩니다.
-    API에 <code>?run_label=...</code>을 붙이면 과거 실행분을 조회할 수 있습니다.</p>
+  <div class="card-head">
+    <p class="hint" style="margin:0">산출물은 실행 라벨로 구분되어 DB에 저장됩니다.
+      API에 <code>?run_label=…</code>을 붙이면 과거 실행분을 조회할 수 있습니다.</p>
+  </div>
+  <div class="table-wrap">
   <table>
-    <tr><th>실행 라벨</th><th>순수요 기간</th><th>시간대</th><th>요일</th><th>기록 시각</th><th></th></tr>
+    <thead><tr>
+      <th>실행 라벨</th><th>순수요 기간</th><th>시간대</th><th>요일</th><th>기록 시각</th><th></th>
+    </tr></thead>
+    <tbody>
     {% for run in pipeline_runs %}
     <tr>
-      <td>{{ run.run_label }}</td>
+      <td><b>{{ run.run_label }}</b></td>
       <td class="muted">{{ run.period or "—" }}</td>
       <td class="muted">{{ run.duration or "—" }}</td>
       <td class="muted">{{ "휴일" if run.day_type == "holiday" else ("평일" if run.day_type else "—") }}</td>
@@ -110,17 +143,22 @@
       </td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
+  </div>
   {% else %}
-  <p class="muted">DB에 기록된 실행이 없습니다. 파이프라인을 실행하면 CSV와 함께 저장됩니다.</p>
+  <p class="empty" style="padding:1.15rem 1.35rem">DB에 기록된 실행이 없습니다.
+    파이프라인을 실행하면 CSV와 함께 저장됩니다.</p>
   {% endif %}
 </div>
 
 <h2>실행 이력</h2>
-<div class="card">
+<div class="card flush">
   {% if jobs %}
+  <div class="table-wrap">
   <table>
-    <tr><th>ID</th><th>상태</th><th>시작</th><th>종료</th><th>인자</th></tr>
+    <thead><tr><th>ID</th><th>상태</th><th>시작</th><th>종료</th><th>인자</th></tr></thead>
+    <tbody>
     {% for job in jobs %}
     <tr>
       <td><a href="/runs/{{ job.id }}">{{ job.id }}</a></td>
@@ -130,9 +168,11 @@
       <td class="muted">{{ " ".join(job.args) or "(기본값)" }}</td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
+  </div>
   {% else %}
-  <p class="muted">실행 이력이 없습니다.</p>
+  <p class="empty" style="padding:1.15rem 1.35rem">실행 이력이 없습니다.</p>
   {% endif %}
 </div>
 {% endblock %}
