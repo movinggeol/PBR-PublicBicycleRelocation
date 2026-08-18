@@ -30,7 +30,8 @@ from fastapi.templating import Jinja2Templates
 from project_config import (
     DAY_TYPE_AUTO, DAY_TYPE_LABELS, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_DURATION,
     DEFAULT_NOW, DEFAULT_PERIOD, DEFAULT_RAW_FILE, FLEET_SIZE, MAX_FLEET_SIZE,
-    TIME_BUDGET_MINUTES, VEHICLES_PER_ROUND,
+    TARGET_Z, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY, VEHICLE_SPEED_KMPH,
+    VEHICLES_PER_ROUND,
     normalize_day_type, normalize_fleet_size, normalize_per_round, resolve_day_type,
 )
 from webapp import catalog, jobs, store
@@ -236,6 +237,24 @@ def run_detail(request: Request, job_id: str):
         "job": job,
         "log": jobs.read_log_tail(job),
         "progress": pipeline_progress(jobs.read_log(job)),
+    })
+
+
+@app.get("/guide")
+def guide_page(request: Request):
+    """사용 안내.
+
+    설정값을 하드코딩하지 않고 넘긴다 — 차량 대수나 시간 예산을 바꿨을 때
+    안내 문서만 옛날 숫자로 남는 일을 막는다.
+    """
+    return templates.TemplateResponse(request, "guide.html", {
+        "fleet_size": FLEET_SIZE,
+        "per_round": VEHICLES_PER_ROUND,
+        "capacity": VEHICLE_CAPACITY,
+        "speed": VEHICLE_SPEED_KMPH,
+        "time_budget": TIME_BUDGET_MINUTES,
+        "target_z": TARGET_Z,
+        "today_day_type": DAY_TYPE_LABELS[resolve_day_type()],
     })
 
 

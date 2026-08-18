@@ -216,6 +216,7 @@
       opacity: .85; white-space: nowrap;
     }
     .global-nav .util:hover { opacity: 1; text-decoration: none; }
+    .global-nav .util.here { opacity: 1; font-weight: 600; box-shadow: inset 0 -1px 0 currentColor; }
     .theme-toggle {
       background: transparent; border: 0; color: var(--on-dark);
       font-size: 13px; cursor: pointer; padding: 4px; line-height: 1;
@@ -388,6 +389,16 @@
        안 그러면 열 사이가 휑하게 벌어져 머리글과 값이 눈으로 안 이어진다. */
     td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; width: 1%; }
     th.grow { width: 100%; }
+
+    /* 설명이 들어가는 표 — 숫자 표와 규칙이 정반대다.
+       .grow를 쓰면 첫 열이 남는 폭을 다 먹어 설명 열이 서너 줄로 쪼개진다.
+       word-break는 keep-all이라야 한국어가 낱말 단위로 끊긴다
+       (break-all은 글자 단위로 쪼개서 '이 름.'처럼 읽힌다). */
+    .table-prose th, .table-prose td {
+      white-space: normal; word-break: keep-all; vertical-align: top; line-height: 1.55;
+    }
+    .table-prose th:first-child, .table-prose td:first-child { width: 11rem; }
+    .table-prose code { word-break: break-all; }
     .card.flush table th:first-child, .card.flush table td:first-child { padding-left: var(--sp-lg); }
     .card.flush table th:last-child, .card.flush table td:last-child { padding-right: var(--sp-lg); }
     tr.over-budget td { background: var(--critical-soft); }
@@ -582,6 +593,9 @@
   {% set group = 'result' %}
 {% elif path.startswith('/data') or path.startswith('/preview') %}
   {% set group = 'data' %}
+{% elif path.startswith('/guide') %}
+  {# 안내는 작업 흐름 밖이다 — 어느 단계도 현재 위치로 켜지 않는다 #}
+  {% set group = 'none' %}
 {% else %}
   {% set group = 'run' %}
 {% endif %}
@@ -589,6 +603,8 @@
 <header class="global-nav">
   <div class="global-nav-inner">
     <a class="brand" href="/">🚲 PBR</a>
+    <a class="util{% if path.startswith('/guide') %} here{% endif %}" href="/guide"
+       data-tip="이 도구가 무엇을 계산하는지, 무엇을 입력하고 결과를 어떻게 읽는지 설명합니다.">사용 안내</a>
     <a class="util" href="/api/docs"
        data-tip="다른 프로그램에서 결과를 가져다 쓸 때 필요한 JSON API 목록입니다.">API</a>
     <button class="theme-toggle" type="button" id="theme-toggle"

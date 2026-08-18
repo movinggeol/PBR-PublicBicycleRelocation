@@ -22,6 +22,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_db.py](../tests/test_db.py) | 22 | SQLite 저장소의 스코프·멱등성·최신 라벨·스키마 마이그레이션 ([DB_SCHEMA.md](DB_SCHEMA.md)) |
 | [tests/test_webapp.py](../tests/test_webapp.py) | 31 | 웹 라우트가 통째로 깨지는 사고 방지 + 실행 폼 입력 검증 ([WEBAPP.md](WEBAPP.md)) |
 | [tests/test_pipeline_progress.py](../tests/test_pipeline_progress.py) | 7 | 실행 로그에서 진행 단계를 뽑는 규약 ([WEBAPP.md](WEBAPP.md)) |
+| [tests/test_guide.py](../tests/test_guide.py) | 5 | 사용 안내가 설정값을 하드코딩하지 않는지 + 폼 항목을 빠짐없이 설명하는지 |
 | [tests/test_webapp_db.py](../tests/test_webapp_db.py) | 14 | 웹 API가 CSV 대신 DB를 읽는지 |
 | [tests/test_rentals.py](../tests/test_rentals.py) | 10 | 대여이력 적재와 **CSV·DB 결과 동일성** |
 | [tests/test_fleet.py](../tests/test_fleet.py) | 13 | 차량 로테이션·형평성과 보유 대수 변경 ([FLEET.md](FLEET.md)) |

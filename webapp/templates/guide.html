@@ -1,0 +1,385 @@
+{% extends "base.html" %}
+{% block title %}사용 안내 — PBR 대시보드{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <h1>사용 안내</h1>
+  <p class="lead">처음 쓰시는 분을 위한 안내입니다. 이 도구가 무엇을 계산하는지,
+    무엇을 입력하고 결과를 어떻게 읽는지 순서대로 설명합니다.</p>
+  <div class="actions">
+    <a class="btn" href="/#run">바로 실행해 보기</a>
+  </div>
+</section>
+
+<div class="filterbar" style="margin-bottom:var(--sp-lg)">
+  <span class="label">바로가기</span>
+  <a class="chip" href="#start">처음 쓰신다면</a>
+  <a class="chip" href="#what">무엇을 계산하나</a>
+  <a class="chip" href="#form">입력 항목</a>
+  <a class="chip" href="#read">결과 읽는 법</a>
+  <a class="chip" href="#trouble">이럴 땐</a>
+  <a class="chip" href="#words">용어</a>
+</div>
+
+{# ───────────────────────── 처음 쓰신다면 ───────────────────────── #}
+<h2 id="start">처음 쓰신다면</h2>
+<p class="section-lead">세 단계면 끝납니다. 위쪽 메뉴의 <b>1 실행 → 2 결과 → 3 데이터</b>가
+  그대로 이 순서입니다.</p>
+
+<div class="card flush">
+  <ol class="steps">
+    <li class="step">
+      <span class="step-mark" aria-hidden="true">1</span>
+      <span class="step-body">
+        <span class="step-name"><b>계획 실행</b> — 값을 그대로 두고 “계획 실행”을 누릅니다</span>
+        <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
+          기본값이 이미 채워져 있습니다. 처음에는 아무것도 바꾸지 마세요.</span>
+      </span>
+      <span class="step-state"><a href="/#run">실행 화면 →</a></span>
+    </li>
+    <li class="step">
+      <span class="step-mark" aria-hidden="true">2</span>
+      <span class="step-body">
+        <span class="step-name"><b>끝날 때까지 기다립니다</b> — 진행 단계가 화면에 나옵니다</span>
+        <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
+          대여소를 묶는 단계에서 몇 분이 걸립니다. 화면은 3초마다 저절로 새로고침됩니다.</span>
+      </span>
+      <span class="step-state">보통 5~10분</span>
+    </li>
+    <li class="step">
+      <span class="step-mark" aria-hidden="true">3</span>
+      <span class="step-body">
+        <span class="step-name"><b>결과를 봅니다</b> — 지도로 경로를 확인하고 지표로 성적을 봅니다</span>
+        <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
+          현장에 내보낼 것은 지도입니다. 지표는 “이번 계획이 쓸 만한가”를 판단할 때 봅니다.</span>
+      </span>
+      <span class="step-state"><a href="/maps">지도 →</a></span>
+    </li>
+  </ol>
+</div>
+
+<div class="note">
+  <b>계획은 한 번에 하나만 돌아갑니다.</b> 여러 단계가 같은 파일을 고쳐 쓰기 때문입니다.
+  이미 돌고 있으면 새 실행 버튼이 사라지고 진행 상황 링크가 대신 나옵니다.
+</div>
+
+{# ───────────────────────── 무엇을 계산하나 ───────────────────────── #}
+<h2 id="what">무엇을 계산하나</h2>
+<p class="section-lead">한 문장으로: <b>지금 자전거가 남는 곳에서 빼내 모자랄 곳으로 미리
+  옮기는 계획</b>을 만듭니다. 계산은 다섯 단계를 거칩니다.</p>
+
+<div class="card flush">
+  <ol class="steps">
+    <li class="step">
+      <span class="step-mark" aria-hidden="true">1</span>
+      <span class="step-body">
+        <span class="step-name">지금 재고를 확인합니다</span>
+        <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
+          타슈 API에서 대여소마다 자전거가 몇 대 있는지 실시간으로 받아옵니다.</span>
+      </span>
+    </li>
+    <li class="step">
+      <span class="step-mark" aria-hidden="true">2</span>
+      <span class="step-body">
+        <span class="step-name">얼마나 필요할지 추정합니다 — <b>목표 재고</b></span>
+        <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
+          과거 같은 조건(같은 시간대, 같은 평일/휴일)에서 이 대여소의 순수요가
+          평균 얼마였고 얼마나 들쭉날쭉했는지를 보고, 넉넉하게 잡습니다.</span>
+      </span>
+    </li>
+    <li class="step">
+      <span class="step-mark" aria-hidden="true">3</span>
+      <span class="step-body">
+        <span class="step-name">어디서 얼마를 옮길지 정합니다</span>
+        <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
+          남는 대여소와 모자란 대여소를 짝지어, 총 이동량이 가장 적어지도록 배분합니다.</span>
+      </span>
+    </li>
+    <li class="step">
+      <span class="step-mark" aria-hidden="true">4</span>
+      <span class="step-body">
+        <span class="step-name">대여소를 <b>{{ per_round }}덩어리</b>로 묶습니다 — 군집</span>
+        <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
+          차량 한 대가 한 덩어리를 맡습니다. 가까운 것끼리, 일감이 고르게 나뉘도록 묶습니다.</span>
+      </span>
+    </li>
+    <li class="step">
+      <span class="step-mark" aria-hidden="true">5</span>
+      <span class="step-body">
+        <span class="step-name">차량이 도는 순서를 짭니다 — 경로</span>
+        <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
+          차고지에서 출발해 맡은 대여소를 다 들르고 돌아옵니다. 실제 도로 경로로 계산합니다.</span>
+      </span>
+    </li>
+  </ol>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h3>지금 설정</h3>
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          <tr><th>보유 차량</th><td class="num">{{ fleet_size }}대</td></tr>
+          <tr><th>한 회차 투입</th><td class="num">최대 {{ per_round }}대</td></tr>
+          <tr><th>한 대 적재 용량</th><td class="num">{{ capacity }}대</td></tr>
+          <tr><th>평균 주행 속도</th><td class="num">{{ speed | round | int }} km/h</td></tr>
+          <tr><th>한 회차 시간 예산</th><td class="num">{{ time_budget | round | int }}분</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="hint" style="margin-top:var(--sp-sm)">차량 대수는 실행할 때마다 폼에서 바꿀 수 있습니다.
+      나머지는 코드 설정값입니다.</p>
+  </div>
+  <div class="card">
+    <h3>오늘은 <b>{{ today_day_type }}</b>입니다</h3>
+    <p style="font-size:var(--fs-ui); color:var(--ink-3); margin:0 0 var(--sp-sm)">
+      휴일 = 주말 + 공휴일. 달력으로 자동 판정합니다.</p>
+    <p style="font-size:var(--fs-ui); color:var(--ink-3); margin:0">
+      평일과 휴일은 <b>자전거가 흐르는 방향 자체가 다릅니다.</b> 평일 아침에 사람이 몰리는
+      대여소가 휴일에는 텅 비기도 합니다. 그래서 두 날을 한 통계로 섞으면 서로 상쇄돼
+      “아무 데도 옮길 필요가 없다”는 잘못된 답이 나옵니다. 한 번에 한쪽만 계획합니다.</p>
+  </div>
+</div>
+
+{# ───────────────────────── 입력 항목 ───────────────────────── #}
+<h2 id="form">입력 항목</h2>
+<p class="section-lead">실행 화면의 각 칸이 무슨 뜻인지입니다.
+  <b>처음에는 기본값 그대로 두시면 됩니다.</b></p>
+
+<div class="card flush">
+  <div class="table-wrap">
+  <table class="table-prose">
+    <thead><tr>
+      <th>항목</th><th>무엇인가</th><th>언제 바꾸나</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td><b>실행 이름</b></td>
+        <td class="muted">이번 계획에 붙일 이름. 결과 파일과 기록에 그대로 들어갑니다.</td>
+        <td class="muted">조건을 바꿔 여러 번 돌리고 <b>서로 비교</b>할 때. 이름이 같으면 덮어씁니다.</td>
+      </tr>
+      <tr>
+        <td><b>순수요 기간</b></td>
+        <td class="muted">과거 수요를 어느 달에서 뽑을지.</td>
+        <td class="muted">계절이 바뀌었을 때. 여름 계획에 겨울 수요를 쓰면 맞지 않습니다.</td>
+      </tr>
+      <tr>
+        <td><b>시간대</b></td>
+        <td class="muted">하루 중 어느 시간을 계획할지. <code>10_15</code>는 10시~15시.</td>
+        <td class="muted">다른 시간대를 계획할 때. 콤마로 여러 개를 넣으면 차례로 돕니다.</td>
+      </tr>
+      <tr>
+        <td><b>요일 구분</b></td>
+        <td class="muted">평일용인지 휴일용인지. <b>자동</b>이면 계획 대상일을 달력으로 판정합니다.</td>
+        <td class="muted">평소엔 자동. 미리 휴일 계획을 만들어 둘 때만 직접 고릅니다.</td>
+      </tr>
+      <tr>
+        <td><b>보유 차량 대수</b></td>
+        <td class="muted">오늘 실제로 굴릴 수 있는 트럭 수.</td>
+        <td class="muted"><b>정비나 결원으로 차가 빠졌을 때.</b> 줄이면 남는 차량은 배정에서 빠집니다.</td>
+      </tr>
+      <tr>
+        <td><b>회차당 투입 대수</b></td>
+        <td class="muted">한 번에 동시에 내보낼 대수. 대여소를 몇 덩어리로 나눌지를 정합니다.</td>
+        <td class="muted">늘리면 한 대가 도는 거리는 줄고, 필요한 차량과 기사는 늘어납니다.</td>
+      </tr>
+      <tr>
+        <td><b>원천 대여 이력 CSV</b></td>
+        <td class="muted">수요를 계산할 원본 파일의 경로.</td>
+        <td class="muted">새 달치 데이터를 받았을 때.</td>
+      </tr>
+      <tr>
+        <td><b>API 수집 생략</b></td>
+        <td class="muted">실시간 재고를 새로 받지 않고 이미 받아 둔 파일을 씁니다.</td>
+        <td class="muted">방금 받아 뒀고 재고가 안 변했을 때만. <b>평소엔 끄세요.</b></td>
+      </tr>
+      <tr>
+        <td><b>EDA 생략</b></td>
+        <td class="muted">탐색용 분석 그래프를 만들지 않습니다.</td>
+        <td class="muted">계획 결과에는 영향이 없고 시간만 줄어듭니다. <b>켜 두세요.</b></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+{# ───────────────────────── 결과 읽는 법 ───────────────────────── #}
+<h2 id="read">결과 읽는 법</h2>
+<p class="section-lead">화면 세 곳에 결과가 나뉘어 있습니다. 목적이 서로 다릅니다.</p>
+
+<div class="grid2">
+  <div class="card">
+    <h3>🗺 지도 — 현장에 내보낼 것</h3>
+    <p style="font-size:var(--fs-ui); color:var(--ink-3); margin:0">
+      기사에게 줄 실제 경로입니다. 어느 대여소를 어떤 순서로 들르고 몇 대를 싣고 내리는지가
+      나옵니다. <b>새 창으로 열어 인쇄하거나 화면째 전달</b>하시면 됩니다.</p>
+    <p style="margin:var(--sp-sm) 0 0"><a href="/maps">지도 보기 →</a></p>
+  </div>
+  <div class="card">
+    <h3>📊 성과 지표 — 이 계획이 쓸 만한가</h3>
+    <p style="font-size:var(--fs-ui); color:var(--ink-3); margin:0">
+      계획이 목표를 얼마나 채웠는지, 그러려고 얼마나 움직였는지입니다.
+      <b>지난 실행과 견줘</b> 이번 조건이 나은지 판단할 때 봅니다.</p>
+    <p style="margin:var(--sp-sm) 0 0"><a href="/kpi">지표 보기 →</a></p>
+  </div>
+</div>
+
+<h3 style="margin-top:var(--sp-lg)">지표가 뜻하는 것</h3>
+<div class="card flush">
+  <div class="table-wrap">
+  <table class="table-prose">
+    <thead><tr><th>지표</th><th>뜻</th><th>어떻게 볼까</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>평균 개선률</b></td>
+        <td class="muted">목표 재고까지 모자란 양을 계획이 몇 % 메웠는가.</td>
+        <td class="muted"><b>“계획을 얼마나 지켰나”이지 “수요를 맞췄나”가 아닙니다.</b>
+          아래 목표 도달과 반드시 같이 보세요.</td>
+      </tr>
+      <tr>
+        <td><b>목표 도달 비율</b></td>
+        <td class="muted">목표 재고를 <b>완전히</b> 채운 대여소의 비율.</td>
+        <td class="muted">개선률은 높은데 이 값이 낮으면 <b>여러 곳을 조금씩만</b> 채운 상태입니다.</td>
+      </tr>
+      <tr>
+        <td><b>결품 시간</b></td>
+        <td class="muted">자전거가 한 대도 없어 빌리려던 사람이 그냥 돌아가는 시간
+          (대여소·하루 평균).</td>
+        <td class="muted"><b>이용자 불편에 가장 가까운 지표</b>입니다.
+          다만 집행 후 관측이 아니라 시뮬레이션입니다.</td>
+      </tr>
+      <tr>
+        <td><b>이동거리</b></td>
+        <td class="muted">모든 차량이 움직인 거리의 합.</td>
+        <td class="muted">연료·인건비에 직결됩니다. 개선률이 같다면 짧은 쪽이 낫습니다.</td>
+      </tr>
+      <tr>
+        <td><b>km당 개선</b></td>
+        <td class="muted">1km 움직일 때마다 개선률이 얼마나 올랐는가.</td>
+        <td class="muted">투입 대비 효율입니다. 조건을 바꿔 가며 비교할 때 유용합니다.</td>
+      </tr>
+      <tr>
+        <td><b>최장 작업 · 예산 준수</b></td>
+        <td class="muted">가장 오래 걸린 차량의 작업 시간과,
+          {{ time_budget | round | int }}분 안에 끝난 회차의 비율.</td>
+        <td class="muted">넘긴 회차는 <b>붉은 배경에 ⚠</b>로 표시됩니다.
+          늦어지면 겨냥한 시간대가 지나가 계획이 헛돕니다.</td>
+      </tr>
+      <tr>
+        <td><b>차량 간 작업량 차이</b></td>
+        <td class="muted">가장 적게 일한 차량과 많이 일한 차량의 누적 시간 차이.</td>
+        <td class="muted">작을수록 고르게 나뉜 것입니다. 특정 차량에 일이 몰리는지 봅니다.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="alert">
+  <span><b>조건이 다른 실행끼리 개선률·목표 도달을 그대로 비교하지 마세요.</b>
+  목표 재고를 넉넉하게 잡을수록 기준 자체가 높아져, 똑같이 일해도 두 지표는 낮게 나옵니다.
+  비교는 <b>같은 조건에서 한 가지만 바꿨을 때</b>에만 뜻이 있습니다.</span>
+</div>
+
+{# ───────────────────────── 이럴 땐 ───────────────────────── #}
+<h2 id="trouble">이럴 땐</h2>
+
+<div class="card flush">
+  <div class="table-wrap">
+  <table class="table-prose">
+    <thead><tr><th>상황</th><th>어떻게 하나</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>실행이 실패했습니다</b></td>
+        <td class="muted">실행 화면에서 그 작업을 열면 <b>진행 단계</b>에 붉게 표시된 곳이 있습니다.
+          거기서 멈춘 것이니, 아래 로그의 마지막 부분에서 원인을 봅니다.
+          앞 단계 결과가 다음 단계 입력이라 중간부터 다시 돌릴 수는 없습니다.</td>
+      </tr>
+      <tr>
+        <td><b>새 실행 버튼이 없습니다</b></td>
+        <td class="muted">이미 하나가 돌고 있습니다. 같은 자리에 진행 상황 링크가 나옵니다.
+          기다리거나, 그 화면에서 <b>실행 중단</b>을 누르세요.</td>
+      </tr>
+      <tr>
+        <td><b>예산을 넘긴 회차가 있습니다</b></td>
+        <td class="muted">회차당 투입 대수를 늘려 보세요. 한 대가 맡는 덩어리가 작아져
+          작업 시간이 줄어듭니다. 다만 그만큼 차량과 기사가 더 필요합니다.</td>
+      </tr>
+      <tr>
+        <td><b>결과가 비어 있습니다</b></td>
+        <td class="muted">아직 한 번도 끝까지 돌지 않았거나, 도중에 실패했습니다.
+          실행 이력에서 마지막 작업의 상태를 확인하세요.</td>
+      </tr>
+      <tr>
+        <td><b>차가 몇 대 빠졌습니다</b></td>
+        <td class="muted">실행할 때 <b>보유 차량 대수</b>를 실제 대수로 줄이세요.
+          남는 차량은 배정에서 자동으로 빠지고, 나중에 늘리면 다시 들어옵니다.</td>
+      </tr>
+      <tr>
+        <td><b>지난 결과를 다시 보고 싶습니다</b></td>
+        <td class="muted">지우지 않는 한 남아 있습니다. 실행 화면의 <b>저장된 실행</b> 표에서
+          이름으로 찾거나, 지표·차량 화면 위쪽의 실행 이름 버튼으로 걸러 보세요.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+{# ───────────────────────── 용어 ───────────────────────── #}
+<h2 id="words">용어</h2>
+<div class="card flush">
+  <div class="table-wrap">
+  <table class="table-prose">
+    <thead><tr><th>말</th><th>뜻</th></tr></thead>
+    <tbody>
+      <tr><td><b>순수요</b></td>
+        <td class="muted">한 대여소에서 <b>빌려 나간 수 − 반납된 수</b>.
+          양수면 자전거가 빠져나가는 곳(채워 줘야 함), 음수면 쌓이는 곳(빼내야 함)입니다.</td></tr>
+      <tr><td><b>목표 재고</b></td>
+        <td class="muted">그 시간대를 버티려면 몇 대가 있어야 하는가.
+          평균 수요에 여유분을 더해 잡습니다 — 평균만 맞추면 절반은 모자라기 때문입니다.</td></tr>
+      <tr><td><b>군집</b></td>
+        <td class="muted">가까운 대여소를 묶은 덩어리. <b>차량 한 대가 한 덩어리를 맡습니다.</b></td></tr>
+      <tr><td><b>회차</b></td>
+        <td class="muted">한 번 나갔다 돌아오는 것. 화면의 <code>10_15</code> 같은 표시는
+          그 회차가 겨냥한 시간대입니다.</td></tr>
+      <tr><td><b>작업 시간</b></td>
+        <td class="muted">이동 시간 + 자전거를 싣고 내리는 시간.
+          주행은 {{ speed | round | int }} km/h로 잡습니다.</td></tr>
+      <tr><td><b>시간 예산</b></td>
+        <td class="muted">한 회차가 끝나야 하는 기한({{ time_budget | round | int }}분).
+          넘기면 겨냥한 시간대가 지나가 계획의 효과가 줄어듭니다.</td></tr>
+      <tr><td><b>실행 이름</b></td>
+        <td class="muted">한 번의 계산에 붙인 이름. 결과 파일과 기록을 이 이름으로 묶습니다.</td></tr>
+      <tr><td><b>휴일</b></td>
+        <td class="muted">주말 + 공휴일. 달력으로 자동 판정합니다.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<h2>더 알아보기</h2>
+<p class="section-lead">계산 근거와 설계 판단은 프로젝트 폴더의 문서에 있습니다.</p>
+<div class="card">
+  <div class="table-wrap">
+    <table class="table-prose">
+      <tbody>
+        <tr><th style="width:16rem"><code>docs/KPI.md</code></th>
+            <td class="muted">지표를 왜 이렇게 정의했고 무엇을 못 재는지</td></tr>
+        <tr><th><code>docs/FLEET.md</code></th>
+            <td class="muted">차량 배정과 로테이션 규칙</td></tr>
+        <tr><th><code>docs/DEMAND_DISTRIBUTION.md</code></th>
+            <td class="muted">목표 재고를 잡는 근거와 그 전제의 한계</td></tr>
+        <tr><th><code>docs/WEBAPP.md</code></th>
+            <td class="muted">이 대시보드의 구조와 API</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="note">
+  이 도구는 <b>사내에서만 쓰는 로컬 프로그램</b>입니다. 로그인이 없으니
+  외부 네트워크에 열어 두지 마세요.
+</div>
+{% endblock %}
