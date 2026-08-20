@@ -196,14 +196,14 @@ python "step4 (성과 지표)/imbalance.py"
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest                 # 200개, 약 60~80초 (tests/ 만 수집)
+python -m pytest                 # 202개, 약 50~80초 (tests/ 만 수집)
 ```
 
 - `tests/test_pipeline.py` (32) — 합성 데이터로 step0→step1→step2→step4를
   **subprocess로 실제 실행**한 뒤 산출물 존재·스키마·ILP 공급 제약·개선량을 검증.
   실행마다 고유 라벨(`smoketest-{PID}`)을 써서 실데이터를 건드리지 않고,
   끝나면 그 라벨 파일만 정리합니다.
-- `tests/test_webapp.py` (31) — 라우트·경로 탈출 차단·실행 폼 입력 검증
+- `tests/test_webapp.py` (33) — 라우트·경로 탈출 차단·실행 폼 입력 검증
 - `tests/test_day_type.py` (34) — 평일/휴일 분리·공휴일 판정·계절 보정
 - 나머지 파일과 각 테스트가 무엇을 지키는지는 [docs/TESTING.md](docs/TESTING.md)에
   정리돼 있습니다.
@@ -292,7 +292,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | --- | --- |
 | [docs/RETROSPECTIVE.md](docs/RETROSPECTIVE.md) | **작업 회고** — 전체 조망, 측정이 뒤집은 가설, 설계 결정 |
 | [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
-| [docs/TESTING.md](docs/TESTING.md) | **테스트** — 200개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
+| [docs/TESTING.md](docs/TESTING.md) | **테스트** — 202개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/PROJECT_PIPELINE.md](docs/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/WEBAPP.md](docs/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/DESIGN.md](docs/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |

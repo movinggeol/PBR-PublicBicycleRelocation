@@ -7,6 +7,8 @@
 산출물(data/)이 있든 없든 통과해야 하므로, 데이터에 의존하는 API는
 "500이 아닐 것"까지만 검증한다.
 """
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -162,3 +164,52 @@ def test_data_apis_do_not_crash(client, path):
     res = client.get(path)
     assert res.status_code in (200, 404), f"{path} -> {res.status_code}"
 
+
+
+# ---------------- 최신 산출물 쪽 넘기기 ----------------
+
+def _fake_groups(count):
+    """산출물 카탈로그 흉내 — 분류마다 2건씩. (실데이터 유무와 무관하게 돌려야 한다)"""
+    return [{
+        "title": f"분류 {i}",
+        "entries": [{"name": f"a{i}.csv", "relpath": f"x/a{i}.csv",
+                     "mtime": "2026-08-20 10:00", "mtime_raw": 0, "size_kb": 1},
+                    {"name": f"b{i}.html", "relpath": f"x/b{i}.html",
+                     "mtime": "2026-08-20 10:00", "mtime_raw": 0, "size_kb": 1}],
+    } for i in range(count)]
+
+
+def test_latest_outputs_are_paged_by_category(client, monkeypatch):
+    """최신 산출물은 **분류 단위로** 쪽이 나뉘어야 한다.
+
+    분류 이름은 그 분류의 첫 행에만 붙으므로, 한 분류의 행들이 같은
+    `data-page-item` 값으로 묶이지 않으면 이름 없는 행으로 시작하는 쪽이 생긴다.
+    """
+    monkeypatch.setattr(app_module.catalog, "latest_outputs",
+                        lambda *a, **k: _fake_groups(7))
+
+    html = client.get("/").text
+
+    assert 'data-pager="5"' in html, "쪽 넘김 컨테이너가 없다"
+    keys = re.findall(r'<tr data-page-item="(\d+)">', html)
+    assert keys == [str(i) for i in range(7) for _ in range(2)], \
+        "한 분류의 두 행이 같은 값으로 묶이지 않았다"
+
+
+def test_paging_does_not_drop_rows_server_side(client, monkeypatch):
+    """쪽 나눔은 화면에서만 한다 — 서버가 행을 잘라 보내면 안 된다.
+
+    조작부를 만드는 것은 스크립트라, 스크립트가 없는 환경에서는 전부 보이는
+    예전 동작 그대로여야 한다.
+    """
+    monkeypatch.setattr(app_module.catalog, "latest_outputs",
+                        lambda *a, **k: _fake_groups(13))
+
+    html = client.get("/").text
+
+    assert len(re.findall(r'<tr data-page-item="\d+">', html)) == 26
+    assert "분류 12" in html, "마지막 쪽에 갈 분류가 응답에서 빠졌다"
+    assert 'class="pager"' not in html, \
+        "조작부는 스크립트가 만든다 — 서버가 그려 보내면 안 된다"
+    assert "hidden" not in re.findall(r'<tr data-page-item="\d+"[^>]*>', html)[-1], \
+        "서버가 미리 숨기면 스크립트 없는 환경에서 내용이 사라진다"

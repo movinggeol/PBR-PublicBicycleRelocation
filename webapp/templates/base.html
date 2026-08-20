@@ -562,6 +562,32 @@
     }
     .filterbar .label { font-size: var(--fs-fine); color: var(--ink-4); font-weight: 600; }
 
+    /* ── 쪽 넘기기 ──
+       목록이 세로로 길어질 때 쓴다. 조작부는 스크립트가 만들므로, 스크립트가
+       없으면 전부 보이는 예전 동작 그대로다(내용이 사라지지 않는다). */
+    [data-page-item][hidden] { display: none; }
+    .pager {
+      display: flex; align-items: center; justify-content: center;
+      gap: var(--sp-sm); padding: 10px var(--sp-lg);
+    }
+    /* 표와 조작부를 가르는 선은 '마지막 행의 밑줄' 하나로 낸다.
+       쪽마다 보이는 마지막 행이 달라지므로 tbody tr:last-child의 '밑줄 없음'을
+       되돌려 놓지 않으면, 마지막 쪽에서만 선이 사라진다.
+       .paged는 조작부가 실제로 붙었을 때만 스크립트가 단다 — 한 쪽이면
+       선이 뜬금없이 남는다. */
+    .paged tbody tr:last-child td { border-bottom: 1px solid var(--divider-soft); }
+    .pager button.chip { font-family: inherit; line-height: 1.2; cursor: pointer; }
+    /* 끝 쪽에서는 누를 수 없다. 색만으로 말하지 않도록 disabled 속성을 함께 건다
+       — 보조기기가 읽어 주고 키보드 초점도 건너뛴다. */
+    .pager button.chip:disabled {
+      opacity: .35; cursor: default;
+      background: var(--surface); color: var(--ink-4);
+    }
+    .pager-status {
+      font-size: var(--fs-fine); color: var(--ink-4);
+      font-variant-numeric: tabular-nums; min-width: 5.5rem; text-align: center;
+    }
+
     /* 지도는 이 앱의 '제품 사진'이다 — 시스템에 단 하나뿐인 그림자를 여기에 쓴다 */
     iframe.map-frame {
       width: 100%; height: 76vh; border: 0;
@@ -709,6 +735,58 @@
     document.addEventListener("focusout", hide);
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") hide(); });
     window.addEventListener("scroll", hide, true);
+  })();
+
+  /* 쪽 넘기기.
+     [data-pager="N"] 안의 [data-page-item]을 N덩어리씩 끊어 보여준다.
+     **값이 같은 요소는 한 덩어리로 움직인다** — 표에서 분류 이름이 그 분류의
+     첫 행에만 붙으므로, 덩어리를 쪼개면 이름 없는 행으로 시작하는 쪽이 생긴다.
+     조작부는 여기서 만든다: 스크립트가 없으면 전부 보이는 예전 동작 그대로다. */
+  (function () {
+    document.querySelectorAll("[data-pager]").forEach(function (box) {
+      var size = parseInt(box.dataset.pager, 10) || 10;
+      var items = Array.prototype.slice.call(box.querySelectorAll("[data-page-item]"));
+      var keys = [];
+      items.forEach(function (el) {
+        if (keys.indexOf(el.dataset.pageItem) < 0) keys.push(el.dataset.pageItem);
+      });
+      var pages = Math.ceil(keys.length / size);
+      if (pages < 2) return;          /* 한 쪽에 다 들어가면 조작부를 만들지 않는다 */
+
+      var nav = document.createElement("nav");
+      nav.className = "pager";
+      nav.setAttribute("aria-label", box.dataset.pagerLabel || "쪽 넘기기");
+      nav.innerHTML =
+        '<button type="button" class="chip" data-page-prev>‹ 이전</button>' +
+        '<span class="pager-status" aria-live="polite"></span>' +
+        '<button type="button" class="chip" data-page-next>다음 ›</button>';
+      box.appendChild(nav);
+      box.classList.add("paged");
+
+      var prev = nav.querySelector("[data-page-prev]");
+      var next = nav.querySelector("[data-page-next]");
+      var status = nav.querySelector(".pager-status");
+      var page = 0;
+
+      function render() {
+        var shown = keys.slice(page * size, page * size + size);
+        items.forEach(function (el) {
+          el.hidden = shown.indexOf(el.dataset.pageItem) < 0;
+        });
+        status.textContent = (page + 1) + " / " + pages + "쪽";
+        prev.disabled = page === 0;
+        next.disabled = page === pages - 1;
+      }
+
+      function go(step) {
+        page = Math.min(pages - 1, Math.max(0, page + step));
+        render();
+      }
+
+      prev.addEventListener("click", function () { go(-1); });
+      next.addEventListener("click", function () { go(1); });
+      render();
+    });
   })();
 </script>
 </body>

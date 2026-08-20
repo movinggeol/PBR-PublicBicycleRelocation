@@ -109,7 +109,10 @@
     {% endif %}
   </div>
 
-  <div class="card flush">
+  {# 분류가 13개라 다 펼치면 옆의 실행 폼보다 훨씬 길어진다 — 5분류씩 끊어 보여준다.
+     한 분류의 행들은 같은 data-page-item 값으로 묶여 함께 움직인다(분류 이름이
+     첫 행에만 붙기 때문). 조작부는 base.html의 스크립트가 만든다. #}
+  <div class="card flush" data-pager="5" data-pager-label="최신 산출물 쪽 넘기기">
     <div class="card-head">
       <h2>최신 산출물</h2>
       <span class="hint">가장 최근에 만들어진 파일</span>
@@ -120,8 +123,9 @@
         <thead><tr><th>분류</th><th class="grow">파일</th><th>수정 시각</th></tr></thead>
         <tbody>
         {% for group in latest %}
+          {% set gi = loop.index0 %}
           {% for e in group.entries %}
-          <tr>
+          <tr data-page-item="{{ gi }}">
             <td class="muted">{{ group.title if loop.first else "" }}</td>
             <td class="wrap">
               {% if e.name.endswith(".html") %}
