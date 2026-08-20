@@ -22,12 +22,13 @@
 
 | 우선순위 | 문제 |
 | --- | --- |
-| 🟢 | 시각화 코드가 `test/test.py`(matplotlib 월별 그래프, 더미 데이터)에 분리되어 있음 — EDA.py로 통합 |
+| 🟢 | 시각화 코드가 `experiments/matplotlib_month_graph.py`(matplotlib 월별 그래프, 더미 데이터)에 분리되어 있음 — EDA.py로 통합 |
 
 ## 작업 목록
 
 - [x] ~~`pd.DateFrame` → `pd.DataFrame` 오타 수정~~ (1.0.3)
 - [x] ~~`month_graph(df)` 호출 인자 수정~~ (1.0.3)
 - [x] ~~`concat_file`/`preprocessing` 실행을 CLI 인자(`--concat`/`--preprocess`)로 선택~~ (1.0.3)
-- [ ] `month_graph`에 matplotlib 시각화 통합 (한글 폰트 설정 포함, test/test.py 참고)
+- [ ] `month_graph`에 matplotlib 시각화 통합 (한글 폰트 설정 포함,
+  [experiments/matplotlib_month_graph.py](../../experiments/matplotlib_month_graph.py) 참고)
 - [ ] 이상치 제거 기준(IQR×1.5)을 README 또는 본 문서의 데이터 품질 섹션에 명시

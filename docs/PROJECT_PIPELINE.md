@@ -45,8 +45,16 @@ flowchart TD
 ├── step2 (ilp, vrp)/
 ├── step3 (결과 시각화)/
 ├── step4 (성과 지표)/
+├── webapp/                               # 웹 대시보드 (FastAPI + Jinja2)
+├── tests/                                # pytest 200개
+├── tools/                                # 합성 데이터·적재·백테스트 보조 도구
+├── experiments/                          # 파라미터 실험·구조 결정용 측정
 └── docs/
 ~~~
+
+지도 HTML은 각 산출 폴더 아래 `visualization/`에 저장됩니다
+(`ILP/visualization`, `VRP/visualization`, `성능 지표/visualization`).
+폴더는 `project_config.ensure_output_dirs()`가 만들어 두므로 손으로 만들 필요가 없습니다.
 
 data는 대용량 원천·중간·결과 파일을 보관하는 영역이며, 코드에서 경로를 직접 참조합니다. 폴더명과 파일명의 날짜·시간도 코드의 now, period, duration 값과 일치해야 합니다.
 
@@ -98,12 +106,24 @@ raw_to_net.py는 시간대와 대여소별 대여·반납량을 집계합니다.
 
 ### 4.4 목표 재고와 재배치량
 
-calculate_target_qty.py는 재고와 순수요 통계를 이용해 대여소별 목표 재고를 계산합니다. 코드에 사용된 수요 추정의 기본 형태는 다음과 같습니다.
+calculate_target_qty.py는 재고와 순수요 통계를 이용해 대여소별 목표 재고를 계산합니다.
 
 ~~~text
-Pick 기준 = Stock - 평균 수요
-Drop 기준 = 평균 수요 + 1.65 × 수요 표준편차
+mu ≥ 0 : target_qty = mu + z × sigma        (z = TARGET_Z, 기본 1.99)
+mu < 0 : target_qty = stock + mu
+         이후 [0, parking_lot × 1.5]로 자름
+rebal_qty = target_qty − stock              (tanh로 완화 후 정수화)
 ~~~
+
+- **`z = 1.99`는 실측값입니다.** 관행값 1.65는 "정규분포 95%"라는 이유로 쓰였지만
+  12개월 백테스트에서 실제 커버리지가 91.7~92.8%에 그쳤습니다. 근거·재현은
+  [EXPERIMENTS.md](EXPERIMENTS.md) 1장, `PBR_TARGET_Z`로 바꿉니다.
+- **평일과 휴일 중 한쪽만 골라 계산합니다**(`--day-type`, 기본 auto).
+  휴일 = 주말 ∪ 공휴일이며, 섞으면 부호가 반대인 대여소끼리 상쇄됩니다.
+- **계절 수준 보정(warmup)이 기본으로 켜져 있습니다.** 계획 대상 달의 첫 14일
+  실적으로 **도시 전체 배율 하나**를 구해 `mu`·`sigma`에 곱합니다
+  (`--warmup-period` / `--warmup-days 0`으로 끔). 배율을 대여소별로 추정하지
+  않는 이유는 며칠치로 나누면 잡음만 커지기 때문입니다.
 
 출력은 data/pp_data/재배치 정보/rebal_qty{duration} ({now}).csv입니다. 양수는 공급이 필요한 Drop, 음수는 회수 가능한 Pick 후보로 사용됩니다.
 
@@ -208,7 +228,16 @@ imbalance.py는 목표 재고 대비 재배치 전후의 불균형을 비교합�
 
 ## 10. 전체 실행 순서
 
-모든 명령은 프로젝트 루트에서 실행합니다.
+일괄 실행은 `run_pipeline.py`가 아래 순서를 그대로 돌립니다
+(옵션 전체는 [README](../README.md#실행) 참고).
+
+~~~powershell
+python run_pipeline.py --dry-run          # 실행 목록·파일 존재 확인
+python run_pipeline.py                    # 전체 실행
+~~~
+
+단계별로 따로 돌릴 때는 프로젝트 루트에서 실행합니다.
+각 스크립트도 같은 공통 옵션(`--now` 등)을 그대로 받습니다.
 
 ~~~powershell
 python "step0(전처리 및 EDA)/concat_1year_file.py"   # 월별 파일을 합칠 때만
@@ -247,6 +276,8 @@ python "step4 (성과 지표)/imbalance.py"
 - ~~step0 스크립트 간 import 부작용 체인 제거~~ → 완료. 각 스크립트가 독립 실행되며
   순서는 run_pipeline.py가 제어 (버전 1.0.3)
 - CSV 파일 간 암묵적 스키마를 검증하는 코드 추가
-- 데이터 규모가 커질 경우 SQLite 등으로 중간 데이터 관리 (메모.txt에 테이블 설계 초안 있음)
+- ~~데이터 규모가 커질 경우 SQLite 등으로 중간 데이터 관리~~ → 완료. `db.py`가
+  CSV와 **이중 기록**하며, 웹 산출물 API는 DB를 읽는다
+  ([DB_SCHEMA.md](DB_SCHEMA.md) · [DB_PLAN.md](DB_PLAN.md) 1~4단계)
 - 현재 휴리스틱 VRP를 차량·시간창·실제 도로 거리 제약을 포함한 전용 solver로 확장
 

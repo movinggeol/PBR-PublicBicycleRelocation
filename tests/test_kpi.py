@@ -220,3 +220,24 @@ def test_kpi_page_without_data(tmp_path, monkeypatch):
         res = c.get("/kpi")
     assert res.status_code == 200
     assert "기록된 지표가 없습니다" in res.text
+
+
+def test_kpi_page_survives_null_metrics(tmp_path, monkeypatch):
+    """계산 못 한 지표(NULL)가 섞여도 화면이 뜬다.
+
+    `save_kpi`는 빠진 지표를 NULL로 남기는 것이 규약인데(위
+    test_partial_metrics_leave_nulls), /kpi가 그 값을 그대로 round에 넣어
+    화면 전체가 500으로 죽었다 — 표에는 '—'로 나와야 한다.
+    """
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "null.db"))
+
+    with db.session() as conn:
+        db.record_run(conn, NEW, period="25년 11월", duration="_10_15")
+        db.save_kpi(conn, NEW, "_10_15", {"avg_improvement_rate": 0.5})
+
+    with TestClient(app) as c:
+        res = c.get("/kpi")
+
+    assert res.status_code == 200
+    assert "—" in res.text
+    assert ">None<" not in res.text, "결측이 'None'으로 새어 나왔다"

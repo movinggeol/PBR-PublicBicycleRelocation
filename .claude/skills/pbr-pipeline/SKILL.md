@@ -15,11 +15,12 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/RETROSPECTIVE.md` | 전체 조망·측정이 뒤집은 가설·설계 결정 (처음 오면 여기부터) |
 | `docs/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/TESTING.md` | 테스트 184개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/TESTING.md` | 테스트 200개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/PROJECT_PIPELINE.md` | 파이프라인 전체 구조 |
 | `docs/steps/step*.md` | 단계별 입출력·문제점·작업 목록 |
 | `docs/WEBAPP.md` | 웹 대시보드(webapp/) 실행·구조·API |
+| `docs/DESIGN.md` | 화면 디자인 시스템 — 색 토큰·글꼴·내비·타일 (**템플릿을 건드리기 전 필독**) |
 | `docs/DB_SCHEMA.md` | ERD·테이블 15개 컬럼·스코프 규칙 (**DB를 건드리기 전 필독**) |
 | `docs/DB_PLAN.md` | SQLite 도입 결정·이관 단계·성능 측정 (CSV→DB 작업 시 필독) |
 | `docs/KPI.md` | 성과 지표 체계 설계 (지표를 건드리기 전 필독) |
@@ -121,6 +122,14 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
   반드시 jobs.start_job() 경유.
 - `/api/runs/{id}`는 **웹 작업 상태**, `/api/pipeline-runs`는 **DB 실행 이력**이다.
   이름이 비슷하니 헷갈리지 마라.
+- **화면에 설정값을 하드코딩하지 마라.** 차량 대수·적재 용량·속도·시간 예산은
+  실행마다 바뀐다. 라우트에서 `project_config` 값을 넘겨 쓰고, 넘길 수 없는 자리
+  (예: base.html의 내비 풍선)라면 숫자를 아예 빼라. `tests/test_guide.py`가 지킨다.
+- **폼·안내의 입력 예시는 실제로 통하는 값이어야 한다.** 시간대는 맨 앞 밑줄까지가
+  값이고(`_10_15`), 기간은 `25년 11월` 표기다. 예시를 잘못 적으면 그대로 입력한
+  사용자가 step4 `duration_hours()`에서 크래시를 본다(1.17.3에서 실제로 있었다).
+- **DB에 NULL로 남는 지표가 있다**(`db.KPI_FIELDS`, 계산 못 하면 빠진다).
+  템플릿에서 `round`·`int`에 바로 넣지 마라 — 화면 전체가 500이 된다.
 
 ## 코드 규약
 
@@ -202,7 +211,7 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
 ## 테스트
 
 ```powershell
-python -m pytest                 # 184개, 약 50초 (tests/ 만 수집)
+python -m pytest                 # 200개, 약 60초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

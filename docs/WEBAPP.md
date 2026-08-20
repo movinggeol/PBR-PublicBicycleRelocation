@@ -93,8 +93,9 @@ webapp/
 ├── jobs.py       # run_pipeline.py를 subprocess로 실행, 상태·로그 추적
 ├── store.py      # 산출물 조회 계층 — DB 우선, 없으면 CSV 폴백
 ├── catalog.py    # data/pp_data 파일 스캔(지도·CSV 목록), 안전한 경로 해석
-├── __main__.py   # python -m webapp 진입점
-└── templates/    # base, index, run_detail, maps, view, data, preview
+├── __main__.py   # python -m webapp 진입점 (의존성 확인 후 uvicorn 기동)
+└── templates/    # base(레이아웃·디자인 시스템) + index, guide, run_detail,
+                 #   kpi, vehicles, maps, view, data, preview
 ```
 
 `store.py`는 **데이터**(지표·계획)를, `catalog.py`는 **파일**(지도 HTML·CSV 다운로드)을
@@ -178,6 +179,10 @@ Apple 디자인 언어를 기준으로 다시 만들었습니다. **규칙 전�
   로그가 깨지는 것을 방지합니다.
 - **파일 서빙 제한**: `/files/`, `/view/`, `/preview/`는 `data/` 아래의
   `.html`/`.csv`만 허용합니다 (경로 탈출 검증 포함).
+- **실행 폼이 다루지 않는 설정**: 계절 보정(`--warmup-period` / `--warmup-days`)과
+  계획 대상일(`--target-date`)은 폼에 없습니다. 기본값(대상 달 첫 14일, 오늘)이
+  운영에서 쓰는 값이고, 바꿔야 할 때는 CLI나 `PBR_WARMUP_*` 환경변수를 씁니다.
+  칸을 늘리는 대신 기본값을 옳게 두는 쪽을 골랐습니다.
 - **EDA 기본 생략**: 실행 폼에서 "EDA 생략"이 기본 체크되어 있습니다
   (1년치 병합 파일이 없는 환경에서도 매끄럽게 돌도록).
 - **차량 대수는 폼에서 조정**(보유 21대 / 회차당 10대, 각 1~99):
@@ -214,5 +219,6 @@ Apple 디자인 언어를 기준으로 다시 만들었습니다. **규칙 전�
 - [x] ~~작업 ID 충돌·이력 무한 누적·409 UX·미리보기 전체 로드~~ (1.2.2)
 - [ ] 실데이터로 파이프라인 전체 실행 검증 (API 키·원천 CSV 필요)
 - [ ] 로그 스트리밍(SSE)으로 meta-refresh 대체
-- [ ] CSV → SQLite 이관 후 대여소·지표 조회 API를 DB 기반으로 전환
+- [x] ~~CSV → SQLite 이관 후 대여소·지표 조회 API를 DB 기반으로 전환~~ (1.6.0,
+      `store.load()`. CSV 폴백은 전환기 장치로 남아 있음 — DB_PLAN 5단계에서 제거)
 - [ ] 필요해지면 프론트만 React + Leaflet로 교체 (JSON API는 그대로 사용)

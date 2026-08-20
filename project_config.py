@@ -128,7 +128,9 @@ DEFAULT_RAW_FILE = os.getenv(
 )
 
 # 날씨 원천(기상자료개방포털 ASOS 시간자료, 대전 지점 133).
-# 없으면 날씨 없이 돈다 — 있으면 좋고 없어도 도는 입력이다.
+# ⚠️ **아직 어떤 단계도 이 값을 읽지 않는다** — 수요 예측에 날씨를 붙일 때 쓰려고
+# 경로 규약만 먼저 잡아 둔 것이다(docs/TODO.md 17번). 붙이는 값어치가 있다는
+# 근거는 experiments/net_vs_volume.py(이용량 ↔ 필요량 R² 0.88~0.96).
 DEFAULT_WEATHER_FILE = os.getenv(
     "PBR_WEATHER_FILE",
     "data/raw_data/날씨/대전_ASOS_시간자료.csv",

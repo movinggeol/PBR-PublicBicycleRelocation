@@ -64,10 +64,11 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 ├── tests/                                 # 스모크 테스트 (pytest)
 ├── tools/                                 # 합성 데이터 생성기 등 보조 도구
 ├── experiments/                           # 일회성 학습·검증 스크립트
-├── project_config.py                      # 공통 설정(now/period/duration/raw_file)
+├── project_config.py                      # 공통 설정(now/period/duration/day_type/…)·운영 상수
+├── demand_model.py                        # 수요 피처·계절 보정(warmup)·모델 하네스
 ├── db.py                                  # SQLite 저장소 (CSV와 이중 기록, DB_SCHEMA.md)
 ├── run_pipeline.py                        # 전체 단계 일괄 실행기
-└── requirements.txt                       # 고정된 패키지 버전
+└── requirements.txt                       # 런타임 의존성 (하한 `>=` 고정)
 ```
 
 ## 단계별 파일
@@ -127,8 +128,9 @@ API_KEY=발급받은_TMAP_API_키
 ## 실행
 
 모든 단계가 [project_config.py](project_config.py)의 공통 설정(`now`, `period`, `duration`,
-`raw_file`)을 공유합니다. 값은 CLI 인자(`--now` 등) → 환경변수(`PBR_NOW` 등) → 기본값 순으로
-결정되며, 파이프라인 산출물 파일명은 모두 이 라벨로 만들어집니다.
+`raw_file`, `day_type`, `target_date`, `warmup_*`)을 공유합니다. 값은 CLI 인자(`--now` 등) →
+환경변수(`PBR_NOW` 등) → 기본값 순으로 결정되며, 파이프라인 산출물 파일명은 모두 이
+라벨로 만들어집니다.
 
 전체 일괄 실행(각 단계를 순서대로 subprocess 호출):
 
@@ -139,6 +141,36 @@ python run_pipeline.py --skip-api --skip-eda   # 수집·EDA 생략
 python run_pipeline.py --now "2026-05-21 18" --period "25년 11월" --duration "_05_10"
 python run_pipeline.py --duration "_05_10,_10_15"   # 여러 시간대 일괄 처리
 ```
+
+`run_pipeline.py`의 옵션은 전부 하위 단계로 그대로 전달됩니다(차량 대수만 예외 —
+`project_config`가 import 시점 상수로 읽으므로 환경변수로 내려보냅니다).
+
+| 옵션 | 뜻 | 기본값 |
+| --- | --- | --- |
+| `--now` | 실행을 묶는 라벨. 산출물 파일명과 DB `run_label`이 됩니다 | `2026-05-21 18` |
+| `--period` | 순수요를 뽑을 기간 | `25년 11월` |
+| `--duration` | 시간대. 콤마로 여러 개 | `_05_10` |
+| `--raw-file` | 원천 대여이력 CSV(루트 기준 상대 경로) | `data/raw_data/…(25년11월).csv` |
+| `--day-type` | `weekday` \| `holiday` \| `auto`. **휴일 = 주말 ∪ 공휴일** | `auto` |
+| `--target-date` | 계획 대상일(YYYY-MM-DD). `auto` 판정의 기준 | 오늘 |
+| `--warmup-period` | 계절 보정에 쓸 기간 | 계획 대상일의 달 |
+| `--warmup-days` | 보정에 쓸 일수. `0`이면 끔 | `14` |
+| `--fleet-size` | 보유 차량 대수 (1~99) | `21` |
+| `--vehicles-per-round` | 회차당 투입 상한. 보유 대수로 잘립니다 | `10` |
+| `--skip-api` / `--skip-eda` | 수집·EDA 생략 | 꺼짐 |
+| `--continue-on-error` | 한 단계가 실패해도 계속 | 꺼짐 |
+
+```powershell
+python run_pipeline.py --day-type holiday --now "260813 휴일"   # 휴일 계획
+python run_pipeline.py --target-date 2026-09-25                # 그날로 자동 판정
+python run_pipeline.py --fleet-size 15 --vehicles-per-round 6  # 차량이 모자란 날
+python run_pipeline.py --warmup-period "26년 03월"             # 계절 보정 기간 지정
+python run_pipeline.py --warmup-days 0                         # 계절 보정 끄기
+```
+
+**평일과 휴일은 한 실행에 섞지 마세요.** 시간대별로 대여소의 33~37%가 두 구분에서
+부호가 반대(평일엔 채울 곳이 휴일엔 빼 올 곳)라 평균을 내면 상쇄돼 작업 대상에서
+빠집니다 ([docs/steps/step0_raw.md](docs/steps/step0_raw.md)).
 
 단계별 개별 실행:
 
@@ -164,13 +196,17 @@ python "step4 (성과 지표)/imbalance.py"
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest                 # 34개 (웹 라우트 17 + 파이프라인 E2E 17), 약 20초
+python -m pytest                 # 200개, 약 60~80초 (tests/ 만 수집)
 ```
 
-- `tests/test_webapp.py` — 라우트·경로 탈출 차단·템플릿 렌더링 회귀 감지
-- `tests/test_pipeline.py` — 합성 데이터로 step0→step1→step2→step4 실행 후
-  산출물 존재·스키마·ILP 공급 제약·개선량을 검증. 실행마다 고유 라벨을 써서
-  실데이터를 건드리지 않고, 끝나면 그 라벨 파일만 정리합니다.
+- `tests/test_pipeline.py` (32) — 합성 데이터로 step0→step1→step2→step4를
+  **subprocess로 실제 실행**한 뒤 산출물 존재·스키마·ILP 공급 제약·개선량을 검증.
+  실행마다 고유 라벨(`smoketest-{PID}`)을 써서 실데이터를 건드리지 않고,
+  끝나면 그 라벨 파일만 정리합니다.
+- `tests/test_webapp.py` (31) — 라우트·경로 탈출 차단·실행 폼 입력 검증
+- `tests/test_day_type.py` (34) — 평일/휴일 분리·공휴일 판정·계절 보정
+- 나머지 파일과 각 테스트가 무엇을 지키는지는 [docs/TESTING.md](docs/TESTING.md)에
+  정리돼 있습니다.
 
 데모용 데이터만 만들고 싶다면:
 
@@ -187,6 +223,8 @@ python -m webapp        # http://127.0.0.1:8000
 ```
 
 - `/` 실행 폼·DB 실행 이력·작업 이력·최신 산출물
+- `/guide` 사용 안내 — 시작 순서·입력 항목·지표 읽는 법·문제 해결·용어
+- `/runs/{id}` 실행 상태·진행 단계·로그 (실행 중단 포함)
 - `/kpi` 실행별 성과 지표와 직전 실행 대비 증감
 - `/vehicles` 차량별 누적 작업량·회차 배정 이력 (로테이션 형평성)
 - `/maps` folium 지도 결과(HTML)를 브라우저에서 바로 열람
@@ -254,7 +292,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | --- | --- |
 | [docs/RETROSPECTIVE.md](docs/RETROSPECTIVE.md) | **작업 회고** — 전체 조망, 측정이 뒤집은 가설, 설계 결정 |
 | [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
-| [docs/TESTING.md](docs/TESTING.md) | **테스트** — 184개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
+| [docs/TESTING.md](docs/TESTING.md) | **테스트** — 200개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/PROJECT_PIPELINE.md](docs/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/WEBAPP.md](docs/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/DESIGN.md](docs/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |

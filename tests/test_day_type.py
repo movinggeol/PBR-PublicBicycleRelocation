@@ -375,3 +375,25 @@ def test_backtest_and_pipeline_share_one_ratio_entry_point():
     assert "season_ratio" in inspect.getsource(backtest.evaluate), \
         "백테스트가 season_ratio를 우회하면 파이프라인과 다른 배율을 쓰게 된다"
     assert demand_model.WARMUP_MIN_DEMAND > 0
+
+
+def test_run_pipeline_forwards_warmup_options():
+    """계절 보정 옵션이 run_pipeline에서 하위 단계까지 내려가야 한다.
+
+    문서에는 `--warmup-period` / `--warmup-days`가 있는데 run_pipeline이 인자를
+    선언하지 않아 '알 수 없는 인자'로 거절하던 적이 있다(1.17.3에서 수정).
+    """
+    import run_pipeline
+
+    argv = sys.argv
+    try:
+        sys.argv = ["run_pipeline.py", "--warmup-period", "26년 03월", "--warmup-days", "0"]
+        args = run_pipeline.parse_args()
+    finally:
+        sys.argv = argv
+
+    command = run_pipeline.build_command(Path("step0/calculate_target_qty.py"), args)
+
+    assert "--warmup-period" in command and "26년 03월" in command
+    # 0은 '보정을 끈다'는 뜻이라 값으로 참·거짓을 판정하면 조용히 사라진다.
+    assert command[command.index("--warmup-days") + 1] == "0"

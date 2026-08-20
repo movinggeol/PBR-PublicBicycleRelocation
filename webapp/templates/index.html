@@ -40,7 +40,7 @@
 
         <div class="field">
           <label for="f-period">
-            <span class="tip" data-tip="과거 수요를 어느 기간에서 뽑을지입니다. 예: _2510 은 2025년 10월 대여 이력을 씁니다.">순수요 기간</span>
+            <span class="tip" data-tip="과거 수요를 어느 기간에서 뽑을지입니다. 25년 11월처럼 적습니다 — 순수요 파일 이름에 들어가는 표기 그대로입니다.">순수요 기간</span>
           </label>
           <input id="f-period" type="text" name="period" value="{{ defaults.period }}">
           <span class="hint">이 기간의 대여 이력에서 수요를 추정합니다.</span>
@@ -48,7 +48,7 @@
 
         <div class="field">
           <label for="f-duration">
-            <span class="tip" data-tip="하루 중 어느 시간대를 계획할지입니다. 예: 10_15 는 10시~15시. 시간대마다 수요 방향이 달라 따로 계산합니다.">시간대</span>
+            <span class="tip" data-tip="하루 중 어느 시간대를 계획할지입니다. 예: _10_15 는 10시~15시. 맨 앞 밑줄까지 그대로 적어야 합니다. 시간대마다 수요 방향이 달라 따로 계산합니다.">시간대</span>
           </label>
           <input id="f-duration" type="text" name="duration" value="{{ defaults.duration }}">
           <span class="hint">콤마로 여러 개를 넣으면 차례로 계획합니다.</span>

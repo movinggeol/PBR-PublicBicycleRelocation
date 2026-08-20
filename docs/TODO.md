@@ -1,7 +1,8 @@
 # TODO — 해야 할 것 / 고쳐야 할 것
 
-> 2026-08-07 기준. 전체 코드(step0~step4, test, run_pipeline.py, project_config.py)와
-> 문서(README.md, docs/)를 전수 검토한 결과입니다.
+> 2026-08-07 최초 작성, **2026-08-20(1.17.3) 재점검**. 전체 코드(step0~step4,
+> run_pipeline.py, project_config.py, db.py, webapp/, tests/)와 문서(README.md, docs/)를
+> 전수 검토한 결과입니다.
 > 우선순위: 🔴 파이프라인이 깨지는 문제 / 🟡 결과가 틀리거나 문서와 다른 문제 / 🟢 품질·유지보수 개선
 >
 > **2026-08-07 업데이트(버전 1.0.3)**: 🔴 P1 전체와 🟡 P2 대부분이 수정 완료되었습니다.
@@ -106,6 +107,48 @@
       다뤄야 하고, `z`도 다시 잡아야 한다.
     - 순수요가 정수라 중앙값이 0으로 몰려 작업 대상 선정이 크게 흔들릴 수 있다.
     - 이득(MAE 3~5%)에 비해 파급이 크므로 우선순위는 낮다.
+
+17. 🟢 **날씨를 수요 예측에 붙일지** — `project_config.DEFAULT_WEATHER_FILE`과
+    `PBR_WEATHER_FILE`은 **경로 규약만 잡아 둔 상태이고 아직 어떤 단계도 읽지 않는다.**
+    붙일 값어치가 있다는 근거는 이미 있다(`experiments/net_vs_volume.py`:
+    이용량 ↔ 필요량 R² 0.88~0.96). 원천은 기상자료개방포털 ASOS 시간자료(대전 133)로
+    정해 뒀고 받는 방법은 `data/raw_data/날씨/README.txt`에 있다.
+    - 붙일 자리는 `demand_model.build_features()` 하나다 — 학습과 예측이 반드시 같은
+      함수를 거쳐야 한다.
+    - 채택 판정은 `experiments/quantile_model_eval.py`의 기준을 그대로 쓴다
+      (작업 대상만·평일/휴일 따로·표본 밖·베이스라인 초과).
+    - 자료를 받기 전에는 `DEFAULT_WEATHER_FILE`을 **읽는 코드를 만들지 마라** —
+      없는 입력을 전제한 분기가 늘어난다.
+
+---
+
+## ✅ 완료 (2026-08-20, 버전 1.17.3) — 코드·웹·문서 정합성 점검
+
+전체 코드와 웹 화면, 문서를 맞대어 본 라운드입니다. **셋 다 테스트가 없던 자리에서
+나왔습니다.**
+
+| 문제 | 어떻게 드러났나 | 조치 |
+| --- | --- | --- |
+| `run_pipeline.py`가 `--warmup-period` / `--warmup-days`를 **거절**했다 | 문서에 적힌 명령을 그대로 실행 | 인자 선언 + 하위 단계 전달. `--warmup-days 0`은 값 판정에서 사라지므로 `is not None`으로 거른다 |
+| `/kpi`가 결측 지표에서 **500** | `save_kpi`에 일부 지표만 넘겨 재현 | 템플릿의 정수 표기를 결측 안전하게(`whole` 매크로) |
+| 폼·안내의 시간대 예시가 `10_15` | 예시대로 입력하면 step4 `duration_hours()`가 IndexError | 실제 형식(`_10_15`)으로 정정, 기간 예시도 `25년 11월`로 |
+| base.html 내비 풍선에 "차량 21대" 하드코딩 | 대수를 바꿔도 안 따라옴 | 숫자를 뺐다(내비에는 설정값을 넘길 수 없다) |
+| `PBR_VEHICLE_SPEED_KMPH`가 `.env.example`에 없음 | 코드의 `PBR_*` 목록과 대조 | 추가 |
+| `PBR_WEATHER_FILE`을 **아무도 읽지 않는데** 동작하는 것처럼 설명 | 사용처 검색 | 미사용임을 코드·`.env.example`에 명시하고 위 17번으로 남김 |
+
+문서 최신화: 테스트 수(184 → 200), `PROJECT_PIPELINE.md`의 목표 재고 공식(`z` 1.65 →
+1.99 + 계절 보정·요일 구분), `RETROSPECTIVE.md` 통계와 ⑦장, `README`의 실행 옵션 표와
+`/guide` 라우트, `WEBAPP.md` 템플릿 목록, `step0_eda.md`의 없어진 경로(`test/test.py`).
+
+재발 방지 테스트 4개를 함께 넣었습니다 — 옵션 전달, 결측 지표 렌더링,
+입력 예시 형식 2개.
+
+**고치지 않고 남긴 것** — `st_visualization.py`의 `cluster_center_file`
+(`top_center*.csv`)은 **아무 것도 쓰지 않는 죽은 선언**입니다. 군집 중심 마커를
+그리던 코드가 `'''…'''`로 주석 처리돼 있고 파일도 생성되지 않습니다.
+지금은 무해하지만, 되살릴 때는 `store.CSV_FALLBACK["pick_drop"]`의 글롭
+`top*.csv`가 **`top_center*.csv`까지 잡는다**는 점을 함께 봐야 합니다
+(mtime이 더 최신이라 `/api/stations`의 CSV 폴백이 엉뚱한 파일을 읽게 됩니다).
 
 ---
 

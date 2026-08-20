@@ -877,3 +877,28 @@ PBR (Public_Bicycle_Relocation)
 			쓰면 첫 열이 남는 폭을 다 먹어 설명이 서너 줄로 쪼개진다. word-break도
 			keep-all이라야 한국어가 낱말 단위로 끊긴다(break-all은 '이 름.'처럼 쪼갠다).
 		- 문서: WEBAPP.md에 안내 절과 라우트 추가. 테스트 196개 통과.
+
+1.17.3 : (2026-08-20) 코드·웹·문서 정합성 점검. 문서에만 있고 동작하지 않던 것들을 고쳤다.
+		- run_pipeline.py가 --warmup-period / --warmup-days를 '알 수 없는 인자'로 거절했다.
+			SKILL.md·TODO 14번에 적힌 명령이 그대로 실패했다. 인자를 선언하고 하위 단계로
+			전달한다. --warmup-days 0은 '보정을 끈다'는 뜻이라 값의 참·거짓으로 판정하면
+			조용히 사라진다 — is not None으로 거른다.
+		- /kpi가 결측 지표(NULL)에서 500이 났다. save_kpi는 계산 못 한 지표를 NULL로
+			남기는 게 규약인데(test_partial_metrics_leave_nulls), 템플릿이 그 값을 그대로
+			round에 넣었다. whole() 매크로로 결측을 먼저 걸러 '—'로 표시한다.
+		- 실행 폼·안내·지표 표의 시간대 예시가 '10_15'였다. 맨 앞 밑줄까지가 값이라
+			그대로 입력하면 step4 duration_hours()가 IndexError로 죽는다. '_10_15'로 정정.
+			순수요 기간 예시도 실제 표기('25년 11월')로 바꿨다 — 예전 예시 '_2510'은
+			어떤 경로로도 통하지 않는 형식이었다.
+		- base.html 내비 풍선의 '차량 21대' 하드코딩 제거. 보유 대수는 실행마다 바뀌고
+			내비는 설정값을 넘겨받을 수 없는 자리라 숫자를 아예 뺐다.
+		- .env.example에 PBR_VEHICLE_SPEED_KMPH 추가(코드의 PBR_* 목록과 대조해 누락 확인).
+		- PBR_WEATHER_FILE / DEFAULT_WEATHER_FILE은 아무 단계도 읽지 않는데 동작하는 것처럼
+			적혀 있었다. 미사용임을 코드 주석과 .env.example에 밝히고 TODO 17번으로 남겼다.
+		- 문서: 테스트 수 184 -> 200(README·TESTING·RETROSPECTIVE·SKILL),
+			PROJECT_PIPELINE의 목표 재고 공식(z 1.65 -> 1.99, 계절 보정·요일 구분 추가)과
+			저장소 구조·완료 항목, RETROSPECTIVE 통계와 7장(1.13~1.17 요약),
+			README 실행 옵션 표·/guide 라우트, WEBAPP 템플릿 목록과 폼이 다루지 않는 설정,
+			step0_eda.md의 없어진 경로(test/test.py -> experiments/matplotlib_month_graph.py).
+		- 재발 방지 테스트 4개 추가(옵션 전달 1, 결측 지표 렌더링 1, 입력 예시 형식 2).
+			테스트 200개 통과.

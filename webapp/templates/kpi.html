@@ -8,6 +8,14 @@
   {%- endif -%}
 {%- endmacro %}
 
+{# 계산하지 못한 지표는 DB에 NULL로 남는다(db.KPI_FIELDS). 그대로 round에 넣으면
+   화면 전체가 500으로 죽으므로 정수 표기도 결측을 먼저 거른다. #}
+{% macro whole(value, unit) -%}
+  {%- if value is none -%}—
+  {%- else -%}{{ value | round(0) | int }}{{ unit }}
+  {%- endif -%}
+{%- endmacro %}
+
 {% block content %}
 <section class="hero">
   <h1>성과 지표</h1>
@@ -73,7 +81,7 @@
   <table>
     <thead><tr>
       <th>실행</th>
-      <th><span class="tip" data-tip="계획한 시간대입니다. 예: 10_15 는 10시~15시.">회차</span></th>
+      <th><span class="tip" data-tip="계획한 시간대입니다. 예: _10_15 는 10시~15시.">회차</span></th>
       <th class="num"><span class="tip" data-tip="이번 계획에서 손을 댄 대여소 수입니다.">대여소</span></th>
       <th class="num"><span class="tip" data-tip="대여소를 가까운 것끼리 묶은 덩어리 수입니다. 차량 한 대가 한 덩어리를 맡습니다.">군집</span></th>
       <th class="num"><span class="tip" data-tip="실제로 출동한 차량 수입니다.">차량</span></th>
@@ -91,16 +99,17 @@
     <tr>
       <td class="muted">{{ r.run_label }}</td>
       <td><b>{{ r.duration }}</b></td>
-      <td class="num muted">{{ r.stations }}</td>
-      <td class="num muted">{{ r.clusters }}</td>
-      <td class="num muted">{{ r.vehicles_used }}</td>
-      <td class="num">{{ r.bikes_moved }}</td>
+      <td class="num muted">{{ whole(r.stations, "") }}</td>
+      <td class="num muted">{{ whole(r.clusters, "") }}</td>
+      <td class="num muted">{{ whole(r.vehicles_used, "") }}</td>
+      <td class="num">{{ whole(r.bikes_moved, "") }}</td>
       <td class="num"><b>{{ fmt(r.avg_improvement_rate, "pct") }}</b></td>
       <td class="num">{{ fmt(r.target_met_ratio, "pct") }}</td>
-      <td class="num muted">{{ r.total_distance_km | round(0) | int }} km</td>
-      {% set over = r.time_budget_minutes and r.max_cluster_minutes > r.time_budget_minutes %}
+      <td class="num muted">{{ whole(r.total_distance_km, " km") }}</td>
+      {% set over = r.time_budget_minutes and r.max_cluster_minutes
+                    and r.max_cluster_minutes > r.time_budget_minutes %}
       <td class="num{% if over %} over-budget{% endif %}">
-        {{ r.max_cluster_minutes | round(0) | int }}분{% if over %} ⚠{% endif %}
+        {{ whole(r.max_cluster_minutes, "분") }}{% if over %} ⚠{% endif %}
       </td>
       <td class="num">{{ fmt(r.time_budget_met, "pct") }}</td>
       <td class="num">{{ fmt(r.improvement_per_km, "num") }}</td>

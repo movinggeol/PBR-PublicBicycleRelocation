@@ -1,8 +1,10 @@
 """step0~step4 전체 파이프라인 실행기.
 
 각 단계 파일을 프로젝트 루트에서 subprocess로 호출합니다.
-공통 설정(--now/--period/--duration/--raw-file)은 그대로 하위 스크립트에
-전달되며, 각 스크립트는 project_config를 통해 이를 읽습니다.
+공통 설정(--now/--period/--duration/--raw-file/--day-type/--target-date/
+--warmup-period/--warmup-days)은 그대로 하위 스크립트에 전달되며, 각 스크립트는
+project_config를 통해 이를 읽습니다. 차량 대수만 예외로 환경변수로 전달합니다
+(project_config가 import 시점의 상수로 읽기 때문 — build_env 참고).
 
 기본 실행:
     python run_pipeline.py
@@ -22,8 +24,8 @@ from typing import Iterable
 
 from project_config import (
     DAY_TYPE_AUTO, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_FLEET_SIZE,
-    DEFAULT_VEHICLES_PER_ROUND, ensure_output_dirs, get_runtime_config,
-    normalize_fleet_size, normalize_per_round,
+    DEFAULT_VEHICLES_PER_ROUND, DEFAULT_WARMUP_DAYS, ensure_output_dirs,
+    get_runtime_config, normalize_fleet_size, normalize_per_round,
 )
 
 
@@ -85,6 +87,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-date",
                         help="계획 대상일(YYYY-MM-DD, 기본 오늘). auto 판정의 기준")
 
+    # 계절 수준 보정(warmup). project_config가 정의한 인자를 그대로 받아 하위 단계에
+    # 넘긴다 — 여기서 받지 않으면 argparse가 '알 수 없는 인자'로 거절해 버린다.
+    parser.add_argument("--warmup-period",
+                        help="계절 보정에 쓸 기간(기본: 계획 대상일의 달)")
+    parser.add_argument("--warmup-days", type=int,
+                        help=f"보정에 쓸 일수 (기본 {DEFAULT_WARMUP_DAYS}, 0이면 끔)")
+
     # 차량 대수는 다른 공통 설정과 달리 CLI 인자가 아니라 환경변수로 하위 단계에
     # 전달한다 — project_config가 모듈 import 시점에 읽는 상수라서, 각 단계
     # 프로세스의 환경에 심어야 반영된다.
@@ -136,9 +145,14 @@ def build_command(script: Path, args: argparse.Namespace) -> list[str]:
         ("--raw-file", args.raw_file),
         ("--day-type", args.day_type),
         ("--target-date", args.target_date),
+        ("--warmup-period", args.warmup_period),
     ):
         if value:
             command.extend([option, value])
+
+    # --warmup-days는 0이 '보정을 끈다'는 뜻이라 값으로 판정하면 안 된다.
+    if args.warmup_days is not None:
+        command.extend(["--warmup-days", str(args.warmup_days)])
     return command
 
 

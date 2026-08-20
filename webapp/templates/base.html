@@ -638,7 +638,8 @@
     <a href="/kpi" {% if path.startswith('/kpi') %}aria-current="page"{% endif %}
        data-tip="계획 달성률·목표 도달·이동거리·결품 시간을 실행별로 비교합니다.">성과 지표</a>
     <a href="/vehicles" {% if path.startswith('/vehicles') %}aria-current="page"{% endif %}
-       data-tip="차량 21대에 일이 고르게 나뉘었는지, 시간 예산을 지켰는지 봅니다.">차량 운용</a>
+       {# 보유 대수는 실행마다 바뀐다 — 내비 풍선에 숫자를 박지 않는다. #}
+       data-tip="차량마다 일이 고르게 나뉘었는지, 시간 예산을 지켰는지 봅니다.">차량 운용</a>
     <a href="/maps" {% if path.startswith('/maps') or path.startswith('/view') %}aria-current="page"{% endif %}
        data-tip="군집·경로·재고 현황을 지도 위에서 확인합니다.">지도</a>
   </div>
