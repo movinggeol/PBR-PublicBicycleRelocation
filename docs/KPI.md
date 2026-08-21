@@ -63,7 +63,8 @@ DB에 `rental_history`가 들어왔으므로(DB_PLAN 4단계) **이제 계산할
 
 | 지표 | 정의 | 상태 |
 | --- | --- | --- |
-| **결품 시간** | 재고가 0인 시간 (재배치 전후 비교) | ✅ `stockout_hours_before/after` |
+| **결품 시간** | 재고가 0인 시간 (재배치 전후 비교) | ✅ `stockout_hours_before/after` — **VRP가 실제로 옮긴 양 기준**(1.18.4) |
+| 계획 기준 결품 | 계획량이 전부 집행됐다고 본 값 | ✅ `stockout_hours_plan` — 집행 값과의 차이가 **계획과 집행의 격차** |
 | 포화 시간 비율 | 재고 = 거치대 수인 시간 비율 | 🔴 반납 실패 측정 |
 | 수요 충족률 | 실제 대여 성사 건수 / 잠재 수요 | 🔴 기회손실 규모 |
 | 재배치 대여소 적중률 | 재배치한 대여소에서 실제 대여가 늘었나 | 🔴 대상 선정 검증 |
@@ -241,7 +242,8 @@ CREATE TABLE kpi_summary (
     unhandled_qty        INTEGER,
     -- B. 실측(시뮬레이션)
     stockout_hours_before REAL,
-    stockout_hours_after  REAL,
+    stockout_hours_after  REAL,      -- 실제로 옮긴 양 기준
+    stockout_hours_plan   REAL,      -- 계획량이 전부 집행됐다고 본 값
     -- C. 운영
     total_distance_km    REAL,
     max_cluster_minutes  REAL,
@@ -353,13 +355,15 @@ km당 개선은 오히려 가장 높습니다(2.08 vs 1.55). **효과·비용·�
   반대라 섞으면 둘 다 흐려집니다. `kpi_summary`의 PK에 `duration`을 넣은 이유입니다.
 - **비교는 같은 조건에서만.** `run_label`이 달라도 원천 데이터 기간(`period`)이 다르면
   개선률 비교는 무의미합니다. 비교 화면에서 `period`를 함께 표시해야 합니다.
-- 🔴 **현재 결품 지표는 "계획이 100% 집행된다"고 가정합니다.** `stockout_hours_after`는
-  `stock + rebal_qty`로 계산하는데, ILP는 군집 안에서 `min(총 pick, 총 drop)`만큼만
-  옮깁니다. 그래서 **편익을 과대평가**하고(실측 0.42h 대 0.48h, 약 13%),
-  **방법 간 비교에는 아예 쓸 수 없습니다** — 대조군 실험에서 제안 방법·그리디·
-  지리 균등 군집·무재배치의 점수가 **전부 0.42h로 같았습니다**
-  ([EXPERIMENTS.md](EXPERIMENTS.md) 5장, [TODO.md](TODO.md) 1-2).
-  **대외 인용 시 반드시 '계획 기준'임을 밝히세요.**
+- ✅ **결품 지표는 VRP가 실제로 옮긴 양으로 잽니다** (1.18.4). 그전에는
+  `stock + rebal_qty`로 계산해 **계획이 100% 집행된다고 가정**했고, 그래서
+  편익을 약 13% 과대평가하면서(0.42h 대 0.48h) **방법 간 비교에는 쓸 수 없었습니다** —
+  대조군 실험에서 제안 방법·그리디·지리 균등 군집·무재배치의 점수가 **전부 0.42h로
+  같았습니다** ([EXPERIMENTS.md](EXPERIMENTS.md) 5장).
+  계획 기준 값은 `stockout_hours_plan`으로 함께 남습니다.
+  **두 값의 차이가 곧 계획과 집행의 격차**이므로 함께 보세요.
+  ⚠️ **1.18.4 이전에 쌓인 `stockout_hours_after`는 계획 기준입니다** — 실행 라벨이
+  다른 값을 비교할 때 주의하세요.
 - 🔴 **소요시간에 마지막 depot 복귀가 빠져 있습니다.** `max_cluster_minutes`와
   `time_budget_met`이 그만큼 낙관적입니다 ([TODO.md](TODO.md) 1-1).
 

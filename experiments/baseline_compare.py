@@ -13,10 +13,10 @@
 **모든 방법을 같은 자로 잰다.** 판정 기준은 결품 시간이다 — 개선률·목표 도달률은
 `target_qty`를 분모로 삼아 z가 다른 B2와는 비교조차 할 수 없다(docs/KPI.md).
 
-**'실제로 옮긴 대수'로 평가한다.** step4는 계획량(rebal_qty)이 전부 집행됐다고
-보고 재고를 더하지만, ILP는 군집 안에서 min(pick, drop)만큼만 옮긴다. 계획으로
-재면 군집·ILP를 건너뛴 B1도 같은 점수가 나와 비교가 성립하지 않는다.
-그래서 여기서는 VRP가 실제로 싣고 내린 양을 쓴다(`--plan-basis`로 계획 기준도 함께 본다).
+**'실제로 옮긴 대수'로 평가한다.** ILP는 군집 안에서 min(pick, drop)만큼만 옮기므로
+계획량(rebal_qty)이 전부 집행되지는 않는다. 계획으로 재면 군집·ILP를 건너뛴 B1도
+같은 점수가 나와 비교가 성립하지 않는다(이 실험이 그것을 드러냈고, 1.18.4에서
+파이프라인의 step4도 집행 기준으로 바뀌었다). `--plan-basis`로 계획 기준도 함께 본다.
 
 측정 코드는 운영 코드를 그대로 부른다 — build_stats·compute_rebal_qty·
 select_top_unbalanced_st·make_clustering·adjust_clustering·solve_cluster_moves·
@@ -190,16 +190,9 @@ def plan_greedy(candidates):
 
 # ---------------------------------------------------------------- 평가
 
-def executed_delta(routes):
-    """VRP가 실제로 싣고 내린 결과를 대여소별 재고 증감으로 바꾼다."""
-    if routes.empty:
-        return pd.Series(dtype=float)
-    work = routes[routes["action"] != "return"]
-    if work.empty:
-        return pd.Series(dtype=float)
-    sign = np.where(work["action"] == "drop", 1, -1)
-    return (pd.Series(work["qty"].to_numpy() * sign, index=work["to_id"].to_numpy())
-            .groupby(level=0).sum())
+# VRP가 실제로 옮긴 양을 재고 증감으로 바꾸는 계산은 **step4의 함수를 그대로 쓴다**
+# (1.18.4에서 파이프라인이 같은 기준을 쓰게 되면서 옮겨 갔다).
+executed_delta = kpi_mod.executed_delta
 
 
 def stockout(net, candidates, delta, duration):

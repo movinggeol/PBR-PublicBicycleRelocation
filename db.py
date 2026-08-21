@@ -299,7 +299,8 @@ CREATE TABLE IF NOT EXISTS kpi_summary (
     cluster_max_imbalance INTEGER,
     -- B. 실측 — KPI.md 4·5단계에서 채운다(지금은 NULL)
     stockout_hours_before REAL,
-    stockout_hours_after  REAL,
+    stockout_hours_after  REAL,      -- VRP가 **실제로 옮긴 양** 기준 (1.18.4~)
+    stockout_hours_plan   REAL,      -- 계획량(rebal_qty)이 전부 집행됐다고 본 값
     demand_mae            REAL,
     PRIMARY KEY (run_label, duration)
 );
@@ -609,7 +610,8 @@ KPI_FIELDS = (
     "target_met_ratio", "total_distance_km", "max_cluster_minutes",
     "avg_cluster_minutes", "time_budget_minutes", "time_budget_met",
     "vehicle_load_gap", "improvement_per_km", "cluster_max_imbalance",
-    "stockout_hours_before", "stockout_hours_after", "demand_mae",
+    "stockout_hours_before", "stockout_hours_after", "stockout_hours_plan",
+    "demand_mae",
 )
 
 

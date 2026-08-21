@@ -11,7 +11,7 @@
 | | 시작 (1.0) | 현재 (1.18.0) |
 | --- | --- | --- |
 | 파이프라인 | **끝까지 실행 불가** (`now` 불일치) | step0~4 실데이터 완주 |
-| 테스트 | 0개 | **228개** (약 50초) |
+| 테스트 | 0개 | **232개** (약 50초) |
 | 저장소 | CSV 파일명에 라벨 | SQLite 15개 테이블 (1.3GB) |
 | 인터페이스 | 스크립트만 | 웹 대시보드 + JSON API |
 | 성과 지표 | 개선률(콘솔 출력) | 19개 지표 + 결품 시뮬레이션 + 예측 백테스트 |
@@ -46,7 +46,7 @@
 - Python 3.14 환경에서 **의존성이 전부 깨져 있었습니다**(2023년 고정 버전).
   `scikit-learn-extra`는 아카이브돼 설치 자체가 불가능 → `kmedoids`로 교체
 - 합성 데이터 생성기 + 스모크 테스트 34개 → 이후 모든 수정의 안전망
-  (지금은 228개, 무엇을 지키는지는 [TESTING.md](TESTING.md))
+  (지금은 232개, 무엇을 지키는지는 [TESTING.md](TESTING.md))
 
 ### ③ 저장소 이관 (1.4.0 ~ 1.7.0, [DB_PLAN.md](DB_PLAN.md))
 
@@ -221,7 +221,11 @@ step4가 `stock + rebal_qty`로 재배치 후 재고를 잡기 때문입니다. 
 VRP가 실제로 싣고 내린 양으로 다시 재니 0.48h(제안) / 0.74h(그리디) /
 1.39h(지리 균등 군집) / 2.16h(무재배치)로 벌어졌습니다. **같은 지표인데 무엇을
 집어넣느냐로 비교 가능 여부가 갈렸습니다.** 덤으로 현행 수치가 편익을 약 13%
-과대평가하고 있다는 것도 드러났습니다. → [EXPERIMENTS.md](EXPERIMENTS.md) 5장
+과대평가하고 있다는 것도 드러났습니다.
+
+**고쳤습니다**(1.18.4) — step4가 VRP 실행 결과로 재고를 더합니다. 계획 기준 값은
+`stockout_hours_plan`으로 함께 남겨 격차를 볼 수 있게 뒀습니다.
+→ [EXPERIMENTS.md](EXPERIMENTS.md) 5장
 
 ---
 
@@ -319,7 +323,7 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 
 # 데이터 없이 전 단계 검증
-python -m pytest                                  # 228개, 약 50초
+python -m pytest                                  # 232개, 약 50초
 
 # 실데이터 (.env에 API 키, data/raw_data/에 원천 CSV 필요)
 python tools/load_rentals.py --split-by-month     # 대여이력 → SQLite

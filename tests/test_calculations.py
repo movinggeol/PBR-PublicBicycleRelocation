@@ -366,3 +366,89 @@ def test_ilp_returns_nothing_when_one_side_is_missing(step2):
 
     assert ilp.solve_cluster_moves(
         cluster, pulp.PULP_CBC_CMD(msg=False, timeLimit=60)) == []
+
+
+# ---------------------------------------------------------------- 4. 집행 기준 평가
+
+@pytest.fixture(scope="module")
+def step4():
+    return _load(PROJECT_ROOT / "step4_metrics" / "imbalance.py", "_imbalance_calc")
+
+
+def test_executed_delta_signs_pick_negative_and_drop_positive(step4):
+    """싣기(pick)는 재고를 줄이고 내리기(drop)는 늘린다. depot 복귀는 무시한다."""
+    routes = pd.DataFrame([
+        {"to_id": "A", "action": "pick", "qty": 5},
+        {"to_id": "B", "action": "drop", "qty": 3},
+        {"to_id": "ST0001", "action": "return", "qty": 0},
+        {"to_id": "B", "action": "drop", "qty": 2},
+    ])
+
+    delta = step4.executed_delta(routes)
+
+    assert delta["A"] == -5
+    assert delta["B"] == 5, "같은 대여소를 여러 번 방문하면 합산해야 한다"
+    assert "ST0001" not in delta.index, "depot 복귀는 재고 증감이 아니다"
+
+
+def test_executed_delta_is_empty_without_routes(step4):
+    assert step4.executed_delta(pd.DataFrame()).empty
+
+
+def test_stockout_uses_what_was_moved_not_what_was_planned(step4, tmp_path, monkeypatch):
+    """결품 지표는 **계획량이 아니라 실제로 옮긴 양**으로 재야 한다.
+
+    계획량으로 재면 계획이 같고 집행만 다른 방법들의 점수가 전부 같아져
+    **방법 간 비교가 불가능**해진다 (docs/EXPERIMENTS.md 5장, docs/TODO.md 1-2).
+    """
+    # 하루 5시간 동안 시간당 2대씩 빠져나가는 대여소. 재고 0에서 시작한다.
+    net = pd.DataFrame({
+        "station_id": ["ST0001"],
+        "날짜": ["2026-08-17"],
+        **{f"net_{hour:02d}": [2] for hour in range(24)},
+    })
+    candidates = tmp_path / "top.csv"
+    pd.DataFrame({"station_id": ["ST0001"], "parking_lot": [20]}).to_csv(
+        candidates, index=False, encoding="utf-8")
+
+    monkeypatch.setattr(step4, "load_net_demand", lambda: net.copy())
+    monkeypatch.setattr(step4, "file_path", str(candidates))
+    # 계획은 10대를 채우라고 했지만 실제로는 4대만 내렸다.
+    monkeypatch.setattr(step4, "load_vrp_plan", lambda duration: pd.DataFrame(
+        [{"to_id": "ST0001", "action": "drop", "qty": 4}]))
+
+    imbalance_df = pd.DataFrame({
+        "station_id": ["ST0001"], "stock": [0], "rebal_qty": [10],
+    })
+    result = step4.stockout_simulation("_05_10", imbalance_df)
+
+    # 결품은 그 시간의 수요를 뺀 **뒤** 재고가 0 이하인 시간을 센다.
+    #   재고 0  → 5시간 모두 결품
+    #   재고 4  → 2 → 0 → 0 → 0 → 0  = 4시간 결품 (실제로 옮긴 양)
+    #   재고 10 → 8 → 6 → 4 → 2 → 0  = 1시간 결품 (계획대로 다 옮겼다면)
+    assert result["stockout_hours_before"] == 5.0
+    assert result["stockout_hours_after"] == 4.0
+    assert result["stockout_hours_plan"] == 1.0
+    assert result["stockout_hours_after"] > result["stockout_hours_plan"], \
+        "계획 기준은 편익을 과대평가한다 — 두 값이 같으면 집행량을 안 쓰고 있는 것이다"
+
+
+def test_stockout_falls_back_to_the_plan_when_no_route_exists(step4, tmp_path, monkeypatch):
+    """VRP 결과가 없는 구버전 산출물에서는 계획량으로 물러선다(크래시 금지)."""
+    net = pd.DataFrame({
+        "station_id": ["ST0001"],
+        "날짜": ["2026-08-17"],
+        **{f"net_{hour:02d}": [2] for hour in range(24)},
+    })
+    candidates = tmp_path / "top.csv"
+    pd.DataFrame({"station_id": ["ST0001"], "parking_lot": [20]}).to_csv(
+        candidates, index=False, encoding="utf-8")
+
+    monkeypatch.setattr(step4, "load_net_demand", lambda: net.copy())
+    monkeypatch.setattr(step4, "file_path", str(candidates))
+    monkeypatch.setattr(step4, "load_vrp_plan", lambda duration: pd.DataFrame())
+
+    result = step4.stockout_simulation(
+        "_05_10", pd.DataFrame({"station_id": ["ST0001"], "stock": [0], "rebal_qty": [10]}))
+
+    assert result["stockout_hours_after"] == result["stockout_hours_plan"] == 1.0

@@ -368,7 +368,7 @@ CSV의 `hour` 컬럼은 `duration`과 같은 값이라 **저장하지 않습니�
 | 키·시각 | `run_label`, `duration`, `computed_at` |
 | 규모 | `stations`, `clusters`, `vehicles_used`, `bikes_moved` |
 | A. 계획 | `avg_improvement_rate`, `pick_improvement_rate`, `drop_improvement_rate`, `target_met_ratio` |
-| B. 실측 | `stockout_hours_before`, `stockout_hours_after`, `demand_mae` |
+| B. 실측 | `stockout_hours_before`, `stockout_hours_after`(**집행 기준**), `stockout_hours_plan`(계획 기준), `demand_mae` |
 | C. 운영 | `total_distance_km`, `max_cluster_minutes`, `avg_cluster_minutes`, `time_budget_minutes`, `time_budget_met`, `vehicle_load_gap` |
 | D. 효율 | `improvement_per_km` |
 | E. 품질 | `cluster_max_imbalance` |

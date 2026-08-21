@@ -4,6 +4,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import folium
+import numpy as np
 import pandas as pd
 
 import db
@@ -183,6 +184,34 @@ def _stockout_hours(net: pd.DataFrame, initial: pd.Series,
     return out
 
 
+def executed_delta(vrp: pd.DataFrame) -> pd.Series:
+    """VRP가 **실제로 싣고 내린 양**을 대여소별 재고 증감으로 바꾼다.
+
+    계획량(`rebal_qty`)과 다르다. ILP는 군집 안에서 `min(총 pick, 총 drop)`만큼만
+    옮기므로 계획이 전부 집행되지는 않는다. 계획량으로 결품을 재면 **군집·ILP를
+    건너뛴 방법과 점수가 같아져 비교 자체가 불가능**해진다
+    (docs/EXPERIMENTS.md 5장에서 실측으로 확인).
+
+    실험 스크립트(experiments/baseline_compare.py)도 이 함수를 그대로 쓴다.
+    """
+    if vrp.empty:
+        return pd.Series(dtype=float)
+    work = vrp[vrp['action'] != 'return']
+    if work.empty:
+        return pd.Series(dtype=float)
+    sign = np.where(work['action'] == 'drop', 1, -1)
+    return (pd.Series(work['qty'].to_numpy() * sign, index=work['to_id'].to_numpy())
+            .groupby(level=0).sum())
+
+
+def load_vrp_plan(duration: str) -> pd.DataFrame:
+    """VRP 경로 계획을 읽는다(없으면 빈 프레임)."""
+    path = Path(vrp_plan_file.format(duration=duration, now=now))
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_csv(path, encoding='utf-8')
+
+
 def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
     '''재배치 전후의 결품 시간을 비교한다. (docs/KPI.md 3-B, 4단계)
 
@@ -194,6 +223,11 @@ def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
     비교 대상은 작업 대상 대여소뿐이다(나머지는 전후가 같다).
     Drop은 재고가 늘어 결품이 줄지만 Pick은 재고가 줄어 늘 수 있으므로,
     합산 결과가 이 재배치가 이용자에게 이로웠는지를 말해 준다.
+
+    **재배치 후 재고는 VRP가 실제로 옮긴 양으로 잡는다**(1.18.4). 계획량으로 잡으면
+    편익을 과대평가하고(실측 약 13%), 무엇보다 **방법 간 비교가 불가능**해진다 —
+    계획이 같고 집행만 다른 방법들의 점수가 전부 같아지기 때문이다.
+    계획 기준 값은 `stockout_hours_plan`으로 함께 남겨 격차를 볼 수 있게 한다.
     '''
     net = load_net_demand()
     if net.empty:
@@ -209,14 +243,25 @@ def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
                               on='station_id', how='left')
     stations['parking_lot'] = stations['parking_lot'].fillna(stations['stock'] * 2 + 1)
 
+    # 실제로 옮긴 양. VRP 결과가 없으면(구버전 산출물) 계획량으로 물러선다.
+    moved = executed_delta(load_vrp_plan(duration))
+    if moved.empty:
+        print("[안내] VRP 결과가 없어 계획량(rebal_qty)으로 결품을 계산합니다"
+              " — 이 값은 편익을 과대평가합니다.")
+        stations['moved'] = stations['rebal_qty']
+    else:
+        stations['moved'] = stations['station_id'].map(moved).fillna(0).astype(int)
+
     merged = net.merge(stations, on='station_id', how='inner')
     if merged.empty:
         print("순수요와 작업 대상 대여소가 겹치지 않아 결품 시뮬레이션을 건너뜁니다.")
         return {}
 
     before = _stockout_hours(merged, merged['stock'], merged['parking_lot'], hours)
-    after = _stockout_hours(merged, merged['stock'] + merged['rebal_qty'],
+    after = _stockout_hours(merged, merged['stock'] + merged['moved'],
                             merged['parking_lot'], hours)
+    planned = _stockout_hours(merged, merged['stock'] + merged['rebal_qty'],
+                              merged['parking_lot'], hours)
 
     days = merged['날짜'].nunique() if '날짜' in merged.columns else 1
     count = merged['station_id'].nunique()
@@ -232,6 +277,7 @@ def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
     result = {
         'stockout_hours_before': float(before.sum() / denominator),
         'stockout_hours_after': float(after.sum() / denominator),
+        'stockout_hours_plan': float(planned.sum() / denominator),
     }
 
     improved = int((per_station['delta'] < 0).sum())
@@ -245,6 +291,8 @@ def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
           f" → {result['stockout_hours_after']:.2f}h ({change:+.2f}h)")
     print(f"  개선 {improved}곳 · 악화 {worsened}곳"
           f"  (Pick {pick_delta:+d}h / Drop {drop_delta:+d}h)")
+    print(f"  계획이 100% 집행됐다면: {result['stockout_hours_plan']:.2f}h"
+          f" — 계획과 집행의 격차 {result['stockout_hours_after'] - result['stockout_hours_plan']:+.2f}h")
     if pick_delta > 0:
         print(f"  ⚠ Pick 대여소에서 결품이 {pick_delta}시간 늘었습니다 —"
               f" 회수량이 과한지 target_qty를 확인하세요.")
