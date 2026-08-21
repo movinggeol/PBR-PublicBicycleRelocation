@@ -86,5 +86,5 @@ python experiments/quantile_model_eval.py --holdout "25년 11월"   # 모델 채
 | `pulp_test.py` | PuLP 라이브러리 튜토리얼 | `test/` |
 | `pulp_test2.py` | PuLP 최소 예제 | `test/` |
 | `matplotlib_month_graph.py` | 월별 대여량 그래프(더미 데이터, 한글 폰트 설정 예시) | `test/test.py` |
-| `step0_rebal_qty_check.py` | rebal_qty 합계 확인용 (구식 duration `_05_15` 참조 — 실행하려면 수정 필요) | `step0_collect/test.py` |
+| `step0_rebal_qty_check.py` | 재배치량 진단 — 작업 대상 수와 **Pick·Drop 수급 격차** (1.18.8에서 되살림) | `step0_collect/test.py` |
 | `step1_cluster_memo.py` | 클러스터링 실행 결과 메모 | `step1 (...)/test.py` |

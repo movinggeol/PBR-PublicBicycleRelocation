@@ -10,6 +10,7 @@ import pulp
 import db
 from project_config import (
     PROJECT_ROOT, VEHICLE_SPEED_KMPH, duration_list, ensure_output_dirs, get_runtime_config,
+    require_columns,
 )
 
 # read_csv
@@ -261,5 +262,7 @@ if __name__ == "__main__":
             continue
 
         metrics = pd.read_csv(candidates, encoding='utf-8', low_memory=False)
+        require_columns(metrics, ['station_id', 'lat', 'lon', 'rebal_qty', 'cluster'],
+                        f'step1 후보 {duration}')
         print(f"\n=== [ILP @ {duration}] ===")
         run_ilp_plan(metrics, duration, solver)

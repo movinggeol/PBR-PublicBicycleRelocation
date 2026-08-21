@@ -1432,3 +1432,42 @@ PBR (Public_Bicycle_Relocation)
 		- 테스트 3개 추가(폐기 후 폴백, 아무것도 없을 때 안내, main이 솔버를 직접
 			만들지 않는지). 238 -> 241개.
 		- 실데이터 _10_15: 처리 204대 · 255.2km · 최장 110.3분 — **문서 값과 동일**.
+
+1.18.8 : (2026-08-21) 잠재 버그와 미뤄 둔 정리를 한 번에 털었다.
+		[1] 죽은 코드 제거 + 함정 봉쇄
+		- st_visualization.py의 cluster_center_file 선언과 '''로 막아 둔 마커 코드를
+			지웠다. **어느 단계도 만들지 않는 파일(top_center*.csv)** 을 읽는 코드였다.
+		- 함께 store.CSV_FALLBACK["pick_drop"]의 글롭을 top*.csv -> top_[0-9]*.csv로
+			좁혔다. 예전 글롭은 top_center*.csv까지 잡아서, 그 파일이 생기면 mtime이
+			더 최신이라 /api/stations가 엉뚱한 파일을 읽게 돼 있었다. 되살릴 일이
+			없어도 함정은 없애 둔다.
+		[2] 깨져 있던 진단 스크립트 복구
+		- experiments/step0_rebal_qty_check.py가 duration='_05_15'(없는 시간대)와
+			datetime.now()를 쓰고 있어 **실행하면 그냥 깨졌다.** now는 실행 시각이 아니라
+			라벨이라는 규약도 어기고 있었다. project_config를 쓰도록 다시 썼다.
+		- 겸사겸사 쓸모를 붙였다 — Pick 가능량과 Drop 필요량의 격차를 보여 준다.
+			실데이터에서 _10_15는 Pick 626대 대 Drop 189대로 **70%가 잘려 나간다.**
+			그 회차의 처리 대수가 적은 이유가 여기서 바로 보인다.
+		[3] 단계 간 스키마 검증
+		- project_config.require_columns()를 만들어 step1·step2(ILP·VRP)·step4의
+			읽는 자리에 붙였다. 컬럼이 빠지면 **어느 산출물의 무엇이 없는지 밝히며**
+			즉시 멈춘다. 뒤 단계에서 KeyError로 죽거나 조용히 틀린 값을 내는 것보다 낫다.
+		[4] step1 매직 넘버 6개를 설정으로
+		- REBAL_MIN_QTY(2) · TOP_STATION_LIMIT(50) · TARGET_CLUSTER_SIZE(7) ·
+			ADJUST_MAX_ITER(200) · ADJUST_BALANCE_OK(3) · ADJUST_BALANCE_LIMIT(5).
+			PBR_* 환경변수와 .env.example도 함께.
+		- **여섯 개 다 실험으로 정한 값이 아니라 관행값이다.** z·gamma와 달리 재실험
+			기록이 없다는 것을 FORMULATION 3·4장에 명시했다. 논문에서 근거를 묻는
+			자리이므로 숨기지 않는다.
+		- FORMULATION 기호표에 theta(임계) · N(상위 컷) · kappa(군집 크기)를 추가하고
+			수식의 상수를 기호로 바꿨다.
+		[5] 파일명 정리 마무리
+		- 1.top_st_clustering.py -> top_st_clustering.py. 숫자로 시작해 일반 import가
+			안 되던 마지막 자리였다. 15개 파일의 참조를 함께 고쳤다.
+		- **버전관리.txt의 과거 기록은 그때의 이름을 그대로 뒀다** — 바꿀 뻔했다가
+			되돌렸다. 변경 이력을 소급해 고치면 기록이 거짓말을 한다.
+		[검증]
+		- 테스트 4개 추가(require_columns 두 개, step1 상수 출처, 글롭). 241 -> 245개.
+		- 실데이터 3회차 전부 **문서 값과 정확히 동일**:
+			_05_10 313대/294.0km/132.0분/초과2 · _10_15 204대/255.2km/110.3분/초과0 ·
+			_15_20 231대/305.0km/125.2분/초과1.

@@ -20,7 +20,7 @@ import db
 from project_config import (
     DEPOT_ID, DEPOT_LAT, DEPOT_LON, DROP_TIME_SEC, PICK_TIME_SEC, PROJECT_ROOT,
     TIME_BUDGET_MINUTES, VEHICLE_CAPACITY, VEHICLE_SPEED_KMPH,
-    duration_list, ensure_output_dirs, get_runtime_config,
+    duration_list, ensure_output_dirs, get_runtime_config, require_columns,
 )
 
 # read_csv
@@ -197,6 +197,9 @@ def run_vrp_plan(ilp_plan: pd.DataFrame, duration: str):
 
     # 좌표 불러오기 (클러스터 루프 밖에서 1회)
     station_info = pd.read_csv(metrics_file.format(duration=duration, now=now), encoding='utf-8')
+    require_columns(station_info, ['station_id', 'lat', 'lon'], f'step1 후보 {duration}')
+    require_columns(ilp_plan, ['cluster', 'pick_station_id', 'drop_station_id', 'qty'],
+                    f'step2 ILP 계획 {duration}')
 
     # 대여소가 중복되면 .loc[sid, 'lat']이 값이 아니라 Series를 돌려주고,
     # 그 Series가 노드 좌표로 들어가 거리 계산이 조용히 망가진다. 먼저 막는다.

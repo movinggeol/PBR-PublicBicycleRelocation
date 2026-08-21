@@ -22,7 +22,9 @@ from webapp import catalog
 
 # 테이블 -> CSV 폴백 위치 (pp_data 기준 폴더, glob 패턴)
 CSV_FALLBACK = {
-    "pick_drop": ("ILP/후보", "top*.csv"),
+    # top_[숫자]로 좁힌다 — `top*.csv`로 두면 top_center*.csv 같은 다른 산출물까지
+    # 잡아 mtime이 최신인 엉뚱한 파일을 읽는다.
+    "pick_drop": ("ILP/후보", "top_[0-9]*.csv"),
     "ilp_plan": ("ILP", "ILP_plan*.csv"),
     "vrp_plan": ("VRP", "VRP_plan*.csv"),
     "metrics": ("성능 지표", "verification*.csv"),

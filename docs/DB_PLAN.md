@@ -133,7 +133,7 @@ SELECT run_label, AVG(improvement_rate) FROM metrics GROUP BY run_label;
 | 0 | `api_to_info.py` | `station_info` |
 | 0 | `raw_to_net.py` | `net_demand` (period 스코프) |
 | 0 | `calculate_target_qty.py` | `rebalance_plan` |
-| 1 | `1.top_st_clustering.py` | `pick_drop` |
+| 1 | `top_st_clustering.py` | `pick_drop` |
 | 2 | `ilp.py` | `ilp_plan` |
 | 2 | `vrp.py` | `vrp_plan` |
 | 4 | `imbalance.py` | `metrics`, `route_summary` |

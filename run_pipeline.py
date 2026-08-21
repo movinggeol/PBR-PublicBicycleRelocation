@@ -52,7 +52,7 @@ STAGES = {
         Path("step0_collect") / "calculate_target_qty.py",
     ],
     "selection": [
-        Path("step1_cluster") / "1.top_st_clustering.py",
+        Path("step1_cluster") / "top_st_clustering.py",
         Path("step1_cluster") / "st_visualization.py",
     ],
     "optimization": [

@@ -26,7 +26,7 @@ STAGES = [
     Path("step0_collect") / "api_to_info.py",
     Path("step0_collect") / "raw_to_net.py",
     Path("step0_collect") / "calculate_target_qty.py",
-    Path("step1_cluster") / "1.top_st_clustering.py",
+    Path("step1_cluster") / "top_st_clustering.py",
     Path("step1_cluster") / "st_visualization.py",
     Path("step2_optimize") / "ilp.py",
     Path("step2_optimize") / "vrp.py",

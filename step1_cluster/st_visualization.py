@@ -13,7 +13,6 @@ from project_config import PROJECT_ROOT, duration_list, ensure_output_dirs, get_
 
 # read_csv
 clustered_file = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")
-cluster_center_file = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top_center{duration} ({now}).csv")
 
 # to_csv
 clusterd_map = str(PROJECT_ROOT / "data/pp_data/ILP/visualization/clusterd_map{duration} ({now}).html")
@@ -109,16 +108,10 @@ def make_clustered_map(durations: list):
                 tooltip=tooltip
             ).add_to(layer)
 
-        '''
-        # 클러스터 중심 표시
-        center_df = pd.read_csv(cluster_center_file.format(duration=duration), encoding='utf-8')
-        for _, c in center_df.iterrows():
-            folium.Marker(
-                location=[c['lon'], c['lat']],
-                icon=folium.Icon(color='black', icon='star'),
-                tooltip=f"Cluster {c['cluster']} Center"
-            ).add_to(m)
-        '''
+        # 군집 중심(메도이드) 마커는 그리지 않는다. 예전에 주석으로 남아 있던
+        # 코드가 읽던 top_center*.csv는 **어느 단계도 만들지 않는 파일**이었다.
+        # 되살리려면 파일을 만드는 쪽부터 필요하고, webapp의 후보 파일 글롭이
+        # 그 파일까지 잡지 않는지도 함께 봐야 한다(store.CSV_FALLBACK).
         
         folium.LayerControl(collapsed=False).add_to(m)
 

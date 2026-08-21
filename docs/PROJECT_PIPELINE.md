@@ -129,7 +129,7 @@ rebal_qty = target_qty − stock              (tanh로 완화 후 정수화)
 
 ## 5. Step 1: Pick·Drop과 클러스터
 
-1.top_st_clustering.py는 재배치량이 큰 대여소를 선정하고 양수·음수 재배치량을 Drop·Pick으로 분류합니다. 위도·경도 정보도 함께 붙여 다음 최적화 단계의 후보 파일을 만듭니다.
+top_st_clustering.py는 재배치량이 큰 대여소를 선정하고 양수·음수 재배치량을 Drop·Pick으로 분류합니다. 위도·경도 정보도 함께 붙여 다음 최적화 단계의 후보 파일을 만듭니다.
 
 ~~~text
 data/pp_data/ILP/후보/top{duration} ({now}).csv
@@ -138,7 +138,7 @@ data/pp_data/ILP/후보/top{duration} ({now}).csv
 K-Medoids 기반 공간 클러스터링은 작업 대여소를 가까운 군집으로 묶습니다.
 
 - adjust_module.py: 메도이드, 군집 목적함수, 군집 후보 이동 보조
-- 1.top_st_clustering.py: 군집 생성·크기 및 작업량 균형 조정
+- top_st_clustering.py: 군집 생성·크기 및 작업량 균형 조정
 - st_visualization.py: Pick·Drop과 군집을 지도에 저장
 
 군집 조정의 목적은 Pick 또는 Drop이 특정 군집에 과도하게 몰리지 않게 하고, 차량이 처리할 수 있는 규모로 작업을 나누는 것입니다.
@@ -247,7 +247,7 @@ python "step0_collect/extract_parking_lot.py"
 python "step0_collect/api_to_info.py"
 python "step0_collect/raw_to_net.py"
 python "step0_collect/calculate_target_qty.py"
-python "step1_cluster/1.top_st_clustering.py"
+python "step1_cluster/top_st_clustering.py"
 python "step1_cluster/st_visualization.py"
 python "step2_optimize/ilp.py"
 python "step2_optimize/vrp.py"

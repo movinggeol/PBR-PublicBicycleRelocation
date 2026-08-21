@@ -167,11 +167,13 @@ PuLP 4.0이 나온 뒤 새 환경에서 설치하면 **step2가 통째로 깨집
    `step0_collect` / `step0_eda` / `step1_cluster` / `step2_optimize` /
    `step3_map` / `step4_metrics`. 셸에서 따옴표로 감쌀 필요가 없어졌고,
    `step0 (raw…)`와 `step0(전처리…)`가 공백 유무만 달라 헷갈리던 문제도 사라졌다.
-   - **남은 것**: `step1_cluster/1.top_st_clustering.py`가 숫자로 시작해 일반 import가
-     안 된다. 테스트와 `experiments/baseline_compare.py`가 `importlib`으로 우회 중이다.
-     바꾸려면 run_pipeline.py의 단계 목록과 문서를 함께 고쳐야 한다.
-2. **스키마 검증**: 단계 간 CSV의 필수 컬럼(station_id, lat, lon, rebal_qty, cluster …)을
-   읽는 쪽에서 assert하는 얇은 검증 함수 추가.
+   - ~~**남은 것**: `1.top_st_clustering.py`가 숫자로 시작해 일반 import가 안 된다~~
+     → **완료(1.18.8).** `top_st_clustering.py`로 바꿨다(15개 파일의 참조 동시 수정).
+     `버전관리.txt`의 과거 기록은 그때의 이름을 그대로 뒀다.
+2. ~~**스키마 검증**~~ → **완료(1.18.8).** `project_config.require_columns()`를
+   step1·step2(ILP·VRP)·step4의 읽는 자리에 붙였다. 컬럼이 빠지면 **어느 산출물의
+   무엇이 없는지 밝히며 즉시 멈춘다** — 뒤 단계에서 KeyError로 죽거나 조용히 틀린
+   값을 내는 것보다 낫다.
 3. **성능**: `adjust_module.try_move_node()`가 노드 이동 시도마다 `pick_drop.copy()` +
    전체 목적함수 재계산(내부에서 `compute_medoids` 반복) — 버전관리.txt에 기록된
    "5분 이상 소요" 문제의 원인. 이동 노드가 속한 두 군집만 재계산하는 증분 방식으로 개선.
@@ -195,7 +197,12 @@ PuLP 4.0이 나온 뒤 새 환경에서 설치하면 **step2가 통째로 깨집
      경고만 낸다. 그런 변경이 실제로 필요해지면 그때 테이블 재생성 절차를 만들 것.
 6. **EDA 시각화**: `month_graph`에 matplotlib 그래프 통합
    (`experiments/matplotlib_month_graph.py`의 한글 폰트 설정 참고).
-7. **step1 매직 넘버**: 상위 50개 컷, `|rebal_qty| > 2`, target_cluster_size=7 등을 설정으로 추출.
+7. ~~**step1 매직 넘버**~~ → **완료(1.18.8).** 여섯 개를 `project_config`로 뺐다:
+   `REBAL_MIN_QTY`(2) · `TOP_STATION_LIMIT`(50) · `TARGET_CLUSTER_SIZE`(7) ·
+   `ADJUST_MAX_ITER`(200) · `ADJUST_BALANCE_OK`(3) · `ADJUST_BALANCE_LIMIT`(5).
+   - ⚠️ **여섯 개 다 실험으로 정한 값이 아니라 관행값**이다. `z`·`γ`와 달리 재실험
+     기록이 없으므로, 논문에서 근거를 묻는다면 그렇게 답해야 한다
+     ([FORMULATION.md](FORMULATION.md) 3·4장에 명시).
 8. **버전관리.txt → CHANGELOG.md 승격 검토.**
 9. ~~**README 주요 결과 수치의 산출 근거**(입력 데이터·실행 시점) 기록.~~ → 완료(1.18.0).
    기간·요일 구분·씨앗·실행일을 표 아래에 명시하고, 재현 명령을 experiments/README에 뒀다.
@@ -274,12 +281,11 @@ PuLP 4.0이 나온 뒤 새 환경에서 설치하면 **step2가 통째로 깨집
 재발 방지 테스트 4개를 함께 넣었습니다 — 옵션 전달, 결측 지표 렌더링,
 입력 예시 형식 2개.
 
-**고치지 않고 남긴 것** — `st_visualization.py`의 `cluster_center_file`
-(`top_center*.csv`)은 **아무 것도 쓰지 않는 죽은 선언**입니다. 군집 중심 마커를
-그리던 코드가 `'''…'''`로 주석 처리돼 있고 파일도 생성되지 않습니다.
-지금은 무해하지만, 되살릴 때는 `store.CSV_FALLBACK["pick_drop"]`의 글롭
-`top*.csv`가 **`top_center*.csv`까지 잡는다**는 점을 함께 봐야 합니다
-(mtime이 더 최신이라 `/api/stations`의 CSV 폴백이 엉뚱한 파일을 읽게 됩니다).
+~~**고치지 않고 남긴 것**~~ → **완료(1.18.8).** `st_visualization.py`의
+`cluster_center_file`과 주석 처리된 마커 코드를 지웠습니다(어느 단계도 만들지 않는
+파일을 읽고 있었습니다). 함께 **글롭도 좁혔습니다** —
+`store.CSV_FALLBACK["pick_drop"]`이 `top*.csv`에서 `top_[0-9]*.csv`로 바뀌어
+`top_center*.csv` 같은 다른 산출물을 잡지 않습니다.
 
 ---
 

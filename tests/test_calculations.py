@@ -33,7 +33,7 @@ def _load(path, name):
     """step 모듈을 경로로 직접 읽는다.
 
     테스트마다 독립된 이름으로 올려 import 캐시를 공유하지 않게 한다.
-    `1.top_st_clustering.py`는 숫자로 시작해 애초에 일반 import가 안 된다.
+    `top_st_clustering.py`는 숫자로 시작해 애초에 일반 import가 안 된다.
     """
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
@@ -648,3 +648,62 @@ def test_pipeline_uses_the_solver_factory_everywhere(step2):
     body = source[source.index("if __name__"):]
     assert "build_solver(" in body
     assert "pulp.PULP_CBC_CMD(" not in body, "main에서 솔버를 직접 만들지 마라"
+
+
+# ---------------------------------------------------------------- 6. 단계 간 계약
+
+def test_require_columns_names_what_is_missing_and_where():
+    """단계 간 표에 컬럼이 빠지면 **즉시, 어디가 문제인지 밝히며** 멈춘다.
+
+    단계들이 CSV로 통신하므로 이름이 하나만 어긋나도 뒤 단계가 엉뚱한 자리에서
+    죽거나 조용히 틀린 값을 낸다.
+    """
+    from project_config import require_columns
+
+    frame = pd.DataFrame({"station_id": ["ST0001"], "lat": [36.3]})
+
+    with pytest.raises(SystemExit) as caught:
+        require_columns(frame, ["station_id", "lat", "lon", "rebal_qty"], "step1 후보 _05_10")
+
+    message = str(caught.value)
+    assert "lon" in message and "rebal_qty" in message
+    assert "step1 후보 _05_10" in message, "어느 산출물인지 알려 줘야 한다"
+
+
+def test_require_columns_passes_the_frame_through():
+    from project_config import require_columns
+
+    frame = pd.DataFrame({"a": [1]})
+    assert require_columns(frame, ["a"], "테스트") is frame
+
+
+def test_step1_thresholds_come_from_project_config():
+    """작업 대상 임계·상위 컷·군집 크기가 코드에 박혀 있으면 안 된다.
+
+    1.18.8 이전에는 `> 2`, `iloc[:50]`, `target_cluster_size=7`이 그대로 박혀 있어
+    환경변수로 바꿀 수 없었고, 논문 3장 기호표에 근거 없이 등장했다.
+    """
+    import project_config
+
+    source = (PROJECT_ROOT / "step1_cluster" / "top_st_clustering.py").read_text(encoding="utf-8")
+    assert "iloc[:50" not in source, "상위 컷이 코드에 박혀 있다"
+    assert "rebal_qty']) > 2]" not in source, "작업 대상 임계가 코드에 박혀 있다"
+    assert "MAX_ITER = 200" not in source, "조정 반복 상한이 코드에 박혀 있다"
+    assert (project_config.REBAL_MIN_QTY, project_config.TOP_STATION_LIMIT,
+            project_config.TARGET_CLUSTER_SIZE) == (2, 50, 7), "기본값이 바뀌었다"
+    assert (project_config.ADJUST_MAX_ITER, project_config.ADJUST_BALANCE_OK,
+            project_config.ADJUST_BALANCE_LIMIT) == (200, 3, 5), "기본값이 바뀌었다"
+
+
+def test_candidate_glob_does_not_catch_other_outputs():
+    """후보 파일 글롭이 `top_center*.csv` 같은 다른 산출물을 잡으면 안 된다.
+
+    `top*.csv`로 두면 mtime이 더 최신인 엉뚱한 파일을 `/api/stations`가 읽는다.
+    """
+    import fnmatch
+
+    from webapp.store import CSV_FALLBACK
+
+    _subdir, pattern = CSV_FALLBACK["pick_drop"]
+    assert fnmatch.fnmatch("top_05_10 (2026-08-11 real).csv", pattern)
+    assert not fnmatch.fnmatch("top_center_05_10 (2026-08-11 real).csv", pattern)

@@ -11,7 +11,7 @@
 | | 시작 (1.0) | 현재 (1.18.0) |
 | --- | --- | --- |
 | 파이프라인 | **끝까지 실행 불가** (`now` 불일치) | step0~4 실데이터 완주 |
-| 테스트 | 0개 | **241개** (약 50초) |
+| 테스트 | 0개 | **245개** (약 50초) |
 | 저장소 | CSV 파일명에 라벨 | SQLite 15개 테이블 (1.3GB) |
 | 인터페이스 | 스크립트만 | 웹 대시보드 + JSON API |
 | 성과 지표 | 개선률(콘솔 출력) | 19개 지표 + 결품 시뮬레이션 + 예측 백테스트 |
@@ -46,7 +46,7 @@
 - Python 3.14 환경에서 **의존성이 전부 깨져 있었습니다**(2023년 고정 버전).
   `scikit-learn-extra`는 아카이브돼 설치 자체가 불가능 → `kmedoids`로 교체
 - 합성 데이터 생성기 + 스모크 테스트 34개 → 이후 모든 수정의 안전망
-  (지금은 241개, 무엇을 지키는지는 [TESTING.md](TESTING.md))
+  (지금은 245개, 무엇을 지키는지는 [TESTING.md](TESTING.md))
 
 ### ③ 저장소 이관 (1.4.0 ~ 1.7.0, [DB_PLAN.md](DB_PLAN.md))
 
@@ -287,7 +287,7 @@ VRP가 실제로 싣고 내린 양으로 다시 재니 0.48h(제안) / 0.74h(그
 - 웹앱에 인증이 없습니다 (로컬 전용)
 - `VEHICLES_PER_ROUND = 10`, 작업 시간 30초/대는 현장 확인이 필요한 가정값입니다
 - ~~폴더명에 공백·괄호·한글이 있어 셸 인용이 필요합니다~~ → 정리 완료(1.18.3).
-  다만 `1.top_st_clustering.py`는 숫자로 시작해 여전히 `importlib`이 필요합니다
+  다만 `top_st_clustering.py`는 숫자로 시작해 여전히 `importlib`이 필요합니다
 
 ---
 
@@ -323,7 +323,7 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 
 # 데이터 없이 전 단계 검증
-python -m pytest                                  # 241개, 약 50초
+python -m pytest                                  # 245개, 약 50초
 
 # 실데이터 (.env에 API 키, data/raw_data/에 원천 CSV 필요)
 python tools/load_rentals.py --split-by-month     # 대여이력 → SQLite

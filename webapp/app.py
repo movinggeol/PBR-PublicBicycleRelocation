@@ -64,7 +64,7 @@ STAGE_LABELS = {
     "EDA.py": "탐색적 분석",
     "raw_to_net.py": "순수요 계산",
     "calculate_target_qty.py": "목표 재고 산정",
-    "1.top_st_clustering.py": "작업 대상 선정·군집화",
+    "top_st_clustering.py": "작업 대상 선정·군집화",
     "st_visualization.py": "대여소 지도 생성",
     "ilp.py": "이동량 최적화 (ILP)",
     "vrp.py": "차량 경로 최적화 (VRP)",

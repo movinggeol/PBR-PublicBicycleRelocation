@@ -33,6 +33,9 @@
 | $B$ | 회차 시간 예산 = **120분** | `TIME_BUDGET_MINUTES` |
 | $M$ | 보유 차량 = **21대**, 회차당 투입 = **10대** | `FLEET_SIZE`, `VEHICLES_PER_ROUND` |
 | $0$ | depot (타슈 관제센터 ST0001) | `DEPOT_ID` |
+| $\theta$ | 작업 대상 임계 = **2대** | `REBAL_MIN_QTY` |
+| $N$ | Pick·Drop 각각 상위 컷 = **50곳** | `TOP_STATION_LIMIT` |
+| $\kappa$ | 군집 하나의 목표 크기 = **7곳** | `TARGET_CLUSTER_SIZE` |
 
 **운영 모델:** 하루 3회차(`_05_10`, `_10_15`, `_15_20`), 회차당 차량 10대,
 **차량 1대 = 군집 1개**, 보유 21대는 누적 부하 기준으로 로테이션한다
@@ -112,12 +115,12 @@ $\tanh$는 한 대여소에 몰리는 작업량을 차량 적재 용량 근처�
 ## 3. 작업 대상 선정
 
 $$
-S_{\text{cand}} = \{\, i \in S : |r_i| > 2 \,\}
+S_{\text{cand}} = \{\, i \in S : |r_i| > \theta \,\}, \qquad \theta = 2
 $$
 
 $$
-P = \operatorname{top}_{50}\{\, i : r_i < 0 \,\}\ (|r_i| \text{ 내림차순}), \qquad
-G = \operatorname{top}_{50}\{\, i : r_i > 0 \,\}\ (r_i \text{ 내림차순})
+P = \operatorname{top}_{N}\{\, i : r_i < 0 \,\}\ (|r_i| \text{ 내림차순}), \qquad
+G = \operatorname{top}_{N}\{\, i : r_i > 0 \,\}\ (r_i \text{ 내림차순}), \qquad N = 50
 $$
 
 Pick 가능량과 Drop 필요량 중 **적은 쪽**까지만 남긴다 (누적합 컷):
@@ -132,8 +135,10 @@ $$
 받아 줄 곳이 없는데 싣기만 하는 계획을 막는 장치다.
 **$P'$ 또는 $G'$가 비면 그 회차는 건너뛴다** — 한쪽만 있으면 재배치가 성립하지 않는다.
 
-> 코드: `1.top_st_clustering.select_top_unbalanced_st()`
-> 매직 넘버(상위 50, 임계 2)는 아직 설정으로 빠지지 않았다 — [TODO.md](TODO.md) 7번.
+> 코드: `top_st_clustering.select_top_unbalanced_st()`
+> $\theta$·$N$·$\kappa$는 `project_config`에서 읽는다(1.18.8).
+> ⚠️ **셋 다 실험으로 정한 값이 아니라 관행값이다.** $z$·$\gamma$와 달리 재실험
+> 기록이 없으므로, 논문에서 근거를 묻는다면 그렇게 답해야 한다.
 
 ---
 
@@ -142,8 +147,8 @@ $$
 ### 4.1 군집 수
 
 $$
-K = \min\!\left( \left\lceil \frac{|P' \cup G'|}{7} \right\rceil,\ M_{\text{round}} \right),
-\qquad M_{\text{round}} = 10
+K = \min\!\left( \left\lceil \frac{|P' \cup G'|}{\kappa} \right\rceil,\ M_{\text{round}} \right),
+\qquad \kappa = 7,\quad M_{\text{round}} = 10
 $$
 
 **군집 1개 = 차량 1대**이므로 $K$는 회차당 투입 대수를 넘을 수 없다.
@@ -169,13 +174,15 @@ $$
 \alpha = 1, \qquad \beta = 100, \qquad \gamma = 3000
 $$
 
-종료 조건: $\max_k \left| \sum_{i \in C_k} r_i \right| \le 3$ 이거나 더 이상 개선이 없을 때.
+종료 조건: $\max_k \left| \sum_{i \in C_k} r_i \right| \le 3$(`ADJUST_BALANCE_OK`)이거나
+더 이상 개선이 없을 때. 반복 상한은 200회(`ADJUST_MAX_ITER`), 재조정 대상 기준은
+$\left| \sum r_i \right| > 5$(`ADJUST_BALANCE_LIMIT`)다. 이 셋도 관행값이다.
 
 > **$\gamma$는 비단조다.** $\gamma = 2000$이 $\gamma = 1000$보다 나빴다. 두 점을 재고
 > 사이를 보간하면 안 된다. $\gamma = 10$~150 구간에서는 거리 항이 불균형 항에 묻혀
 > 이동 자체가 일어나지 않는다([EXPERIMENTS.md](EXPERIMENTS.md) 4장).
 >
-> 코드: `adjust_module.compute_objective()`, `1.top_st_clustering.adjust_clustering()`
+> 코드: `adjust_module.compute_objective()`, `top_st_clustering.adjust_clustering()`
 
 ---
 

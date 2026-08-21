@@ -10,7 +10,7 @@ import pandas as pd
 import db
 from project_config import (
     PROJECT_ROOT, TIME_BUDGET_MINUTES, duration_list, ensure_output_dirs, get_runtime_config,
-    select_day_type,
+    require_columns, select_day_type,
 )
 
 file_path = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")
@@ -480,6 +480,8 @@ if __name__ == "__main__":
             continue
 
         reloc_df = pd.read_csv(candidates, encoding='utf-8')
+        require_columns(reloc_df, ['station_id', 'stock', 'target_qty', 'rebal_qty',
+                                   'cluster', 'parking_lot'], f'step1 후보 {duration}')
         print(reloc_df.head())
 
         imbalance_df = demand_satisfaction(reloc_df).copy()

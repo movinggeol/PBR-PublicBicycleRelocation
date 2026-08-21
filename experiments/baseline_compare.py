@@ -72,7 +72,7 @@ ST_INFO_COLUMNS = ["station_id", "station_name", "lat", "lon", "parking_lot",
 
 def load_step1():
     """step1 군집 모듈을 불러온다 (파일명이 숫자로 시작해 일반 import가 안 된다)."""
-    path = ROOT / "step1_cluster" / "1.top_st_clustering.py"
+    path = ROOT / "step1_cluster" / "top_st_clustering.py"
     spec = importlib.util.spec_from_file_location("top_st_clustering", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

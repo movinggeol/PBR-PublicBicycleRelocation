@@ -226,6 +226,31 @@ CLUSTER_ALPHA = float(os.getenv("PBR_CLUSTER_ALPHA", "1"))
 CLUSTER_BETA = float(os.getenv("PBR_CLUSTER_BETA", "100"))
 CLUSTER_GAMMA = float(os.getenv("PBR_CLUSTER_GAMMA", "3000"))
 
+# ---- step1 작업 대상 선정·군집 조정 ----
+# 1.18.8까지 step1 코드에 숫자로 박혀 있던 값들이다. 다른 운영 상수와 달리
+# 환경변수로 바꿀 수 없었고, 논문 3장의 기호표에도 근거 없이 등장했다.
+# **셋 다 실험으로 정한 값이 아니라 관행값이다** — 바꾸려면 z·γ처럼 재실험할 것.
+
+# 재배치 대상으로 볼 최소 작업량. |rebal_qty|가 이 값 이하면 손대지 않는다.
+# 1~2대를 옮기러 차를 보내는 것은 이동 비용이 편익을 넘는다는 판단.
+REBAL_MIN_QTY = int(os.getenv("PBR_REBAL_MIN_QTY", "2"))
+
+# Pick·Drop 각각 상위 몇 곳까지 볼 것인가(작업량 내림차순).
+# 이 컷 뒤에 다시 '적은 쪽까지만' 누적합으로 자르므로 실제 대상은 더 적다.
+TOP_STATION_LIMIT = int(os.getenv("PBR_TOP_STATION_LIMIT", "50"))
+
+# 군집 하나에 담고 싶은 대여소 수. 군집 수 K = ceil(대상 수 / 이 값)이며,
+# 회차당 투입 대수(VEHICLES_PER_ROUND)를 넘지 못한다.
+TARGET_CLUSTER_SIZE = int(os.getenv("PBR_TARGET_CLUSTER_SIZE", "7"))
+
+# 군집 조정(greedy) 반복 상한과 종료·재조정 기준.
+#   ADJUST_MAX_ITER        : 대여소 이동 시도 횟수 상한
+#   ADJUST_BALANCE_OK      : 모든 군집의 |수급 합|이 이 값 이하면 만족하고 끝낸다
+#   ADJUST_BALANCE_LIMIT   : 이 값을 넘는 군집은 크기와 무관하게 재조정 대상에 넣는다
+ADJUST_MAX_ITER = int(os.getenv("PBR_ADJUST_MAX_ITER", "200"))
+ADJUST_BALANCE_OK = int(os.getenv("PBR_ADJUST_BALANCE_OK", "3"))
+ADJUST_BALANCE_LIMIT = int(os.getenv("PBR_ADJUST_BALANCE_LIMIT", "5"))
+
 # ---- step0 목표 재고 안전계수 ----
 # target_qty = mu + z·sigma 의 z. 값이 클수록 수요가 몰리는 날까지 덮지만
 # 그만큼 채워야 할 대수가 늘어난다.
@@ -315,6 +340,26 @@ def _parser() -> argparse.ArgumentParser:
         help=f"보정에 쓸 일수 (기본 {DEFAULT_WARMUP_DAYS}, 0이면 끔)",
     )
     return parser
+
+
+def require_columns(frame, columns, source: str):
+    """단계 간에 주고받는 표에 필수 컬럼이 다 있는지 확인한다.
+
+    단계들은 CSV 파일로 통신하므로 컬럼 이름이 하나만 어긋나도 뒤 단계가
+    엉뚱한 자리에서 KeyError로 죽거나 — 더 나쁘게는 — 조용히 틀린 값을 낸다.
+    **읽는 쪽에서 즉시 멈추게** 해서 어느 산출물이 잘못됐는지 바로 알려 준다.
+
+    source: 사람이 읽을 파일 설명(경로나 산출물 이름). 오류 메시지에 그대로 나온다.
+    """
+    missing = [column for column in columns if column not in frame.columns]
+    if missing:
+        raise SystemExit(
+            f"[{source}] 필수 컬럼이 없습니다: {missing}. "
+            f"있는 컬럼: {list(frame.columns)[:12]}. "
+            f"앞 단계 산출물이 오래됐거나 실행 라벨이 어긋났는지 확인하세요.")
+    if frame.empty:
+        print(f"[안내] {source}: 행이 없습니다.")
+    return frame
 
 
 def get_runtime_config(argv: Optional[list[str]] = None) -> RuntimeConfig:

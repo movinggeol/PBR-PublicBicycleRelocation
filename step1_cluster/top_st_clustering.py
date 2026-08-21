@@ -13,8 +13,10 @@ from adjust_module import compute_medoids, compute_objective, select_cluster_can
 
 import db
 from project_config import (
-    CLUSTER_ALPHA, CLUSTER_BETA, CLUSTER_GAMMA, PROJECT_ROOT, VEHICLES_PER_ROUND,
-    duration_list, ensure_output_dirs, get_runtime_config,
+    ADJUST_BALANCE_LIMIT, ADJUST_BALANCE_OK, ADJUST_MAX_ITER,
+    CLUSTER_ALPHA, CLUSTER_BETA, CLUSTER_GAMMA, PROJECT_ROOT, REBAL_MIN_QTY,
+    TARGET_CLUSTER_SIZE, TOP_STATION_LIMIT, VEHICLES_PER_ROUND,
+    duration_list, ensure_output_dirs, get_runtime_config, require_columns,
 )
 
 # read_csv
@@ -36,9 +38,13 @@ def select_top_unbalanced_st(file_path:str, duration:str, st_info:pd.DataFrame) 
 
     # file_path는 호출부에서 이미 완전히 포맷된 경로
     st_rebal = pd.read_csv(file_path, encoding='utf-8', low_memory=False)
+    require_columns(st_rebal, ['station_id', 'rebal_qty', 'target_qty'],
+                    f'step0 재배치량 {duration}')
+    require_columns(st_info, ['station_id', 'station_name', 'lat', 'lon',
+                              'parking_lot', 'stock'], 'step0 대여소 정보')
     
     st = (
-        st_rebal[abs(st_rebal['rebal_qty']) > 2]
+        st_rebal[abs(st_rebal['rebal_qty']) > REBAL_MIN_QTY]
         .merge(st_info, how='left', on='station_id')
         .iloc[:,[0,7,8,9,3,4,5,6,1,2]]
         .rename(columns={'parking_lot_x':'parking_lot', 'stock_x':'stock'})
@@ -51,13 +57,13 @@ def select_top_unbalanced_st(file_path:str, duration:str, st_info:pd.DataFrame) 
         st[st['rebal_qty'] < 0]
         .sort_values('rebal_qty', ascending=True)
     )
-    pick_st = pick_st.iloc[:50, :]
+    pick_st = pick_st.iloc[:TOP_STATION_LIMIT, :]
 
     drop_st = (
         st[st['rebal_qty'] > 0]
         .sort_values('rebal_qty', ascending=False)
     )
-    drop_st = drop_st.iloc[:50, :]
+    drop_st = drop_st.iloc[:TOP_STATION_LIMIT, :]
 
     # 각 작업량 계산
     pick_qty = pick_st['rebal_qty'].sum(axis=0)
@@ -94,7 +100,7 @@ def select_top_unbalanced_st(file_path:str, duration:str, st_info:pd.DataFrame) 
     return pick_drop
 
 
-def make_clustering(pick_drop: pd.DataFrame, target_cluster_size: int = 7,
+def make_clustering(pick_drop: pd.DataFrame, target_cluster_size: int = None,
                     random_state: int = 42) -> pd.DataFrame:
     '''
     # 2차 : 클러스터링(K-Medoids)
@@ -107,6 +113,8 @@ def make_clustering(pick_drop: pd.DataFrame, target_cluster_size: int = 7,
     greedy 탐색의 변동성을 재려고 열어 둔 인자다(experiments/baseline_compare.py).
     '''
 
+    target_cluster_size = (TARGET_CLUSTER_SIZE if target_cluster_size is None
+                           else target_cluster_size)
     wanted = int(np.ceil(len(pick_drop) / target_cluster_size))
     K = min(wanted, VEHICLES_PER_ROUND)
 
@@ -165,9 +173,10 @@ def cal_cluster_info(pick_drop: pd.DataFrame) -> pd.DataFrame:
 # main adjust
 def adjust_clustering(pick_drop):
 
-    MAX_ITER = 200      # 최대 대여소 이동 횟수
-    THRESHOLD = 3       # THRESHOLD(임계값) 이내면 만족
-    BALANCE_LIMIT = 5   # BALANCE_LIMIT(균형 제한) 초과면 재조정 대상
+    # 반복 상한과 판정 기준은 project_config에서 읽는다(PBR_ADJUST_* 로 조정).
+    MAX_ITER = ADJUST_MAX_ITER          # 최대 대여소 이동 횟수
+    THRESHOLD = ADJUST_BALANCE_OK       # 모든 군집이 이 값 이내면 만족하고 끝낸다
+    BALANCE_LIMIT = ADJUST_BALANCE_LIMIT  # 초과하는 군집은 재조정 대상
 
     # '군집 개수'(K), '군집당 적정 크기'(K_SIZE) 계산
     K = pick_drop['cluster'].nunique()

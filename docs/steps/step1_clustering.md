@@ -5,7 +5,7 @@
 
 ## 파일별 상세
 
-### `1.top_st_clustering.py` (메인)
+### `top_st_clustering.py` (메인)
 
 3단계로 진행됩니다.
 

@@ -176,7 +176,7 @@ Apple 디자인 언어를 기준으로 다시 만들었습니다. **규칙 전�
 ```
 ✓  순수요 계산            raw_to_net.py            완료
 ●  목표 재고 산정          calculate_target_qty.py   진행 중
-3  작업 대상 선정·군집화     1.top_st_clustering.py    대기
+3  작업 대상 선정·군집화     top_st_clustering.py    대기
 ```
 
 `run_pipeline`이 로그 맨 앞에 전체 단계 목록을 찍고 단계마다 `실행:` → `완료:`/`실패:`를
