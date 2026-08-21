@@ -35,7 +35,7 @@ def collect(args):
     """기간 × 씨앗을 돌며 baseline_compare의 계획·평가를 그대로 반복한다."""
     step1 = bc.load_step1()
     import pulp
-    solver = pulp.PULP_CBC_CMD(msg=False, timeLimit=600, gapRel=0.02)
+    solver = bc.ilp_mod.build_solver()   # 파이프라인과 같은 솔버 설정
 
     rows = []
     total = len(args.periods) * len(args.seeds)

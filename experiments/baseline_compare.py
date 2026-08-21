@@ -347,7 +347,7 @@ def main():
         raise SystemExit(f"알 수 없는 방법: {unknown} (가능: {', '.join(METHODS)})")
 
     step1 = load_step1()
-    solver = pulp.PULP_CBC_CMD(msg=False, timeLimit=600, gapRel=0.02)
+    solver = ilp_mod.build_solver()   # 파이프라인과 같은 솔버 설정
     net, st_info, warmup = load_inputs(args.period, args.run_label, args.day_type,
                                        args.warmup_days, args.warmup_period)
 

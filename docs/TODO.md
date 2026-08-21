@@ -127,28 +127,37 @@ step4의 `load_net_demand()`는 **필터 없이 그 기간 전체를 읽고 있�
 
 ---
 
-## 🟡 P2-B. 의존성 폐기 예고 (1.18.6에서 확인)
+## 🟡 P2-B. 의존성 폐기 예고 — **대비 완료 (1.18.7), 전환은 남음**
 
-### 🟡 `PULP_CBC_CMD`가 PuLP 4.0에서 사라진다
+### `PULP_CBC_CMD`가 PuLP 4.0에서 사라진다
 
-`pulp 3.3.2`가 실행 때마다 경고를 냅니다.
-
-```text
-PULP_CBC_CMD is deprecated and will be removed in PuLP 4.0.
-Install CBC with `pip install pulp[cbc]` and use COIN_CMD instead.
-LpVariable.dicts is deprecated; use prob.add_variable_dicts(...) for PuLP 4.0 compatibility.
-```
-
-`requirements.txt`는 **하한(`>=`) 고정**이므로, PuLP 4.0이 나온 뒤 새 환경에서
-`pip install -r requirements.txt`를 하면 **step2가 통째로 깨집니다.** 1.2.1에서
+`pulp 3.3.2`가 실행마다 경고를 냅니다. `requirements.txt`는 **하한(`>=`) 고정**이라
+PuLP 4.0이 나온 뒤 새 환경에서 설치하면 **step2가 통째로 깨집니다.** 1.2.1에서
 "의존성이 전부 import 실패"를 겪은 것과 같은 종류의 사고입니다.
 
-- 걸리는 자리는 두 곳: `ilp.py`의 `pulp.PULP_CBC_CMD(...)`와 `pulp.LpVariable.dicts(...)`.
-- 상한(`pulp<4`)을 거는 것은 **프로젝트 규약에 어긋납니다**(상한을 걸면 새 파이썬에서
-  휠이 없어 설치가 깨진다 — 함정 9번).
-- 그래서 **코드를 먼저 옮기는 편**이 맞습니다. 다만 `COIN_CMD`는 CBC 바이너리를
-  따로 설치해야 할 수 있어 "별도 solver 설치 불필요"라는 현재 이점이 사라질 수 있습니다.
-  **옮기기 전에 `pip install pulp[cbc]`로 동봉 CBC가 오는지 확인할 것.**
+**한 것 (1.18.7)**
+
+| 항목 | 조치 |
+| --- | --- |
+| `LpVariable.dicts` (폐기 예정) | → `prob.add_variable_dicts()`. 경고 사라짐 |
+| 솔버 생성 | `ilp.build_solver()` 하나로 모음. 파이프라인·실험·테스트가 전부 이걸 쓴다 |
+| 폐기 대비 | `PULP_CBC_CMD` → `COIN_CMD`(PATH) → `COIN_CMD`(cbcbox 경로) → **무엇을 설치할지 알려 주고 중단** |
+| 회귀 방지 | 테스트 3개 (폐기 후 폴백, 없을 때 안내, main이 직접 만들지 않는지) |
+
+**순서에 뜻이 있습니다** — `PULP_CBC_CMD`를 **먼저** 봅니다. 문서의 모든 수치가
+그 솔버로 나왔으므로, 있는 동안에는 그대로 써서 재현성을 지킵니다.
+
+**남은 것 — 확인해 본 결과**
+
+- `pip install pulp[cbc]`는 **`cbcbox` 패키지(약 149MB)** 를 설치합니다. 설치하면
+  `COIN_CMD(path=cbcbox.cbc_bin_path())`로 정상 동작합니다(실측 확인).
+- 다만 **PuLP 3.3.2의 `COIN_CMD`는 cbcbox를 자동으로 찾지 못합니다** — 경로를 직접
+  넘겨야 합니다. `build_solver()`가 그 처리를 이미 해 둡니다.
+- **149MB를 모두에게 강요하지 않으려고 `requirements.txt`에는 넣지 않았습니다.**
+  현재 PuLP가 CBC를 동봉하므로 아직 필요 없습니다.
+- **PuLP 4.0이 실제로 나오면**: (a) 4.0이 여전히 CBC를 동봉하는지 확인 →
+  아니라면 (b) `requirements.txt`를 `pulp[cbc]>=…`로 바꾸고 README의 "별도 solver
+  설치가 필요 없습니다" 문구를 정정. 상한(`pulp<4`)은 규약 위반이라 쓰지 않습니다.
 
 ---
 

@@ -24,6 +24,52 @@ now = config.now
 # (1.13.2 이전에는 ILP 25 / VRP 30으로 갈려 ILP가 고른 조합이 VRP에서는 최소가 아니었다.)
 vehicle_speed_kmph = VEHICLE_SPEED_KMPH
 
+# ILP 솔버 설정. 실측하면 클러스터 하나가 0.05~0.2초에 풀리고 갭 2%가 남기는 손해는
+# 0%다 — 지금 규모에서는 두 값 모두 아무 일도 하지 않는 안전장치다(사용자 결정, 1.18.7).
+SOLVER_TIME_LIMIT_SEC = 600
+SOLVER_GAP_REL = 0.02
+
+
+def build_solver(msg: bool = False, time_limit: int = SOLVER_TIME_LIMIT_SEC,
+                 gap_rel: float = SOLVER_GAP_REL) -> pulp.LpSolver:
+    """CBC 솔버를 만든다. **PuLP 4.0에서 `PULP_CBC_CMD`가 사라진다.**
+
+    지금은 PuLP가 CBC 바이너리를 동봉해 `PULP_CBC_CMD`가 그냥 된다. 4.0부터는
+    `pip install pulp[cbc]`가 설치하는 `cbcbox`(약 150MB)를 `COIN_CMD`로 써야 한다.
+    `requirements.txt`는 하한(`>=`) 고정이라 그날 새 환경에서 설치하면 step2가
+    통째로 깨지므로, **있는 것을 골라 쓰도록** 해 둔다.
+
+    순서에 뜻이 있다:
+      1. `PULP_CBC_CMD` — **문서의 모든 수치가 이걸로 나왔다.** 있으면 그대로 쓴다.
+      2. `COIN_CMD` — PATH의 cbc, 없으면 `cbcbox`가 알려 주는 경로.
+      3. 둘 다 없으면 **무엇을 설치해야 하는지 알려 주고 멈춘다.**
+         AttributeError로 죽는 것보다 낫다.
+    """
+    legacy = getattr(pulp, "PULP_CBC_CMD", None)
+    if legacy is not None:
+        solver = legacy(msg=msg, timeLimit=time_limit, gapRel=gap_rel)
+        if solver.available():
+            return solver
+
+    solver = pulp.COIN_CMD(msg=msg, timeLimit=time_limit, gapRel=gap_rel)
+    if solver.available():
+        return solver
+
+    try:
+        import cbcbox
+        solver = pulp.COIN_CMD(path=cbcbox.cbc_bin_path(), msg=msg,
+                               timeLimit=time_limit, gapRel=gap_rel)
+        if solver.available():
+            return solver
+    except ImportError:
+        pass
+
+    raise SystemExit(
+        "CBC 솔버를 찾지 못했습니다. `pip install pulp[cbc]`로 설치한 뒤 다시 실행하세요."
+        " (PuLP 4.0부터 PULP_CBC_CMD가 없어져 CBC를 따로 받아야 합니다 —"
+        " docs/TODO.md P2-B)")
+
+
 def haversine_km(lat1, lon1, lat2, lon2) -> float:
     '''
     위도와 경도를 이용해 두 지점 사이의 실제 지구 곡면 거리(km)를 계산
@@ -100,8 +146,12 @@ def solve_cluster_moves(cluster_df: pd.DataFrame, solver: pulp.LpSolver,
     prob = pulp.LpProblem("cluster", pulp.LpMinimize)
 
     # 결정변수 x[(i,j)] : 픽업 대여소 i -> 드롭 대여소 j로 옮기는 자전거 대수
-    x = pulp.LpVariable.dicts('x', ((i,j) for i in I for j in J),
-                              lowBound=0, cat=pulp.LpInteger)
+    # `LpVariable.dicts`도 PuLP 4.0에서 사라진다 — 새 API가 있으면 그쪽을 쓴다.
+    keys = [(i, j) for i in I for j in J]
+    if hasattr(prob, 'add_variable_dicts'):
+        x = prob.add_variable_dicts('x', keys, lowBound=0, cat=pulp.LpInteger)
+    else:
+        x = pulp.LpVariable.dicts('x', keys, lowBound=0, cat=pulp.LpInteger)
 
     # 목적함수 : **대수 가중 이동시간**의 합 최소화 = 가까운 곳끼리 많이 옮기도록 유도
     #
@@ -200,7 +250,8 @@ if __name__ == "__main__":
     # 솔버 객체 생성 후 실행 (시간 제한/갭 포함)
     # 계산 시간의 폭증을 방지하고 실시간 운영 가능성을 확보하기 위해,
     # 본 연구에서는 CBC 정수계획 솔버에 시간 제한(600초)과 상대적 최적 갭(2%)을 적용하였다.
-    solver = pulp.PULP_CBC_CMD(msg=True, timeLimit=600, gapRel=0.02)
+    # 어떤 CBC를 쓸지는 build_solver()가 고른다 — PuLP 4.0 대비.
+    solver = build_solver(msg=True)
 
     for duration in duration_list(config):
         candidates = Path(metrics_path.format(duration=duration, now=now))

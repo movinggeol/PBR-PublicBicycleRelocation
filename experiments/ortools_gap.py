@@ -147,7 +147,7 @@ def main():
     durations = [d.strip() for d in args.duration.split(",") if d.strip()]
 
     step1 = bc.load_step1()
-    solver = pulp.PULP_CBC_CMD(msg=False, timeLimit=600, gapRel=0.02)
+    solver = bc.ilp_mod.build_solver()   # 파이프라인과 같은 솔버 설정
     net, st_info, warmup = bc.load_inputs(args.period, args.run_label,
                                           args.day_type, 0, "")
 

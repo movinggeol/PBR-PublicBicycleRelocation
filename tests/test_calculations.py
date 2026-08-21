@@ -345,7 +345,7 @@ def test_ilp_respects_supply_demand_and_moves_the_feasible_maximum(step2):
     })
 
     rows = ilp.solve_cluster_moves(
-        cluster, pulp.PULP_CBC_CMD(msg=False, timeLimit=60, gapRel=0.02))
+        cluster, ilp.build_solver(time_limit=60))
 
     moved = pd.DataFrame(rows)
     assert moved["qty"].sum() == 6, "min(공급 9, 수요 6) = 6대를 옮겨야 한다"
@@ -365,7 +365,7 @@ def test_ilp_returns_nothing_when_one_side_is_missing(step2):
     })
 
     assert ilp.solve_cluster_moves(
-        cluster, pulp.PULP_CBC_CMD(msg=False, timeLimit=60)) == []
+        cluster, ilp.build_solver(time_limit=60)) == []
 
 
 # ---------------------------------------------------------------- 4. 집행 기준 평가
@@ -543,7 +543,7 @@ def test_ilp_rounds_solver_values_instead_of_truncating(step2, monkeypatch, caps
     monkeypatch.setattr(ilp.pulp, "value",
                         lambda v: (lambda r: r - 1e-9 if r else r)(original(v)))
 
-    rows = ilp.solve_cluster_moves(cluster, pulp.PULP_CBC_CMD(msg=False, timeLimit=60))
+    rows = ilp.solve_cluster_moves(cluster, ilp.build_solver(time_limit=60))
 
     assert sum(r["qty"] for r in rows) == 10, "10대를 옮겨야 하는데 절단으로 깎였다"
     assert "계획 합계가 강제 이동량과 다릅니다" not in capsys.readouterr().out
@@ -595,3 +595,56 @@ def test_work_time_constants_come_from_project_config(step2):
     assert vrp.PICK_TIME_SEC is project_config.PICK_TIME_SEC
     assert vrp.DROP_TIME_SEC is project_config.DROP_TIME_SEC
     assert vrp.VEHICLE_SPEED_KMPH is project_config.VEHICLE_SPEED_KMPH
+
+
+def test_solver_factory_survives_pulp4_removing_the_legacy_solver(step2, monkeypatch):
+    """`PULP_CBC_CMD`가 사라져도 `COIN_CMD`로 넘어간다.
+
+    PuLP 4.0에서 `PULP_CBC_CMD`가 없어지는데 `requirements.txt`는 하한 고정이라,
+    그날 새 환경에서 설치하면 step2가 통째로 깨진다 (docs/TODO.md P2-B).
+    """
+    ilp, _vrp = step2
+
+    monkeypatch.delattr(ilp.pulp, "PULP_CBC_CMD", raising=False)
+    calls = []
+
+    class FakeCoin:
+        def __init__(self, **kwargs):
+            calls.append(kwargs)
+
+        def available(self):
+            return True
+
+    monkeypatch.setattr(ilp.pulp, "COIN_CMD", FakeCoin)
+
+    solver = ilp.build_solver(time_limit=60, gap_rel=0.01)
+
+    assert isinstance(solver, FakeCoin)
+    assert calls[0]["timeLimit"] == 60 and calls[0]["gapRel"] == 0.01
+
+
+def test_solver_factory_says_what_to_install_when_nothing_is_available(step2, monkeypatch):
+    """CBC가 하나도 없으면 **무엇을 설치해야 하는지 알려 주고 멈춘다.**
+
+    AttributeError로 죽으면 원인을 찾는 데 시간이 든다.
+    """
+    ilp, _vrp = step2
+
+    monkeypatch.delattr(ilp.pulp, "PULP_CBC_CMD", raising=False)
+    monkeypatch.setattr(ilp.pulp, "COIN_CMD",
+                        lambda **kwargs: type("X", (), {"available": lambda self: False})())
+    monkeypatch.setitem(sys.modules, "cbcbox", None)   # import 시 ImportError
+
+    with pytest.raises(SystemExit, match="pip install pulp\[cbc\]"):
+        ilp.build_solver()
+
+
+def test_pipeline_uses_the_solver_factory_everywhere(step2):
+    """솔버 설정이 흩어지면 실험과 파이프라인이 다른 조건으로 풀게 된다."""
+    import inspect
+
+    ilp, _vrp = step2
+    source = inspect.getsource(ilp)
+    body = source[source.index("if __name__"):]
+    assert "build_solver(" in body
+    assert "pulp.PULP_CBC_CMD(" not in body, "main에서 솔버를 직접 만들지 마라"
