@@ -18,8 +18,9 @@ from ilp import haversine_km
 
 import db
 from project_config import (
-    DEPOT_ID, DEPOT_LAT, DEPOT_LON, PROJECT_ROOT, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY,
-    VEHICLE_SPEED_KMPH, duration_list, ensure_output_dirs, get_runtime_config,
+    DEPOT_ID, DEPOT_LAT, DEPOT_LON, DROP_TIME_SEC, PICK_TIME_SEC, PROJECT_ROOT,
+    TIME_BUDGET_MINUTES, VEHICLE_CAPACITY, VEHICLE_SPEED_KMPH,
+    duration_list, ensure_output_dirs, get_runtime_config,
 )
 
 # read_csv
@@ -31,10 +32,10 @@ vrp_plan_file = str(PROJECT_ROOT / "data/pp_data/VRP/VRP_plan{duration} ({now}).
 config = get_runtime_config()
 now = config.now
 
-# 이동 속도는 project_config의 VEHICLE_SPEED_KMPH를 쓴다 — ILP와 같은 값이어야 한다.
-# (1.13.2 이전에는 여기서 30을 따로 쓰고 ILP는 25를 써서 두 단계가 어긋나 있었다.)
-PICK_TIME_SEC = 30.0        # 자전거 1대 싣는 시간
-DROP_TIME_SEC = 30.0        # 자전거 1대 내리는 시간
+# 이동 속도(VEHICLE_SPEED_KMPH)와 작업시간(PICK/DROP_TIME_SEC)은 project_config
+# 한 곳에서 읽는다 — 속도는 ILP와 같은 값이어야 한다.
+# (1.13.2 이전에는 여기서 30을 따로 쓰고 ILP는 25를 써서 두 단계가 어긋나 있었다.
+#  작업시간은 1.18.6까지 이 파일에 박혀 있어 다른 운영 상수와 따로 놀았다.)
 
 # 한 회차에 차량 1대가 클러스터 1개를 맡고 depot으로 복귀한다(사용자 결정, 1.13.2).
 # 여러 클러스터를 이어 도는 구조는 채택하지 않았다 — docs/FLEET.md '운용 모델' 참고.
@@ -196,7 +197,23 @@ def run_vrp_plan(ilp_plan: pd.DataFrame, duration: str):
 
     # 좌표 불러오기 (클러스터 루프 밖에서 1회)
     station_info = pd.read_csv(metrics_file.format(duration=duration, now=now), encoding='utf-8')
+
+    # 대여소가 중복되면 .loc[sid, 'lat']이 값이 아니라 Series를 돌려주고,
+    # 그 Series가 노드 좌표로 들어가 거리 계산이 조용히 망가진다. 먼저 막는다.
+    duplicated = station_info['station_id'].duplicated()
+    if duplicated.any():
+        raise SystemExit(
+            f"후보 파일에 중복된 대여소가 있습니다: "
+            f"{station_info.loc[duplicated, 'station_id'].tolist()[:5]} … "
+            f"({int(duplicated.sum())}건). step1 산출물을 확인하세요.")
     station_info = station_info.set_index('station_id')
+
+    missing = ({*ilp_plan['pick_station_id'], *ilp_plan['drop_station_id']}
+               - set(station_info.index))
+    if missing:
+        raise SystemExit(
+            f"ILP 계획의 대여소가 후보 파일에 없습니다: {sorted(missing)[:5]} … "
+            f"({len(missing)}곳). 두 산출물의 실행 라벨이 같은지 확인하세요.")
 
     for c in clusters:
         cluster_plan = ilp_plan[ilp_plan['cluster'] == c]

@@ -517,3 +517,81 @@ def test_unbalanced_input_does_hit_the_return_branch(step2, capsys):
     assert any(r["action"] == "return" for r in route)
     assert nodes[("D2", "drop")]["qty"] > 0, "공급이 부족하면 일부는 남는다"
     capsys.readouterr()
+
+
+# ---------------------------------------------------------------- 5. ILP·VRP 방어
+
+def test_ilp_rounds_solver_values_instead_of_truncating(step2, monkeypatch, capsys):
+    """솔버가 4.999999999를 돌려줘도 자전거를 잃지 않는다.
+
+    정수변수라도 솔버·버전에 따라 값이 미세하게 어긋날 수 있는데, `int()`는 0 방향으로
+    잘라 **조용히 대수를 깎는다.** 현재 CBC는 정확한 값을 주지만 PuLP 4.0에서
+    `PULP_CBC_CMD`가 사라지므로 솔버가 바뀐다 (docs/TODO.md).
+    """
+    import pulp
+
+    ilp, _vrp = step2
+    cluster = pd.DataFrame({
+        "station_id": ["P1", "P2", "D1", "D2"],
+        "pick_qty": [5, 5, 0, 0],
+        "drop_qty": [0, 0, 6, 4],
+        "lat": [36.30, 36.31, 36.32, 36.33],
+        "lon": [127.38, 127.39, 127.40, 127.41],
+    })
+
+    original = pulp.value
+    monkeypatch.setattr(ilp.pulp, "value",
+                        lambda v: (lambda r: r - 1e-9 if r else r)(original(v)))
+
+    rows = ilp.solve_cluster_moves(cluster, pulp.PULP_CBC_CMD(msg=False, timeLimit=60))
+
+    assert sum(r["qty"] for r in rows) == 10, "10대를 옮겨야 하는데 절단으로 깎였다"
+    assert "계획 합계가 강제 이동량과 다릅니다" not in capsys.readouterr().out
+
+
+def test_vrp_rejects_duplicate_stations(step2, tmp_path, monkeypatch):
+    """후보 파일에 대여소가 중복되면 좌표 조회가 Series를 돌려줘 거리 계산이 망가진다.
+
+    조용히 틀린 결과를 내느니 즉시 멈춘다.
+    """
+    _ilp, vrp = step2
+    candidates = tmp_path / "top.csv"
+    pd.DataFrame({
+        "station_id": ["ST0001", "ST0001", "ST0002"],
+        "lat": [36.30, 36.30, 36.31], "lon": [127.38, 127.38, 127.39],
+    }).to_csv(candidates, index=False, encoding="utf-8")
+    monkeypatch.setattr(vrp, "metrics_file", str(candidates))
+
+    plan = pd.DataFrame([{"cluster": 0, "pick_station_id": "ST0001",
+                          "drop_station_id": "ST0002", "qty": 3}])
+
+    with pytest.raises(SystemExit, match="중복된 대여소"):
+        vrp.run_vrp_plan(plan, "_05_10")
+
+
+def test_vrp_rejects_stations_missing_from_the_candidate_file(step2, tmp_path, monkeypatch):
+    """실행 라벨이 어긋나 ILP 계획의 대여소가 후보 파일에 없으면 즉시 멈춘다."""
+    _ilp, vrp = step2
+    candidates = tmp_path / "top.csv"
+    pd.DataFrame({"station_id": ["ST0001"], "lat": [36.30], "lon": [127.38]}).to_csv(
+        candidates, index=False, encoding="utf-8")
+    monkeypatch.setattr(vrp, "metrics_file", str(candidates))
+
+    plan = pd.DataFrame([{"cluster": 0, "pick_station_id": "ST0001",
+                          "drop_station_id": "ST9999", "qty": 3}])
+
+    with pytest.raises(SystemExit, match="후보 파일에 없습니다"):
+        vrp.run_vrp_plan(plan, "_05_10")
+
+
+def test_work_time_constants_come_from_project_config(step2):
+    """작업시간은 다른 운영 상수와 같이 project_config 한 곳에서 읽는다.
+
+    1.18.6 이전에는 vrp.py에 30.0으로 박혀 있어 환경변수로 조정할 수 없었다.
+    """
+    import project_config
+
+    _ilp, vrp = step2
+    assert vrp.PICK_TIME_SEC is project_config.PICK_TIME_SEC
+    assert vrp.DROP_TIME_SEC is project_config.DROP_TIME_SEC
+    assert vrp.VEHICLE_SPEED_KMPH is project_config.VEHICLE_SPEED_KMPH

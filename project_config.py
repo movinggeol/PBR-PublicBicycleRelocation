@@ -149,6 +149,12 @@ VEHICLE_CAPACITY = 10        # 차량 최대 적재 대수 (대전교통공사 �
 # 도심 주행·정차를 감안한 보수적 값이며, 현장 실측이 나오면 이 상수만 바꾸면 된다.
 VEHICLE_SPEED_KMPH = float(os.getenv("PBR_VEHICLE_SPEED_KMPH", "25"))
 
+# 자전거 1대를 싣고/내리는 데 걸리는 시간(초). VRP의 작업시간 계산에 쓴다.
+# ⚠️ **현장 확인이 안 된 가정값이다** (docs/TODO.md 2-1). 실측이 나오면 여기만 바꾼다.
+# 소요시간의 20~30%가 이 값에서 나오므로 시간 예산 판정에 직접 영향을 준다.
+PICK_TIME_SEC = float(os.getenv("PBR_PICK_TIME_SEC", "30"))
+DROP_TIME_SEC = float(os.getenv("PBR_DROP_TIME_SEC", "30"))
+
 # ---- 차량 운용 (docs/FLEET.md) ----
 # 보유 차량은 21대지만 한 회차에 전부 투입하지 않는다. 하루 약 3회차를 돌리며
 # 회차마다 일부만 나가고 나머지는 다음 회차를 맡는 로테이션 방식이다.

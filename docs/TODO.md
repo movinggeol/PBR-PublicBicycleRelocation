@@ -127,6 +127,31 @@ step4의 `load_net_demand()`는 **필터 없이 그 기간 전체를 읽고 있�
 
 ---
 
+## 🟡 P2-B. 의존성 폐기 예고 (1.18.6에서 확인)
+
+### 🟡 `PULP_CBC_CMD`가 PuLP 4.0에서 사라진다
+
+`pulp 3.3.2`가 실행 때마다 경고를 냅니다.
+
+```text
+PULP_CBC_CMD is deprecated and will be removed in PuLP 4.0.
+Install CBC with `pip install pulp[cbc]` and use COIN_CMD instead.
+LpVariable.dicts is deprecated; use prob.add_variable_dicts(...) for PuLP 4.0 compatibility.
+```
+
+`requirements.txt`는 **하한(`>=`) 고정**이므로, PuLP 4.0이 나온 뒤 새 환경에서
+`pip install -r requirements.txt`를 하면 **step2가 통째로 깨집니다.** 1.2.1에서
+"의존성이 전부 import 실패"를 겪은 것과 같은 종류의 사고입니다.
+
+- 걸리는 자리는 두 곳: `ilp.py`의 `pulp.PULP_CBC_CMD(...)`와 `pulp.LpVariable.dicts(...)`.
+- 상한(`pulp<4`)을 거는 것은 **프로젝트 규약에 어긋납니다**(상한을 걸면 새 파이썬에서
+  휠이 없어 설치가 깨진다 — 함정 9번).
+- 그래서 **코드를 먼저 옮기는 편**이 맞습니다. 다만 `COIN_CMD`는 CBC 바이너리를
+  따로 설치해야 할 수 있어 "별도 solver 설치 불필요"라는 현재 이점이 사라질 수 있습니다.
+  **옮기기 전에 `pip install pulp[cbc]`로 동봉 CBC가 오는지 확인할 것.**
+
+---
+
 ## 🟢 P3. 품질·유지보수 개선
 
 1. ~~**폴더명 정리**~~ → **완료(1.18.3).** 여섯 폴더를 ASCII로 바꿨다:

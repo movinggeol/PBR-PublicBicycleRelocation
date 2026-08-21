@@ -20,7 +20,9 @@ ilp_plan_path = str(PROJECT_ROOT / "data/pp_data/ILP/ILP_plan{duration} ({now}).
 config = get_runtime_config()
 now = config.now
 
-vehicle_speed_kmph = VEHICLE_SPEED_KMPH   # 이동 속도(km/h) — VRP와 같은 값을 써야 한다
+# 이동 속도는 project_config 한 곳에서 읽는다 — VRP와 반드시 같은 값이어야 한다.
+# (1.13.2 이전에는 ILP 25 / VRP 30으로 갈려 ILP가 고른 조합이 VRP에서는 최소가 아니었다.)
+vehicle_speed_kmph = VEHICLE_SPEED_KMPH
 
 def haversine_km(lat1, lon1, lat2, lon2) -> float:
     '''
@@ -101,7 +103,12 @@ def solve_cluster_moves(cluster_df: pd.DataFrame, solver: pulp.LpSolver,
     x = pulp.LpVariable.dicts('x', ((i,j) for i in I for j in J),
                               lowBound=0, cat=pulp.LpInteger)
 
-    # 목적함수 : 총 작업시간(이동 시간 x 옮기는 자전거 대수) 최소화
+    # 목적함수 : **대수 가중 이동시간**의 합 최소화 = 가까운 곳끼리 많이 옮기도록 유도
+    #
+    # ⚠️ 이것은 '실제 운행시간'이 아니다. 차량은 한 번에 최대 10대를 싣고 가므로
+    # 실제 소요시간은 방문 순서(VRP)가 정한다. 여기서는 자전거 1대가 i -> j로
+    # 옮겨지는 데 드는 시간을 대수만큼 더한 **대리 목적함수**를 쓴다.
+    # 논문에 '총 작업시간 최소화'라고 쓰면 오해를 부른다 (docs/FORMULATION.md 5장).
     prob += pulp.lpSum(T[(i,j)] * x[(i,j)] for i in I for j in J)
 
     # ---------------- 제약조건 ---------------
@@ -121,17 +128,37 @@ def solve_cluster_moves(cluster_df: pd.DataFrame, solver: pulp.LpSolver,
     # ---------------- 제약조건 ---------------
 
     prob.solve(solver)
-    print("Status:", pulp.LpStatus[prob.status])
+    status = pulp.LpStatus[prob.status]
+    print("Status:", status)
+
+    # 최적해가 아니면 **조용히 넘어가면 안 된다.** 시간 제한에 걸리거나 모델이
+    # 불가능해지면 계획이 통째로 비거나 부실해지는데, 예전에는 상태를 찍기만 하고
+    # 그대로 진행했다. 계획이 비는 것과 '옮길 게 없는 것'은 다르다.
+    if prob.status != pulp.LpStatusOptimal:
+        print(f"[경고] ILP가 최적해를 못 찾았습니다 (status={status}). "
+              f"이 클러스터의 계획이 부실하거나 비어 있을 수 있습니다.")
 
     rows = []
+    moved = 0
     for i in I:
         for j in J:
-            v = int(pulp.value(x[(i,j)]) or 0)
+            # **반올림해야 한다.** 정수변수라도 솔버는 4.999999999를 돌려줄 수 있고
+            # int()는 0 방향으로 잘라 자전거를 조용히 잃는다. 현재 CBC는 정확한 값을
+            # 주지만(40회 시행 오차 0), 솔버를 바꾸면 달라질 수 있다
+            # — PuLP 4.0에서 PULP_CBC_CMD가 없어진다(docs/TODO.md).
+            v = int(round(pulp.value(x[(i,j)]) or 0))
             if v > 0:
+                moved += v
                 rows.append({'pick_station_id': i,
                              'drop_station_id': j,
                              'qty': v,
                              'travel_time_sec': T[(i,j)]})
+
+    # 총 이동량이 강제 제약과 맞는지 확인한다. 어긋나면 뒤 단계(VRP)의 수급 균형이
+    # 깨져 greedy가 교착에 빠진다 — 거기서 터지기 전에 여기서 알아야 한다.
+    if moved != move_total:
+        print(f"[경고] 계획 합계가 강제 이동량과 다릅니다 ({moved} != {move_total}). "
+              f"솔버 해를 확인하세요.")
     return rows
 
 
@@ -142,8 +169,9 @@ def run_ilp_plan(metrics: pd.DataFrame, duration: str, solver: pulp.LpSolver):
     CBC Solver 최적화 -> 최적 재배치 계획 저장
     '''
 
-    # metrics 테이블에 시점별 target 반영
-    print(metrics.head())
+    # rebal_qty 부호를 공급(pick)·수요(drop)로 편다. 호출자의 프레임을 건드리지
+    # 않도록 복사본에 붙인다.
+    metrics = metrics.copy()
     metrics['drop_qty'] = metrics['rebal_qty'].clip(lower=0).astype(int)
     metrics['pick_qty'] = (-metrics['rebal_qty'].clip(upper=0)).astype(int)
 
