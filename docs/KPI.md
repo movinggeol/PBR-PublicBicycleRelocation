@@ -5,7 +5,7 @@
 
 ## 1. 지금 있는 것
 
-step4([imbalance.py](<../step4 (성과 지표)/imbalance.py>))가 계산합니다.
+step4([imbalance.py](<../step4_metrics/imbalance.py>))가 계산합니다.
 
 | 지표 | 정의 | 저장 위치 |
 | --- | --- | --- |
@@ -296,7 +296,7 @@ FROM kpi_summary WHERE duration = '_05_10' ORDER BY run_label;
 | --- | --- | --- |
 | `z = 1.65` 부족 | z=1.99에서 커버리지 92.5% → 94.9% | ✅ `TARGET_Z = 1.99` |
 | `_10_15`가 기준선과 동일 | **측정 오류.** 작업 대상만 보면 +40.2% | ✅ 회차 유지, 측정 기준 정정 |
-| 계절 전환기 취약 | 분석 달 첫 14일로 배율 보정 시 86.5% → 95.6% | 🔴 미구현 ([TODO.md](TODO.md)) |
+| 계절 전환기 취약 | 분석 달 첫 14일로 배율 보정 시 86.5% → 95.6% | ✅ 계절 보정(warmup) 구현 (1.15.1) |
 
 z를 올리자 작업량이 늘어 `_15_20`이 시간 예산을 넘겼고, 거리 가중치를
 `γ = 3000`으로 올려 흡수했습니다.
@@ -306,7 +306,7 @@ z를 올리자 작업량이 늘어 `_15_20`이 시간 예산을 넘겼고, 거�
 step4를 실행하면 자동으로 쌓입니다.
 
 ```powershell
-python "step4 (성과 지표)/imbalance.py"   # kpi_summary에 기록
+python "step4_metrics/imbalance.py"   # kpi_summary에 기록
 python -m webapp                          # /kpi 에서 확인
 ```
 
@@ -353,6 +353,15 @@ km당 개선은 오히려 가장 높습니다(2.08 vs 1.55). **효과·비용·�
   반대라 섞으면 둘 다 흐려집니다. `kpi_summary`의 PK에 `duration`을 넣은 이유입니다.
 - **비교는 같은 조건에서만.** `run_label`이 달라도 원천 데이터 기간(`period`)이 다르면
   개선률 비교는 무의미합니다. 비교 화면에서 `period`를 함께 표시해야 합니다.
+- 🔴 **현재 결품 지표는 "계획이 100% 집행된다"고 가정합니다.** `stockout_hours_after`는
+  `stock + rebal_qty`로 계산하는데, ILP는 군집 안에서 `min(총 pick, 총 drop)`만큼만
+  옮깁니다. 그래서 **편익을 과대평가**하고(실측 0.42h 대 0.48h, 약 13%),
+  **방법 간 비교에는 아예 쓸 수 없습니다** — 대조군 실험에서 제안 방법·그리디·
+  지리 균등 군집·무재배치의 점수가 **전부 0.42h로 같았습니다**
+  ([EXPERIMENTS.md](EXPERIMENTS.md) 5장, [TODO.md](TODO.md) 1-2).
+  **대외 인용 시 반드시 '계획 기준'임을 밝히세요.**
+- 🔴 **소요시간에 마지막 depot 복귀가 빠져 있습니다.** `max_cluster_minutes`와
+  `time_budget_met`이 그만큼 낙관적입니다 ([TODO.md](TODO.md) 1-1).
 
 ## 관련 문서
 

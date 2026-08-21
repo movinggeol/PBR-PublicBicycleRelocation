@@ -22,6 +22,40 @@ python experiments/seasonal_window.py    # 학습 창 비교
 셋 다 DB의 `net_demand`를 읽으므로 **여러 달의 순수요가 적재돼 있어야** 합니다
 (연속된 달이 최소 2개). 적재는 `tools/load_rentals.py --split-by-month` 참고.
 
+## 대조군 비교와 반복 실행 (논문용, 결과는 [../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md) 5장)
+
+제안 방법이 **단순한 방법보다 정말 나은지**를 재는 자리입니다. 그전까지 모든 수치는
+'재배치 전 → 후' 자기 비교뿐이었습니다 ([../docs/THESIS.md](../docs/THESIS.md) 3장).
+
+| 파일 | 묻는 것 | 결론 |
+| --- | --- | --- |
+| `baseline_compare.py` | 군집·ILP·`z`는 각각 제 몫을 하나 | 셋 다 한다. 특히 계획 기준 지표로는 **대조군을 구분조차 못 한다** |
+| `repeat_eval.py` | 그 차이가 달·씨앗을 바꿔도 유지되나 | 평균±표준편차와 Wilcoxon 검정으로 확인 |
+| `gamma_recheck.py` | `γ = 3000`이 다른 달에서도 맞나 | 편익(결품)과 비용(거리·시간)을 함께 본다 |
+| `ortools_gap.py` | greedy 경로가 최적에서 얼마나 떨어져 있나 | 갭을 재고, **빠져 있는 depot 복귀**도 함께 잰다 |
+
+`ortools_gap.py`만 별도 설치가 필요합니다 — **파이프라인 의존성이 아닙니다.**
+
+```powershell
+pip install ortools      # 이 실험 전용
+```
+
+```powershell
+python experiments/baseline_compare.py --period "25년 11월" --plan-basis
+python experiments/repeat_eval.py --periods "25년 09월,25년 10월,25년 11월" --methods P,B0,B1
+```
+
+- 대조군은 **B0 무재배치 / B1 그리디(군집·ILP 없음) / B2 평균 목표재고(z=0) /
+  B3 지리 균등 군집(불균형 조정 없음)** 넷입니다.
+- 판정은 **결품 시간**으로 합니다 — 개선률·목표 도달률은 `target_qty`가 분모라
+  z가 다른 B2와는 비교조차 할 수 없습니다.
+- 평가는 **VRP가 실제로 옮긴 대수**로 합니다. 계획량(`rebal_qty`)으로 재면
+  군집·ILP를 건너뛴 B1도 같은 점수가 나옵니다.
+- 두 스크립트 모두 파이프라인 함수를 **그대로 호출합니다**(`build_stats`,
+  `compute_rebal_qty`, `select_top_unbalanced_st`, `make_clustering`,
+  `adjust_clustering`, `solve_cluster_moves`, `greedy_route`, `_stockout_hours`).
+  측정 코드가 제 방식대로 계산하면 측정이 거짓말을 합니다.
+
 ## 구조 결정을 위한 측정 (1.14.0)
 
 파라미터가 아니라 **설계를 정하기 위해** 잰 것들입니다. 결과는
@@ -52,5 +86,5 @@ python experiments/quantile_model_eval.py --holdout "25년 11월"   # 모델 채
 | `pulp_test.py` | PuLP 라이브러리 튜토리얼 | `test/` |
 | `pulp_test2.py` | PuLP 최소 예제 | `test/` |
 | `matplotlib_month_graph.py` | 월별 대여량 그래프(더미 데이터, 한글 폰트 설정 예시) | `test/test.py` |
-| `step0_rebal_qty_check.py` | rebal_qty 합계 확인용 (구식 duration `_05_15` 참조 — 실행하려면 수정 필요) | `step0 (raw데이터 처리)/test.py` |
+| `step0_rebal_qty_check.py` | rebal_qty 합계 확인용 (구식 duration `_05_15` 참조 — 실행하려면 수정 필요) | `step0_collect/test.py` |
 | `step1_cluster_memo.py` | 클러스터링 실행 결과 메모 | `step1 (...)/test.py` |

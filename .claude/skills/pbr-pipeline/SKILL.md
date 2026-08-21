@@ -15,8 +15,12 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/RETROSPECTIVE.md` | 전체 조망·측정이 뒤집은 가설·설계 결정 (처음 오면 여기부터) |
 | `docs/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/TESTING.md` | 테스트 206개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/TESTING.md` | 테스트 228개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
+| `docs/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
+| `docs/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
+| `docs/RELATED_WORK.md` | 관련 연구와 본 연구의 위치 |
+| `docs/LITERATURE.md` | 문헌 11편 분석·비교 (**선행연구를 인용하기 전 필독**) |
 | `docs/PROJECT_PIPELINE.md` | 파이프라인 전체 구조 |
 | `docs/steps/step*.md` | 단계별 입출력·문제점·작업 목록 |
 | `docs/WEBAPP.md` | 웹 대시보드(webapp/) 실행·구조·API |
@@ -30,8 +34,8 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 ## 파이프라인 구조 (실행 순서 = 데이터 의존 순서)
 
 ```text
-step0 (raw데이터 처리)  : tashu_api → extract_parking_lot → api_to_info → raw_to_net → calculate_target_qty
-step0(전처리 및 EDA)    : concat_1year_file, EDA (선택적)
+step0_collect  : tashu_api → extract_parking_lot → api_to_info → raw_to_net → calculate_target_qty
+step0_eda    : concat_1year_file, EDA (선택적)
 step1                   : 1.top_st_clustering → st_visualization
 step2                   : ilp → vrp
 step3                   : main (TMAP 지도)
@@ -65,9 +69,11 @@ step4                   : imbalance
 
 ## ⚠️ 함정 (반드시 확인)
 
-1. **폴더명에 공백·괄호·한글이 있다.** 셸 명령에서는 반드시 따옴표로 감싸라:
-   `python "step0 (raw데이터 처리)/tashu_api.py"`.
-   `step0 (raw데이터 처리)`와 `step0(전처리 및 EDA)`는 공백 유무만 다른 **별개 폴더**다.
+1. **step 폴더는 ASCII 이름이다** (1.18.3에서 정리했다 — 예전 이름은
+   `step0 (raw데이터 처리)`처럼 공백·괄호·한글이 있어 셸 인용이 필요했다).
+   `step0_collect`(수집·전처리)와 `step0_eda`(이력 병합·EDA)는 **별개 폴더**다.
+   **파일명은 아직 정리 전이다** — `step1_cluster/1.top_st_clustering.py`는 숫자로
+   시작해 일반 import가 안 되므로 `importlib`으로 불러야 한다.
 2. **`data/`와 `*.csv`는 .gitignore로 전부 제외된다.** 데이터 파일은 커밋할 수 없고,
    로컬에 원천 CSV가 있어야만 파이프라인이 돈다. 데이터가 없으면 코드 실행 검증은
    구문 수준(`python -m py_compile`)까지만 가능하다.
@@ -100,6 +106,7 @@ step4                   : imbalance
 python run_pipeline.py --dry-run          # 실행 목록 확인 (파일 존재 검증)
 python run_pipeline.py                    # 전체 실행 (기본 설정)
 python run_pipeline.py --skip-api --skip-eda  # 수집·EDA 생략
+python run_pipeline.py --skip-map             # TMAP 지도 생략 (키 없는 환경)
 python run_pipeline.py --now "2026-05-21 18" --period "25년 11월" --duration "_05_10,_10_15"
 python run_pipeline.py --fleet-size 15 --vehicles-per-round 6   # 차량 대수 (기본 21 / 10)
 python run_pipeline.py --day-type holiday --now "260813 휴일"   # 휴일 계획 (기본 auto)
@@ -211,7 +218,7 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
 ## 테스트
 
 ```powershell
-python -m pytest                 # 206개, 약 50초 (tests/ 만 수집)
+python -m pytest                 # 228개, 약 50초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

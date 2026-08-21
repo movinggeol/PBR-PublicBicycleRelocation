@@ -1,11 +1,11 @@
 # 테스트
 
 이 프로젝트는 처음에 테스트가 하나도 없었고, **의존성이 전부 깨진 상태**로
-파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 206개 테스트입니다.
+파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 228개 테스트입니다.
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 206개 (약 50~80초)
+python -m pytest              # 전체 228개 (약 50~80초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -18,16 +18,17 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | 파일 | 개수 | 무엇을 지키는가 |
 | --- | --- | --- |
 | [tests/test_pipeline.py](../tests/test_pipeline.py) | 32 | step0→1→2→4를 **실제로 실행**해 산출물·스키마 확인 |
+| [tests/test_calculations.py](../tests/test_calculations.py) | 19 | **계산 자체** — 목표재고 공식·군집 목적함수·VRP 적재/시간 제약·ILP 수급 제약 ([FORMULATION.md](FORMULATION.md)) |
 | [tests/test_kpi.py](../tests/test_kpi.py) | 19 | 성과 지표 계산과 `/kpi` 화면, 결측 지표 렌더링 ([KPI.md](KPI.md)) |
 | [tests/test_db.py](../tests/test_db.py) | 22 | SQLite 저장소의 스코프·멱등성·최신 라벨·스키마 마이그레이션 ([DB_SCHEMA.md](DB_SCHEMA.md)) |
 | [tests/test_webapp.py](../tests/test_webapp.py) | 37 | 웹 라우트가 통째로 깨지는 사고 방지, 실행 폼 입력 검증, 파일 목록 쪽 나눔 ([WEBAPP.md](WEBAPP.md)) |
-| [tests/test_pipeline_progress.py](../tests/test_pipeline_progress.py) | 7 | 실행 로그에서 진행 단계를 뽑는 규약 ([WEBAPP.md](WEBAPP.md)) |
+| [tests/test_pipeline_progress.py](../tests/test_pipeline_progress.py) | 8 | 실행 로그에서 진행 단계를 뽑는 규약 ([WEBAPP.md](WEBAPP.md)) |
 | [tests/test_guide.py](../tests/test_guide.py) | 7 | 사용 안내가 설정값을 하드코딩하지 않는지, 폼 항목을 빠짐없이 설명하는지, **입력 예시가 실제로 통하는 형식인지** |
 | [tests/test_webapp_db.py](../tests/test_webapp_db.py) | 14 | 웹 API가 CSV 대신 DB를 읽는지 |
 | [tests/test_rentals.py](../tests/test_rentals.py) | 10 | 대여이력 적재와 **CSV·DB 결과 동일성** |
 | [tests/test_fleet.py](../tests/test_fleet.py) | 13 | 차량 로테이션·형평성과 보유 대수 변경 ([FLEET.md](FLEET.md)) |
 | [tests/test_tmap.py](../tests/test_tmap.py) | 11 | TMAP 엔드포인트 선택·폴백 ([steps/step3_visualization.md](steps/step3_visualization.md)) |
-| [tests/test_day_type.py](../tests/test_day_type.py) | 34 | 평일/휴일 분리·공휴일 판정·수요 모델 폴백·계절 보정과 그 옵션 전달 ([steps/step0_raw.md](steps/step0_raw.md)) |
+| [tests/test_day_type.py](../tests/test_day_type.py) | 36 | 평일/휴일 분리·공휴일 판정·수요 모델 폴백·계절 보정, **평가도 같은 구분을 쓰는지** ([steps/step0_raw.md](steps/step0_raw.md)) |
 
 **API 키가 필요한 두 단계는 자동 테스트에서 제외**했습니다 —
 `step0/tashu_api.py`(TASHU)와 `step3/main.py`(TMAP). 검증 방법은 4장에 있습니다.
@@ -110,7 +111,7 @@ HTTP 요청을 보내기 **전에** 예외가 발생하므로, 한도 초과 상
 ```powershell
 # 호출 없이 폴백 경로만 확인
 $env:PBR_TMAP_MAX_CALLS="0"
-python "step3 (결과 시각화)/main.py" --now "<라벨>" --duration "_15_20"
+python "step3_map/main.py" --now "<라벨>" --duration "_15_20"
 ```
 
 검증 포인트는 **"실패해도 파이프라인이 멈추지 않는가"** 입니다. 걸린 클러스터만
@@ -139,7 +140,7 @@ python "step3 (결과 시각화)/main.py" --now "<라벨>" --duration "_15_20"
 | **CI (GitHub Actions)** | 로컬 실행에만 의존한다 |
 | `step0/tashu_api.py` | API 키 필요 — 응답을 고정한 목(mock) 테스트로 대체 가능 |
 | `step3/main.py` | 위 4장 참고 (수동) |
-| `step0(전처리 및 EDA)` | 산출물이 분석용이라 파이프라인 의존이 없다 |
+| `step0_eda` | 산출물이 분석용이라 파이프라인 의존이 없다 |
 
 → [TODO.md](TODO.md) 11번
 

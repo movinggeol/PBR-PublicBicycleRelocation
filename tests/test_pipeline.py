@@ -22,15 +22,15 @@ LABEL = f"smoketest-{os.getpid()}"
 
 # 실행 순서 = 데이터 의존 순서
 STAGES = [
-    Path("step0 (raw데이터 처리)") / "extract_parking_lot.py",
-    Path("step0 (raw데이터 처리)") / "api_to_info.py",
-    Path("step0 (raw데이터 처리)") / "raw_to_net.py",
-    Path("step0 (raw데이터 처리)") / "calculate_target_qty.py",
-    Path("step1 (작업대상 선정 및 클러스터링)") / "1.top_st_clustering.py",
-    Path("step1 (작업대상 선정 및 클러스터링)") / "st_visualization.py",
-    Path("step2 (ilp, vrp)") / "ilp.py",
-    Path("step2 (ilp, vrp)") / "vrp.py",
-    Path("step4 (성과 지표)") / "imbalance.py",
+    Path("step0_collect") / "extract_parking_lot.py",
+    Path("step0_collect") / "api_to_info.py",
+    Path("step0_collect") / "raw_to_net.py",
+    Path("step0_collect") / "calculate_target_qty.py",
+    Path("step1_cluster") / "1.top_st_clustering.py",
+    Path("step1_cluster") / "st_visualization.py",
+    Path("step2_optimize") / "ilp.py",
+    Path("step2_optimize") / "vrp.py",
+    Path("step4_metrics") / "imbalance.py",
 ]
 
 

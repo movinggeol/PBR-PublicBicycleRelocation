@@ -15,11 +15,11 @@ from pathlib import Path
 
 import pytest
 
-MODULE_PATH = Path(__file__).resolve().parents[1] / "step3 (결과 시각화)" / "module.py"
+MODULE_PATH = Path(__file__).resolve().parents[1] / "step3_map" / "module.py"
 
 
 def load_module():
-    """폴더명에 공백·괄호가 있어 일반 import가 안 된다 — 경로로 직접 읽는다.
+    """step3 모듈을 경로로 직접 읽는다.
 
     환경변수를 import 시점에 읽으므로 테스트마다 새로 로드해야 한다.
     """

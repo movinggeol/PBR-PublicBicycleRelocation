@@ -1,4 +1,4 @@
-# Step 3 — 결과 시각화 (`step3 (결과 시각화)/`)
+# Step 3 — 결과 시각화 (`step3_map/`)
 
 VRP 경로를 TMAP Routes API로 실제 도로 경로로 변환해 Folium 지도에 그리는 단계입니다.
 

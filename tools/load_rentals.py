@@ -84,7 +84,7 @@ def main() -> int:
             print(f"  {label}  {loaded[label]:>10,}행")
     print(f"\nDB: {db.DB_PATH}")
     print("\n이제 step0가 CSV 대신 DB에서 읽습니다:")
-    print('  python "step0 (raw데이터 처리)/raw_to_net.py" --period "25년 11월"')
+    print('  python "step0_collect/raw_to_net.py" --period "25년 11월"')
     return 0
 
 

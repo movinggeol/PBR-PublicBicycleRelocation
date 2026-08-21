@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import db
 from project_config import PROJECT_ROOT, holiday_mask
 
-RAW_TO_NET = PROJECT_ROOT / "step0 (raw데이터 처리)" / "raw_to_net.py"
+RAW_TO_NET = PROJECT_ROOT / "step0_collect" / "raw_to_net.py"
 
 
 def loaded_periods() -> list:

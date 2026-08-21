@@ -44,6 +44,136 @@ def _travel_sec(km: float) -> float:
     return km / VEHICLE_SPEED_KMPH * 3600.0
 
 
+def greedy_route(nodes: dict, cluster, time_budget_sec: float = None) -> list:
+    """노드 목록을 받아 차량 1대의 방문 순서를 greedy로 만든다.
+
+    **저장하지 않는 순수 계산이다.** 파일·DB에 남기는 것은 run_vrp_plan()이고,
+    실험 스크립트(experiments/baseline_compare.py)는 이 함수를 직접 쓴다 —
+    측정 코드와 운영 코드가 갈리면 비교가 성립하지 않는다.
+
+    nodes: {(station_id, 'pick'|'drop'): {'qty', 'lat', 'lon'}}  (호출 측에서 소모된다)
+    time_budget_sec: 주면 예산을 넘기는 작업 앞에서 멈추고 depot으로 돌아온다.
+        **파이프라인은 주지 않는다**(None) — 현행 설계에서 시간 예산은 제약이 아니라
+        사후 점검이다(docs/RETROSPECTIVE.md 6장). 대조군처럼 클러스터 없이 한 대가
+        전체 후보를 훑는 경우에는 멈출 곳이 있어야 해서 넣어 둔 선택 인자다.
+    반환: VRP 행 목록(from/to·action·qty·거리·시간)
+    """
+    results = []
+
+    # depot 출발, 적재 0
+    current_id = DEPOT_ID
+    current_lat = DEPOT_LAT
+    current_lon = DEPOT_LON
+    current_load = 0
+    cum_sec = 0.0
+
+    while True:
+        remaining_pick = sum(v['qty'] for (sid, t), v in nodes.items()
+                             if t == 'pick' and v['qty'] > 0)
+        remaining_drop = sum(v['qty'] for (sid, t), v in nodes.items()
+                             if t == 'drop' and v['qty'] > 0)
+
+        if remaining_pick == 0 and remaining_drop == 0:
+            break
+
+        # 후보 계산: 가까우면서 많이 처리 가능한 곳 우선 (score 낮을수록 우선)
+        candidates = []
+        for (sid, ntype), info in nodes.items():
+            if info['qty'] <= 0:
+                continue
+
+            distance = haversine_km(current_lat, current_lon, info['lat'], info['lon'])
+
+            if ntype == 'pick' and current_load < VEHICLE_CAPACITY:
+                possible = min(info['qty'], VEHICLE_CAPACITY - current_load)
+            elif ntype == 'drop' and current_load > 0:
+                possible = min(info['qty'], current_load)
+            else:
+                continue
+
+            score = distance / (possible + 1e-6)
+            if possible == info['qty']:    # 노드를 완결 지으면 보너스
+                score *= 0.1
+            candidates.append((ntype, sid, score, distance, possible))
+
+        # 작업 불가 상황 -> depot 복귀
+        if not candidates:
+            if current_id == DEPOT_ID and current_load == 0:
+                # depot에서 빈 차로도 후보가 없으면 더 진행 불가 (무한루프 방지)
+                print(f"[경고] cluster {cluster}: 처리 불가 작업 잔여 "
+                      f"(pick {remaining_pick}, drop {remaining_drop}) — 종료")
+                break
+
+            distance = haversine_km(current_lat, current_lon, DEPOT_LAT, DEPOT_LON)
+            travel = _travel_sec(distance)
+            cum_sec += travel
+            results.append({
+                'cluster': cluster,
+                'from_id': current_id,
+                'from_lat': current_lat,
+                'from_lon': current_lon,
+                'to_id': DEPOT_ID,
+                'to_lat': DEPOT_LAT,
+                'to_lon': DEPOT_LON,
+                'action': 'return',
+                'qty': 0,
+                'distance_km': round(distance, 3),
+                'travel_sec': round(travel, 1),
+                'work_sec': 0.0,
+                'cum_sec': round(cum_sec, 1),
+            })
+            current_id = DEPOT_ID
+            current_lat = DEPOT_LAT
+            current_lon = DEPOT_LON
+            current_load = 0
+            continue
+
+        # 최적 후보 선택 및 수행
+        candidates.sort(key=lambda x: x[2])
+        action, sid, _, distance, qty = candidates[0]
+        node = nodes[(sid, action)]
+
+        travel = _travel_sec(distance)
+        per_bike = PICK_TIME_SEC if action == 'pick' else DROP_TIME_SEC
+        work = qty * per_bike
+
+        # 시간 예산이 주어졌으면, 이 작업을 하고 depot까지 돌아올 수 있을 때만 간다.
+        if time_budget_sec is not None:
+            back = _travel_sec(haversine_km(node['lat'], node['lon'], DEPOT_LAT, DEPOT_LON))
+            if cum_sec + travel + work + back > time_budget_sec:
+                break
+
+        cum_sec += travel + work
+
+        results.append({
+            'cluster': cluster,
+            'from_id': current_id,
+            'from_lat': current_lat,
+            'from_lon': current_lon,
+            'to_id': sid,
+            'to_lat': node['lat'],
+            'to_lon': node['lon'],
+            'action': action,
+            'qty': qty,
+            'distance_km': round(distance, 3),
+            'travel_sec': round(travel, 1),
+            'work_sec': round(work, 1),
+            'cum_sec': round(cum_sec, 1),
+        })
+
+        if action == 'pick':
+            current_load += qty
+        else:
+            current_load -= qty
+        node['qty'] -= qty
+
+        current_id = sid
+        current_lat = node['lat']
+        current_lon = node['lon']
+
+    return results
+
+
 def run_vrp_plan(ilp_plan: pd.DataFrame, duration: str):
     '''
     ILP에서 계산한 자전거 이동 계획을 기반으로 실제 차량이 어떤 순서로 대여소를 방문해야 하는지를 계산.
@@ -81,115 +211,7 @@ def run_vrp_plan(ilp_plan: pd.DataFrame, duration: str):
                 'lon': station_info.loc[sid, 'lon'],
             }
 
-        # -------------------------
-        # 2. VRP 시작 (depot 출발, 적재 0)
-        # -------------------------
-        current_id = DEPOT_ID
-        current_lat = DEPOT_LAT
-        current_lon = DEPOT_LON
-        current_load = 0
-        cum_sec = 0.0
-
-        while True:
-            remaining_pick = sum(v['qty'] for (sid, t), v in nodes.items()
-                                 if t == 'pick' and v['qty'] > 0)
-            remaining_drop = sum(v['qty'] for (sid, t), v in nodes.items()
-                                 if t == 'drop' and v['qty'] > 0)
-
-            if remaining_pick == 0 and remaining_drop == 0:
-                break
-
-            # 후보 계산: 가까우면서 많이 처리 가능한 곳 우선 (score 낮을수록 우선)
-            candidates = []
-            for (sid, ntype), info in nodes.items():
-                if info['qty'] <= 0:
-                    continue
-
-                distance = haversine_km(current_lat, current_lon, info['lat'], info['lon'])
-
-                if ntype == 'pick' and current_load < VEHICLE_CAPACITY:
-                    possible = min(info['qty'], VEHICLE_CAPACITY - current_load)
-                elif ntype == 'drop' and current_load > 0:
-                    possible = min(info['qty'], current_load)
-                else:
-                    continue
-
-                score = distance / (possible + 1e-6)
-                if possible == info['qty']:    # 노드를 완결 지으면 보너스
-                    score *= 0.1
-                candidates.append((ntype, sid, score, distance, possible))
-
-            # -------------------------
-            # 3. 작업 불가 상황 → depot 복귀
-            # -------------------------
-            if not candidates:
-                if current_id == DEPOT_ID and current_load == 0:
-                    # depot에서 빈 차로도 후보가 없으면 더 진행 불가 (무한루프 방지)
-                    print(f"[경고] cluster {c}: 처리 불가 작업 잔여 "
-                          f"(pick {remaining_pick}, drop {remaining_drop}) — 종료")
-                    break
-
-                distance = haversine_km(current_lat, current_lon, DEPOT_LAT, DEPOT_LON)
-                travel = _travel_sec(distance)
-                cum_sec += travel
-                results.append({
-                    'cluster': c,
-                    'from_id': current_id,
-                    'from_lat': current_lat,
-                    'from_lon': current_lon,
-                    'to_id': DEPOT_ID,
-                    'to_lat': DEPOT_LAT,
-                    'to_lon': DEPOT_LON,
-                    'action': 'return',
-                    'qty': 0,
-                    'distance_km': round(distance, 3),
-                    'travel_sec': round(travel, 1),
-                    'work_sec': 0.0,
-                    'cum_sec': round(cum_sec, 1),
-                })
-                current_id = DEPOT_ID
-                current_lat = DEPOT_LAT
-                current_lon = DEPOT_LON
-                current_load = 0
-                continue
-
-            # -------------------------
-            # 4. 최적 후보 선택 및 수행
-            # -------------------------
-            candidates.sort(key=lambda x: x[2])
-            action, sid, _, distance, qty = candidates[0]
-            node = nodes[(sid, action)]
-
-            travel = _travel_sec(distance)
-            per_bike = PICK_TIME_SEC if action == 'pick' else DROP_TIME_SEC
-            work = qty * per_bike
-            cum_sec += travel + work
-
-            results.append({
-                'cluster': c,
-                'from_id': current_id,
-                'from_lat': current_lat,
-                'from_lon': current_lon,
-                'to_id': sid,
-                'to_lat': node['lat'],
-                'to_lon': node['lon'],
-                'action': action,
-                'qty': qty,
-                'distance_km': round(distance, 3),
-                'travel_sec': round(travel, 1),
-                'work_sec': round(work, 1),
-                'cum_sec': round(cum_sec, 1),
-            })
-
-            if action == 'pick':
-                current_load += qty
-            else:
-                current_load -= qty
-            node['qty'] -= qty
-
-            current_id = sid
-            current_lat = node['lat']
-            current_lon = node['lon']
+        results.extend(greedy_route(nodes, c))
 
     # -------------------------
     # 차량 배정 (로테이션) — docs/FLEET.md

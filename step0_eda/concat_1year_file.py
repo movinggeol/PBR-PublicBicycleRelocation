@@ -4,8 +4,8 @@
 - preprocess: 이용시간(분)·이용거리(km)의 IQR×1.5 밖 이상치 제거
 
 실행 예:
-    python "step0(전처리 및 EDA)/concat_1year_file.py" --concat --preprocess
-    python "step0(전처리 및 EDA)/concat_1year_file.py" --preprocess
+    python "step0_eda/concat_1year_file.py" --concat --preprocess
+    python "step0_eda/concat_1year_file.py" --preprocess
 옵션 없이 실행하면(파이프라인 기본) 병합 파일이 있을 때만 이상치 제거를 수행하고,
 없으면 건너뛴다(전체 파이프라인 중단 방지).
 """

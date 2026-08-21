@@ -105,11 +105,11 @@ def test_compare_runs_with_sql(conn):
 
 @pytest.fixture(scope="module")
 def step4():
-    """step4 모듈을 불러온다(폴더명에 공백·괄호가 있어 일반 import 불가)."""
+    """step4 모듈을 경로로 직접 읽는다(테스트마다 독립된 이름으로 올린다)."""
     import importlib.util
     from pathlib import Path
 
-    path = Path(__file__).resolve().parents[1] / "step4 (성과 지표)" / "imbalance.py"
+    path = Path(__file__).resolve().parents[1] / "step4_metrics" / "imbalance.py"
     spec = importlib.util.spec_from_file_location("_imbalance", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

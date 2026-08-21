@@ -39,31 +39,31 @@ ROOT = Path(__file__).resolve().parent
 # 앞 단계의 산출물이 다음 단계의 입력이 되므로 순서를 바꾸면 안 됩니다.
 STAGES = {
     "api": [
-        Path("step0 (raw데이터 처리)") / "tashu_api.py",
-        Path("step0 (raw데이터 처리)") / "extract_parking_lot.py",
-        Path("step0 (raw데이터 처리)") / "api_to_info.py",
+        Path("step0_collect") / "tashu_api.py",
+        Path("step0_collect") / "extract_parking_lot.py",
+        Path("step0_collect") / "api_to_info.py",
     ],
     "eda": [
-        Path("step0(전처리 및 EDA)") / "concat_1year_file.py",
-        Path("step0(전처리 및 EDA)") / "EDA.py",
+        Path("step0_eda") / "concat_1year_file.py",
+        Path("step0_eda") / "EDA.py",
     ],
     "preprocess": [
-        Path("step0 (raw데이터 처리)") / "raw_to_net.py",
-        Path("step0 (raw데이터 처리)") / "calculate_target_qty.py",
+        Path("step0_collect") / "raw_to_net.py",
+        Path("step0_collect") / "calculate_target_qty.py",
     ],
     "selection": [
-        Path("step1 (작업대상 선정 및 클러스터링)") / "1.top_st_clustering.py",
-        Path("step1 (작업대상 선정 및 클러스터링)") / "st_visualization.py",
+        Path("step1_cluster") / "1.top_st_clustering.py",
+        Path("step1_cluster") / "st_visualization.py",
     ],
     "optimization": [
-        Path("step2 (ilp, vrp)") / "ilp.py",
-        Path("step2 (ilp, vrp)") / "vrp.py",
+        Path("step2_optimize") / "ilp.py",
+        Path("step2_optimize") / "vrp.py",
     ],
     "visualization": [
-        Path("step3 (결과 시각화)") / "main.py",
+        Path("step3_map") / "main.py",
     ],
     "evaluation": [
-        Path("step4 (성과 지표)") / "imbalance.py",
+        Path("step4_metrics") / "imbalance.py",
     ],
 }
 
@@ -112,6 +112,8 @@ def parse_args() -> argparse.Namespace:
     # API와 EDA는 이미 산출물이 있는 경우 선택적으로 생략할 수 있습니다.
     parser.add_argument("--skip-api", action="store_true", help="API 수집 생략")
     parser.add_argument("--skip-eda", action="store_true", help="EDA 생략")
+    parser.add_argument("--skip-map", action="store_true",
+                        help="step3 TMAP 지도 생략 (TMAP 키가 없을 때)")
 
     # 기본은 실패 즉시 중단입니다.
     # 디버깅이나 일부 결과 확보가 필요할 때만 계속 실행 옵션을 사용합니다.
@@ -182,9 +184,15 @@ def selected_scripts(args: argparse.Namespace) -> Iterable[Path]:
         groups.append("eda")
 
     # 전처리는 API/EDA 이후에 실행되어야 순수요와 재배치량을 계산할 수 있습니다.
-    groups.extend(
-        ["preprocess", "selection", "optimization", "visualization", "evaluation"]
-    )
+    groups.extend(["preprocess", "selection", "optimization"])
+
+    # step3는 TMAP 실도로 경로를 받아 오므로 API 키가 필요합니다. 키가 없는
+    # 환경(합성 데이터 시연·CI)에서 나머지 단계를 마저 돌리려면 건너뜁니다 —
+    # 지도는 산출물일 뿐이고 지표(step4)는 VRP 결과만으로 계산됩니다.
+    if not args.skip_map:
+        groups.append("visualization")
+
+    groups.append("evaluation")
 
     for group in groups:
         yield from STAGES[group]

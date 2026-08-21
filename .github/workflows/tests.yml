@@ -1,0 +1,31 @@
+name: tests
+
+# 테스트 206개는 합성 데이터로 step0~step4를 실제로 돌린다(원천 CSV·API 키 불필요).
+# 그래서 CI에서 그대로 돌릴 수 있다 — docs/TESTING.md 참고.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # 검증 환경은 3.14.7(Windows 11)이다. requirements.txt는 하한(>=) 고정이라
+          # 새 파이썬에서도 휠이 있으면 설치된다 — 상한을 걸지 마라(1.2.1에서 겪음).
+          python-version: '3.14'
+          cache: pip
+
+      - name: 의존성 설치
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: 테스트
+        run: python -m pytest -q

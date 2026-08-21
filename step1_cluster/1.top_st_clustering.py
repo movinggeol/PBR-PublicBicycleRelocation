@@ -94,13 +94,17 @@ def select_top_unbalanced_st(file_path:str, duration:str, st_info:pd.DataFrame) 
     return pick_drop
 
 
-def make_clustering(pick_drop: pd.DataFrame, target_cluster_size: int = 7) -> pd.DataFrame:
+def make_clustering(pick_drop: pd.DataFrame, target_cluster_size: int = 7,
+                    random_state: int = 42) -> pd.DataFrame:
     '''
     # 2차 : 클러스터링(K-Medoids)
 
     군집 1개 = 차량 1대가 맡는 작업이므로, 군집 수는 한 회차에 투입할 수 있는
     차량 수를 넘을 수 없다. 상한에 걸리면 군집이 커지고 차량당 작업량이 늘어난다.
     (docs/FLEET.md)
+
+    random_state는 파이프라인에서 늘 42다. 실험이 씨앗을 바꿔 가며 돌려
+    greedy 탐색의 변동성을 재려고 열어 둔 인자다(experiments/baseline_compare.py).
     '''
 
     wanted = int(np.ceil(len(pick_drop) / target_cluster_size))
@@ -118,7 +122,7 @@ def make_clustering(pick_drop: pd.DataFrame, target_cluster_size: int = 7) -> pd
         n_clusters=K,
         metric='manhattan',
         method='fasterpam',
-        random_state=42
+        random_state=random_state
     )
 
     pick_drop['cluster'] = model.fit_predict(X)

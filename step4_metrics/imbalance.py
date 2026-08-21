@@ -9,6 +9,7 @@ import pandas as pd
 import db
 from project_config import (
     PROJECT_ROOT, TIME_BUDGET_MINUTES, duration_list, ensure_output_dirs, get_runtime_config,
+    select_day_type,
 )
 
 file_path = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")
@@ -128,19 +129,37 @@ def duration_hours(duration: str) -> list:
 
 
 def load_net_demand() -> pd.DataFrame:
-    '''시간대별 순수요를 읽는다(DB 우선, 없으면 CSV).'''
+    '''시간대별 순수요를 읽는다(DB 우선, 없으면 CSV).
+
+    **계획과 같은 요일 구분만 남긴다.** 평일 계획은 평일 순수요로, 휴일 계획은 휴일
+    순수요로 평가해야 한다 — 앞 단계(calculate_target_qty)가 이미 한쪽만 골라
+    목표 재고를 잡았기 때문이다. 섞으면 평일 계획을 주말 수요로 채점하게 되고,
+    대여소의 33~37%가 두 구분에서 부호가 반대라 결과가 실제와 달라진다
+    (experiments/weekend_profile.py, docs/steps/step0_raw.md).
+    '''
+    frame = pd.DataFrame()
     try:
         with db.session() as conn:
-            frame = db.load_frame(conn, 'net_demand', period=config.period)
-        if not frame.empty:
-            return frame.rename(columns={'date': '날짜'})
+            loaded = db.load_frame(conn, 'net_demand', period=config.period)
+        if not loaded.empty:
+            frame = loaded.rename(columns={'date': '날짜'})
     except Exception as err:
         print(f"[경고] 순수요 DB 조회 실패: {type(err).__name__}: {err}")
 
-    path = Path(net_demand_file.format(period=config.period))
-    if path.is_file():
-        return pd.read_csv(path, encoding='utf-8')
-    return pd.DataFrame()
+    if frame.empty:
+        path = Path(net_demand_file.format(period=config.period))
+        if path.is_file():
+            frame = pd.read_csv(path, encoding='utf-8')
+
+    if frame.empty:
+        return frame
+
+    전체일수 = pd.to_datetime(frame['날짜']).dt.date.nunique()
+    frame = select_day_type(frame, '날짜', config.day_type)
+    사용일수 = pd.to_datetime(frame['날짜']).dt.date.nunique() if not frame.empty else 0
+    print(f"결품 시뮬레이션: {config.day_label} 순수요만 사용 "
+          f"({사용일수}일 / 전체 {전체일수}일)")
+    return frame
 
 
 def _stockout_hours(net: pd.DataFrame, initial: pd.Series,

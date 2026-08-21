@@ -29,11 +29,11 @@ DURATION = "_05_10"
 LABEL = f"daytype-{os.getpid()}"
 
 PREP = [
-    Path("step0 (raw데이터 처리)") / "extract_parking_lot.py",
-    Path("step0 (raw데이터 처리)") / "api_to_info.py",
-    Path("step0 (raw데이터 처리)") / "raw_to_net.py",
+    Path("step0_collect") / "extract_parking_lot.py",
+    Path("step0_collect") / "api_to_info.py",
+    Path("step0_collect") / "raw_to_net.py",
 ]
-TARGET_QTY = Path("step0 (raw데이터 처리)") / "calculate_target_qty.py"
+TARGET_QTY = Path("step0_collect") / "calculate_target_qty.py"
 
 
 # ---------------- 설정 헬퍼 ----------------
@@ -397,3 +397,51 @@ def test_run_pipeline_forwards_warmup_options():
     assert "--warmup-period" in command and "26년 03월" in command
     # 0은 '보정을 끈다'는 뜻이라 값으로 참·거짓을 판정하면 조용히 사라진다.
     assert command[command.index("--warmup-days") + 1] == "0"
+
+
+def _load_step4():
+    """step4 모듈을 경로로 직접 읽는다(모듈 전역 `config`를 갈아끼우므로 독립 이름)."""
+    import importlib.util
+
+    path = PROJECT_ROOT / "step4_metrics" / "imbalance.py"
+    spec = importlib.util.spec_from_file_location("_imbalance_daytype", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("day_type", ["weekday", "holiday"])
+def test_stockout_evaluation_uses_the_same_day_type(monkeypatch, day_type):
+    """5번 규칙: **평가도 계획과 같은 요일 구분만 써야 한다.**
+
+    계획(calculate_target_qty)은 한쪽만 골라 목표 재고를 잡는데, step4의
+    `load_net_demand()`가 기간 전체를 읽으면 **평일 계획을 주말 수요로 채점**하게
+    된다. 대여소의 33~37%가 두 구분에서 부호가 반대라 결과가 실제와 달라진다.
+    """
+    import dataclasses
+
+    step4 = _load_step4()
+
+    dates = [f"2026-08-{day:02d}" for day in range(17, 24)]   # 월~일 한 주
+    frame = pd.DataFrame({
+        "station_id": ["ST0001"] * len(dates),
+        "date": dates,
+        **{f"net_{hour:02d}": [1] * len(dates) for hour in range(24)},
+    })
+
+    # 기대값은 달력에서 직접 구한다 — 공휴일·대체공휴일이 끼어도 테스트가 흔들리지 않는다.
+    휴일여부 = holiday_mask(pd.to_datetime(frame["date"]))
+    기대건수 = int((휴일여부 == (day_type == "holiday")).sum())
+    assert 0 < 기대건수 < len(dates), "입력에 평일과 휴일이 모두 있어야 의미 있는 검증이다"
+
+    monkeypatch.setattr(step4.db, "load_frame", lambda *a, **k: frame.copy())
+    monkeypatch.setattr(step4, "config",
+                        dataclasses.replace(step4.config, day_type=day_type))
+
+    loaded = step4.load_net_demand()
+
+    assert not loaded.empty, "해당 구분의 날짜는 남아야 한다"
+    남은날짜 = holiday_mask(pd.to_datetime(loaded["날짜"]))
+    assert 남은날짜.nunique() == 1, "평일과 휴일이 섞였다 — 계획과 평가의 기준이 어긋난다"
+    assert bool(남은날짜.iloc[0]) == (day_type == "holiday")
+    assert len(loaded) == 기대건수

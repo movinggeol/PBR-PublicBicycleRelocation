@@ -12,39 +12,60 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 
 ## 주요 결과
 
+**대조군 비교** — 재배치 후 대여소·일 평균 **결품 시간(h)**, 낮을수록 좋습니다.
+(25년 11월 평일, VRP가 실제로 옮긴 대수 기준)
+
+| 방법 | `_05_10` | `_10_15` | `_15_20` |
+| --- | --- | --- | --- |
+| 무재배치 | 2.16 | 1.76 | 1.64 |
+| 그리디 (군집·ILP 없음) | 0.74 | 0.41 | 0.60 |
+| 지리 균등 군집 (불균형 조정 없음) | 1.39 | 1.41 | 1.28 |
+| 평균 목표재고 (`z = 0`) | 1.36 | 작업 대상 없음 | 작업 대상 없음 |
+| **제안 방법** | **0.48** | **0.28** | **0.36** |
+
+5개월(25년 09·10·11월, 26년 01·03월)로 반복해도 유지됩니다 —
+제안 방법 **0.50 ± 0.03 / 0.36 ± 0.09 / 0.41 ± 0.06**,
+무재배치·그리디·지리 군집 대비 모두 유의합니다(Wilcoxon, n = 15, p < 0.001).
+근거·재현은 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) 5장.
+
+> **그리디는 제안 방법보다 더 많이 옮기고도(319대 vs 313대) 결품을 더 남깁니다.**
+> 몇 대를 옮기느냐가 아니라 어디로 옮기느냐의 문제입니다.
+> 다만 **km당 편익은 그리디와 대등합니다** — 제안 방법의 우위 중 일부는 더 멀리
+> 다녀서 얻은 것입니다. 그렇게 읽어야 합니다.
+
+**하루 3회차 운용 결과** (05~10 / 10~15 / 15~20시)
+
+| 회차 | 차량 | 처리 | 이동거리 | 최장 소요 | 예산 초과 | 결품 시간 (전 → 후) |
+| --- | --- | --- | --- | --- | --- | --- |
+| `_05_10` | 10대 | 313대 | 294 km | 132.0분 | 2건 | 2.16h → **0.48h** |
+| `_10_15` | 10대 | 204대 | 255 km | 110.3분 | 0건 | 1.76h → **0.28h** |
+| `_15_20` | 10대 | 231대 | 305 km | 125.2분 | 1건 | 1.64h → **0.36h** |
+| **합계** | **21대 전원** | **748대** | **854 km** | — | **3건** | — |
+
 | 지표 | 결과 |
 | --- | --- |
 | 보유 대여이력 | 5,396,686건 (2025-01 ~ 2026-03, 15개월) |
 | 분석 대여소 | 1,349개 |
-| 재배치 후보 | 310개 (Pick 107 / Drop 203) |
-| 작업 대상 | 87개 → 클러스터 10개 (차량 10대) |
-| 총 이동거리 | 305 km |
-| 시간 예산(120분) 준수 | **10/10 클러스터 (100%)** |
-| 평균 불균형 개선 | **65%** (Pick 50% / Drop 77%) |
-
-**하루 3회차 운용 결과** (05~10 / 10~15 / 15~20시)
-
-| 회차 | 차량 | 처리 | 이동거리 | 최장 | 결품 시간 (전 → 후) |
-| --- | --- | --- | --- | --- | --- |
-| `_05_10` | 10대 | 313대 | 294 km | 115.8분 | 2.16h → **0.42h** |
-| `_10_15` | 10대 | 204대 | 255 km | 95.9분 | 1.76h → **0.21h** |
-| `_15_20` | 10대 | 231대 | 305 km | 108.3분 | 1.64h → **0.30h** |
-| **합계** | **21대 전원** | **748대** | **854 km** | — | — |
+| 작업 대상 (`_05_10`) | 89개 → 클러스터 10개 (차량 10대) |
+| 목표 재고·군집 가중치 | `z = 1.99`, `γ = 3000` — **실측 실험으로 결정** |
 
 회차마다 다른 차량이 나가며(로테이션), 하루면 보유 21대가 모두 최소 1회 출동합니다.
-**시간 예산 초과는 3회차 통틀어 0건**입니다 — 군집 거리 가중치를 실험으로 조정한
-결과입니다([step1 문서](docs/steps/step1_clustering.md)의 '거리 가중치' 절).
 
-**목표 재고와 군집 가중치는 실측 실험으로 정했습니다** (`z = 1.99`, `γ = 3000`).
-근거·재현은 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)에 있습니다.
-
-※ 25년 11월 대여이력(511,951건), 2026-08-12 실행 결과입니다.
+※ 25년 11월 순수요(평일), 씨앗 42, **2026-08-21 실행** 결과입니다.
 입력 데이터·파라미터에 따라 달라집니다.
 
-> ⚠️ **개선률·목표 도달률은 `z`가 다른 실행끼리 비교하면 안 됩니다.**
-> 두 지표는 목표 재고를 분모로 삼아, `z`를 올리면 결품이 줄어도 함께 떨어집니다.
-> 그래서 위 표에는 목표값과 무관한 **결품 시간**을 실었습니다.
-> 개선률은 **계획 달성률**이지 이용자 편익이 아닙니다 — [docs/KPI.md](docs/KPI.md) 참고.
+> ⚠️ **읽을 때 주의할 것 세 가지**
+>
+> 1. **개선률·목표 도달률은 `z`가 다른 실행끼리 비교할 수 없습니다.** 두 지표는 목표
+>    재고를 분모로 삼아, `z`를 올리면 결품이 줄어도 함께 떨어집니다. 그래서 위 표는
+>    목표값과 무관한 **결품 시간**으로 냈습니다 — [docs/KPI.md](docs/KPI.md).
+> 2. **결품 시간은 실측이 아니라 순수요로 복원한 시뮬레이션**이고, 재고를 0에서
+>    자르므로 **결품의 하한**입니다.
+> 3. **경로 계산에 마지막 depot 복귀가 빠져 있습니다.** 실측하면 3회차 합계
+>    286 km(총 이동의 33%)가 누락돼 있고, 이를 포함하면 시간 예산 초과가
+>    **3건 → 13건**(클러스터 30개 중)이 됩니다 — [docs/TODO.md](docs/TODO.md) 1-1.
+> 4. **경로는 greedy 휴리스틱**이며 OR-Tools 대비 이동거리가 평균 9.7%,
+>    최악 46.4% 깁니다 — [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) 6장.
 
 ## 프로젝트 구조
 
@@ -53,12 +74,12 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 ├── data/                                  # 원천·중간·결과 데이터 (Git 미포함)
 │   ├── raw_data/                          # 타슈 대여 이력
 │   └── pp_data/                           # 파이프라인 산출물
-├── step0 (raw데이터 처리)/                # API·원천 데이터 처리
-├── step0(전처리 및 EDA)/                  # 이력 병합·탐색 분석
-├── step1 (작업대상 선정 및 클러스터링)/   # Pick/Drop·클러스터링
-├── step2 (ilp, vrp)/                      # 수량·경로 최적화
-├── step3 (결과 시각화)/                   # TMAP/Folium 지도
-├── step4 (성과 지표)/                     # 불균형 평가
+├── step0_collect/                # API·원천 데이터 처리
+├── step0_eda/                  # 이력 병합·탐색 분석
+├── step1_cluster/   # Pick/Drop·클러스터링
+├── step2_optimize/                      # 수량·경로 최적화
+├── step3_map/                   # TMAP/Folium 지도
+├── step4_metrics/                     # 불균형 평가
 ├── docs/                                  # 문서 (파이프라인 설명·단계별 문서·TODO)
 ├── webapp/                                # 웹 대시보드 (FastAPI, 파이썬 단독)
 ├── tests/                                 # 스모크 테스트 (pytest)
@@ -138,6 +159,7 @@ API_KEY=발급받은_TMAP_API_키
 python run_pipeline.py              # 전체 실행 (기본 설정)
 python run_pipeline.py --dry-run    # 실행 목록만 확인
 python run_pipeline.py --skip-api --skip-eda   # 수집·EDA 생략
+python run_pipeline.py --skip-map              # TMAP 지도 생략 (키가 없을 때)
 python run_pipeline.py --now "2026-05-21 18" --period "25년 11월" --duration "_05_10"
 python run_pipeline.py --duration "_05_10,_10_15"   # 여러 시간대 일괄 처리
 ```
@@ -158,6 +180,7 @@ python run_pipeline.py --duration "_05_10,_10_15"   # 여러 시간대 일괄 �
 | `--fleet-size` | 보유 차량 대수 (1~99) | `21` |
 | `--vehicles-per-round` | 회차당 투입 상한. 보유 대수로 잘립니다 | `10` |
 | `--skip-api` / `--skip-eda` | 수집·EDA 생략 | 꺼짐 |
+| `--skip-map` | step3 TMAP 지도 생략 (TMAP 키가 없는 환경) | 꺼짐 |
 | `--continue-on-error` | 한 단계가 실패해도 계속 | 꺼짐 |
 
 ```powershell
@@ -175,20 +198,40 @@ python run_pipeline.py --warmup-days 0                         # 계절 보정 �
 단계별 개별 실행:
 
 ```powershell
-python "step0 (raw데이터 처리)/tashu_api.py"
-python "step0 (raw데이터 처리)/extract_parking_lot.py"
-python "step0 (raw데이터 처리)/api_to_info.py"
-python "step0 (raw데이터 처리)/raw_to_net.py"
-python "step0 (raw데이터 처리)/calculate_target_qty.py"
-python "step1 (작업대상 선정 및 클러스터링)/1.top_st_clustering.py"
-python "step1 (작업대상 선정 및 클러스터링)/st_visualization.py"
-python "step2 (ilp, vrp)/ilp.py"
-python "step2 (ilp, vrp)/vrp.py"
-python "step3 (결과 시각화)/main.py"
-python "step4 (성과 지표)/imbalance.py"
+python "step0_collect/tashu_api.py"
+python "step0_collect/extract_parking_lot.py"
+python "step0_collect/api_to_info.py"
+python "step0_collect/raw_to_net.py"
+python "step0_collect/calculate_target_qty.py"
+python "step1_cluster/1.top_st_clustering.py"
+python "step1_cluster/st_visualization.py"
+python "step2_optimize/ilp.py"
+python "step2_optimize/vrp.py"
+python "step3_map/main.py"
+python "step4_metrics/imbalance.py"
 ```
 
-월별 파일을 합칠 때는 먼저 `step0(전처리 및 EDA)/concat_1year_file.py --concat`을 실행합니다.
+월별 파일을 합칠 때는 먼저 `step0_eda/concat_1year_file.py --concat`을 실행합니다.
+
+## 5분 안에 직접 돌려보기 (데이터·API 키 없이)
+
+원천 데이터와 API 키가 없어도 **합성 데이터로 전 단계를 그대로 실행**할 수 있습니다.
+심사·리뷰에서 직접 확인하려면 이 절차만 따르면 됩니다.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements-dev.txt
+
+python -m pytest                                   # 228개 통과 확인 (약 50~80초)
+python tools/make_sample_data.py --now "데모"       # 합성 대여소·순수요 생성
+python run_pipeline.py --skip-api --skip-eda --skip-map --now "데모"   # step0~2·4 실행
+python -m webapp                                   # http://127.0.0.1:8000 에서 결과 확인
+```
+
+`data/`와 `*.csv`는 저장소에 포함되지 않습니다(.gitignore). 실데이터로 돌리려면
+`.env`에 API 키를 넣고 `data/raw_data/`에 타슈 대여 이력을 두어야 합니다 — 아래 '환경변수'와
+'데이터 준비' 절을 보세요.
 
 ## 테스트
 
@@ -196,7 +239,7 @@ python "step4 (성과 지표)/imbalance.py"
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest                 # 206개, 약 50~80초 (tests/ 만 수집)
+python -m pytest                 # 228개, 약 50~80초 (tests/ 만 수집)
 ```
 
 - `tests/test_pipeline.py` (32) — 합성 데이터로 step0→step1→step2→step4를
@@ -204,7 +247,11 @@ python -m pytest                 # 206개, 약 50~80초 (tests/ 만 수집)
   실행마다 고유 라벨(`smoketest-{PID}`)을 써서 실데이터를 건드리지 않고,
   끝나면 그 라벨 파일만 정리합니다.
 - `tests/test_webapp.py` (37) — 라우트·경로 탈출 차단·실행 폼 입력 검증
-- `tests/test_day_type.py` (34) — 평일/휴일 분리·공휴일 판정·계절 보정
+- `tests/test_calculations.py` (19) — **계산 단위 테스트**: 목표재고 공식(`μ + zσ`,
+  거치대 상한, tanh 제한, 0 방향 정수화), 군집 목적함수, VRP 적재·시간 제약,
+  ILP 수급 제약. 수식의 근거는 [docs/FORMULATION.md](docs/FORMULATION.md)
+- `tests/test_day_type.py` (36) — 평일/휴일 분리·공휴일 판정·계절 보정,
+  **계획과 평가가 같은 요일 구분을 쓰는지**
 - 나머지 파일과 각 테스트가 무엇을 지키는지는 [docs/TESTING.md](docs/TESTING.md)에
   정리돼 있습니다.
 
@@ -291,8 +338,12 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | 문서 | 내용 |
 | --- | --- |
 | [docs/RETROSPECTIVE.md](docs/RETROSPECTIVE.md) | **작업 회고** — 전체 조망, 측정이 뒤집은 가설, 설계 결정 |
+| [docs/THESIS.md](docs/THESIS.md) | **졸업작품·논문** — 장별 재료 매핑, 대조군·반복 실험 설계, 체크리스트 |
+| [docs/FORMULATION.md](docs/FORMULATION.md) | **문제 정형화** — 기호표·목표재고·군집 목적함수·ILP·VRP 수식 |
+| [docs/RELATED_WORK.md](docs/RELATED_WORK.md) | **관련 연구** — 문제의 갈래와 본 연구의 위치 |
+| [docs/LITERATURE.md](docs/LITERATURE.md) | **문헌 분석** — 논문 11편 한 편씩 분석·비교표·인용 지도 |
 | [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
-| [docs/TESTING.md](docs/TESTING.md) | **테스트** — 206개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
+| [docs/TESTING.md](docs/TESTING.md) | **테스트** — 228개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/PROJECT_PIPELINE.md](docs/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/WEBAPP.md](docs/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/DESIGN.md](docs/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |

@@ -39,16 +39,81 @@ out_file_path = str(PROJECT_ROOT / "data/pp_data/재배치 정보/rebal_qty{dura
 MAX_CAPACITY = 10
 
 
+def duration_columns(duration: str) -> list:
+    """시간대 문자열(_05_10) -> 순수요 컬럼 목록. 자정을 넘기면 이어서 돈다."""
+    start, end = int(duration.split('_')[1]), int(duration.split('_')[2])
+    hours = list(range(start, end)) if start < end else         list(range(start, 24)) + list(range(0, end))
+    return [f"net_{h:02d}" for h in hours]
+
+
+def build_stats(net_daily: pd.DataFrame, st_initial_qty: pd.DataFrame, duration: str,
+                warmup_net=None, warmup_days: int = 0, verbose: bool = True):
+    """대여소별 mu·sigma(계절 보정 반영)와 날짜별 순수요를 만든다.
+
+    **저장하지 않는 순수 계산이다.** 실험 스크립트도 이 함수를 그대로 쓴다 —
+    측정 코드가 운영 코드와 다른 방식으로 mu·sigma를 구하면 비교 자체가
+    성립하지 않는다(docs/DEMAND_DISTRIBUTION.md 5장에서 실제로 겪었다).
+
+    반환: (stats, daily, ratio)
+    """
+    net_temp = net_daily.copy()
+    hours = duration_columns(duration)
+
+    # 날짜, 대여소별 특정 시간대의 총 수요
+    net_temp[f'sum{duration}'] = net_temp[hours].sum(axis=1)
+
+    # 대여소별로 그룹화하여 평균(mu)과 표준편차(sigma) 산출
+    stats = net_temp.groupby(['station_id']).agg({
+        f'sum{duration}': ['mean', 'std']
+    })
+
+    stats.columns = ['mu', 'sigma']
+    stats = stats.fillna(0)
+
+    # 두 df 조인 (station_id는 groupby 인덱스 — merge가 인덱스 이름으로 조인)
+    stats = stats.merge(st_initial_qty, how='left', on='station_id')
+    stats = stats[~stats['stock'].isna()]
+
+    # 학습 달의 날짜별 순수요 — 베이스라인과 모델이 **같은 입력**에서 출발한다.
+    daily = pd.DataFrame({
+        "station_id": net_temp["station_id"].values,
+        "date": net_temp["날짜"].values,
+        "demand": net_temp[f'sum{duration}'].values,
+    })
+
+    # 계절 배율은 한 번만 구해 양쪽에 같이 쓴다.
+    # (베이스라인과 모델이 다른 배율을 쓰면 비교 자체가 성립하지 않는다.)
+    ratio = None
+    if warmup_net is not None and not warmup_net.empty:
+        recent = warmup_net.copy()
+        recent[f'sum{duration}'] = recent[hours].sum(axis=1)
+        ratio = demand_model.season_ratio(daily, pd.DataFrame({
+            "station_id": recent["station_id"].values,
+            "date": recent["날짜"].values,
+            "demand": recent[f'sum{duration}'].values,
+        }), warmup_days)
+        if ratio is not None and verbose:
+            print(f"  {duration}: 계절 배율 ×{ratio:.2f}")
+
+    # 계절 배율을 곱해 **중심을 옮긴다**(분산만 부풀리는 z와 다르다).
+    stats = demand_model.apply_warmup(stats, ratio)
+
+    return stats, daily, ratio
+
+
 # 시간대에 따른 target_qty(목표대수)와 rebal_qty(재배치대수)를 계산한다.
-def calculate_rebal_qty(stats: pd.DataFrame, duration: str, now: str, z=None,
-                        up_limit=1.5, low_limit=0.2, day_type=None,
-                        model_target=None):
+def compute_rebal_qty(stats: pd.DataFrame, z=None, up_limit=1.5, low_limit=0.2,
+                      model_target=None) -> pd.DataFrame:
     '''
-    대여소별의 시간대별(_05_10, _10_15, _15_20, _20_05) mu, sigma 를 통해 목표 stock량(target_qty)에 따른 작업량(rebal_qty)를 산출해 저장
+    대여소별의 시간대별(_05_10, _10_15, _15_20, _20_05) mu, sigma 를 통해 목표 stock량(target_qty)에 따른 작업량(rebal_qty)를 산출
     기본 파라미터 : 신뢰구간 z, 상한/하한 비율
 
     z를 지정하지 않으면 project_config.TARGET_Z(기본 1.99)를 쓴다.
     환경변수 PBR_TARGET_Z로 바꿀 수 있다 — 근거는 docs/EXPERIMENTS.md 1장.
+
+    **저장하지 않는 순수 계산이다.** 파일·DB에 남기는 것은 calculate_rebal_qty()이고,
+    실험 스크립트(experiments/baseline_compare.py의 z=0 대조군)는 이 함수를 직접 쓴다 —
+    측정 코드와 운영 코드가 갈리면 측정이 거짓말을 한다(docs/DEMAND_DISTRIBUTION.md 5장).
     '''
     z = TARGET_Z if z is None else z
     # 1. ---------- target_qty 계산 ----------
@@ -106,6 +171,16 @@ def calculate_rebal_qty(stats: pd.DataFrame, duration: str, now: str, z=None,
         np.floor(stats['rebal_qty']),
         np.ceil(stats['rebal_qty'])
     ).astype(int)
+
+    return stats
+
+
+def calculate_rebal_qty(stats: pd.DataFrame, duration: str, now: str, z=None,
+                        up_limit=1.5, low_limit=0.2, day_type=None,
+                        model_target=None):
+    '''compute_rebal_qty()로 계산한 뒤 CSV·DB에 저장한다.'''
+    stats = compute_rebal_qty(stats, z=z, up_limit=up_limit,
+                              low_limit=low_limit, model_target=model_target)
 
     stats.to_csv(out_file_path.format(duration=duration, now=now) + '.csv', encoding='utf-8', index=False)
     방식 = "분위수 모델" if model_target is not None else f"mu + {z}·sigma"
@@ -168,53 +243,10 @@ if __name__ == '__main__':
     # 05~07시 재배치 기준은(05~14:59), 15~17시 재배치 기준은(15~04:59) 동안 사용할 양이다.
     # 시간대 목록은 project_config의 --duration(콤마 구분)으로 지정한다. 예: "_05_10,_10_15"
     for duration in duration_list(config):
-        net_temp = net_daily.copy()
-        start = int(duration.split('_')[1])
-        end = int(duration.split('_')[2])
-
-        if start < end:
-            hours = [f"net_{h:02d}" for h in range(start, end)]
-        else:
-            hours = [f"net_{h:02d}" for h in list(range(start, 24)) + list(range(0, end))]
-
-        # 날짜, 대여소별 특정 시간대의 총 수요
-        net_temp[f'sum{duration}'] = net_temp[hours].sum(axis=1)
-
-        # 대여소별로 그룹화하여 평균(mu)과 표준편차(sigma) 산출
-        stats = net_temp.groupby(['station_id']).agg({
-            f'sum{duration}': ['mean', 'std']
-        })
-
-        stats.columns = ['mu', 'sigma']
-        stats = stats.fillna(0)
-
-        # 두 df 조인 (station_id는 groupby 인덱스 — merge가 인덱스 이름으로 조인)
-        stats = stats.merge(st_initial_qty, how='left', on='station_id')
-        stats = stats[~stats['stock'].isna()]
-
-        # 학습 달의 날짜별 순수요 — 베이스라인과 모델이 **같은 입력**에서 출발한다.
-        daily = pd.DataFrame({
-            "station_id": net_temp["station_id"].values,
-            "date": net_temp["날짜"].values,
-            "demand": net_temp[f'sum{duration}'].values,
-        })
-
-        # 계절 배율은 한 번만 구해 양쪽에 같이 쓴다.
-        # (베이스라인과 모델이 다른 배율을 쓰면 비교 자체가 성립하지 않는다.)
-        ratio = None
-        if warmup_net is not None and not warmup_net.empty:
-            recent = warmup_net.copy()
-            recent[f'sum{duration}'] = recent[hours].sum(axis=1)
-            ratio = demand_model.season_ratio(daily, pd.DataFrame({
-                "station_id": recent["station_id"].values,
-                "date": recent["날짜"].values,
-                "demand": recent[f'sum{duration}'].values,
-            }), config.warmup_days)
-            if ratio is not None:
-                print(f"  {duration}: 계절 배율 ×{ratio:.2f}")
-
-        # 계절 배율을 곱해 **중심을 옮긴다**(분산만 부풀리는 z와 다르다).
-        stats = demand_model.apply_warmup(stats, ratio)
+        net_temp = net_daily
+        stats, daily, ratio = build_stats(
+            net_temp, st_initial_qty, duration,
+            warmup_net=warmup_net, warmup_days=config.warmup_days)
 
         model_target = None
         if bundle is not None:
