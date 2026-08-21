@@ -97,6 +97,17 @@ def greedy_route(nodes: dict, cluster, time_budget_sec: float = None) -> list:
             candidates.append((ntype, sid, score, distance, possible))
 
         # 작업 불가 상황 -> depot 복귀
+        #
+        # ⚠️ **파이프라인 입력에서는 이 분기가 실행될 수 없다.** ILP가 클러스터마다
+        # 총 pick = 총 drop으로 맞춰 주기 때문이다(solve_cluster_moves의 '작업량 강제'
+        # 제약). 임의 시점에 `남은 drop = 남은 pick + 적재량`이므로,
+        #   · 적재가 꽉 차 못 실으면  -> 남은 drop = 남은 pick + 용량 > 0  (내릴 곳이 있다)
+        #   · 적재가 0이라 못 내리면  -> 남은 drop = 남은 pick (있으면 실을 수 있고,
+        #                                없으면 위 while 조건에서 이미 끝났다)
+        # 실데이터 15개 실행·회차 1,224행에 `return` 행이 0건인 이유다.
+        #
+        # 살아 있는 호출부는 수급이 안 맞는 노드 집합을 주는
+        # experiments/baseline_compare.py의 그리디 대조군(B1)뿐이다. 지우지 마라.
         if not candidates:
             if current_id == DEPOT_ID and current_load == 0:
                 # depot에서 빈 차로도 후보가 없으면 더 진행 불가 (무한루프 방지)

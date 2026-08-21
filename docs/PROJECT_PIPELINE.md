@@ -175,7 +175,8 @@ vrp.py는 ILP 결과를 실제 차량이 수행할 방문 순서로 바꿉니다
 2. Pick·Drop 작업량 집계
 3. 타슈 관제센터를 depot으로 설정
 4. 현재 위치에서 처리 효율이 높은 다음 대여소 선택
-5. 적재량이 부족하면 depot으로 복귀
+5. 적재량이 부족하면 depot으로 복귀 (ILP 입력에서는 발생하지 않음 —
+   [steps/step2_ilp_vrp.md](steps/step2_ilp_vrp.md))
 6. 남은 작업이 없어질 때까지 반복
 
 현재 코드의 운영 가정 (depot·적재 용량은 project_config 공통 상수):

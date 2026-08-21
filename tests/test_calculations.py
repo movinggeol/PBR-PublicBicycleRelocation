@@ -452,3 +452,68 @@ def test_stockout_falls_back_to_the_plan_when_no_route_exists(step4, tmp_path, m
         "_05_10", pd.DataFrame({"station_id": ["ST0001"], "stock": [0], "rebal_qty": [10]}))
 
     assert result["stockout_hours_after"] == result["stockout_hours_plan"] == 1.0
+
+
+def test_balanced_input_never_needs_a_mid_route_return(step2, capsys):
+    """**수급이 맞으면 중간 복귀 분기는 실행될 수 없다** — ILP가 그렇게 맞춰 준다.
+
+    임의 시점에 `남은 drop = 남은 pick + 적재량`이므로
+      · 적재가 꽉 차 못 실으면 -> 남은 drop > 0 (내릴 곳이 있다)
+      · 적재가 0이라 못 내리면 -> 남은 drop = 남은 pick (있으면 실을 수 있다)
+    이라서 후보가 비는 상태가 생기지 않는다.
+
+    이 불변식 때문에 `vrp_plan`에 `return` 행이 0건이고, **마지막 depot 복귀가
+    빠져 있다는 사실이 오래 드러나지 않았다** (docs/TODO.md 1-1).
+    ILP가 수급을 맞추지 않게 바뀌면 이 테스트가 먼저 깨져야 한다.
+    """
+    import random
+
+    _ilp, vrp = step2
+    rng = random.Random(0)
+
+    for _ in range(30):
+        total = rng.randint(10, 60)
+        picks, drops = [], []
+        for bucket in (picks, drops):
+            left = total
+            while left > 0:
+                take = min(left, rng.randint(1, 15))
+                bucket.append(take)
+                left -= take
+
+        nodes = {}
+        for i, qty in enumerate(picks):
+            nodes[(f"P{i}", "pick")] = {"qty": qty, "lat": 36.3 + rng.random() * 0.2,
+                                        "lon": 127.3 + rng.random() * 0.2}
+        for i, qty in enumerate(drops):
+            nodes[(f"D{i}", "drop")] = {"qty": qty, "lat": 36.3 + rng.random() * 0.2,
+                                        "lon": 127.3 + rng.random() * 0.2}
+
+        route = vrp.greedy_route(nodes, cluster=0)
+
+        assert not any(r["action"] == "return" for r in route), \
+            "수급이 맞는데 중간 복귀가 났다 — 적재 논리가 바뀌었는지 확인하라"
+        assert sum(node["qty"] for node in nodes.values()) == 0, "작업이 남았다"
+        assert route[-1]["action"] != "return", \
+            "마지막 행이 복귀다 — 최종 복귀가 구현됐다면 TODO 1-1과 문서를 갱신하라"
+    capsys.readouterr()
+
+
+def test_unbalanced_input_does_hit_the_return_branch(step2, capsys):
+    """반대로 수급이 안 맞으면 그 분기가 실제로 걸린다.
+
+    대조군 B1(군집·ILP 없이 한 대가 훑는 방식)이 이 경로를 쓴다 —
+    죽은 코드처럼 보여도 지우면 안 되는 이유다.
+    """
+    _ilp, vrp = step2
+    nodes = {
+        ("P1", "pick"): {"qty": 3, "lat": 36.30, "lon": 127.38},
+        ("D1", "drop"): {"qty": 3, "lat": 36.31, "lon": 127.39},
+        ("D2", "drop"): {"qty": 9, "lat": 36.32, "lon": 127.40},   # 받을 자전거가 없다
+    }
+
+    route = vrp.greedy_route(nodes, cluster=0)
+
+    assert any(r["action"] == "return" for r in route)
+    assert nodes[("D2", "drop")]["qty"] > 0, "공급이 부족하면 일부는 남는다"
+    capsys.readouterr()
