@@ -213,3 +213,34 @@ def test_paging_does_not_drop_rows_server_side(client, monkeypatch):
         "조작부는 스크립트가 만든다 — 서버가 그려 보내면 안 된다"
     assert "hidden" not in re.findall(r'<tr data-page-item="\d+"[^>]*>', html)[-1], \
         "서버가 미리 숨기면 스크립트 없는 환경에서 내용이 사라진다"
+
+
+@pytest.mark.parametrize("path, scanner", [("/data", "list_csvs"), ("/maps", "list_maps")])
+def test_file_lists_are_paged_by_row(client, monkeypatch, path, scanner):
+    """`/data`·`/maps`는 **행 단위**로 끊는다.
+
+    여기서는 분류 이름이 표 밖(`<h2>`)에 있어 행으로 잘라도 이름 없는 쪽이 생기지
+    않는다. 분류마다 카드가 따로라 페이저도 카드마다 붙는다.
+    """
+    monkeypatch.setattr(app_module.catalog, scanner, lambda: _fake_groups(3))
+
+    html = client.get(path).text
+
+    assert html.count('data-pager="5"') == 3, "카드마다 페이저 컨테이너가 있어야 한다"
+    # 카드 하나가 2행이므로 행마다 다른 키를 받는다(덩어리 = 행).
+    assert re.findall(r'<tr data-page-item="(\d+)">', html) == ["0", "1"] * 3
+
+
+@pytest.mark.parametrize("path", ["/data", "/maps"])
+def test_file_lists_send_every_row(client, monkeypatch, path):
+    """쪽 나눔은 화면에서만 한다 — 서버가 뒤쪽 파일을 빼고 보내면 안 된다."""
+    groups = [{"title": "많은 분류", "entries": [
+        {"name": f"f{i}.csv", "relpath": f"x/f{i}.csv", "mtime": "2026-08-20 10:00",
+         "mtime_raw": 0, "size_kb": 1} for i in range(15)]}]
+    for scanner in ("list_csvs", "list_maps"):
+        monkeypatch.setattr(app_module.catalog, scanner, lambda: groups)
+
+    html = client.get(path).text
+
+    assert len(re.findall(r'<tr data-page-item="\d+">', html)) == 15
+    assert "f14.csv" in html, "마지막 쪽에 갈 파일이 응답에서 빠졌다"

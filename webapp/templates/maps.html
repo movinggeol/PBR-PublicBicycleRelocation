@@ -8,16 +8,18 @@
     차량이 어떤 순서로 도는지, 재고가 어디에 몰려 있는지를 눈으로 확인합니다.</p>
 </section>
 
+{# 실행을 거듭하면 분류마다 지도가 쌓인다. 분류당 5건씩 끊어 보여준다 —
+   분류 이름이 표 밖(h2)에 있으므로 행 단위로 끊어도 된다. 최신순이라 첫 쪽이 최근분. #}
 {% for group in groups %}
 <h2>{{ group.title }}</h2>
-<div class="card flush">
+<div class="card flush" data-pager="5" data-pager-label="{{ group.title }} 쪽 넘기기">
   {% if group.entries %}
   <div class="table-wrap">
   <table>
     <thead><tr><th class="grow">파일</th><th>수정 시각</th><th class="num">크기</th><th>열기</th></tr></thead>
     <tbody>
     {% for e in group.entries %}
-    <tr>
+    <tr data-page-item="{{ loop.index0 }}">
       <td class="wrap">{{ e.name }}</td>
       <td class="muted">{{ e.mtime }}</td>
       <td class="num muted">{{ e.size_kb }} KB</td>
