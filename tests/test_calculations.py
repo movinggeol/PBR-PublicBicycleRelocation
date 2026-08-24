@@ -826,6 +826,32 @@ def test_station_coverage_needs_the_collected_station_list(step4, tmp_path, monk
                                          "station_coverage": pytest.approx(0.87)}
 
 
+def test_plan_quantity_is_squashed_toward_the_truck_capacity(target_qty):
+    """계획량은 격차 그대로가 아니라 `Q·tanh(격차/Q)`로 눌린다.
+
+    **이 압축 때문에 '목표 도달'은 실행 품질을 재지 못한다.** 격차가 8대만 넘어도
+    도달이 구조적으로 불가능하다 — 아무리 잘 집행해도 오르지 않는 값이라
+    1.19.7에서 헤드라인에서 내렸다(docs/KPI.md).
+
+    tanh 자체는 문서화된 설계다(FORMULATION 3장). 여기서는 **그 성질**을 못 박아,
+    나중에 누가 clip으로 바꾸면 이 테스트가 먼저 알려 주도록 한다.
+    """
+    import project_config
+
+    gaps = np.array([3, 5, 7, 8, 10, 20, 50], dtype=float)
+    squashed = target_qty.MAX_CAPACITY * np.tanh(gaps / target_qty.MAX_CAPACITY)
+
+    assert target_qty.MAX_CAPACITY == project_config.VEHICLE_CAPACITY, \
+        "계획량 제한이 차량 적재 용량과 따로 놀면 안 된다"
+
+    planned = np.floor(squashed).astype(int)
+    # 격차 7까지는 1대 차이로 따라붙지만, 8부터는 벌어지기 시작한다.
+    assert (gaps[2] - planned[2]) <= 1, "격차 7은 도달 가능 범위여야 한다"
+    assert (gaps[4] - planned[4]) >= 2, "격차 10은 한 번에 못 메운다"
+    # 아무리 격차가 커도 적재 용량을 넘지 않는다(점근).
+    assert planned.max() < target_qty.MAX_CAPACITY
+
+
 def test_pick_side_harm_warns_only_when_it_is_material(step4):
     """Pick 쪽 결품 증가는 **몫이 클 때만** 경고한다.
 

@@ -371,7 +371,11 @@ CSV의 `hour` 컬럼은 `duration`과 같은 값이라 **저장하지 않습니�
 | B. 실측 | `stockout_hours_before`, `stockout_hours_after`(**집행 기준**), `stockout_hours_plan`(계획 기준), `demand_mae` |
 | C. 운영 | `total_distance_km`, `max_cluster_minutes`, `avg_cluster_minutes`, `time_budget_minutes`, `time_budget_met`, `vehicle_load_gap`, `depot_returns`, `stations_total`, `station_coverage` |
 | D. 효율 | `improvement_per_km`, `bikes_per_minute`, `travel_time_ratio`, `empty_distance_ratio` |
-| E. 품질 | `cluster_max_imbalance` |
+| E. 품질 | `cluster_max_imbalance`, `gap_median`, `gap_max`, `reachable_ratio` |
+
+`gap_*`·`reachable_ratio`는 1.19.7에서 붙었습니다. **`target_met_ratio`를 읽을 때
+반드시 함께 보세요** — 계획량이 `Q·tanh(격차/Q)`로 눌려 격차가 8대만 넘어도
+도달이 구조적으로 불가능합니다([KPI.md](KPI.md)).
 
 C·D의 뒤쪽 여섯 개는 1.19.3에서 붙었습니다. `empty_distance_ratio`는 **도착 전
 적재량**으로 판단합니다 — 도착 후 적재량으로 세면 차고지에서 첫 대여소로 가는

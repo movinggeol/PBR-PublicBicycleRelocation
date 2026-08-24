@@ -310,6 +310,11 @@ CREATE TABLE IF NOT EXISTS kpi_summary (
     bikes_per_minute      REAL,      -- 분당 처리 대수 (작업 밀도)
     stations_total        INTEGER,   -- 이번 실행이 수집한 전체 대여소 수
     station_coverage      REAL,      -- 작업 대상 / 전체 대여소
+
+    -- 목표까지의 격차 (1.19.7). target_met_ratio를 읽을 때 반드시 함께 본다.
+    gap_median            REAL,      -- |목표 - 재고| 중앙값
+    gap_max               REAL,      -- 그 최댓값 (적재 용량과 견줘 볼 것)
+    reachable_ratio       REAL,      -- 격차 <= 적재 용량인 대여소 비율
     PRIMARY KEY (run_label, duration)
 );
 
@@ -647,6 +652,8 @@ KPI_FIELDS = (
     # 운영·효율 지표 (1.19.3, docs/KPI.md C·D장)
     "travel_time_ratio", "empty_distance_ratio", "depot_returns",
     "bikes_per_minute", "stations_total", "station_coverage",
+    # 목표까지의 격차와 '한 번에 닿는 범위' (1.19.7)
+    "reachable_ratio", "gap_median", "gap_max",
 )
 
 

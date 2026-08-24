@@ -10,7 +10,7 @@ import pandas as pd
 import db
 from project_config import (
     MAP_TILES, PICK_HARM_WARN_SHARE, PROJECT_ROOT, TIME_BUDGET_MINUTES,
-    duration_list, ensure_output_dirs,
+    VEHICLE_CAPACITY, duration_list, ensure_output_dirs,
     get_runtime_config,
     require_columns, select_day_type,
 )
@@ -408,8 +408,17 @@ def save_kpi_summary(duration: str, imbalance_df: pd.DataFrame,
         'avg_improvement_rate': float(rate.mean()),
         'pick_improvement_rate': float(rate[imbalance_df['rebal_qty'] < 0].mean()),
         'drop_improvement_rate': float(rate[imbalance_df['rebal_qty'] > 0].mean()),
-        # 목표에 사실상 도달한 대여소 비율 (평균 개선률이 감추는 분포를 보완)
+        # 목표에 사실상 도달한 대여소 비율 (평균 개선률이 감추는 분포를 보완).
+        # ⚠️ **실행 품질을 재는 값이 아니다.** 계획량이 `Q·tanh(격차/Q)`로 눌리므로
+        # 격차가 8대만 넘어도 도달이 구조적으로 불가능하다(docs/KPI.md).
         'target_met_ratio': float((imbalance_df['af_imbalance'] <= 1).mean()),
+        # 한 번 방문으로 닿을 수 있는 범위였던 대여소 비율.
+        # 트럭 적재 용량이 10대인데 격차는 최대 58대까지 벌어진다 — 얼마나 많은
+        # 작업이 애초에 한 회차로 해결 불가능한지를 이 값이 말해 준다.
+        'reachable_ratio': float((imbalance_df['bf_imbalance']
+                                  <= VEHICLE_CAPACITY).mean()),
+        'gap_median': float(imbalance_df['bf_imbalance'].median()),
+        'gap_max': float(imbalance_df['bf_imbalance'].max()),
         'total_distance_km': float(distance),
         'max_cluster_minutes': float(minutes.max()),
         'avg_cluster_minutes': float(minutes.mean()),
@@ -442,6 +451,9 @@ def save_kpi_summary(duration: str, imbalance_df: pd.DataFrame,
     print(f"  개선률 {metrics['avg_improvement_rate'] * 100:.0f}%"
           f" · 목표도달 {metrics['target_met_ratio'] * 100:.0f}%"
           f" · km당 개선 {metrics['improvement_per_km']:.2f}대")
+    print(f"  격차 중앙값 {metrics['gap_median']:.0f}대 · 최대 {metrics['gap_max']:.0f}대"
+          f" · 한 번에 닿는 범위 {metrics['reachable_ratio'] * 100:.0f}%"
+          f" (적재 {VEHICLE_CAPACITY}대)")
     print(f"  이동 {distance:.0f}km · 최장 {minutes.max():.0f}분"
           f" · 예산준수 {metrics['time_budget_met'] * 100:.0f}%"
           f" · 차량 {metrics.get('vehicles_used', 0)}대")

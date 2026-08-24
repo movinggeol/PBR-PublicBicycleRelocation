@@ -21,7 +21,7 @@ import db
 import demand_model
 from project_config import (
     PROJECT_ROOT,
-    TARGET_QTY_UPPER_RATIO, TARGET_Z,
+    TARGET_QTY_UPPER_RATIO, TARGET_Z, VEHICLE_CAPACITY,
     duration_list,
     ensure_output_dirs,
     get_runtime_config,
@@ -36,7 +36,10 @@ net_file = str(PROJECT_ROOT / "data/pp_data/순수요/st_net_daily ({period}).cs
 # to_csv
 out_file_path = str(PROJECT_ROOT / "data/pp_data/재배치 정보/rebal_qty{duration} ({now})")  # .csv
 
-MAX_CAPACITY = 10
+# 한 대여소에서 한 번에 옮길 수 있는 최대 대수 = 차량 적재 용량.
+# **project_config에서 읽는다** — 1.19.7 이전에는 여기 10이 박혀 있어,
+# 차량 용량을 바꿔도 계획량 제한은 그대로였다.
+MAX_CAPACITY = VEHICLE_CAPACITY
 
 
 def duration_columns(duration: str) -> list:

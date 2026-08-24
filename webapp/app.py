@@ -411,9 +411,14 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
 
     cards = []
     if latest is not None:
+        # 헤드라인에는 **목표 재고를 분모로 삼지 않는 값**을 앞세운다.
+        # '목표 도달 비율'은 1.19.7에서 내렸다 — 계획량이 `Q·tanh(격차/Q)`로 눌려
+        # 격차가 8대만 넘어도 도달이 구조적으로 불가능하다. 실행을 아무리 잘해도
+        # 오르지 않는 값을 헤드라인에 두면 화면이 거짓말을 한다(docs/KPI.md).
+        # 표에는 그대로 있고, 대신 '한 번에 닿는 범위'가 그 자리를 설명한다.
         for label, column, weight, fmt in [
             ("평균 개선률", "avg_improvement_rate", "stations", "pct"),
-            ("목표 도달 비율", "target_met_ratio", "stations", "pct"),
+            ("한 번에 닿는 범위", "reachable_ratio", "stations", "pct"),
             ("km당 개선", "improvement_per_km", "total_distance_km", "num"),
             ("시간 예산 준수", "time_budget_met", "clusters", "pct"),
         ]:
@@ -464,6 +469,7 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
         "cost": cost, "cost_svg": cost_svg,
         "heat": heat, "heat_svg": heat_svg, "heat_legend": heat_legend,
         "forecast": forecast,
+        "capacity": VEHICLE_CAPACITY,
         "latest_label": latest["run_label"].iloc[0] if latest is not None else None,
         "previous_label": previous["run_label"].iloc[0] if previous is not None else None,
         "selected_run": run_label,
