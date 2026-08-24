@@ -45,6 +45,33 @@ def _travel_sec(km: float) -> float:
     return km / VEHICLE_SPEED_KMPH * 3600.0
 
 
+def _depot_return(cluster, from_id, from_lat, from_lon, cum_sec: float):
+    """현재 위치에서 depot으로 돌아오는 행과 갱신된 누적시간을 만든다.
+
+    복귀는 두 곳에서 난다 — 중간에 처리할 것이 없어 되돌아갈 때와, 작업을 마치고
+    돌아올 때. 두 곳이 행을 따로 만들면 컬럼이 어긋난다.
+    """
+    distance = haversine_km(from_lat, from_lon, DEPOT_LAT, DEPOT_LON)
+    travel = _travel_sec(distance)
+    cum_sec += travel
+    row = {
+        'cluster': cluster,
+        'from_id': from_id,
+        'from_lat': from_lat,
+        'from_lon': from_lon,
+        'to_id': DEPOT_ID,
+        'to_lat': DEPOT_LAT,
+        'to_lon': DEPOT_LON,
+        'action': 'return',
+        'qty': 0,
+        'distance_km': round(distance, 3),
+        'travel_sec': round(travel, 1),
+        'work_sec': 0.0,
+        'cum_sec': round(cum_sec, 1),
+    }
+    return row, cum_sec
+
+
 def greedy_route(nodes: dict, cluster, time_budget_sec: float = None) -> list:
     """노드 목록을 받아 차량 1대의 방문 순서를 greedy로 만든다.
 
@@ -116,24 +143,9 @@ def greedy_route(nodes: dict, cluster, time_budget_sec: float = None) -> list:
                       f"(pick {remaining_pick}, drop {remaining_drop}) — 종료")
                 break
 
-            distance = haversine_km(current_lat, current_lon, DEPOT_LAT, DEPOT_LON)
-            travel = _travel_sec(distance)
-            cum_sec += travel
-            results.append({
-                'cluster': cluster,
-                'from_id': current_id,
-                'from_lat': current_lat,
-                'from_lon': current_lon,
-                'to_id': DEPOT_ID,
-                'to_lat': DEPOT_LAT,
-                'to_lon': DEPOT_LON,
-                'action': 'return',
-                'qty': 0,
-                'distance_km': round(distance, 3),
-                'travel_sec': round(travel, 1),
-                'work_sec': 0.0,
-                'cum_sec': round(cum_sec, 1),
-            })
+            row, cum_sec = _depot_return(cluster, current_id, current_lat,
+                                         current_lon, cum_sec)
+            results.append(row)
             current_id = DEPOT_ID
             current_lat = DEPOT_LAT
             current_lon = DEPOT_LON
@@ -182,6 +194,20 @@ def greedy_route(nodes: dict, cluster, time_budget_sec: float = None) -> list:
         current_id = sid
         current_lat = node['lat']
         current_lon = node['lon']
+
+    # 마지막 대여소 -> depot 복귀 (1.19.1).
+    #
+    # 그 전에는 작업이 끝나면 **그 자리에서 멈췄다.** 위의 '작업 불가' 분기가 복귀
+    # 행을 만들긴 하지만 ILP를 거친 입력에서는 실행될 수 없어(총 pick = 총 drop),
+    # 실데이터 1,224행에 return이 0건이었다. 그래서 총 이동거리가 33% 과소 추정이고
+    # 시간 예산 판정도 그만큼 낙관적이었다(docs/TODO.md 1-1의 실측).
+    # 설계는 처음부터 '차량 1대 = 클러스터 1개 + depot 복귀'였다(docs/FLEET.md).
+    #
+    # 이미 depot에 있으면(작업이 없었거나 방금 되돌아왔으면) 붙이지 않는다.
+    if current_id != DEPOT_ID:
+        row, cum_sec = _depot_return(cluster, current_id, current_lat,
+                                     current_lon, cum_sec)
+        results.append(row)
 
     return results
 

@@ -131,6 +131,23 @@ def _minutes(seconds: Optional[float]) -> Optional[float]:
     return None if seconds is None else round(seconds / 60, 1)
 
 
+def _typical_vehicles() -> Optional[int]:
+    """회차당 실제로 나간 차량 수의 중앙값. 기록이 없으면 None.
+
+    1.19.1부터 대수는 회차의 작업량이 정하므로 **고정값을 안내에 적을 수 없다.**
+    "보통 몇 대가 나가나"는 지난 실행에서 뽑아 보여준다.
+    """
+    rows = store.kpi()
+    if rows.empty or "vehicles_used" not in rows:
+        return None
+    # 최근 것부터 20건만 본다. run_label은 사람이 붙이는 이름이라 정렬 기준이 못 되고,
+    # 기록 시각(computed_at)이 있어야 "최근"이 성립한다.
+    if "computed_at" in rows:
+        rows = rows.sort_values("computed_at", ascending=False)
+    used = rows["vehicles_used"].dropna().head(20)
+    return int(round(float(used.median()))) if len(used) else None
+
+
 def _index_context(error: Optional[str] = None) -> dict:
     # 기간·시간대는 **요청마다 다시 읽는다.** 서버를 띄워 둔 채 새 달치 순수요를
     # 계산해도 곧바로 선택지에 나와야 하기 때문이다(project_config의 상수는
@@ -161,6 +178,7 @@ def _index_context(error: Optional[str] = None) -> dict:
             + [{"value": v, "label": DAY_TYPE_LABELS[v]} for v in DAY_TYPES]
         ),
         "typical_minutes": _minutes(jobs.typical_elapsed()),
+        "typical_vehicles": _typical_vehicles(),
         "running": jobs.running_job(),
         "jobs": jobs.list_jobs()[:15],
         "latest": catalog.latest_outputs(),
@@ -288,6 +306,8 @@ def guide_page(request: Request):
         # 예상 소요는 **이 서버의 지난 실행에서 뽑는다.** 사람이 적어 두면
         # 조건이 바뀐 뒤에도 남아 거짓말이 된다(옛 안내의 '보통 5~10분'이 그랬다).
         "typical_minutes": _minutes(jobs.typical_elapsed()),
+        # 회차당 대수는 작업량이 정한다 — 안내에는 지난 실행의 중앙값을 보여준다.
+        "typical_vehicles": _typical_vehicles(),
     })
 
 

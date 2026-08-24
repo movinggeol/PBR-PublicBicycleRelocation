@@ -61,9 +61,10 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 >    목표값과 무관한 **결품 시간**으로 냈습니다 — [docs/KPI.md](docs/KPI.md).
 > 2. **결품 시간은 실측이 아니라 순수요로 복원한 시뮬레이션**이고, 재고를 0에서
 >    자르므로 **결품의 하한**입니다.
-> 3. **경로 계산에 마지막 depot 복귀가 빠져 있습니다.** 실측하면 3회차 합계
->    286 km(총 이동의 33%)가 누락돼 있고, 이를 포함하면 시간 예산 초과가
->    **3건 → 13건**(클러스터 30개 중)이 됩니다 — [docs/TODO.md](docs/TODO.md) 1-1.
+> 3. **위 표는 마지막 depot 복귀를 빼고 잰 값입니다(1.19.0 이전).** 복귀는
+>    1.19.1에서 넣었고, 그만큼 이동거리와 소요시간이 늘어납니다. 표의 대조군
+>    실험을 새 코드로 다시 재는 일은 남아 있습니다 —
+>    [docs/TODO.md](docs/TODO.md) 1-1.
 > 4. **경로는 greedy 휴리스틱**이며 OR-Tools 대비 이동거리가 평균 9.7%,
 >    최악 46.4% 깁니다 — [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) 6장.
 
@@ -178,7 +179,7 @@ python run_pipeline.py --duration "_05_10,_10_15"   # 여러 시간대 일괄 �
 | `--warmup-period` | 계절 보정에 쓸 기간 | 계획 대상일의 달 |
 | `--warmup-days` | 보정에 쓸 일수. `0`이면 끔 | `14` |
 | `--fleet-size` | 보유 차량 대수 (1~99) | `21` |
-| `--vehicles-per-round` | 회차당 투입 상한. 보유 대수로 잘립니다 | `10` |
+| `--vehicles-per-round` | 회차당 투입 **상한**. 실제 대수는 작업량이 정합니다 | 보유 대수(`21`) |
 | `--skip-api` / `--skip-eda` | 수집·EDA 생략 | 꺼짐 |
 | `--skip-map` | step3 TMAP 지도 생략 (TMAP 키가 없는 환경) | 꺼짐 |
 | `--continue-on-error` | 한 단계가 실패해도 계속 | 꺼짐 |
@@ -223,7 +224,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 
-python -m pytest                                   # 263개 통과 확인 (약 50~80초)
+python -m pytest                                   # 264개 통과 확인 (약 50~80초)
 python tools/make_sample_data.py --now "데모"       # 합성 대여소·순수요 생성
 python run_pipeline.py --skip-api --skip-eda --skip-map --now "데모"   # step0~2·4 실행
 python -m webapp                                   # http://127.0.0.1:8000 에서 결과 확인
@@ -239,7 +240,7 @@ python -m webapp                                   # http://127.0.0.1:8000 에�
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest                 # 263개, 약 50~80초 (tests/ 만 수집)
+python -m pytest                 # 264개, 약 50~80초 (tests/ 만 수집)
 ```
 
 - `tests/test_pipeline.py` (32) — 합성 데이터로 step0→step1→step2→step4를
@@ -343,7 +344,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/RELATED_WORK.md](docs/RELATED_WORK.md) | **관련 연구** — 문제의 갈래와 본 연구의 위치 |
 | [docs/LITERATURE.md](docs/LITERATURE.md) | **문헌 분석** — 논문 11편 한 편씩 분석·비교표·인용 지도 |
 | [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
-| [docs/TESTING.md](docs/TESTING.md) | **테스트** — 263개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
+| [docs/TESTING.md](docs/TESTING.md) | **테스트** — 264개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/PROJECT_PIPELINE.md](docs/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/WEBAPP.md](docs/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/DESIGN.md](docs/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |

@@ -21,7 +21,8 @@ import pandas as pd
 import pytest
 
 from project_config import (
-    CLUSTER_ALPHA, CLUSTER_BETA, CLUSTER_GAMMA, PROJECT_ROOT, TARGET_Z, VEHICLE_CAPACITY,
+    CLUSTER_ALPHA, CLUSTER_BETA, CLUSTER_GAMMA, DEPOT_ID, PROJECT_ROOT, TARGET_Z,
+    VEHICLE_CAPACITY,
 )
 
 STEP0 = PROJECT_ROOT / "step0_collect"
@@ -44,6 +45,12 @@ def _load(path, name):
 @pytest.fixture(scope="module")
 def target_qty():
     return _load(STEP0 / "calculate_target_qty.py", "_calc_target")
+
+
+@pytest.fixture(scope="module")
+def step1():
+    sys.path.insert(0, str(STEP1))
+    return _load(STEP1 / "top_st_clustering.py", "_top_st")
 
 
 @pytest.fixture(scope="module")
@@ -454,17 +461,18 @@ def test_stockout_falls_back_to_the_plan_when_no_route_exists(step4, tmp_path, m
     assert result["stockout_hours_after"] == result["stockout_hours_plan"] == 1.0
 
 
-def test_balanced_input_never_needs_a_mid_route_return(step2, capsys):
-    """**수급이 맞으면 중간 복귀 분기는 실행될 수 없다** — ILP가 그렇게 맞춰 준다.
+def test_balanced_input_returns_to_depot_exactly_once(step2, capsys):
+    """**수급이 맞으면 중간 복귀는 없고, 마지막에 딱 한 번 depot으로 돌아온다.**
 
     임의 시점에 `남은 drop = 남은 pick + 적재량`이므로
       · 적재가 꽉 차 못 실으면 -> 남은 drop > 0 (내릴 곳이 있다)
       · 적재가 0이라 못 내리면 -> 남은 drop = 남은 pick (있으면 실을 수 있다)
-    이라서 후보가 비는 상태가 생기지 않는다.
+    이라서 중간에 후보가 비는 상태는 생기지 않는다. ILP가 수급을 맞추지 않게
+    바뀌면 이 테스트가 먼저 깨져야 한다.
 
-    이 불변식 때문에 `vrp_plan`에 `return` 행이 0건이고, **마지막 depot 복귀가
-    빠져 있다는 사실이 오래 드러나지 않았다** (docs/TODO.md 1-1).
-    ILP가 수급을 맞추지 않게 바뀌면 이 테스트가 먼저 깨져야 한다.
+    **1.19.1 이전에는 마지막 복귀도 없었다.** 그 불변식 탓에 `vrp_plan`에 `return`
+    행이 0건이었고, 총 이동거리가 33% 과소 추정이라는 사실이 오래 묻혀 있었다
+    (docs/TODO.md 1-1).
     """
     import random
 
@@ -491,11 +499,13 @@ def test_balanced_input_never_needs_a_mid_route_return(step2, capsys):
 
         route = vrp.greedy_route(nodes, cluster=0)
 
-        assert not any(r["action"] == "return" for r in route), \
-            "수급이 맞는데 중간 복귀가 났다 — 적재 논리가 바뀌었는지 확인하라"
+        returns = [i for i, r in enumerate(route) if r["action"] == "return"]
+        assert returns == [len(route) - 1], \
+            "복귀는 맨 마지막 한 번뿐이어야 한다 — 중간 복귀가 났다면 적재 논리를 보라"
         assert sum(node["qty"] for node in nodes.values()) == 0, "작업이 남았다"
-        assert route[-1]["action"] != "return", \
-            "마지막 행이 복귀다 — 최종 복귀가 구현됐다면 TODO 1-1과 문서를 갱신하라"
+        assert route[-1]["to_id"] == DEPOT_ID, "마지막 도착지가 차고지가 아니다"
+        assert route[-1]["qty"] == 0 and route[-1]["work_sec"] == 0, \
+            "복귀 구간에서 자전거를 옮기면 안 된다"
     capsys.readouterr()
 
 
@@ -677,11 +687,51 @@ def test_require_columns_passes_the_frame_through():
     assert require_columns(frame, ["a"], "테스트") is frame
 
 
+def test_vehicle_count_follows_the_workload(step1):
+    """**차량 수는 이번 회차의 작업량이 정한다.**
+
+    1.19.1 이전에는 `ceil(대상 수 / 7)`이었고, 7에 근거가 없었을뿐더러 실데이터에서는
+    늘 회차당 상한(10)에 걸려 **사실상 10대 고정**이었다(실측 3회차 모두 희망 12~13).
+
+    추정식은 시간이다: 처리 대수 × (싣기+내리기) + 대여소 수 × 이동계수,
+    거기에 불균형 여유를 곱해 시간 예산으로 나눈다.
+    """
+    import project_config
+
+    def candidates(stations, bikes):
+        """대여소 stations곳, 처리 대수 bikes대인 후보 집합(pick/drop 균형)."""
+        half = stations // 2
+        each = bikes / half
+        return pd.DataFrame({
+            "station_id": [f"ST{i:04d}" for i in range(half * 2)],
+            "rebal_qty": [each] * half + [-each] * half,
+        })
+
+    light = step1.wanted_vehicles(candidates(20, 60))
+    heavy = step1.wanted_vehicles(candidates(90, 320))
+
+    assert light < heavy, "작업이 많은 회차에 더 많은 차량이 나가야 한다"
+    assert light >= 1
+
+    # 실측(26년 03월 _05_10: 91곳·320대)에서 18대면 예산 초과 0건이었다.
+    assert 15 <= heavy <= 19, f"실측이 요구한 대수와 크게 어긋난다: {heavy}"
+
+    # 계수를 손대면 추정도 따라 움직여야 한다 — 상수가 코드에 박혀 있으면 안 된다.
+    slower = step1.wanted_vehicles(candidates(90, 320))
+    assert slower == heavy
+    assert project_config.TRAVEL_MIN_PER_STATION > 0
+    assert project_config.CLUSTER_IMBALANCE_ALLOWANCE >= 1
+
+    assert step1.wanted_vehicles(pd.DataFrame(columns=["rebal_qty"])) == 1, \
+        "대상이 없으면 1대로 떨어져야 한다(0으로 나누면 안 된다)"
+
+
 def test_step1_thresholds_come_from_project_config():
-    """작업 대상 임계·상위 컷·군집 크기가 코드에 박혀 있으면 안 된다.
+    """작업 대상 임계·상위 컷·조정 반복이 코드에 박혀 있으면 안 된다.
 
     1.18.8 이전에는 `> 2`, `iloc[:50]`, `target_cluster_size=7`이 그대로 박혀 있어
     환경변수로 바꿀 수 없었고, 논문 3장 기호표에 근거 없이 등장했다.
+    (`target_cluster_size`는 1.19.1에서 아예 사라졌다 — 아래 참고.)
     """
     import project_config
 
@@ -689,10 +739,12 @@ def test_step1_thresholds_come_from_project_config():
     assert "iloc[:50" not in source, "상위 컷이 코드에 박혀 있다"
     assert "rebal_qty']) > 2]" not in source, "작업 대상 임계가 코드에 박혀 있다"
     assert "MAX_ITER = 200" not in source, "조정 반복 상한이 코드에 박혀 있다"
-    assert (project_config.REBAL_MIN_QTY, project_config.TOP_STATION_LIMIT,
-            project_config.TARGET_CLUSTER_SIZE) == (2, 50, 7), "기본값이 바뀌었다"
+    assert (project_config.REBAL_MIN_QTY,
+            project_config.TOP_STATION_LIMIT) == (2, 50), "기본값이 바뀌었다"
     assert (project_config.ADJUST_MAX_ITER, project_config.ADJUST_BALANCE_OK,
             project_config.ADJUST_BALANCE_LIMIT) == (200, 3, 5), "기본값이 바뀌었다"
+    assert not hasattr(project_config, "TARGET_CLUSTER_SIZE"), \
+        "군집 크기 상수가 되살아났다 — 차량 수는 작업량으로 정한다(wanted_vehicles)"
 
 
 def test_save_message_shows_the_z_actually_used(target_qty, tmp_path, monkeypatch, capsys):

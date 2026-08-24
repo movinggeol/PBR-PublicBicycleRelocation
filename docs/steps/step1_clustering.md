@@ -15,7 +15,10 @@
    - 누적합(cumsum)이 `min(|총 Pick|, 총 Drop)` 이내가 되도록 잘라 Pick·Drop 총량 균형 맞춤
 2. **클러스터링** `make_clustering()`
    - K-Medoids (`kmedoids` 패키지, `method='fasterpam'`, `metric='manhattan'`, `random_state=42`)
-   - `K = ceil(대상 대여소 수 / target_cluster_size(7))`
+   - `K = min(wanted_vehicles(작업량), VEHICLES_PER_ROUND)` — 군집 1개 = 차량 1대.
+     필요 대수는 **처리 대수 × (싣기+내리기) + 대여소 수 × 12.5분**을
+     불균형 여유(1.4)만큼 늘려 시간 예산으로 나눈 값이다(1.19.1).
+     그전에는 `ceil(대상 수 / 7)`이었고 늘 상한 10에 걸렸다
    - 좌표는 스케일링하지 않는다 (위경도 자체가 거리 단위)
 3. **군집 조정** `adjust_clustering()`
    - 목적함수: `α·balance² + β·size분산 + γ·거리합` (α=1, β=100, **γ=3000**)
@@ -105,7 +108,7 @@
 | 우선순위 | 문제 |
 | --- | --- |
 | 🟡 | `try_move_node()`가 이동 후보마다 `pick_drop.copy()` + 전체 목적함수 재계산 → 실행 5분 이상 (버전관리.md 1.0.1에 기록된 성능 문제) |
-| 🟢 | 상위 50개 컷·target_cluster_size=7 등 매직 넘버가 아직 코드에 산재 (목적함수 가중치는 1.9.2에서 설정으로 분리) |
+| ✅ | ~~상위 50개 컷·target_cluster_size=7 등 매직 넘버~~ — 1.18.8에서 설정으로 분리했고, `target_cluster_size`는 1.19.1에서 작업량 추정으로 대체돼 사라졌다 |
 | 🟢 | 거리 항이 위경도 '도' 단위라 값이 작고 직관적이지 않음 — km로 바꾸면 γ를 해석하기 쉬워짐 |
 
 ## 작업 목록

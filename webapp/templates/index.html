@@ -102,11 +102,12 @@
 
         <div class="field">
           <label for="f-round">
-            <span class="tip" data-tip="한 회차에 동시에 내보낼 대수입니다. 대여소를 몇 덩어리로 나눌지(군집 수)를 정하므로, 늘리면 한 대가 도는 거리는 줄고 필요한 차량은 늘어납니다.">회차당 투입 대수</span>
+            <span class="tip" data-tip="한 회차에 동시에 내보낼 수 있는 최대 대수입니다. 실제 대수는 그 회차의 일감(옮길 자전거 수·들를 대여소 수)이 정합니다. 현장에서 한 번에 낼 수 있는 차·기사가 정해져 있을 때만 줄이세요.">회차당 투입 상한</span>
           </label>
           <input id="f-round" type="number" name="vehicles_per_round" min="1"
                  max="{{ max_fleet_size }}" step="1" value="{{ defaults.vehicles_per_round }}">
-          <span class="hint">보유 대수보다 클 수 없습니다.</span>
+          <span class="hint">상한입니다 — 실제 대수는 일감이 정합니다.
+            {% if typical_vehicles %}지난 실행 기준 회차당 {{ typical_vehicles }}대.{% endif %}</span>
         </div>
 
         <div class="field wide">

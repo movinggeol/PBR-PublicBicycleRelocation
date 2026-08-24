@@ -15,7 +15,9 @@ import db
 from project_config import (
     ADJUST_BALANCE_LIMIT, ADJUST_BALANCE_OK, ADJUST_MAX_ITER,
     CLUSTER_ALPHA, CLUSTER_BETA, CLUSTER_GAMMA, PROJECT_ROOT, REBAL_MIN_QTY,
-    TARGET_CLUSTER_SIZE, TOP_STATION_LIMIT, VEHICLES_PER_ROUND,
+    CLUSTER_IMBALANCE_ALLOWANCE, DROP_TIME_SEC, PICK_TIME_SEC,
+    TIME_BUDGET_MINUTES, TOP_STATION_LIMIT, TRAVEL_MIN_PER_STATION,
+    VEHICLES_PER_ROUND,
     duration_list, ensure_output_dirs, get_runtime_config, require_columns,
 )
 
@@ -100,8 +102,36 @@ def select_top_unbalanced_st(file_path:str, duration:str, st_info:pd.DataFrame) 
     return pick_drop
 
 
-def make_clustering(pick_drop: pd.DataFrame, target_cluster_size: int = None,
-                    random_state: int = 42) -> pd.DataFrame:
+def wanted_vehicles(pick_drop: pd.DataFrame) -> int:
+    """이번 회차의 작업량으로 **필요한 차량(=군집) 수**를 추정한다.
+
+    한 대가 감당할 수 있는 양을 시간으로 따진다.
+
+      작업시간 = 처리 대수 × (싣기 + 내리기)        — 정확히 계산된다
+      이동시간 = 대여소 수 × TRAVEL_MIN_PER_STATION  — 실측 계수
+      필요 대수 = ceil((작업 + 이동) × 불균형 여유 / 시간 예산)
+
+    이동을 **대여소 수에 비례**하게 잡는 근거: 같은 재고로 K만 바꿔 재 보면
+    총 소요시간이 거의 변하지 않는다(K=10 → 18에서 이동분/곳 10.2 → 13.0).
+    군집을 쪼개면 depot 왕복이 늘지만 군집 안 이동이 그만큼 줄기 때문이다.
+    근거와 계수는 project_config와 docs/EXPERIMENTS.md에 있다.
+
+    **저장하지 않는 순수 계산이다** — 실험이 계수를 바꿔 가며 직접 부른다.
+    """
+    if pick_drop.empty:
+        return 1
+
+    # 처리 대수는 drop 합(= |pick 합|)이다. 앞의 cut_point가 두 쪽을 맞춰 뒀다.
+    # pick·drop을 모두 더하면 한 대를 두 번 세어 2배가 된다.
+    bikes = float(pick_drop.loc[pick_drop['rebal_qty'] > 0, 'rebal_qty'].sum())
+
+    work_min = bikes * (PICK_TIME_SEC + DROP_TIME_SEC) / 60.0
+    travel_min = len(pick_drop) * TRAVEL_MIN_PER_STATION
+    needed = (work_min + travel_min) * CLUSTER_IMBALANCE_ALLOWANCE / TIME_BUDGET_MINUTES
+    return max(1, int(np.ceil(needed)))
+
+
+def make_clustering(pick_drop: pd.DataFrame, random_state: int = 42) -> pd.DataFrame:
     '''
     # 2차 : 클러스터링(K-Medoids)
 
@@ -113,15 +143,16 @@ def make_clustering(pick_drop: pd.DataFrame, target_cluster_size: int = None,
     greedy 탐색의 변동성을 재려고 열어 둔 인자다(experiments/baseline_compare.py).
     '''
 
-    target_cluster_size = (TARGET_CLUSTER_SIZE if target_cluster_size is None
-                           else target_cluster_size)
-    wanted = int(np.ceil(len(pick_drop) / target_cluster_size))
+    wanted = wanted_vehicles(pick_drop)
     K = min(wanted, VEHICLES_PER_ROUND)
 
     if K < wanted:
-        print(f"군집 개수 K = {K} (희망 {wanted} → 회차당 가용 차량 {VEHICLES_PER_ROUND}대로 제한)")
+        print(f"군집 개수 K = {K}"
+              f" (작업량 기준 {wanted}대 필요 → 회차당 가용 차량 {VEHICLES_PER_ROUND}대로 제한)")
+        print(f"  ⚠ {K}대로는 시간 예산({TIME_BUDGET_MINUTES:.0f}분)을 넘기는 회차가 생깁니다."
+              f" 회차당 투입 대수를 늘리거나 작업 대상을 줄여야 합니다.")
     else:
-        print(f"군집 개수 K = {K}")
+        print(f"군집 개수 K = {K} (작업량 기준)")
 
     # K-Medoids 클러스터링 (좌표는 스케일링하지 않는다 — 위경도 자체가 거리 단위)
     X = pick_drop[['lat', 'lon']].values

@@ -1,11 +1,11 @@
 # 테스트
 
 이 프로젝트는 처음에 테스트가 하나도 없었고, **의존성이 전부 깨진 상태**로
-파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 263개 테스트입니다.
+파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 264개 테스트입니다.
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 263개 (약 50~80초)
+python -m pytest              # 전체 264개 (약 50~80초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -18,7 +18,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | 파일 | 개수 | 무엇을 지키는가 |
 | --- | --- | --- |
 | [tests/test_pipeline.py](../tests/test_pipeline.py) | 32 | step0→1→2→4를 **실제로 실행**해 산출물·스키마 확인 |
-| [tests/test_calculations.py](../tests/test_calculations.py) | 39 | **계산 자체** — 목표재고 공식·군집 목적함수·VRP 적재/시간 제약·ILP 수급 제약·집행 기준 결품·**솔버 값 반올림/입력 방어** ([FORMULATION.md](FORMULATION.md)) |
+| [tests/test_calculations.py](../tests/test_calculations.py) | 40 | **계산 자체** — 목표재고 공식·군집 목적함수·VRP 적재/시간 제약·ILP 수급 제약·집행 기준 결품·**솔버 값 반올림/입력 방어** ([FORMULATION.md](FORMULATION.md)) |
 | [tests/test_kpi.py](../tests/test_kpi.py) | 19 | 성과 지표 계산과 `/kpi` 화면, 결측 지표 렌더링 ([KPI.md](KPI.md)) |
 | [tests/test_db.py](../tests/test_db.py) | 22 | SQLite 저장소의 스코프·멱등성·최신 라벨·스키마 마이그레이션 ([DB_SCHEMA.md](DB_SCHEMA.md)) |
 | [tests/test_webapp.py](../tests/test_webapp.py) | 50 | 웹 라우트가 통째로 깨지는 사고 방지, 실행 폼 입력 검증(기간·시간대 목록 포함), 파일 목록 쪽 나눔, **표 정렬을 건 표/걸지 않은 표** ([WEBAPP.md](WEBAPP.md)) |

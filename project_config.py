@@ -207,13 +207,24 @@ PICK_TIME_SEC = float(os.getenv("PBR_PICK_TIME_SEC", "30"))
 DROP_TIME_SEC = float(os.getenv("PBR_DROP_TIME_SEC", "30"))
 
 # ---- 차량 운용 (docs/FLEET.md) ----
-# 보유 차량은 21대지만 한 회차에 전부 투입하지 않는다. 하루 약 3회차를 돌리며
-# 회차마다 일부만 나가고 나머지는 다음 회차를 맡는 로테이션 방식이다.
-# 두 대수 모두 웹 실행 폼에서 바꿀 수 있다
+# 하루 약 3회차를 돌리며, 회차마다 나가는 대수는 **그 회차의 작업량이 정한다**
+# (step1의 wanted_vehicles). 두 대수 모두 웹 실행 폼에서 바꿀 수 있다
 # (--fleet-size → PBR_FLEET_SIZE, --vehicles-per-round → PBR_VEHICLES_PER_ROUND).
 MAX_FLEET_SIZE = 99                # VEHICLE_ID_FORMAT이 두 자리 고정이라 V99가 상한
 DEFAULT_FLEET_SIZE = 21            # 보유 차량 총 대수 기본값 (웹 폼 기본값도 이 값)
-DEFAULT_VEHICLES_PER_ROUND = 10    # 한 회차 투입 대수(상한) 기본값
+
+# 한 회차 투입 대수의 **상한**. 실제 대수가 아니다 — 작업량 추정이 이 아래에서
+# 정한다. 1.19.1에서 10 → 보유 대수로 열었다(사용자 결정, 2026-08-24).
+#
+# 근거: 같은 재고로 상한만 바꿔 재 봤더니 (26년 03월 평일, 3회차, 복귀 포함)
+#   10대 → 120분 예산 초과 18/30(60%), 총 1,283 km
+#   12대 → 9/36(25%),                  총 1,297 km
+#   15~18대 → **1/49(2%)**,            총 1,417 km
+# 차를 늘려도 총 이동거리는 10%만 늘었다 — 군집이 작아져 안에서 도는 거리가
+# 줄고 depot 왕복만 늘기 때문이다. 반면 예산 초과는 60% → 2%로 떨어졌다.
+# 대가는 출동 횟수다(3회차면 차량당 2.3회). 현장 인력이 모자라면 이 값을 줄여라 —
+# 줄이면 추정이 상한에 걸리고, step1이 몇 대가 모자란지 경고한다.
+DEFAULT_VEHICLES_PER_ROUND = DEFAULT_FLEET_SIZE
 
 
 def normalize_vehicle_count(value, label: str = "차량 대수") -> int:
@@ -290,9 +301,26 @@ REBAL_MIN_QTY = int(os.getenv("PBR_REBAL_MIN_QTY", "2"))
 # 이 컷 뒤에 다시 '적은 쪽까지만' 누적합으로 자르므로 실제 대상은 더 적다.
 TOP_STATION_LIMIT = int(os.getenv("PBR_TOP_STATION_LIMIT", "50"))
 
-# 군집 하나에 담고 싶은 대여소 수. 군집 수 K = ceil(대상 수 / 이 값)이며,
-# 회차당 투입 대수(VEHICLES_PER_ROUND)를 넘지 못한다.
-TARGET_CLUSTER_SIZE = int(os.getenv("PBR_TARGET_CLUSTER_SIZE", "7"))
+# ---- 회차당 필요 차량 추정 (1.19.1) ----
+# 군집 1개 = 차량 1대이므로, **군집 수는 이번 회차의 작업량이 정한다.**
+# 한 대가 감당할 수 있는 양을 시간으로 따진다:
+#
+#   추정 총 소요 = 처리 대수 x (싣기 + 내리기)        <- 정확히 계산된다
+#                + 대여소 수 x TRAVEL_MIN_PER_STATION  <- 실측 계수
+#   필요 대수    = ceil(추정 총 소요 x 불균형 여유 / 시간 예산)
+#
+# 1.19.1 이전에는 `ceil(대상 수 / 7)`이었다. 7이라는 값에 근거가 없었고,
+# 실데이터에서는 늘 회차당 투입 상한(10)에 걸려 **사실상 10대 고정**이었다.
+#
+# **이동 계수는 실측이다** (26년 03월 평일·복귀 포함, 같은 재고로 K를 바꿔 3회):
+#   이동분/곳 = 10.2 ~ 15.7, 평균 12.5. **K를 바꿔도 거의 변하지 않았다** —
+#   군집을 쪼개면 depot 왕복이 늘지만 군집 안 이동이 그만큼 줄어 상쇄된다
+#   (총 소요 1252분@K=10 -> 1278분@K=12 -> 1426분@K=18).
+TRAVEL_MIN_PER_STATION = float(os.getenv("PBR_TRAVEL_MIN_PER_STATION", "12.5"))
+
+# 시간 예산은 평균이 아니라 **가장 오래 걸린 차량**으로 판정한다. 같은 실측에서
+# 최장/평균이 1.28 ~ 1.51이었다. 평균만 맞추면 절반이 예산을 넘는다.
+CLUSTER_IMBALANCE_ALLOWANCE = float(os.getenv("PBR_CLUSTER_IMBALANCE", "1.4"))
 
 # 군집 조정(greedy) 반복 상한과 종료·재조정 기준.
 #   ADJUST_MAX_ITER        : 대여소 이동 시도 횟수 상한

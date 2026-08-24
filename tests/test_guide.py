@@ -67,7 +67,7 @@ def test_guide_covers_every_run_form_field(client):
     guide = client.get("/guide").text
 
     for label in ["실행 이름", "순수요 기간", "시간대", "요일 구분",
-                  "보유 차량 대수", "회차당 투입 대수", "원천 대여 이력 CSV",
+                  "보유 차량 대수", "회차당 투입 상한", "원천 대여 이력 CSV",
                   "API 수집 생략", "EDA 생략"]:
         assert label in form, f"실행 폼에 '{label}'이 없다 — 테스트가 낡았다"
         assert label in guide, f"'{label}'이 사용 안내에 빠졌다"
