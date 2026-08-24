@@ -302,6 +302,14 @@ CREATE TABLE IF NOT EXISTS kpi_summary (
     stockout_hours_after  REAL,      -- VRP가 **실제로 옮긴 양** 기준 (1.18.4~)
     stockout_hours_plan   REAL,      -- 계획량(rebal_qty)이 전부 집행됐다고 본 값
     demand_mae            REAL,
+
+    -- C. 운영 / D. 효율 (1.19.3, docs/KPI.md)
+    travel_time_ratio     REAL,      -- 이동시간 / 총 소요시간 (낮을수록 좋다)
+    empty_distance_ratio  REAL,      -- 빈 차로 달린 거리 비율 (차고지 왕복 포함)
+    depot_returns         INTEGER,   -- 복귀 행 수. 1.19.1부터 클러스터당 1건이 정상
+    bikes_per_minute      REAL,      -- 분당 처리 대수 (작업 밀도)
+    stations_total        INTEGER,   -- 이번 실행이 수집한 전체 대여소 수
+    station_coverage      REAL,      -- 작업 대상 / 전체 대여소
     PRIMARY KEY (run_label, duration)
 );
 
@@ -329,6 +337,30 @@ CREATE TABLE IF NOT EXISTS rental_history (
 
 CREATE INDEX IF NOT EXISTS idx_rental_period ON rental_history(period);
 CREATE INDEX IF NOT EXISTS idx_rental_rent_at ON rental_history(rent_at);
+-- 수요 예측 백테스트 (1.19.3, docs/KPI.md E장).
+-- 한 달로 만든 mu가 **다음 달**을 얼마나 맞히는지. tools/backtest_demand.py가 채운다.
+-- 파이프라인 실행과 무관한 기록이라 run_label이 없다 — 축은 (시간대, 월쌍, 요일)이다.
+-- 같은 축을 다시 재면 덮어쓴다. z·min_demand는 그때 쓴 설정이라 함께 남긴다.
+CREATE TABLE IF NOT EXISTS demand_backtest (
+    duration     TEXT NOT NULL,
+    train_period TEXT NOT NULL,       -- mu를 만든 달
+    test_period  TEXT NOT NULL,       -- 맞히려 한 달
+    day_type     TEXT NOT NULL,       -- weekday | holiday (섞지 않는다)
+    computed_at  TEXT NOT NULL,
+    z            REAL,                -- 커버리지 판정에 쓴 계수
+    min_demand   REAL,                -- 작업 대상 임계(0이면 전체 대여소)
+    warmup_days  INTEGER,
+    stations     INTEGER,
+    mae          REAL,
+    rmse         REAL,
+    bias         REAL,                -- 양수면 과소예측
+    mae_zero     REAL,                -- 기준선: 늘 0이라고 예측
+    mae_global   REAL,                -- 기준선: 전체 평균으로 예측
+    coverage     REAL,                -- mu + z*sigma가 실제를 덮은 비율
+    z_for_95     REAL,                -- 95%를 덮으려면 필요한 z
+    PRIMARY KEY (duration, train_period, test_period, day_type)
+);
+
 CREATE INDEX IF NOT EXISTS idx_rental_station ON rental_history(rent_station);
 CREATE INDEX IF NOT EXISTS idx_pick_drop_cluster ON pick_drop(run_label, duration, cluster);
 CREATE INDEX IF NOT EXISTS idx_metrics_run ON metrics(run_label, duration);
@@ -612,6 +644,9 @@ KPI_FIELDS = (
     "vehicle_load_gap", "improvement_per_km", "cluster_max_imbalance",
     "stockout_hours_before", "stockout_hours_after", "stockout_hours_plan",
     "demand_mae",
+    # 운영·효율 지표 (1.19.3, docs/KPI.md C·D장)
+    "travel_time_ratio", "empty_distance_ratio", "depot_returns",
+    "bikes_per_minute", "stations_total", "station_coverage",
 )
 
 
@@ -632,6 +667,46 @@ def save_kpi(conn: sqlite3.Connection, run_label: str, duration: str,
         (run_label, duration, *known.values()),
     )
     conn.commit()
+
+
+BACKTEST_FIELDS = (
+    "z", "min_demand", "warmup_days", "stations", "mae", "rmse", "bias",
+    "mae_zero", "mae_global", "coverage", "z_for_95",
+)
+
+
+def save_backtest(conn: sqlite3.Connection, rows: list) -> int:
+    """백테스트 결과를 기록한다(같은 시간대·월쌍·요일이면 덮어쓴다).
+
+    rows의 각 항목은 duration/train_period/test_period/day_type을 반드시 갖고,
+    나머지는 BACKTEST_FIELDS 중 있는 것만 저장한다 — 못 구한 값은 NULL로 남는다.
+    """
+    saved = 0
+    for row in rows:
+        known = {k: row[k] for k in BACKTEST_FIELDS if k in row and row[k] is not None}
+        columns = ["duration", "train_period", "test_period", "day_type",
+                   "computed_at", *known]
+        placeholders = ", ".join(["?", "?", "?", "?", "datetime('now', 'localtime')"]
+                                 + ["?"] * len(known))
+        conn.execute(
+            f"INSERT OR REPLACE INTO demand_backtest ({', '.join(columns)})"
+            f" VALUES ({placeholders})",
+            (row["duration"], row["train_period"], row["test_period"],
+             row["day_type"], *known.values()),
+        )
+        saved += 1
+    conn.commit()
+    return saved
+
+
+def load_backtest(conn: sqlite3.Connection,
+                  day_type: Optional[str] = None) -> pd.DataFrame:
+    """백테스트 결과를 읽는다(시간대, 검증 월 순)."""
+    where = "WHERE day_type = ?" if day_type else ""
+    params = [day_type] if day_type else []
+    return pd.read_sql(
+        f"SELECT * FROM demand_backtest {where}"
+        " ORDER BY duration ASC, test_period ASC", conn, params=params)
 
 
 def load_kpi(conn: sqlite3.Connection, run_label: Optional[str] = None,

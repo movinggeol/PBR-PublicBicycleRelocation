@@ -37,7 +37,7 @@ from project_config import (
     normalize_fleet_size, normalize_per_round, normalize_period, resolve_day_type,
 )
 import tashu
-from webapp import catalog, jobs, orders, store
+from webapp import catalog, charts, jobs, kpi_view, orders, store
 
 app = FastAPI(title="PBR 파이프라인 대시보드", docs_url="/api/docs")
 
@@ -426,10 +426,44 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
                 "fmt": fmt,
             })
 
+    # ── 그래프 (docs/DESIGN.md '그래프') ──
+    # SVG 문자열을 만들어 넘긴다. 라이브러리를 넣지 않고, 색은 CSS 변수를 상속한다.
+    trends = []
+    for series in kpi_view.trends(rows):
+        trends.append({
+            "title": series["title"],
+            "hint": series["hint"],
+            "svg": charts.line(series["labels"], series["values"],
+                               title=series["title"], unit=series["unit"],
+                               lower_is_better=series["lower_is_better"]),
+            "table": list(zip(series["labels"], series["values"])),
+            "unit": series["unit"],
+        })
+
+    cost = kpi_view.cost_benefit(rows)
+    cost_svg = charts.scatter(cost["points"], x_key="x", y_key="y",
+                              x_label="총 이동거리 (km)", y_label=cost["y_label"])
+
+    forecast = kpi_view.forecast_accuracy()
+    for series in forecast["series"]:
+        series["svg"] = charts.line(series["labels"], series["values"],
+                                    title=series["title"], unit=series["unit"],
+                                    lower_is_better=True)
+        # 표 보기용 쌍은 파이썬에서 만든다 — Jinja에는 zip 필터가 없다.
+        series["table"] = list(zip(series["labels"], series["values"]))
+
+    heat = kpi_view.demand_heatmap(latest_period())
+    heat_svg = charts.heatmap(heat["rows"], heat["cols"], heat["matrix"], unit="대")
+    heat_legend = charts.scale_legend(heat["scale"], "대")
+
     return templates.TemplateResponse(request, "kpi.html", {
         "rows": store.records(rows),
         "cards": cards,
         "stockout": stockout,
+        "trends": trends,
+        "cost": cost, "cost_svg": cost_svg,
+        "heat": heat, "heat_svg": heat_svg, "heat_legend": heat_legend,
+        "forecast": forecast,
         "latest_label": latest["run_label"].iloc[0] if latest is not None else None,
         "previous_label": previous["run_label"].iloc[0] if previous is not None else None,
         "selected_run": run_label,

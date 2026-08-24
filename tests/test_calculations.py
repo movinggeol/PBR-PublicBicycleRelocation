@@ -768,6 +768,64 @@ def test_save_message_shows_the_z_actually_used(target_qty, tmp_path, monkeypatc
     assert "None" not in message
 
 
+def test_route_extras_counts_empty_running_and_returns(step4, tmp_path, monkeypatch):
+    """공차 이동은 **도착 전 적재량**으로 판단한다 (docs/KPI.md D장).
+
+    차고지에서 첫 대여소로 가는 구간과 복귀 구간은 늘 빈 차다. 도착 후 적재량으로
+    세면 첫 구간이 '실은 채로 달렸다'가 되어 비율이 낮게 나온다.
+    """
+    routes = pd.DataFrame([
+        # depot -> A(싣기 5): 빈 차로 10km
+        (0, "pick", 5, 10.0, 600.0, 150.0, 750.0),
+        # A -> B(내리기 5): 실은 채로 4km
+        (0, "drop", 5, 4.0, 240.0, 150.0, 1140.0),
+        # B -> depot: 빈 차로 6km
+        (0, "return", 0, 6.0, 360.0, 0.0, 1500.0),
+    ], columns=["cluster", "action", "qty", "distance_km", "travel_sec",
+                "work_sec", "cum_sec"])
+
+    path = tmp_path / "vrp.csv"
+    routes.to_csv(path, index=False, encoding="utf-8")
+    monkeypatch.setattr(step4, "vrp_plan_file", str(tmp_path / "vrp.csv"))
+    monkeypatch.setattr(step4, "now", "")
+
+    extras = step4.route_extras("")
+
+    assert extras["depot_returns"] == 1, "1.19.1부터 클러스터당 복귀 1건이 정상이다"
+    # (10 + 6) / 20 = 0.8
+    assert extras["empty_distance_ratio"] == pytest.approx(0.8)
+    # 이동 1200초 / 총 1500초
+    assert extras["travel_time_ratio"] == pytest.approx(0.8)
+    # pick 5대 / 25분
+    assert extras["bikes_per_minute"] == pytest.approx(5 / 25)
+
+
+def test_route_extras_is_silent_when_it_cannot_measure(step4, tmp_path, monkeypatch):
+    """산출물이 없거나 구버전이면 지표를 **빼고** 넘긴다 — 0으로 지어내지 않는다."""
+    monkeypatch.setattr(step4, "vrp_plan_file", str(tmp_path / "없는파일.csv"))
+    monkeypatch.setattr(step4, "now", "")
+    assert step4.route_extras("") == {}
+
+    old = pd.DataFrame({"cluster": [0], "action": ["pick"], "qty": [1]})
+    old.to_csv(tmp_path / "vrp.csv", index=False, encoding="utf-8")
+    monkeypatch.setattr(step4, "vrp_plan_file", str(tmp_path / "vrp.csv"))
+    assert step4.route_extras("") == {}, "거리·시간 컬럼이 없는 구버전"
+
+
+def test_station_coverage_needs_the_collected_station_list(step4, tmp_path, monkeypatch):
+    """전체 대여소 수를 모르면 커버리지를 내지 않는다."""
+    monkeypatch.setattr(step4, "st_info_file", str(tmp_path / "없는파일.csv"))
+    monkeypatch.setattr(step4, "now", "")
+    assert step4.station_coverage(87) == {}
+
+    pd.DataFrame({"station_id": [f"ST{i:04d}" for i in range(100)]}).to_csv(
+        tmp_path / "st.csv", index=False, encoding="utf-8")
+    monkeypatch.setattr(step4, "st_info_file", str(tmp_path / "st.csv"))
+
+    assert step4.station_coverage(87) == {"stations_total": 100,
+                                         "station_coverage": pytest.approx(0.87)}
+
+
 def test_duration_input_is_checked_against_the_real_list():
     """시간대는 네 창이 전부다. 맨 앞 밑줄이 빠진 값은 여기서 걸러야 한다.
 

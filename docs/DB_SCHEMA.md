@@ -369,14 +369,41 @@ CSV의 `hour` 컬럼은 `duration`과 같은 값이라 **저장하지 않습니�
 | 규모 | `stations`, `clusters`, `vehicles_used`, `bikes_moved` |
 | A. 계획 | `avg_improvement_rate`, `pick_improvement_rate`, `drop_improvement_rate`, `target_met_ratio` |
 | B. 실측 | `stockout_hours_before`, `stockout_hours_after`(**집행 기준**), `stockout_hours_plan`(계획 기준), `demand_mae` |
-| C. 운영 | `total_distance_km`, `max_cluster_minutes`, `avg_cluster_minutes`, `time_budget_minutes`, `time_budget_met`, `vehicle_load_gap` |
-| D. 효율 | `improvement_per_km` |
+| C. 운영 | `total_distance_km`, `max_cluster_minutes`, `avg_cluster_minutes`, `time_budget_minutes`, `time_budget_met`, `vehicle_load_gap`, `depot_returns`, `stations_total`, `station_coverage` |
+| D. 효율 | `improvement_per_km`, `bikes_per_minute`, `travel_time_ratio`, `empty_distance_ratio` |
 | E. 품질 | `cluster_max_imbalance` |
+
+C·D의 뒤쪽 여섯 개는 1.19.3에서 붙었습니다. `empty_distance_ratio`는 **도착 전
+적재량**으로 판단합니다 — 도착 후 적재량으로 세면 차고지에서 첫 대여소로 가는
+구간이 '실은 채로 달렸다'가 되어 비율이 낮게 나옵니다.
 
 **계산하지 못한 지표는 그냥 빼고 넘기면 NULL로 남습니다.** `save_kpi()`가 `db.KPI_FIELDS`에
 있는 키만 골라 저장하기 때문입니다. `time_budget_minutes`를 값과 함께 기록해 두는 이유는
 **판정 기준이 바뀔 수 있어서**입니다 — 나중에 예산을 90분으로 바꾸면 과거 `time_budget_met`가
 무슨 기준이었는지 알 수 없게 됩니다.
+</details>
+
+<details>
+<summary><code>demand_backtest</code> — 월쌍 1건 = 1행 (PK: duration, train_period, test_period, day_type) ⚠️ 실행 스코프 아님</summary>
+
+**파이프라인 실행과 무관한 기록입니다.** 한 달로 만든 `mu`가 **다음 달**을 얼마나
+맞히는지 재는 것이라 `run_label`이 없습니다. `tools/backtest_demand.py`가 채우고
+`/kpi`의 '수요 예측은 얼마나 맞나' 절이 읽습니다.
+
+| 분류 | 컬럼 |
+| --- | --- |
+| 키·시각 | `duration`, `train_period`, `test_period`, `day_type`, `computed_at` |
+| 그때 쓴 설정 | `z`, `min_demand`, `warmup_days`, `stations` |
+| 오차 | `mae`, `rmse`, `bias`(양수면 과소예측) |
+| 기준선 | `mae_zero`(늘 0이라고 예측), `mae_global`(전체 평균으로 예측) |
+| 커버리지 | `coverage`, `z_for_95` |
+
+- **`day_type`이 키에 들어 있습니다.** 평일과 휴일은 수요 구조가 달라 섞으면
+  학습·검증 양쪽이 오염됩니다. 조회도 한쪽만 돌려줍니다.
+- 같은 축을 다시 재면 **덮어씁니다.** `z`를 바꿔 재면 이전 값이 사라지므로,
+  설정별로 남겨야 하면 그때는 키를 늘려야 합니다.
+- 기준선이 두 개인 이유는 **쉬운 기준선만 골라 이겼다고 하지 않기 위해서**입니다.
+  화면은 둘 중 더 낮은(더 어려운) 쪽과 겨룹니다.
 </details>
 
 ### 4-5. 차량 운용

@@ -16,6 +16,7 @@ from project_config import (
 file_path = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")
 vrp_plan_file = str(PROJECT_ROOT / "data/pp_data/VRP/VRP_plan{duration} ({now}).csv")
 net_demand_file = str(PROJECT_ROOT / "data/pp_data/순수요/st_net_daily ({period}).csv")
+st_info_file = str(PROJECT_ROOT / "data/pp_data/대여소 정보/st_info ({now}).csv")
 
 result_file_path = str(PROJECT_ROOT / "data/pp_data/성능 지표/verification{duration} ({now}).csv")
 route_summary_file = str(PROJECT_ROOT / "data/pp_data/성능 지표/route_summary{duration} ({now}).csv")
@@ -299,6 +300,71 @@ def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
     return result
 
 
+def route_extras(duration: str) -> dict:
+    """경로에서만 알 수 있는 운영·효율 지표 (docs/KPI.md C·D장).
+
+    route_summary는 클러스터 단위 합계라 **구간별 적재량**을 모른다. 공차 이동
+    비율은 각 이동을 시작할 때 차에 몇 대가 있었는지 되짚어야 나온다.
+
+    - `travel_time_ratio` — 이동시간 / 총 소요시간. 낮을수록 좋다(이동보다 작업).
+    - `empty_distance_ratio` — **빈 차로 달린 거리** 비율. 차고지에서 첫 대여소로
+      가는 구간과 복귀 구간이 기본으로 여기 들어간다.
+    - `depot_returns` — 복귀 행 수. 1.19.1부터 클러스터당 1건이 정상이다.
+    - `bikes_per_minute` — 분당 처리 대수(작업 밀도).
+
+    못 구하면 빈 dict를 돌려준다 — 그 컬럼은 NULL로 남는다(db.KPI_FIELDS).
+    """
+    path = Path(vrp_plan_file.format(duration=duration, now=now))
+    if not path.exists():
+        return {}
+
+    vrp = pd.read_csv(path, encoding='utf-8')
+    if not {'distance_km', 'travel_sec', 'work_sec', 'cum_sec'} <= set(vrp.columns):
+        return {}
+
+    total_distance = float(vrp['distance_km'].sum())
+    # 총 소요시간은 클러스터마다 따로 흐르므로 max를 클러스터별로 더한다.
+    total_seconds = float(vrp.groupby('cluster')['cum_sec'].max().sum())
+    if total_seconds <= 0:
+        return {}
+
+    empty_km = 0.0
+    for _, rows in vrp.groupby('cluster'):
+        load = 0
+        for _, row in rows.iterrows():
+            # 이 구간은 **도착 전 적재량**으로 달린다. 0이면 빈 차다.
+            if load == 0:
+                empty_km += float(row['distance_km'])
+            if row['action'] == 'pick':
+                load += int(row['qty'])
+            elif row['action'] == 'drop':
+                load -= int(row['qty'])
+
+    moved = int(vrp[vrp['action'] == 'pick']['qty'].sum())
+    return {
+        'travel_time_ratio': float(vrp['travel_sec'].sum() / total_seconds),
+        'empty_distance_ratio': (float(empty_km / total_distance)
+                                 if total_distance else None),
+        'depot_returns': int((vrp['action'] == 'return').sum()),
+        'bikes_per_minute': float(moved / (total_seconds / 60)),
+    }
+
+
+def station_coverage(worked: int) -> dict:
+    """분석 대상 대여소 가운데 몇 곳을 손댔나 (docs/KPI.md C장).
+
+    전체 대여소 수는 이번 실행이 수집한 대여소 정보에서 센다. 파일이 없으면
+    지표를 빼고 넘긴다 — 지어내지 않는다.
+    """
+    path = Path(st_info_file.format(now=now))
+    if not path.exists():
+        return {}
+    total = len(pd.read_csv(path, encoding='utf-8'))
+    if total <= 0:
+        return {}
+    return {'stations_total': int(total), 'station_coverage': float(worked / total)}
+
+
 def save_kpi_summary(duration: str, imbalance_df: pd.DataFrame,
                      summary: pd.DataFrame) -> None:
     '''
@@ -335,6 +401,9 @@ def save_kpi_summary(duration: str, imbalance_df: pd.DataFrame,
 
     # 결품 시뮬레이션 (KPI.md 4단계). 순수요가 없으면 빈 dict라 컬럼은 NULL로 남는다.
     metrics.update(stockout_simulation(duration, imbalance_df))
+    # 운영·효율 지표 (KPI.md C·D장). 못 구하면 빈 dict.
+    metrics.update(route_extras(duration))
+    metrics.update(station_coverage(len(imbalance_df)))
 
     try:
         with db.session() as conn:
@@ -356,6 +425,11 @@ def save_kpi_summary(duration: str, imbalance_df: pd.DataFrame,
     if 'stockout_hours_before' in metrics:
         print(f"  결품 {metrics['stockout_hours_before']:.2f}h"
               f" → {metrics['stockout_hours_after']:.2f}h (대여소·일 평균)")
+    if 'travel_time_ratio' in metrics:
+        print(f"  이동 비중 {metrics['travel_time_ratio'] * 100:.0f}%"
+              f" · 공차 이동 {metrics['empty_distance_ratio'] * 100:.0f}%"
+              f" · 분당 {metrics['bikes_per_minute']:.2f}대"
+              f" · 복귀 {metrics['depot_returns']}건")
 
 
 def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, duration: str):

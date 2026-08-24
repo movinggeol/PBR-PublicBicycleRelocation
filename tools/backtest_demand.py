@@ -228,6 +228,23 @@ def main() -> int:
               f" 그 값을 실제로 적용했을 때의 커버리지는 따로 확인해야 한다.")
         print(f"  커버리지는 z에 대해 비선형이라 두 값이 일치하지 않는다"
               f" — python experiments/z_sweep.py 로 z별 실제 커버리지를 볼 수 있다.")
+
+        # DB에도 남긴다(1.19.3) — 그전에는 콘솔에만 찍혀서, 예측이 얼마나 맞는지
+        # 웹에서 볼 수 없었다. 실패해도 측정 자체는 이미 끝났으니 경고만 남긴다
+        # (파이프라인의 save_output과 같은 태도).
+        records = [{
+            "duration": row["duration"],
+            "train_period": row["학습"], "test_period": row["검증"],
+            "day_type": day_type, "z": args.z, "min_demand": args.min_demand,
+            "warmup_days": args.warmup_days,
+            **{k: row[k] for k in db.BACKTEST_FIELDS if k in row},
+        } for row in all_rows]
+        try:
+            with db.session() as conn:
+                saved = db.save_backtest(conn, records)
+            print(f"\n  DB에 {saved}행 기록했습니다 (웹 /kpi '수요 예측' 절에서 볼 수 있습니다).")
+        except Exception as err:
+            print(f"\n  [경고] 백테스트 DB 기록 실패: {type(err).__name__}: {err}")
     return 0
 
 

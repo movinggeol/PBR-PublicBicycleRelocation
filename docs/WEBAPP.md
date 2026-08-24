@@ -93,6 +93,8 @@ GET /api/metrics?run_label=2026-05-21%2018    # 특정 실행
 webapp/
 ├── app.py        # FastAPI 라우트 (페이지 + JSON API)
 ├── orders.py     # 작업지시서 조립·실시간 재고 대조 판정 (저장 안 함)
+├── charts.py     # 인라인 SVG 그래프 (꺾은선·산점도·히트맵)
+├── kpi_view.py   # 성과 화면 데이터 조립 (추세·효과비용·예측정확도·수요구조)
 ├── jobs.py       # run_pipeline.py를 subprocess로 실행, 상태·로그 추적
 ├── store.py      # 산출물 조회 계층 — DB 우선, 없으면 CSV 폴백
 ├── catalog.py    # data/pp_data 파일 스캔(지도·CSV 목록), 안전한 경로 해석

@@ -61,6 +61,55 @@
 </div>
 {% endif %}
 
+{# ───────────────────────── 2단: 추세 ─────────────────────────
+   지표마다 작은 그래프를 따로 낸다. 단위가 다른 것을 한 판에 겹치면 두 축의
+   정렬이 임의가 되고, 없는 상관관계가 있는 것처럼 보인다(docs/DESIGN.md). #}
+{% if trends %}
+<h2>추세</h2>
+<p class="section-lead">실행을 거듭하며 값이 어떻게 움직였는지입니다. 오래된 실행이 왼쪽입니다.
+  점에 커서를 대면 그 실행의 값이 나옵니다.</p>
+
+<div class="viz-grid2">
+  {% for t in trends %}
+  <div class="card viz-card">
+    <h3>{{ t.title }}</h3>
+    <span class="hint">{{ t.hint }}</span>
+    {{ t.svg | safe }}
+    {# 커서만으로 값을 읽게 두지 않는다 — 같은 값을 표로도 낸다. #}
+    <details class="viz-table">
+      <summary>표로 보기</summary>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th class="grow">실행</th><th class="num">{{ t.title }}</th></tr></thead>
+          <tbody>
+          {% for label, value in t.table %}
+          <tr><td class="wrap muted">{{ label }}</td>
+            <td class="num">{% if value is not none %}{{ value | round(2) }}{{ t.unit }}{% else %}—{% endif %}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ───────── 효과·비용 트레이드오프 ───────── #}
+{% if cost.points | length > 1 %}
+<h2>효과와 비용</h2>
+<p class="section-lead"><b>개선률만 올리면 소요시간과 거리가 늘어납니다.</b>
+  오른쪽으로 갈수록 더 많이 움직인 것이고, 위로 갈수록 효과가 큰 것입니다.
+  왼쪽 위에 있는 점이 가장 값진 계획입니다.
+  {% if cost.note %}<span class="hint">{{ cost.note }}</span>{% endif %}</p>
+<div class="card viz-card">
+  {{ cost_svg | safe }}
+  <p class="hint" style="margin:var(--sp-xs) 0 0">점 옆 숫자는 시간대입니다
+    (<code>05_10</code> = 05~10시). 커서를 대면 실행 이름까지 나옵니다.
+    회차를 색으로 나누지 않은 것은 이 화면에서 색이 곧 뜻이 되지 않게 하려는 것입니다.</p>
+</div>
+{% endif %}
+
 <h2>실행·회차별 지표</h2>
 <p class="section-lead">표의 각 열 제목에 커서를 대면 그 숫자가 무엇을 뜻하는지 나옵니다.
   <b>열 제목을 누르면</b> 그 열로 오름차순·내림차순 정렬됩니다.</p>
@@ -132,4 +181,110 @@
 
 <p class="hint" style="margin-top:var(--sp-md)">지표 설계와 한계는 <code>docs/KPI.md</code>에 정리돼 있습니다.
   결품 시간과 수요 예측 오차는 실행 조건에 따라 비어 있을 수 있습니다.</p>
+
+{# ───────── 수요 예측이 얼마나 맞나 (KPI.md E장) ─────────
+   mu가 틀리면 위의 모든 지표가 허수다. 그래서 성과 다음에 바로 둔다. #}
+{% if forecast.summary %}
+<h2>수요 예측은 얼마나 맞나</h2>
+<p class="section-lead">위 지표들은 모두 <b>목표 재고</b>에서 나오고, 목표 재고는
+  <b>평균 순수요(mu)</b>에서 나옵니다. mu가 틀리면 개선률이 높아도 뜻이 없습니다.
+  한 달로 만든 mu가 <b>다음 달</b>을 얼마나 맞혔는지 잰 것입니다
+  (평일 기준, <code>tools/backtest_demand.py</code>).</p>
+
+<div class="card flush">
+  <div class="table-wrap">
+  <table data-sortable>
+    <thead><tr>
+      <th>시간대</th>
+      <th class="num"><span class="tip" data-tip="이어지는 달을 (학습, 검증)으로 짝지은 횟수입니다.">월쌍</span></th>
+      <th class="num"><span class="tip" data-tip="예측이 실제와 평균 몇 대 틀렸나(MAE). 낮을수록 좋습니다.">예측 오차</span></th>
+      <th class="num"><span class="tip" data-tip="'늘 0이라고 예측'과 '전체 평균으로 예측' 중 더 낮은(더 어려운) 쪽입니다.">기준선</span></th>
+      <th class="num"><span class="tip" data-tip="기준선보다 얼마나 나은가. 0 이하면 mu를 쓸 근거가 없다는 뜻입니다.">기준선 대비</span></th>
+      <th class="num"><span class="tip" data-tip="목표 재고가 실제 수요를 덮은 비율. 설계 의도는 95%입니다.">커버리지</span></th>
+      <th class="num"><span class="tip" data-tip="양수면 실제보다 적게 예측했다는 뜻입니다(과소예측).">편향</span></th>
+    </tr></thead>
+    <tbody>
+    {% for r in forecast.summary %}
+    <tr class="{% if r.gain is not none and r.gain <= 0 %}over-budget{% endif %}">
+      <td><b>{{ r.duration }}</b></td>
+      <td class="num muted">{{ r.pairs }}</td>
+      <td class="num">{{ r.mae | round(2) }}대</td>
+      <td class="num muted">{{ r.baseline | round(2) }}대</td>
+      <td class="num">{% if r.gain is not none %}{{ "%+.1f" | format(r.gain) }}%{% if r.gain <= 0 %} ⚠{% endif %}{% else %}—{% endif %}</td>
+      <td class="num">{{ r.coverage | round(1) }}%</td>
+      <td class="num muted">{{ "%+.2f" | format(r.bias) }}대</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="viz-grid2" style="margin-top:var(--sp-md)">
+  {% for s in forecast.series %}
+  <div class="card viz-card">
+    <h3>{{ s.title }}</h3>
+    <span class="hint">{{ s.hint }}</span>
+    {{ s.svg | safe }}
+    <details class="viz-table">
+      <summary>표로 보기</summary>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th class="grow">검증 월</th><th class="num">예측 오차</th></tr></thead>
+          <tbody>
+          {% for label, value in s.table %}
+          <tr><td class="muted">{{ label }}</td><td class="num">{{ value | round(2) }}대</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="note">
+  <b>기준선을 이기는 것이 최소 조건입니다.</b> "늘 0이라고 예측"보다 나을 게 없다면
+  그 시간대의 목표 재고는 근거가 약하다는 뜻이고, 표에서 붉게 표시됩니다.
+  커버리지가 95%에서 크게 벗어나면 <code>z</code>를 다시 재야 합니다
+  (<code>docs/EXPERIMENTS.md</code> 1장).
+</div>
+{% endif %}
+
+{# ───────────────────────── 수요 구조 ─────────────────────────
+   성과가 아니라 자료 자체다. 왜 시간대를 나누고 평일·휴일을 섞지 않는지가
+   이 한 장에 담긴다. #}
+{% if heat.rows %}
+<h2>수요 구조 — 왜 시간대와 요일을 나누나</h2>
+<p class="section-lead">{{ heat.period }} 순수요({{ heat.days }}일)를 요일 × 시간으로 펼친 것입니다.
+  도시 전체를 더한 값이라 대여소 하나짜리 잡음이 없습니다.
+  <b>붉은 칸은 자전거가 빠져나가는 시간</b>(채워 줘야 함), <b>파란 칸은 쌓이는 시간</b>(빼내야 함)입니다.</p>
+
+<div class="card viz-card">
+  <div class="table-wrap">{{ heat_svg | safe }}</div>
+  {{ heat_legend | safe }}
+  <p class="hint" style="margin:var(--sp-sm) 0 0">
+    <b>같은 시간인데 요일에 따라 색이 뒤집히는 곳</b>을 보세요. 평일 출근 시간에
+    빠져나가는 대여소가 주말에는 쌓입니다. 두 날을 한 통계로 섞으면 서로 상쇄돼
+    “아무 데도 옮길 필요가 없다”는 답이 나옵니다 — 그래서 한 번에 한쪽만 계획합니다.
+  </p>
+  <details class="viz-table">
+    <summary>표로 보기</summary>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>요일</th>{% for c in heat.cols %}<th class="num">{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>
+        {% for r in range(heat.rows | length) %}
+        <tr><td><b>{{ heat.rows[r] }}</b></td>
+          {% for v in heat.matrix[r] %}
+          <td class="num muted">{% if v is not none %}{{ v | round(0) | int }}{% else %}—{% endif %}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+</div>
+{% endif %}
 {% endblock %}

@@ -5,10 +5,33 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
 
+
+def _force_utf8_output() -> None:
+    """출력 인코딩을 UTF-8로 못 박는다.
+
+    윈도우 파이썬은 stdout이 콘솔이 아니라 **파이프·파일이면** 로캘 코드페이지
+    (한국어 윈도우에서 cp949)로 인코딩한다. 그러면 안내 문구의 '—' 한 글자에
+    스크립트가 UnicodeEncodeError로 죽는다 — `python tools/backtest_demand.py > log`
+    처럼 로그를 남기려는 순간 터진다(1.19.0에서 파이프라인이, 1.19.3에서 도구가
+    실제로 그렇게 멈췄다).
+
+    **모든 step·tool이 project_config를 거치므로 여기서 한 번에 막는다.**
+    웹(webapp/jobs.py)과 run_pipeline은 환경변수로도 같은 방어를 한다.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if stream and getattr(stream, "encoding", "").lower() not in ("utf-8", "utf8"):
+                stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:      # 리다이렉트된 특수 스트림 등 — 막지 못해도 죽지는 않는다
+            pass
+
+
+_force_utf8_output()
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_ROOT = PROJECT_ROOT / "data"

@@ -111,6 +111,19 @@
       --sp-xl: 32px;
       --sp-2xl: 48px;
       --sp-section: 80px;
+
+      /* ── 그래프 전용 색 (docs/DESIGN.md '그래프') ──
+         계열은 강조색 하나(--blue)를 그대로 쓴다. 아래는 **발산 척도**용으로만
+         쓰는 단계색이다 — 순수요는 부호가 있는 값이라(빠져나감 / 쌓임) 한 색조
+         농담으로는 방향을 말할 수 없다. 따뜻한 쪽(빠져나감)과 찬 쪽(쌓임),
+         가운데는 무채색이다. 두 극이 서로 반대로 읽혀야 하므로 파랑↔빨강을 쓴다.
+         0 근처가 면 색으로 물러나는 것은 발산·순차 척도에서 허용된 규칙이다
+         (색만으로 값을 읽게 두지 않으려고 척도 범례와 표 보기를 함께 낸다). */
+      --viz-zero: #f0f0f0;
+      --viz-pos-1: #fbdcdc;  --viz-pos-2: #f2adad;
+      --viz-pos-3: #e37373;  --viz-pos-4: #d03b3b;
+      --viz-neg-1: #cde2fb;  --viz-neg-2: #9ec5f4;
+      --viz-neg-3: #5598e7;  --viz-neg-4: #2a78d6;
     }
 
     /* 다크 모드는 Apple 문서에 없다(라이트 위주로 출시된다).
@@ -143,6 +156,15 @@
         --critical: #ff6961;
         --critical-ink: #ff8a82;
         --critical-soft: #3a1a1a;
+
+        /* 그래프 발산 척도 — 어두운 면에서는 0 근처가 면 색으로 물러나야 하므로
+           단계가 뒤집힌다(어두운 쪽이 0, 밝은 쪽이 큰 값). 밝은 값을 뒤집은 것이
+           아니라 어두운 면 기준으로 따로 고른 값이다. */
+        --viz-zero: #2a2a2c;
+        --viz-pos-1: #6e1c1c;  --viz-pos-2: #a52a2a;
+        --viz-pos-3: #d03b3b;  --viz-pos-4: #e37373;
+        --viz-neg-1: #0d366b;  --viz-neg-2: #184f95;
+        --viz-neg-3: #2a78d6;  --viz-neg-4: #5598e7;
       }
     }
     :root[data-theme="dark"] {
@@ -171,6 +193,15 @@
       --critical: #ff6961;
       --critical-ink: #ff8a82;
       --critical-soft: #3a1a1a;
+
+      /* 그래프 발산 척도 — 어두운 면에서는 0 근처가 면 색으로 물러나야 하므로
+         단계가 뒤집힌다(어두운 쪽이 0, 밝은 쪽이 큰 값). 밝은 값을 뒤집은 것이
+         아니라 어두운 면 기준으로 따로 고른 값이다. */
+      --viz-zero: #2a2a2c;
+      --viz-pos-1: #6e1c1c;  --viz-pos-2: #a52a2a;
+      --viz-pos-3: #d03b3b;  --viz-pos-4: #e37373;
+      --viz-neg-1: #0d366b;  --viz-neg-2: #184f95;
+      --viz-neg-3: #2a78d6;  --viz-neg-4: #5598e7;
     }
 
     /* ── 기본 ── */
@@ -421,6 +452,44 @@
     }
     table[data-sortable] thead th[aria-sort]:focus-visible {
       outline: 2px solid var(--blue-focus); outline-offset: -2px;
+    }
+
+    /* ════════ 그래프 (docs/DESIGN.md '그래프') ════════
+       인라인 SVG가 이 변수들을 그대로 상속한다 — 색을 파이썬 쪽에 박지 않는다.
+       마크는 얇게, 격자·축은 면보다 한 단 진한 실선 머리카락선. 점선은 쓰지 않는다. */
+    .viz { width: 100%; height: auto; display: block; overflow: visible; }
+    .viz-grid { stroke: var(--divider-soft); stroke-width: 1; }
+    .viz-line { fill: none; stroke: var(--blue); stroke-width: 2;
+                stroke-linejoin: round; stroke-linecap: round; }
+    .viz-dot { fill: var(--blue); }
+    /* 겹치는 점은 면 색 링으로 떼어 놓는다. 테두리를 그리는 것이 아니다. */
+    .viz-dot.ring { stroke: var(--surface); stroke-width: 2; }
+    /* 히트 영역. 8px 점을 정확히 짚게 만들지 않는다(약 24px). */
+    .viz-hit { fill: transparent; cursor: default; }
+    .viz-hit:focus-visible { outline: 2px solid var(--blue-focus); outline-offset: 0; }
+    /* 글자는 계열색이 아니라 글자색을 입는다 — 색이 뜻을 나르지 않게. */
+    .viz-tick { fill: var(--ink-4); font-size: 10px; letter-spacing: 0;
+                font-variant-numeric: tabular-nums; }
+    .viz-axis { fill: var(--ink-3); font-size: 11px; letter-spacing: -.08px; }
+    .viz-value { fill: var(--ink); font-size: 11px; font-weight: 600; }
+    .viz-card { padding: var(--sp-md) var(--sp-md) var(--sp-sm); }
+    .viz-card h3 { margin: 0 0 2px; font-size: var(--fs-ui); color: var(--ink-2); }
+    .viz-card .hint { display: block; margin-bottom: var(--sp-xs); }
+    .viz-grid2 {
+      display: grid; gap: var(--sp-sm);
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+    /* 발산 척도 범례. 히트맵과 반드시 함께 낸다 — 색만으로 값을 읽게 두지 않는다. */
+    .viz-scale {
+      display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
+      font-size: var(--fs-fine); color: var(--ink-3); margin: var(--sp-xs) 0 0;
+    }
+    .viz-scale i { width: 16px; height: 10px; border-radius: 2px; display: inline-block; }
+    .viz-scale span { margin: 0 6px; }
+    .viz-table { margin-top: var(--sp-sm); }
+    .viz-table summary {
+      cursor: pointer; font-size: var(--fs-fine); color: var(--blue);
+      letter-spacing: -.08px;
     }
 
     /* ════════ 버튼 — 두 문법뿐: 파란 알약(동작) / 조밀한 사각(유틸리티) ════════ */

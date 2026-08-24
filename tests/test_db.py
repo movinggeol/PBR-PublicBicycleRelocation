@@ -336,3 +336,47 @@ def test_not_null_column_without_default_is_reported(tmp_path, monkeypatch, caps
     assert added == ["시험.c"]
     assert "시험.b" in 출력 and "경고" in 출력
     connection.close()
+
+
+def test_backtest_rows_are_replaced_not_duplicated(conn):
+    """같은 시간대·월쌍·요일을 다시 재면 덮어쓴다.
+
+    백테스트는 파이프라인 실행과 무관한 기록이라 run_label이 없다. 축은
+    (시간대, 학습월, 검증월, 요일)이고, 다시 재면 최신 값만 남아야 한다.
+    """
+    def row(**over):
+        base = {"duration": "_05_10", "train_period": "25년 10월",
+                "test_period": "25년 11월", "day_type": "weekday",
+                "mae": 3.0, "mae_zero": 5.0, "coverage": 0.95}
+        base.update(over)
+        return base
+
+    assert db.save_backtest(conn, [row(), row(duration="_10_15")]) == 2
+    db.save_backtest(conn, [row(mae=2.0)])
+
+    out = db.load_backtest(conn, day_type="weekday")
+    assert len(out) == 2, "덮어쓰지 않고 쌓였다"
+    assert float(out[out.duration == "_05_10"]["mae"].iloc[0]) == 2.0
+
+
+def test_backtest_keeps_weekday_and_holiday_apart(conn):
+    """평일과 휴일은 절대 섞지 않는다 — 조회도 한쪽만 돌려준다."""
+    common = {"duration": "_05_10", "train_period": "25년 10월",
+              "test_period": "25년 11월", "mae": 3.0}
+    db.save_backtest(conn, [dict(common, day_type="weekday"),
+                            dict(common, day_type="holiday", mae=9.0)])
+
+    assert len(db.load_backtest(conn, day_type="weekday")) == 1
+    assert len(db.load_backtest(conn, day_type="holiday")) == 1
+    assert len(db.load_backtest(conn)) == 2, "구분을 안 주면 전부"
+
+
+def test_backtest_leaves_unmeasured_columns_null(conn):
+    """못 구한 값은 빼고 넘긴다 — 0으로 채우면 '아주 정확하다'로 읽힌다."""
+    db.save_backtest(conn, [{"duration": "_20_05", "train_period": "25년 10월",
+                             "test_period": "25년 11월", "day_type": "weekday",
+                             "mae": 3.0}])
+
+    out = db.load_backtest(conn)
+    assert pd.isna(out["rmse"].iloc[0]) and pd.isna(out["z_for_95"].iloc[0])
+
