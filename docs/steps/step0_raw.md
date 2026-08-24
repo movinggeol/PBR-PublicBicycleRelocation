@@ -52,6 +52,12 @@ python tools/load_rentals.py --status         # 기간별 적재 현황
 - **출력**: `data/pp_data/대여소별 재고/대여소별_자전거대수 ({now}).csv`
   (station_id, station_name, parking_info, lat, lon, stock)
 - **주의**: API 응답의 `x_pos`가 위도, `y_pos`가 경도 (순서 주의, 코드에 반영됨)
+- **한계**: 이 CSV는 **실행하는 순간의 스냅샷 한 장**입니다. 계획 대상일의 요일
+  구분과 일치한다는 보장이 없습니다 ([TODO.md](../TODO.md) 1-4).
+  시간에 따른 실측 재고가 필요하면 `tools/collect_stock.py`가 평일 09~17시에
+  10분마다 `stock_history`에 쌓습니다 — [COLLECTOR.md](../COLLECTOR.md).
+  **둘은 별개 저장소입니다**: 파이프라인은 이 CSV/`station_stock`을 쓰고,
+  수집기는 그 둘을 건드리지 않습니다.
 
 ### 2. `extract_parking_lot.py`
 - **입력**: 1번 출력 CSV

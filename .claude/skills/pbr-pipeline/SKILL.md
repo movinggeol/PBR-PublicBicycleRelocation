@@ -15,7 +15,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/RETROSPECTIVE.md` | 전체 조망·측정이 뒤집은 가설·설계 결정 (처음 오면 여기부터) |
 | `docs/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/TESTING.md` | 테스트 300개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/TESTING.md` | 테스트 323개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -27,6 +27,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/DESIGN.md` | 화면 디자인 시스템 — 색 토큰·글꼴·내비·타일 (**템플릿을 건드리기 전 필독**) |
 | `docs/DB_SCHEMA.md` | ERD·테이블 16개 컬럼·스코프 규칙 (**DB를 건드리기 전 필독**) |
 | `docs/DB_PLAN.md` | SQLite 도입 결정·이관 단계·성능 측정 (CSV→DB 작업 시 필독) |
+| `docs/COLLECTOR.md` | 재고 시계열 수집 — 창 가드·스케줄·운영 (**수집기를 건드리기 전 필독**) |
 | `docs/KPI.md` | 성과 지표 체계 설계 (지표를 건드리기 전 필독) |
 | `docs/FLEET.md` | 차량 로테이션·형평성 (차량/클러스터 수를 건드리기 전 필독) |
 | `docs/버전관리.md` | 버전 이력, 수정 이유 기록 |
@@ -83,7 +84,13 @@ step4                   : imbalance
    같은 값을 써야 한다. 스크립트에 타일 이름을 박으면 테스트가 실패한다. 기본값은
    folium 기본값과 같은 `OpenStreetMap`이고, 한동안 CartoDB를 쓴 것은 옛 folium이
    OSM 서브도메인 URL을 써서 경고를 받았기 때문이다(1.19.4에서 되돌렸다).
-5. **depot·차량 상수는 project_config에 있다**(DEPOT_ID/LAT/LON/NAME, VEHICLE_CAPACITY,
+5. **재고 시계열은 `stock_history`가 정본이고 `station_stock`이 아니다.**
+   후자는 PK가 `(run_label, station_id)`라 실행 1건당 스냅샷 1장이고, `run_label`에
+   시각을 넣으면 `latest_label()`(**사전순** MAX)이 파이프라인 실행을 밀어낸다.
+   수집기(`tools/collect_stock.py`)는 `runs`·`station_stock`을 건드리지 않는다 —
+   테스트가 지킨다. **휴일을 거르는 것은 스케줄러가 아니라 스크립트의 창 가드다**
+   (작업 스케줄러는 요일만 안다). 자세한 것은 docs/COLLECTOR.md.
+6. **depot·차량 상수는 project_config에 있다**(DEPOT_ID/LAT/LON/NAME, VEHICLE_CAPACITY,
    FLEET_SIZE, VEHICLES_PER_ROUND). step2·step3에서 별도 하드코딩하지 마라.
    **클러스터 1개 = 차량 1대**이므로 step1의 K는 `VEHICLES_PER_ROUND`를 넘을 수 없다.
    두 대수 모두 **실행마다 바뀐다** — 웹 실행 폼/`--fleet-size`/`--vehicles-per-round`가
@@ -94,14 +101,14 @@ step4                   : imbalance
    바꾸면 화면을 여는 것만으로 직전 실행의 보유 대수가 되돌아간다.
    하루 여러 회차를 돌리므로 **한쪽 후보만 있는 시간대는 크래시가 아니라 건너뛴다** —
    step1/step2/step4의 건너뛰기 가드를 지우지 마라.
-6. **일회성 스크립트는 `experiments/`에 둔다** — step 폴더나 루트에 test.py를 만들지 마라.
-7. **가상환경은 `.venv`** (검증 환경: Python 3.14.7). 명령은 `.\.venv\Scripts\python.exe ...`로
+7. **일회성 스크립트는 `experiments/`에 둔다** — step 폴더나 루트에 test.py를 만들지 마라.
+8. **가상환경은 `.venv`** (검증 환경: Python 3.14.7). 명령은 `.\.venv\Scripts\python.exe ...`로
    실행하라 — 시스템 `python`에는 의존성이 없다.
-8. **K-Medoids는 `kmedoids` 패키지**(FasterPAM)다. `sklearn_extra`는 아카이브되어
+9. **K-Medoids는 `kmedoids` 패키지**(FasterPAM)다. `sklearn_extra`는 아카이브되어
    Python 3.12+에서 설치되지 않으므로 되돌리지 마라.
-9. **Starlette 1.x 템플릿 응답은 `TemplateResponse(request, name, {...})`** 형식만 동작한다.
+10. **Starlette 1.x 템플릿 응답은 `TemplateResponse(request, name, {...})`** 형식만 동작한다.
    구 형식(`TemplateResponse(name, {"request": ...})`)으로 쓰면 500 오류가 난다.
-10. **requirements.txt는 하한(`>=`) 고정**을 유지하라. 상한을 걸면 새 Python 버전에서
+11. **requirements.txt는 하한(`>=`) 고정**을 유지하라. 상한을 걸면 새 Python 버전에서
    휠이 없어 설치가 통째로 깨진다(1.2.1에서 실제로 겪음).
 
 ## 실행 방법
@@ -118,6 +125,8 @@ python run_pipeline.py --target-date 2026-09-25                # 그날로 자�
 python run_pipeline.py --warmup-period "26년 03월"             # 계절 보정 (기본 14일)
 python tools/rebuild_net_demand.py            # 전 기간 순수요 재계산(휴일 포함)
 python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8000)
+.\scripts\collector.ps1 install           # 재고 시계열 수집 시작 (평일 09~17시, 10분)
+python tools/collect_stock.py --status    # 수집 현황
 ```
 
 ## 웹 대시보드 (webapp/)
@@ -227,7 +236,7 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
 ## 테스트
 
 ```powershell
-python -m pytest                 # 300개, 약 50초 (tests/ 만 수집)
+python -m pytest                 # 323개, 약 50초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

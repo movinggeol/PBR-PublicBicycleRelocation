@@ -27,7 +27,8 @@ from typing import Dict, Iterator, Optional, Sequence, Tuple
 
 import pandas as pd
 
-from project_config import DATA_ROOT, FLEET_SIZE, period_label, vehicle_ids
+from project_config import (DATA_ROOT, FLEET_SIZE, holiday_mask,
+                            period_label, vehicle_ids)
 
 # 기본 DB 위치. 환경변수 PBR_DB_PATH로 바꿀 수 있다
 # (테스트가 실제 DB를 건드리지 않도록 별도 파일을 가리키는 데 쓴다).
@@ -366,9 +367,39 @@ CREATE TABLE IF NOT EXISTS demand_backtest (
     PRIMARY KEY (duration, train_period, test_period, day_type)
 );
 
+-- 재고 시계열 (1.20.0, docs/COLLECTOR.md).
+-- tools/collect_stock.py가 평일 09~17시에 10분마다 한 틱씩 쌓는다.
+-- 파이프라인 실행과 무관한 관측 기록이라 run_label이 없다 — 축은 (시각, 대여소)다.
+-- day_type·duration을 컬럼으로 두지 않는 이유: observed_at에서 파생되는 값이고,
+-- 요일 판정은 project_config.holiday_mask() 하나가 독점해야 하기 때문이다.
+CREATE TABLE IF NOT EXISTS stock_history (
+    observed_at TEXT NOT NULL,       -- 'YYYY-MM-DD HH:MM'. 틱 격자에 맞춰 반올림한다
+    station_id  TEXT NOT NULL,
+    stock       INTEGER,
+    fetched_at  TEXT,                -- 실제 호출 시각(진단용). 격자와 몇 초 어긋난다
+    PRIMARY KEY (observed_at, station_id)
+);
+
+-- 대여소 이름·좌표는 틱마다 반복하지 않고 **하루 한 번**만 남긴다.
+-- 1,374행 × 49틱마다 같은 문자열을 넣으면 용량이 몇 배가 된다.
+-- station_stock에 얹지 않는 이유가 두 가지다:
+--   1. latest_label()이 run_label의 **사전순** MAX라 'collect-…'가 파이프라인
+--      실행 라벨을 밀어낸다(숫자로 시작하는 라벨보다 항상 크다).
+--   2. runs 이력이 수집일마다 한 줄씩 늘어 실행 이력 화면이 흐려진다.
+CREATE TABLE IF NOT EXISTS stock_station_master (
+    observed_on   TEXT NOT NULL,     -- 'YYYY-MM-DD' 수집일
+    station_id    TEXT NOT NULL,
+    station_name  TEXT,
+    parking_info  TEXT,
+    lat           REAL,
+    lon           REAL,
+    PRIMARY KEY (observed_on, station_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_rental_station ON rental_history(rent_station);
 CREATE INDEX IF NOT EXISTS idx_pick_drop_cluster ON pick_drop(run_label, duration, cluster);
 CREATE INDEX IF NOT EXISTS idx_metrics_run ON metrics(run_label, duration);
+CREATE INDEX IF NOT EXISTS idx_stock_history_station ON stock_history(station_id, observed_at);
 """
 
 
@@ -714,6 +745,119 @@ def load_backtest(conn: sqlite3.Connection,
     return pd.read_sql(
         f"SELECT * FROM demand_backtest {where}"
         " ORDER BY duration ASC, test_period ASC", conn, params=params)
+
+
+# ---- 재고 시계열 (docs/COLLECTOR.md) ----
+# TABLES/save_frame 규약을 쓰지 않는다 — 그쪽은 run_label 스코프 산출물 전용이고,
+# 여기 축은 (시각, 대여소)다. demand_backtest와 같은 자리다.
+
+
+def _day_bounds(value: Optional[str], *, end: bool) -> Optional[str]:
+    """'YYYY-MM-DD'만 주면 그날 전체를 덮도록 시각까지 채운다.
+
+    이걸 안 하면 end='2026-08-24'가 '2026-08-24 00:00'으로 비교돼 그날이 통째로
+    빠진다 — 문자열 비교라 조용히 틀린다.
+    """
+    if not value:
+        return None
+    return f"{value} 23:59" if end and len(value) == 10 else value
+
+
+def save_stock_snapshot(conn: sqlite3.Connection, observed_at: str,
+                        frame: pd.DataFrame,
+                        fetched_at: Optional[str] = None) -> int:
+    """한 틱의 재고를 기록한다. 저장한 행 수를 돌려준다.
+
+    같은 (시각, 대여소)면 덮어쓰므로 **재실행이 안전하다** — 스케줄러가 중복
+    실행해도, 나중에 손으로 다시 돌려도 행이 쌓이지 않는다.
+    """
+    if frame.empty:
+        return 0
+    stocks = pd.to_numeric(frame["stock"], errors="coerce").fillna(0).astype(int)
+    rows = [(observed_at, str(station), int(stock), fetched_at)
+            for station, stock in zip(frame["station_id"], stocks)]
+    conn.executemany(
+        "INSERT OR REPLACE INTO stock_history"
+        " (observed_at, station_id, stock, fetched_at) VALUES (?, ?, ?, ?)", rows)
+    conn.commit()
+    return len(rows)
+
+
+def save_stock_master(conn: sqlite3.Connection, observed_on: str,
+                      frame: pd.DataFrame) -> int:
+    """그날의 대여소 이름·좌표를 남긴다(하루 한 번). 신설·폐지 추적도 겸한다."""
+    if frame.empty:
+        return 0
+    columns = ("station_name", "parking_info", "lat", "lon")
+    rows = []
+    for record in frame.to_dict("records"):
+        rows.append((observed_on, str(record["station_id"]),
+                     *(record.get(column) for column in columns)))
+    conn.executemany(
+        "INSERT OR REPLACE INTO stock_station_master"
+        " (observed_on, station_id, station_name, parking_info, lat, lon)"
+        " VALUES (?, ?, ?, ?, ?, ?)", rows)
+    conn.commit()
+    return len(rows)
+
+
+def has_stock_master(conn: sqlite3.Connection, observed_on: str) -> bool:
+    """그날 마스터를 이미 남겼는가. 하루 첫 틱을 판단하는 데 쓴다."""
+    row = conn.execute(
+        "SELECT 1 FROM stock_station_master WHERE observed_on = ? LIMIT 1",
+        (observed_on,)).fetchone()
+    return row is not None
+
+
+def load_stock_history(conn: sqlite3.Connection, start: Optional[str] = None,
+                       end: Optional[str] = None,
+                       stations: Optional[Sequence[str]] = None,
+                       day_type: Optional[str] = None) -> pd.DataFrame:
+    """재고 시계열을 읽는다. start/end는 'YYYY-MM-DD' 또는 'YYYY-MM-DD HH:MM'.
+
+    day_type을 주면 평일 또는 휴일만 남긴다. **판정은 holiday_mask() 하나를 쓴다** —
+    요일 규칙이 두 곳으로 갈리면 저장된 값과 계산이 조용히 어긋난다.
+    """
+    conditions, params = [], []
+    if (lower := _day_bounds(start, end=False)):
+        conditions.append("observed_at >= ?")
+        params.append(lower)
+    if (upper := _day_bounds(end, end=True)):
+        conditions.append("observed_at <= ?")
+        params.append(upper)
+    if stations:
+        conditions.append(f"station_id IN ({', '.join('?' * len(stations))})")
+        params.extend(stations)
+
+    where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+    frame = pd.read_sql(
+        f"SELECT observed_at, station_id, stock, fetched_at FROM stock_history{where}"
+        " ORDER BY observed_at ASC, station_id ASC", conn, params=params)
+
+    if day_type and not frame.empty:
+        mask = holiday_mask(frame["observed_at"])
+        frame = frame[mask if day_type == "holiday" else ~mask].reset_index(drop=True)
+    return frame
+
+
+def stock_history_ticks(conn: sqlite3.Connection, start: Optional[str] = None,
+                        end: Optional[str] = None) -> pd.DataFrame:
+    """틱별 수집 행 수. 컬럼: observed_at, stations.
+
+    결측 판정의 원재료다 — **절전으로 놓친 틱은 수집 로그에도 안 남으므로**
+    (스크립트 자체가 안 돌았다) 기대 격자와 이 결과를 대조해야 알 수 있다.
+    """
+    conditions, params = [], []
+    if (lower := _day_bounds(start, end=False)):
+        conditions.append("observed_at >= ?")
+        params.append(lower)
+    if (upper := _day_bounds(end, end=True)):
+        conditions.append("observed_at <= ?")
+        params.append(upper)
+    where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+    return pd.read_sql(
+        f"SELECT observed_at, COUNT(*) AS stations FROM stock_history{where}"
+        " GROUP BY observed_at ORDER BY observed_at ASC", conn, params=params)
 
 
 def load_kpi(conn: sqlite3.Connection, run_label: Optional[str] = None,

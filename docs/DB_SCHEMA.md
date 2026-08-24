@@ -24,6 +24,7 @@
 | **실행** | `run_label` | 파이프라인 실행 1건. CSV 파일명의 `{now}`가 컬럼이 된 것 | `station_stock`, `station_info`, `parking_lot` |
 | **실행 + 회차** | `run_label` + `duration` | 한 실행 안의 시간대(`_05_10` 등). 하루 3회차면 3행 세트 | `rebalance_plan`, `pick_drop`, `ilp_plan`, `vrp_plan`, `metrics`, `route_summary`, `vehicle_assignment`, `kpi_summary` |
 | **기간** | `period` | 원천 데이터 기간(`25년 11월`). **실행과 무관** | `net_demand`, `rental_history` |
+| **관측 시각** | `observed_at` | 실행과 무관한 **실측 시계열**. 평일 09~17시 10분마다 쌓인다 | `stock_history`, `stock_station_master`(일 단위) |
 | **전역** | — | 실행에 딸리지 않는 마스터 | `vehicle` |
 
 **`net_demand`가 `period` 스코프인 것이 이 설계의 핵심 판단입니다.** 순수요는 과거
@@ -490,6 +491,54 @@ PK 선두가 `run_label`이라 차량으로 거는 조회는 PK 인덱스를 못
 
 ---
 
+### 4-7. 재고 시계열 — 실측 관측 (1.20.0)
+
+`tools/collect_stock.py`가 평일 09~17시에 10분마다 쌓습니다. **파이프라인 실행과
+무관한 관측 기록**이라 `run_label`이 없고, 축은 (시각, 대여소)입니다.
+배경과 운영은 [COLLECTOR.md](COLLECTOR.md)에 있습니다.
+
+**`stock_history`** (PK: `observed_at`, `station_id`)
+
+| 컬럼 | 타입 | 설명 |
+| --- | --- | --- |
+| `observed_at` | TEXT **PK** | `YYYY-MM-DD HH:MM`. **틱 격자에 맞춰 반올림**한 값 |
+| `station_id` | TEXT **PK** | |
+| `stock` | INTEGER | 그 시각의 재고 |
+| `fetched_at` | TEXT | 실제 호출 시각(진단용). 격자와 몇 초 어긋납니다 |
+
+**`stock_station_master`** (PK: `observed_on`, `station_id`) — 이름·좌표는 **하루 한 번**
+
+| 컬럼 | 타입 | 설명 |
+| --- | --- | --- |
+| `observed_on` | TEXT **PK** | `YYYY-MM-DD` 수집일 |
+| `station_id` | TEXT **PK** | |
+| `station_name`, `parking_info` | TEXT | |
+| `lat`, `lon` | REAL | API의 `x_pos`=위도 규약은 `tashu.py`가 이미 바로잡아 넘깁니다 |
+
+설계에서 일부러 그렇게 한 것들:
+
+1. **`day_type`·`duration` 컬럼이 없습니다.** 둘 다 `observed_at`에서 파생되고,
+   요일 판정은 `project_config.holiday_mask()` 하나가 독점해야 합니다. 저장해 두면
+   판정이 두 곳으로 갈립니다. 거를 때는 `db.load_stock_history(day_type=...)`를 쓰세요.
+2. **이름·좌표를 틱마다 반복하지 않습니다.** 1,372행 × 49틱마다 같은 문자열을
+   넣으면 용량이 몇 배가 됩니다. 그래서 마스터를 따로 뒀습니다.
+3. **마스터를 `station_stock`에 얹지 않았습니다.** `latest_label()`이 `run_label`의
+   **사전순** MAX인데(1장의 "문자열 정렬이 곧 최신순" 규약), `collect-…`는 숫자로
+   시작하는 실행 라벨보다 항상 커서 파이프라인 실행을 밀어냅니다. `runs` 이력도
+   수집일마다 한 줄씩 늘어 실행 이력 화면이 흐려집니다.
+4. **`db.TABLES`에 등록하지 않았습니다.** 그 규약(`save_frame`)은 `run_label` 스코프
+   산출물 전용입니다. `demand_backtest`와 같이 전용 함수를 씁니다 —
+   `save_stock_snapshot()` / `save_stock_master()` / `load_stock_history()` /
+   `stock_history_ticks()`.
+5. **PK가 `(observed_at, station_id)`라 `INSERT OR REPLACE`가 멱등**합니다.
+   스케줄러가 중복 실행해도, 나중에 손으로 다시 돌려도 행이 쌓이지 않습니다.
+
+> ⚠️ **`load_stock_history(end="2026-08-24")`처럼 날짜만 주면** 내부에서
+> `23:59`까지 채웁니다(`_day_bounds`). TEXT 비교라 이 보정이 없으면 그날 오후가
+> 통째로 빠집니다 — 조용히 틀리는 종류라 테스트로 고정해 뒀습니다.
+
+---
+
 ## 5. 인덱스
 
 | 인덱스 | 대상 | 왜 |
@@ -499,6 +548,7 @@ PK 선두가 `run_label`이라 차량으로 거는 조회는 PK 인덱스를 못
 | `idx_rental_station` | `rental_history(rent_station)` | 대여소별 집계 |
 | `idx_pick_drop_cluster` | `pick_drop(run_label, duration, cluster)` | 군집으로 좁히는 조회. PK가 `(…, station_id)`라 `cluster`는 PK 인덱스로 못 탐 |
 | `idx_assignment_vehicle` | `vehicle_assignment(vehicle_id)` | 차량 1대의 전체 이력. PK 선두가 `run_label`이라 필요 |
+| `idx_stock_history_station` | `stock_history(station_id, observed_at)` | 대여소 1곳의 시간 추이. PK 선두가 `observed_at`이라 필요 |
 | `idx_metrics_run` | `metrics(run_label, duration)` | **PK 자동 인덱스와 중복** (아래 참고) |
 
 복합 PK를 선언하면 SQLite가 자동으로 `sqlite_autoindex_<table>_1`을 만들고,
@@ -667,6 +717,7 @@ CSV의 한글 컬럼은 DB에서 ASCII로 바뀝니다. 변환표는 `db.TABLES`
 | 문서 | 내용 |
 | --- | --- |
 | [DB_PLAN.md](DB_PLAN.md) | **왜** SQLite인가, 이관 단계, 성능 실측(CSV vs DB) |
+| [COLLECTOR.md](COLLECTOR.md) | `stock_history`를 채우는 수집기 — 창 가드·스케줄·운영 |
 | [FLEET.md](FLEET.md) | `vehicle`·`vehicle_assignment`를 쓰는 로테이션·형평성 규칙 |
 | [KPI.md](KPI.md) | `kpi_summary` 각 지표의 정의와 해석 주의점 |
 | [PROJECT_PIPELINE.md](PROJECT_PIPELINE.md) | 어느 단계가 어느 테이블을 만드는가 |

@@ -214,6 +214,41 @@ python "step4_metrics/imbalance.py"
 
 월별 파일을 합칠 때는 먼저 `step0_eda/concat_1year_file.py --concat`을 실행합니다.
 
+## 재고 시계열 수집 (운영 예시 시나리오)
+
+파이프라인이 쓰는 초기 재고는 **실행하는 순간의 스냅샷 한 장**입니다. 실측 재고가
+시간에 따라 어떻게 움직이는지 남겨 두면, 결품을 시뮬레이션이 아니라 **실측으로**
+잴 수 있습니다. 그래서 평일 09~17시 재고를 10분마다 모읍니다
+([docs/COLLECTOR.md](docs/COLLECTOR.md)).
+
+```powershell
+.\scripts\collector.ps1 install     # 수집 시작 (최초 1회 등록)
+.\scripts\collector.ps1 pause       # 일시정지 — 작업은 남기고 안 깨움
+.\scripts\collector.ps1 resume      # 재개
+.\scripts\collector.ps1 uninstall   # 완전 중지 — 작업 삭제
+.\scripts\collector.ps1 status      # 스케줄 상태 + 수집 현황
+.\scripts\collector.ps1 now         # 지금 한 틱 즉시 수집
+```
+
+`install` 한 번이면 평일 09:00에 저절로 시작해 17:00에 멈추고, 주말·공휴일은
+건너뜁니다. **일시정지·중지는 스케줄만 건드리며 모은 데이터를 지우지 않습니다.**
+
+수집기 자체를 직접 부를 수도 있습니다.
+
+```powershell
+python tools/collect_stock.py            # 한 틱 (스케줄러가 부르는 형태)
+python tools/collect_stock.py --status   # 수집 현황만 (API 호출 안 함)
+python tools/collect_stock.py --loop     # 창이 끝날 때까지 상주
+```
+
+- **공휴일 제외는 스케줄러가 아니라 스크립트가 합니다** — 작업 스케줄러는 요일만
+  알기 때문입니다. 판정은 `project_config.is_holiday()`(주말 ∪ 공휴일) 하나입니다.
+- 저장 위치는 `stock_history` 테이블이고, `data/raw_data/재고이력/`에 일별 CSV
+  백업과 수집 로그가 함께 남습니다. **실패도 로그에 남습니다** — 그래야 나중에
+  '결측'과 '재고 0'을 구분할 수 있습니다.
+- **PC가 깨어 있어야 모입니다.** 화면 꺼짐·잠금은 괜찮지만 절전은 안 됩니다
+  (전원 어댑터를 꽂아 두세요).
+
 ## 5분 안에 직접 돌려보기 (데이터·API 키 없이)
 
 원천 데이터와 API 키가 없어도 **합성 데이터로 전 단계를 그대로 실행**할 수 있습니다.
@@ -224,7 +259,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 
-python -m pytest                                   # 300개 통과 확인 (약 50~80초)
+python -m pytest                                   # 323개 통과 확인 (약 50~80초)
 python tools/make_sample_data.py --now "데모"       # 합성 대여소·순수요 생성
 python run_pipeline.py --skip-api --skip-eda --skip-map --now "데모"   # step0~2·4 실행
 python -m webapp                                   # http://127.0.0.1:8000 에서 결과 확인
@@ -240,7 +275,7 @@ python -m webapp                                   # http://127.0.0.1:8000 에�
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest                 # 300개, 약 50~80초 (tests/ 만 수집)
+python -m pytest                 # 323개, 약 50~80초 (tests/ 만 수집)
 ```
 
 - `tests/test_pipeline.py` (32) — 합성 데이터로 step0→step1→step2→step4를
@@ -348,13 +383,14 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/RELATED_WORK.md](docs/RELATED_WORK.md) | **관련 연구** — 문제의 갈래와 본 연구의 위치 |
 | [docs/LITERATURE.md](docs/LITERATURE.md) | **문헌 분석** — 논문 11편 한 편씩 분석·비교표·인용 지도 |
 | [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
-| [docs/TESTING.md](docs/TESTING.md) | **테스트** — 300개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
+| [docs/TESTING.md](docs/TESTING.md) | **테스트** — 323개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/PROJECT_PIPELINE.md](docs/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/WEBAPP.md](docs/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/DESIGN.md](docs/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |
 | [docs/DEMAND_DISTRIBUTION.md](docs/DEMAND_DISTRIBUTION.md) | **순수요 분포** — 정규분포 전제 검증, 커버리지 원인 정정, ML 방향 |
 | [docs/DB_SCHEMA.md](docs/DB_SCHEMA.md) | **DB 스키마** — ERD, 테이블 15개 컬럼 레퍼런스, 조인 쿼리 |
 | [docs/DB_PLAN.md](docs/DB_PLAN.md) | SQLite 도입 결정·이관 계획·성능 측정 |
+| [docs/COLLECTOR.md](docs/COLLECTOR.md) | **재고 시계열 수집** — 평일 09–17시 10분 간격 수집기·운영(시작/일시정지/중지) |
 | [docs/KPI.md](docs/KPI.md) | 성과 지표 체계 설계 (현재 지표의 한계와 개선안) |
 | [docs/FLEET.md](docs/FLEET.md) | 차량 운용 — 하루 3회차 로테이션과 형평성 기록 |
 | [docs/TODO.md](docs/TODO.md) | 해야 할 것·고쳐야 할 것 (우선순위별) |

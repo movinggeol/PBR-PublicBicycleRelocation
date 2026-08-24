@@ -1,0 +1,283 @@
+"""재고 시계열 수집 회귀 테스트 (docs/COLLECTOR.md).
+
+지키는 것:
+  - **창 가드** — 휴일·창 밖에는 API를 부르지 않는다. 스케줄러는 공휴일을 모르므로
+    이 가드가 뚫리면 광복절 재고가 평일 데이터에 섞인다.
+  - **틱 격자 반올림** — 09:00:03과 09:09:58이 각각 09:00·09:10로 정렬돼야
+    날짜가 다른 같은 시각끼리 대조된다.
+  - **멱등 저장** — 같은 틱을 다시 저장해도 행이 쌓이지 않는다.
+  - **결측 기록** — 실패도 로그에 남아야 '데이터 없음'과 '재고 0'을 구분한다.
+
+API는 부르지 않는다(monkeypatch로 대체). 실호출 검증은 docs/TESTING.md 참고.
+"""
+import sys
+from datetime import datetime, time
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+import db
+import tools.collect_stock as collector
+
+# 2026-08-24 월요일(평일) / 2026-08-22 토요일 / 2026-05-05 화요일이지만 어린이날.
+# 마지막 것이 핵심이다 — 스케줄러는 '화요일'이라 깨우고, 거르는 것은 스크립트뿐이다.
+WEEKDAY = datetime(2026, 8, 24)
+SATURDAY = datetime(2026, 8, 22)
+PUBLIC_HOLIDAY = datetime(2026, 5, 5)
+
+WINDOW = (time(9, 0), time(17, 0))
+INTERVAL = 10
+
+
+def sample_frame(stocks=(3, 0, 12)) -> pd.DataFrame:
+    """tashu.fetch_stations()가 돌려주는 형태."""
+    return pd.DataFrame({
+        "station_id": ["ST0001", "ST0002", "ST0003"],
+        "station_name": ["타슈 관제센터", "탄방동 한사랑병원", "둔산동 시청"],
+        "parking_info": ["10대용*1 / 10", "10대용*1 / 10", "20대용*1 / 20"],
+        "lat": [36.3504, 36.3484, 36.3601],
+        "lon": [127.3845, 127.3900, 127.3850],
+        "stock": list(stocks),
+    })
+
+
+@pytest.fixture
+def history_dir(tmp_path, monkeypatch):
+    """CSV 백업·로그가 실제 data/ 를 건드리지 않게 임시 경로로 돌린다."""
+    path = tmp_path / "재고이력"
+    monkeypatch.setattr(collector, "HISTORY_DIR", path)
+    return path
+
+
+@pytest.fixture
+def fake_api(monkeypatch):
+    """API 호출을 대체하고, 몇 번 불렸는지 기록한다."""
+    calls = []
+
+    def fetch():
+        calls.append(1)
+        return sample_frame()
+
+    monkeypatch.setattr(collector.tashu, "fetch_stations", fetch)
+    return calls
+
+
+# ---- 틱 격자 ----
+
+def test_틱은_가장_가까운_격자로_반올림된다():
+    start = WINDOW[0]
+    assert collector.tick_of(datetime(2026, 8, 24, 9, 0, 3), start, INTERVAL) \
+        == datetime(2026, 8, 24, 9, 0)
+    assert collector.tick_of(datetime(2026, 8, 24, 9, 9, 58), start, INTERVAL) \
+        == datetime(2026, 8, 24, 9, 10)
+    assert collector.tick_of(datetime(2026, 8, 24, 9, 4), start, INTERVAL) \
+        == datetime(2026, 8, 24, 9, 0)
+    assert collector.tick_of(datetime(2026, 8, 24, 9, 6), start, INTERVAL) \
+        == datetime(2026, 8, 24, 9, 10)
+
+
+def test_하루_기대_틱은_양_끝을_포함한다():
+    # 09:00부터 17:00까지 10분 간격이면 49틱(양 끝 포함)이다.
+    assert collector.expected_ticks(*WINDOW, INTERVAL) == 49
+    assert collector.expected_ticks(time(9, 0), time(17, 0), 30) == 17
+
+
+def test_수집_창_형식이_잘못되면_알려준다():
+    with pytest.raises(SystemExit):
+        collector.parse_window("9시부터")
+    with pytest.raises(SystemExit):
+        collector.parse_window("17:00-09:00")
+
+
+# ---- 창 가드 ----
+
+def test_평일_창_안이면_수집한다():
+    _, allowed, reason = collector.window_state(
+        WEEKDAY.replace(hour=10, minute=0), *WINDOW, INTERVAL)
+    assert allowed and reason == ""
+
+
+def test_주말은_거른다():
+    _, allowed, reason = collector.window_state(
+        SATURDAY.replace(hour=10), *WINDOW, INTERVAL)
+    assert not allowed
+    assert "휴일" in reason
+
+
+def test_공휴일은_평일이어도_거른다():
+    # 어린이날(화). 스케줄러는 요일만 보고 깨우므로 여기서 막지 못하면 섞인다.
+    _, allowed, reason = collector.window_state(
+        PUBLIC_HOLIDAY.replace(hour=10), *WINDOW, INTERVAL)
+    assert not allowed
+    assert "휴일" in reason
+
+
+@pytest.mark.parametrize("hour,minute", [(8, 50), (17, 20), (23, 0)])
+def test_창_밖은_거른다(hour, minute):
+    _, allowed, reason = collector.window_state(
+        WEEKDAY.replace(hour=hour, minute=minute), *WINDOW, INTERVAL)
+    assert not allowed
+    assert "창" in reason
+
+
+def test_휴일에는_API를_부르지_않는다(history_dir, fake_api):
+    code = collector.run_tick(PUBLIC_HOLIDAY.replace(hour=10), *WINDOW, INTERVAL)
+    assert code == 0            # 건너뛰기는 실패가 아니다
+    assert fake_api == []       # 호출 자체가 없어야 한다
+    assert not history_dir.exists()
+
+
+def test_force는_휴일에도_수집한다(history_dir, fake_api):
+    code = collector.run_tick(PUBLIC_HOLIDAY.replace(hour=10), *WINDOW, INTERVAL,
+                              force=True)
+    assert code == 0
+    assert len(fake_api) == 1
+
+
+# ---- 수집 ----
+
+def test_한_틱을_수집하면_DB_CSV_로그에_남는다(history_dir, fake_api):
+    code = collector.run_tick(WEEKDAY.replace(hour=10, minute=0, second=3),
+                              *WINDOW, INTERVAL)
+    assert code == 0
+
+    with db.session() as conn:
+        frame = db.load_stock_history(conn)
+    assert len(frame) == 3
+    assert frame["observed_at"].unique().tolist() == ["2026-08-24 10:00"]
+    assert frame["fetched_at"].notna().all()
+
+    backup = history_dir / "stock_2026-08-24.csv"
+    assert backup.exists()
+    assert len(pd.read_csv(backup)) == 3
+
+    log = pd.read_csv(history_dir / collector.LOG_NAME)
+    assert log["status"].iloc[-1] == "성공"
+    assert log["stations"].iloc[-1] == 3
+
+
+def test_API_실패는_로그에_남고_종료코드가_1이다(history_dir, monkeypatch):
+    """결측과 '재고 0'을 나중에 구분하려면 실패가 기록으로 남아야 한다."""
+    def boom():
+        raise collector.tashu.TashuError("타슈 API 호출 실패: 500")
+
+    monkeypatch.setattr(collector.tashu, "fetch_stations", boom)
+    code = collector.run_tick(WEEKDAY.replace(hour=10), *WINDOW, INTERVAL)
+
+    assert code == 1
+    log = pd.read_csv(history_dir / collector.LOG_NAME)
+    assert log["status"].iloc[-1] == "실패"
+    assert "500" in log["detail"].iloc[-1]
+
+    with db.session() as conn:
+        assert db.load_stock_history(conn).empty
+
+
+def test_dry_run은_저장하지_않는다(history_dir, fake_api):
+    code = collector.run_tick(WEEKDAY.replace(hour=10), *WINDOW, INTERVAL,
+                              dry_run=True)
+    assert code == 0
+    assert len(fake_api) == 1
+    with db.session() as conn:
+        assert db.load_stock_history(conn).empty
+    assert not history_dir.exists()
+
+
+def test_마스터는_하루_한_번만_남는다(history_dir, fake_api):
+    collector.run_tick(WEEKDAY.replace(hour=9), *WINDOW, INTERVAL)
+    collector.run_tick(WEEKDAY.replace(hour=9, minute=10), *WINDOW, INTERVAL)
+
+    with db.session() as conn:
+        rows = conn.execute("SELECT COUNT(*) FROM stock_station_master").fetchone()[0]
+        assert rows == 3                       # 대여소 3곳 × 하루 1회
+        assert db.has_stock_master(conn, "2026-08-24")
+        assert not db.has_stock_master(conn, "2026-08-25")
+        # 시계열 쪽은 틱마다 쌓인다
+        assert len(db.load_stock_history(conn)) == 6
+
+
+def test_수집은_station_stock과_runs를_건드리지_않는다(history_dir, fake_api):
+    """파이프라인 실행 이력을 오염시키면 웹의 '최근 실행'이 수집 틱을 가리킨다."""
+    collector.run_tick(WEEKDAY.replace(hour=10), *WINDOW, INTERVAL)
+    with db.session() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM station_stock").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+
+
+# ---- 저장소 ----
+
+def test_같은_틱을_다시_저장하면_덮어쓴다():
+    with db.session() as conn:
+        db.save_stock_snapshot(conn, "2026-08-24 10:00", sample_frame((3, 0, 12)))
+        db.save_stock_snapshot(conn, "2026-08-24 10:00", sample_frame((5, 0, 12)))
+        frame = db.load_stock_history(conn)
+
+    assert len(frame) == 3          # 중복이 쌓이지 않는다
+    assert int(frame.loc[frame["station_id"] == "ST0001", "stock"].iloc[0]) == 5
+
+
+def test_end에_날짜만_줘도_그날이_통째로_들어온다():
+    """문자열 비교라 '2026-08-24'는 '00:00'으로 읽힌다 — 그날 오후가 통째로 빠진다."""
+    with db.session() as conn:
+        db.save_stock_snapshot(conn, "2026-08-24 09:00", sample_frame())
+        db.save_stock_snapshot(conn, "2026-08-24 16:50", sample_frame())
+        db.save_stock_snapshot(conn, "2026-08-25 09:00", sample_frame())
+        frame = db.load_stock_history(conn, start="2026-08-24", end="2026-08-24")
+
+    assert sorted(frame["observed_at"].unique()) == \
+        ["2026-08-24 09:00", "2026-08-24 16:50"]
+
+
+def test_요일_구분으로_거를_수_있다():
+    with db.session() as conn:
+        db.save_stock_snapshot(conn, "2026-08-24 10:00", sample_frame())   # 월
+        db.save_stock_snapshot(conn, "2026-08-22 10:00", sample_frame())   # 토
+        db.save_stock_snapshot(conn, "2026-05-05 10:00", sample_frame())   # 어린이날
+        weekday = db.load_stock_history(conn, day_type="weekday")
+        holiday = db.load_stock_history(conn, day_type="holiday")
+
+    assert weekday["observed_at"].unique().tolist() == ["2026-08-24 10:00"]
+    # 휴일 = 주말 ∪ 공휴일. 어린이날이 빠지면 요일 판정이 갈린 것이다.
+    assert sorted(holiday["observed_at"].unique()) == \
+        ["2026-05-05 10:00", "2026-08-22 10:00"]
+
+
+def test_대여소를_지정해_읽을_수_있다():
+    with db.session() as conn:
+        db.save_stock_snapshot(conn, "2026-08-24 10:00", sample_frame())
+        frame = db.load_stock_history(conn, stations=["ST0002"])
+    assert frame["station_id"].unique().tolist() == ["ST0002"]
+
+
+def test_틱별_집계는_결측_판정의_원재료다():
+    with db.session() as conn:
+        db.save_stock_snapshot(conn, "2026-08-24 09:00", sample_frame())
+        db.save_stock_snapshot(conn, "2026-08-24 09:10", sample_frame((1, 2, 3)))
+        ticks = db.stock_history_ticks(conn)
+
+    assert ticks["observed_at"].tolist() == ["2026-08-24 09:00", "2026-08-24 09:10"]
+    assert ticks["stations"].tolist() == [3, 3]
+
+
+# ---- 현황 ----
+
+def test_현황은_데이터가_없어도_동작한다(history_dir, capsys):
+    assert collector.print_status(*WINDOW, INTERVAL) == 0
+    assert "아직 수집한 데이터가 없습니다" in capsys.readouterr().out
+
+
+def test_현황은_기대_격자와_대조해_결측을_센다(history_dir):
+    with db.session() as conn:
+        for minute in (0, 10, 20):
+            db.save_stock_snapshot(conn, f"2026-08-24 09:{minute:02d}", sample_frame())
+
+    table = collector.coverage(*WINDOW, INTERVAL)
+    row = table.iloc[0]
+    assert row["날짜"] == "2026-08-24"
+    assert row["틱"] == 3
+    assert row["기대"] == 49
+    assert row["결측"] == 46     # 로그가 아니라 격자와 대조한다(절전은 로그도 안 남긴다)
