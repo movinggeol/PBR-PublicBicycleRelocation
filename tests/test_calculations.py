@@ -826,6 +826,29 @@ def test_station_coverage_needs_the_collected_station_list(step4, tmp_path, monk
                                          "station_coverage": pytest.approx(0.87)}
 
 
+def test_all_three_maps_share_one_tile_setting():
+    """군집·경로·재고 지도가 **같은 배경 타일**을 써야 한다.
+
+    스크립트마다 타일 이름을 따로 적어 두면 같은 실행의 산출물끼리 배경이 달라진다
+    (사용자 지적, 수정안 2번). 기본값은 folium 기본값과 같은 OpenStreetMap이다 —
+    한동안 CartoDB를 쓴 것은 옛 folium이 OSM 서브도메인 URL을 써서 경고를 받았기
+    때문이고, 지금은 경고가 없다.
+    """
+    import project_config
+
+    assert project_config.MAP_TILES == "OpenStreetMap", "기본 배경이 바뀌었다"
+
+    for relative in ("step1_cluster/st_visualization.py",
+                     "step3_map/main.py",
+                     "step4_metrics/imbalance.py"):
+        source = (PROJECT_ROOT / relative).read_text(encoding="utf-8")
+        assert "tiles=MAP_TILES" in source, f"{relative}가 공통 설정을 쓰지 않는다"
+        # 주석에 남은 설명은 봐주되, 코드에 타일 이름을 박은 것은 막는다.
+        code = [line.split("#")[0] for line in source.splitlines()]
+        assert not any("CartoDB" in line or "Stamen" in line for line in code), \
+            f"{relative}에 타일 이름이 박혀 있다"
+
+
 def test_duration_input_is_checked_against_the_real_list():
     """시간대는 네 창이 전부다. 맨 앞 밑줄이 빠진 값은 여기서 걸러야 한다.
 

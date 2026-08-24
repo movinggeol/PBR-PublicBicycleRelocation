@@ -15,7 +15,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/RETROSPECTIVE.md` | 전체 조망·측정이 뒤집은 가설·설계 결정 (처음 오면 여기부터) |
 | `docs/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/TESTING.md` | 테스트 294개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/TESTING.md` | 테스트 295개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -79,7 +79,11 @@ step4                   : imbalance
    구문 수준(`python -m py_compile`)까지만 가능하다.
 3. **API 키는 `.env`** (`TASHU_API_KEY`=타슈, `API_KEY`=TMAP). 절대 커밋 금지.
    템플릿은 `.env.example`.
-4. **depot·차량 상수는 project_config에 있다**(DEPOT_ID/LAT/LON/NAME, VEHICLE_CAPACITY,
+4. **지도 배경 타일은 `project_config.MAP_TILES` 하나다** — 군집·경로·재고 세 지도가
+   같은 값을 써야 한다. 스크립트에 타일 이름을 박으면 테스트가 실패한다. 기본값은
+   folium 기본값과 같은 `OpenStreetMap`이고, 한동안 CartoDB를 쓴 것은 옛 folium이
+   OSM 서브도메인 URL을 써서 경고를 받았기 때문이다(1.19.4에서 되돌렸다).
+5. **depot·차량 상수는 project_config에 있다**(DEPOT_ID/LAT/LON/NAME, VEHICLE_CAPACITY,
    FLEET_SIZE, VEHICLES_PER_ROUND). step2·step3에서 별도 하드코딩하지 마라.
    **클러스터 1개 = 차량 1대**이므로 step1의 K는 `VEHICLES_PER_ROUND`를 넘을 수 없다.
    두 대수 모두 **실행마다 바뀐다** — 웹 실행 폼/`--fleet-size`/`--vehicles-per-round`가
@@ -90,14 +94,14 @@ step4                   : imbalance
    바꾸면 화면을 여는 것만으로 직전 실행의 보유 대수가 되돌아간다.
    하루 여러 회차를 돌리므로 **한쪽 후보만 있는 시간대는 크래시가 아니라 건너뛴다** —
    step1/step2/step4의 건너뛰기 가드를 지우지 마라.
-5. **일회성 스크립트는 `experiments/`에 둔다** — step 폴더나 루트에 test.py를 만들지 마라.
-6. **가상환경은 `.venv`** (검증 환경: Python 3.14.7). 명령은 `.\.venv\Scripts\python.exe ...`로
+6. **일회성 스크립트는 `experiments/`에 둔다** — step 폴더나 루트에 test.py를 만들지 마라.
+7. **가상환경은 `.venv`** (검증 환경: Python 3.14.7). 명령은 `.\.venv\Scripts\python.exe ...`로
    실행하라 — 시스템 `python`에는 의존성이 없다.
-7. **K-Medoids는 `kmedoids` 패키지**(FasterPAM)다. `sklearn_extra`는 아카이브되어
+8. **K-Medoids는 `kmedoids` 패키지**(FasterPAM)다. `sklearn_extra`는 아카이브되어
    Python 3.12+에서 설치되지 않으므로 되돌리지 마라.
-8. **Starlette 1.x 템플릿 응답은 `TemplateResponse(request, name, {...})`** 형식만 동작한다.
+9. **Starlette 1.x 템플릿 응답은 `TemplateResponse(request, name, {...})`** 형식만 동작한다.
    구 형식(`TemplateResponse(name, {"request": ...})`)으로 쓰면 500 오류가 난다.
-9. **requirements.txt는 하한(`>=`) 고정**을 유지하라. 상한을 걸면 새 Python 버전에서
+10. **requirements.txt는 하한(`>=`) 고정**을 유지하라. 상한을 걸면 새 Python 버전에서
    휠이 없어 설치가 통째로 깨진다(1.2.1에서 실제로 겪음).
 
 ## 실행 방법
@@ -223,7 +227,7 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
 ## 테스트
 
 ```powershell
-python -m pytest                 # 294개, 약 50초 (tests/ 만 수집)
+python -m pytest                 # 295개, 약 50초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

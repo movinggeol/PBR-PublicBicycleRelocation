@@ -210,6 +210,17 @@ DEFAULT_WEATHER_FILE = os.getenv(
     "data/raw_data/날씨/대전_ASOS_시간자료.csv",
 )
 
+# ---- 지도 배경 타일 ----
+# **세 지도(군집·경로·재고)가 반드시 같은 값을 써야 한다.** 예전에는 스크립트마다
+# 따로 적어 두어 같은 실행의 산출물끼리 배경이 달랐다(사용자 지적, 수정안 2번).
+#
+# 기본값은 folium 기본값과 같은 **OpenStreetMap**이다. 한동안 CartoDB positron을
+# 썼는데, 그건 경고가 떠서 피한 것이었다. folium 0.20에서 다시 재 보니
+# **경고가 없고**(옛 버전은 `{s}.tile.openstreetmap.org` 서브도메인 URL을 써서
+# OSM 정책 경고를 받았다) 지금은 `tile.openstreetmap.org` 한 호스트를 쓴다.
+# 타일도 정상(200)이다.
+MAP_TILES = os.getenv("PBR_MAP_TILES", "OpenStreetMap")
+
 # ---- 운영 상수 (step2 vrp, step3 지도에서 공유) ----
 DEPOT_ID = "ST0001"          # 타슈 관제센터 (이용자 대상 대여소 아님)
 DEPOT_NAME = "타슈 관제센터"

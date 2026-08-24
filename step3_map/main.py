@@ -20,7 +20,8 @@ from module import (
 )
 
 from project_config import (
-    DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, PROJECT_ROOT, VEHICLE_CAPACITY,
+    DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, MAP_TILES, PROJECT_ROOT,
+    VEHICLE_CAPACITY,
     duration_list, ensure_output_dirs, get_runtime_config,
 )
 
@@ -76,20 +77,11 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
     center_lat = pick_drop['lat'].mean()
     center_lon = pick_drop['lon'].mean()
 
-    #m = folium.Map(location=[center_lat, center_lon],
-    #               zoom_start=13,
-    #               control_scale=True)
-    #m.get_root().header.add_child(folium.Element('<meta name="referrer" content="no-referrer-when-downgrade">'))
-    
-    
-    
-    # 수정 코드 (CartoDB 타일 사용 - Referer 제한에서 비교적 자유로움)
     m = folium.Map(
         location=[center_lat, center_lon],
         zoom_start=13,
         control_scale=True,
-        tiles='CartoDB positron'        # 밝은 배경 지도
-        # tiles="CartoDB dark_matter"   # 어두운 배경 지도
+        tiles=MAP_TILES                 # 세 지도가 같은 배경을 써야 한다(project_config)
     )
     
 

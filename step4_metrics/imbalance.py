@@ -9,7 +9,8 @@ import pandas as pd
 
 import db
 from project_config import (
-    PROJECT_ROOT, TIME_BUDGET_MINUTES, duration_list, ensure_output_dirs, get_runtime_config,
+    MAP_TILES, PROJECT_ROOT, TIME_BUDGET_MINUTES, duration_list, ensure_output_dirs,
+    get_runtime_config,
     require_columns, select_day_type,
 )
 
@@ -441,7 +442,7 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
         location=[center_lat, center_lon],
         zoom_start=13,
         control_scale=True,
-        tiles='CartoDB positron'
+        tiles=MAP_TILES                 # 세 지도가 같은 배경을 써야 한다(project_config)
     )
 
     unique_clusters = sorted(imbalance_df['cluster'].unique())

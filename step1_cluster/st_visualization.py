@@ -9,7 +9,9 @@ from folium.plugins import FeatureGroupSubGroup
 import pandas as pd
 import numpy as np
 
-from project_config import PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config
+from project_config import (
+    MAP_TILES, PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config,
+)
 
 # read_csv
 clustered_file = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")
@@ -37,7 +39,7 @@ def make_clustered_map(durations: list):
             location=[center_lat, center_lon],
             zoom_start=13,
             control_scale=True,
-            tiles="CartoDB positron"  # 밝은 배경의 깔끔한 지도
+            tiles=MAP_TILES          # 세 지도가 같은 배경을 써야 한다(project_config)
         )
 
         colors = ['red', 'orange', 'yellow', 'green',    #3
