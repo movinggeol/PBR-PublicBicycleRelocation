@@ -592,7 +592,7 @@ CSV의 한글 컬럼은 DB에서 ASCII로 바뀝니다. 변환표는 `db.TABLES`
    `rename`으로 한글 컬럼 변환을, `drop`으로 버릴 컬럼을 지정합니다.
 3. **단계 스크립트에 `db.save_output(...)` 호출 추가.** 빠뜨리면 테스트가 잡습니다.
 4. **테스트 추가** — `tests/test_db.py`에 스코프·멱등성, `tests/test_pipeline.py`에 적재 검사.
-5. **이 문서와 [DB_PLAN.md](DB_PLAN.md)를 갱신**하고 [버전관리.txt](버전관리.txt)에 이유를 남기세요.
+5. **이 문서와 [DB_PLAN.md](DB_PLAN.md)를 갱신**하고 [버전관리.md](버전관리.md)에 이유를 남기세요.
 
 ### 마이그레이션 — 컬럼 추가는 자동, 나머지는 수동
 

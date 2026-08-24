@@ -23,7 +23,7 @@
      (환경변수 `PBR_CLUSTER_ALPHA/BETA/GAMMA`로 조정) — 아래 실험 참고
    - 군집별 |balance| ≤ 3(THRESHOLD)이면 종료, 최대 200회 노드 이동
    - balance가 ±5(BALANCE_LIMIT) 초과 시 emergency mode로 balance 우선 조정
-     (버전관리.txt 1.0.2에서 도입된 로직)
+     (버전관리.md 1.0.2에서 도입된 로직)
 
 - **입력**: `rebal_qty{duration} ({now}).csv`, `st_info ({now}).csv`
 - **출력**: `data/pp_data/ILP/후보/top{duration} ({now}).csv`
@@ -104,7 +104,7 @@
 
 | 우선순위 | 문제 |
 | --- | --- |
-| 🟡 | `try_move_node()`가 이동 후보마다 `pick_drop.copy()` + 전체 목적함수 재계산 → 실행 5분 이상 (버전관리.txt 1.0.1에 기록된 성능 문제) |
+| 🟡 | `try_move_node()`가 이동 후보마다 `pick_drop.copy()` + 전체 목적함수 재계산 → 실행 5분 이상 (버전관리.md 1.0.1에 기록된 성능 문제) |
 | 🟢 | 상위 50개 컷·target_cluster_size=7 등 매직 넘버가 아직 코드에 산재 (목적함수 가중치는 1.9.2에서 설정으로 분리) |
 | 🟢 | 거리 항이 위경도 '도' 단위라 값이 작고 직관적이지 않음 — km로 바꾸면 γ를 해석하기 쉬워짐 |
 

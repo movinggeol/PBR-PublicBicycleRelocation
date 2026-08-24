@@ -79,7 +79,7 @@ data/bike_system.db  (WAL 모드)
 - 웹 API의 최신 파일 휴리스틱 → `ORDER BY run_label DESC LIMIT 1`
 - 파일명 규약(`이름{duration} ({now}).csv`) 의존성이 사라짐
 
-초기 테이블 DDL 초안은 [메모.txt](메모.txt)의 SQLite 섹션 참고
+초기 테이블 DDL 초안은 [메모.md](메모.md)의 SQLite 섹션 참고
 (rental_history / station_info / station_workload / inventory_movement / visit_sequence —
 실제 이관 시 위 스키마 기준으로 재정리).
 

@@ -353,6 +353,9 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/KPI.md](docs/KPI.md) | 성과 지표 체계 설계 (현재 지표의 한계와 개선안) |
 | [docs/FLEET.md](docs/FLEET.md) | 차량 운용 — 하루 3회차 로테이션과 형평성 기록 |
 | [docs/TODO.md](docs/TODO.md) | 해야 할 것·고쳐야 할 것 (우선순위별) |
+| [docs/버전관리.md](docs/버전관리.md) | **버전 이력** — 무엇을 왜 바꿨는지 (최신순, 1.0 ~ 현재) |
+| [docs/메모.md](docs/메모.md) | 작업 메모 — README·포트폴리오 정리 노트 (개인 메모) |
+| [docs/출발지-도착지.md](docs/출발지-도착지.md) | depot 좌표 메모 — 초기 설계의 출발지·도착지 |
 | [docs/steps/step0_raw.md](docs/steps/step0_raw.md) | Step 0: 수집·전처리·순수요·재배치량 |
 | [docs/steps/step0_eda.md](docs/steps/step0_eda.md) | Step 0: 이력 병합·EDA |
 | [docs/steps/step1_clustering.md](docs/steps/step1_clustering.md) | Step 1: Pick/Drop 선정·클러스터링 |
