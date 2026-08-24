@@ -596,6 +596,44 @@ def normalize_period(value: str) -> str:
     return period
 
 
+# API 수집 단계(step0의 api 묶음)가 만드는 스냅샷. **실행 라벨마다 따로**다.
+# (하위 폴더, 파일명 틀) — `--skip-api`가 무엇을 물려받아야 하는지 여기서 읽는다.
+API_SNAPSHOTS = (
+    ("대여소별 재고", "대여소별_자전거대수 ({now}).csv"),
+    ("대여소별 주차대수", "대여소별_주차대수 ({now}).csv"),
+    ("대여소 정보", "st_info ({now}).csv"),
+)
+
+_SNAPSHOT_LABEL_RE = re.compile(r"^(?:.*) \((.+)\)\.csv$")
+
+
+def snapshot_paths(label: str) -> Tuple[Path, ...]:
+    """어떤 실행 라벨의 재고 스냅샷 파일 경로들."""
+    return tuple((PP_ROOT / subdir / name.format(now=label))
+                 for subdir, name in API_SNAPSHOTS)
+
+
+def snapshot_labels() -> Tuple[str, ...]:
+    """스냅샷이 **세 개 다** 있는 실행 라벨 목록(최근 수정 순).
+
+    `--skip-api`로 물려받을 수 있는 후보다. 하나라도 빠진 라벨은 쓸 수 없으므로
+    아예 후보에서 뺀다 — 반쯤 있는 라벨을 물려받으면 다음 단계에서 멈춘다.
+    """
+    subdir, name = API_SNAPSHOTS[0]
+    found = []
+    try:
+        entries = list((PP_ROOT / subdir).iterdir())
+    except OSError:
+        return ()
+    for path in entries:
+        if not (m := _SNAPSHOT_LABEL_RE.match(path.name)):
+            continue
+        label = m.group(1)
+        if all(p.exists() for p in snapshot_paths(label)):
+            found.append((path.stat().st_mtime, label))
+    return tuple(label for _, label in sorted(found, reverse=True))
+
+
 def ensure_output_dirs() -> None:
     """Create the folders used by pipeline stages when they are missing."""
 

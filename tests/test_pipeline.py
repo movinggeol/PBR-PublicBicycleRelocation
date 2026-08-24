@@ -284,3 +284,58 @@ def test_csv_to_db_tool_imports_outputs(pipeline_run, tmp_path):
 
         csv_rows = len(pd.read_csv(_out("ILP/후보/top{duration} ({label}).csv"), encoding="utf-8"))
         assert len(db.load_frame(conn, "pick_drop", run_label=LABEL)) == csv_rows
+
+# ---------------------------------------------------------------- --skip-api
+
+def test_skip_api_inherits_the_latest_snapshot(tmp_path, monkeypatch):
+    """`--skip-api`는 **가장 최근 실행의 재고를 물려받는다.**
+
+    API 수집이 만드는 세 파일은 실행 라벨마다 따로다. 그래서 예전에는 `--skip-api`를
+    켠 채 **새 실행 이름**을 쓰면 파일이 없어 다음 단계가 바로 멈췄다 — 웹 폼의
+    "API 수집 생략"도 같았다.
+    """
+    import project_config
+    import run_pipeline
+
+    monkeypatch.setattr(project_config, "PP_ROOT", tmp_path)
+    for subdir, name in project_config.API_SNAPSHOTS:
+        folder = tmp_path / subdir
+        folder.mkdir(parents=True)
+        (folder / name.format(now="어제")).write_text("x", encoding="utf-8")
+
+    assert project_config.snapshot_labels() == ("어제",)
+    assert run_pipeline.inherit_snapshot("오늘") == 3
+
+    for path in project_config.snapshot_paths("오늘"):
+        assert path.exists(), f"{path.name}을 물려받지 못했다"
+
+    # 이미 다 있으면 아무것도 하지 않는다(덮어쓰지 않는다).
+    assert run_pipeline.inherit_snapshot("오늘") == 0
+
+
+def test_skip_api_refuses_when_there_is_nothing_to_inherit(tmp_path, monkeypatch):
+    """물려받을 것이 없으면 **시작 전에** 멈춘다 — 한참 뒤에 파일 없다고 죽지 않는다."""
+    import project_config
+    import run_pipeline
+
+    monkeypatch.setattr(project_config, "PP_ROOT", tmp_path)
+    assert run_pipeline.inherit_snapshot("오늘") == -1
+
+
+def test_snapshot_labels_skips_half_finished_runs(tmp_path, monkeypatch):
+    """세 파일이 다 있는 라벨만 후보다.
+
+    반쯤 있는 라벨을 물려받으면 그 다음 단계에서 멈춘다 — 그러면 고친 의미가 없다.
+    """
+    import project_config
+
+    monkeypatch.setattr(project_config, "PP_ROOT", tmp_path)
+    for index, (subdir, name) in enumerate(project_config.API_SNAPSHOTS):
+        folder = tmp_path / subdir
+        folder.mkdir(parents=True)
+        (folder / name.format(now="온전한")).write_text("x", encoding="utf-8")
+        if index == 0:      # 첫 파일만 있는 라벨
+            (folder / name.format(now="반쪽")).write_text("x", encoding="utf-8")
+
+    assert project_config.snapshot_labels() == ("온전한",)
+

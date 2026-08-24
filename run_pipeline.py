@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -27,6 +28,7 @@ from project_config import (
     DAY_TYPE_AUTO, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_FLEET_SIZE,
     DEFAULT_VEHICLES_PER_ROUND, DEFAULT_WARMUP_DAYS, ensure_output_dirs,
     get_runtime_config, normalize_fleet_size, normalize_per_round,
+    snapshot_labels, snapshot_paths,
 )
 
 
@@ -206,6 +208,45 @@ def selected_scripts(args: argparse.Namespace) -> Iterable[Path]:
         yield from STAGES[group]
 
 
+def inherit_snapshot(label: str) -> int:
+    """`--skip-api`로 건너뛴 재고 스냅샷을 **가장 최근 실행에서 물려받는다.**
+
+    API 수집 단계가 만드는 세 파일은 실행 라벨마다 따로다. 그래서 `--skip-api`를
+    켠 채 **새 실행 이름**을 쓰면 파일이 없어서 다음 단계(calculate_target_qty)가
+    바로 멈췄다 — 웹 폼의 "API 수집 생략"도 같았고, 안내만 보고는 알 수 없었다.
+
+    물려받은 라벨을 반드시 찍는다. 어느 시점 재고로 세운 계획인지가 로그에
+    남아야 한다 — 조용히 물려받으면 출처를 알 수 없는 계획이 된다.
+
+    반환: 복사한 파일 수. 이미 다 있으면 0.
+    """
+    missing = [p for p in snapshot_paths(label) if not p.exists()]
+    if not missing:
+        return 0
+
+    donors = [other for other in snapshot_labels() if other != label]
+    if not donors:
+        print(f"설정 오류: --skip-api를 켰지만 물려받을 재고 스냅샷이 없습니다.")
+        print(f"  '{label}' 라벨의 파일이 없고, 다른 실행의 스냅샷도 없습니다.")
+        print(f"  --skip-api를 빼고 한 번 수집하세요.")
+        return -1
+
+    donor = donors[0]
+    print(f"[안내] --skip-api: '{donor}'의 재고 스냅샷을 물려받습니다"
+          f" (요청 라벨 '{label}'에 파일이 없음).")
+    print(f"  ⚠ 그 시점 재고로 계획을 세웁니다. 지금 재고로 세우려면 --skip-api를 빼세요.")
+
+    copied = 0
+    for source, target in zip(snapshot_paths(donor), snapshot_paths(label)):
+        if target.exists():
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        print(f"  {source.name} -> {target.name}")
+        copied += 1
+    return copied
+
+
 def format_elapsed(seconds: float) -> str:
     """경과 시간을 사람이 읽는 말로. 1분을 넘으면 분·초로 끊는다."""
     if seconds < 60:
@@ -250,6 +291,10 @@ def main() -> int:
 
     # 산출물 폴더가 없어 저장에 실패하는 일을 예방합니다.
     ensure_output_dirs()
+
+    # API 수집을 건너뛰면 재고 스냅샷을 물려받습니다(없으면 여기서 멈춥니다).
+    if args.skip_api and inherit_snapshot(args.now or resolved.now) < 0:
+        return 2
 
     failures: list[tuple[Path, int]] = []
     # 단계별 소요를 재 둔다 — "얼마나 걸리나"를 짐작으로 적으면 안내 문구가

@@ -119,7 +119,7 @@
       </div>
 
       <div class="checks">
-        <label data-tip="켜면 실시간 재고를 새로 받아오지 않고 이미 받아 둔 파일을 씁니다. 재고가 바뀌지 않았을 때만 켜세요.">
+        <label data-tip="켜면 실시간 재고를 새로 받지 않고 가장 최근 실행의 재고를 물려받습니다. 그 시점 재고로 계획을 세우게 되므로, 방금 받아 뒀을 때만 켜세요. 어느 실행에서 물려받았는지는 로그에 남습니다.">
           <input type="checkbox" name="skip_api" value="1"> API 수집 생략</label>
         <label data-tip="탐색적 분석 그래프를 만들지 않습니다. 계획 결과에는 영향이 없고 시간만 줄어듭니다.">
           <input type="checkbox" name="skip_eda" value="1" checked> EDA 생략</label>
