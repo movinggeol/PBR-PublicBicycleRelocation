@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}작업지시서 — PBR 대시보드{% endblock %}
+
+{% block head_extra %}
+<style>
+  /* 인쇄용. 화면에서 쓰는 내비·필터·버튼은 종이에 필요 없다.
+     차량 한 대가 한 장이라야 기사에게 그대로 건넬 수 있으므로 카드마다 쪽을 끊는다. */
+  @media print {
+    .global-nav, .flow-nav, .group-nav, footer.site, .no-print { display: none !important; }
+    main { padding: 0 !important; }
+    /* break-*는 최신 이름, page-break-*는 옛 이름이다. 브라우저마다 지원이 갈려
+       둘 다 적는다 — 한쪽만 적으면 어떤 브라우저에서는 차량 두 대가 한 장에 겹친다. */
+    .sheet {
+      break-inside: avoid; page-break-inside: avoid;
+      break-after: page; page-break-after: always;
+      border: 0; padding: 0 0 var(--sp-lg);
+    }
+    .sheet:last-of-type { break-after: auto; page-break-after: auto; }
+    thead { display: table-header-group; }   /* 쪽이 넘어가도 머리글을 다시 찍는다 */
+    table { font-size: 11px; }
+    a { text-decoration: none; color: inherit; }
+  }
+  .sheet-head {
+    display: flex; flex-wrap: wrap; gap: var(--sp-md); align-items: baseline;
+    justify-content: space-between; margin-bottom: var(--sp-sm);
+  }
+  .sheet-head h3 { margin: 0; font-size: var(--fs-h3); }
+  .sheet-facts { color: var(--ink-3); font-size: var(--fs-ui); }
+  .sheet-facts b { color: var(--ink); }
+  .tally { display: flex; gap: var(--sp-lg); flex-wrap: wrap; margin: var(--sp-sm) 0 0; }
+  .tally div { font-size: var(--fs-ui); color: var(--ink-3); }
+  .tally b { color: var(--ink); font-size: var(--fs-h3); }
+  td.pick { color: var(--good-ink); font-weight: 600; }
+  td.drop { color: var(--blue); font-weight: 600; }
+  td.back { color: var(--ink-4); }
+  tr.bad td { background: var(--critical-soft); }
+  tr.warn td { background: var(--warning-soft); }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<section class="hero no-print">
+  <h1>작업지시서</h1>
+  <p class="lead">차량 한 대가 한 장입니다. 어디를 어떤 순서로 들러 몇 대를 싣고 내리는지
+    그대로 적혀 있습니다. <b>인쇄하면 차량마다 쪽이 나뉩니다.</b></p>
+  <div class="actions">
+    <button class="btn" type="button" onclick="window.print()">인쇄</button>
+    {% if run_label %}
+    <a class="btn ghost" href="/orders/live?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}">
+      지금 재고와 대조하기</a>
+    {% endif %}
+  </div>
+</section>
+
+{% if targets %}
+<div class="filterbar no-print">
+  <span class="label">계획</span>
+  {% for t in targets %}
+  <a class="chip" href="/orders?run_label={{ t.run_label | urlencode }}&duration={{ t.duration | urlencode }}"
+     {% if t.run_label == run_label and t.duration == duration %}aria-current="true"{% endif %}>
+    {{ t.run_label }} · {{ t.duration }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not sheets %}
+<div class="card"><p class="empty">경로가 없습니다. 계획을 끝까지 실행하면 여기에 나타납니다.</p></div>
+{% endif %}
+
+{# ───────────────────────── 실시간 재고 대조 ───────────────────────── #}
+{% if live_error %}
+<div class="alert bad"><span>{{ live_error }}</span></div>
+{% endif %}
+
+{% if compared %}
+<h2>지금 재고와 대조 <span class="hint">{{ checked_at }} 조회</span></h2>
+<p class="section-lead">계획을 세운 뒤에도 재고는 계속 바뀝니다. <b>계획 대상 대여소만</b>
+  타슈 API로 다시 조회했습니다. 여기서는 <b>표시만 하고 계획을 바꾸지 않습니다</b> —
+  현장 상황을 아는 것은 사람입니다.</p>
+
+<div class="tally card">
+  <div>대상 <b>{{ live_summary.total }}</b>곳</div>
+  <div>그대로 가능 <b>{{ live_summary.ok }}</b></div>
+  <div>수량 조정 필요 <b>{{ live_summary.warn }}</b></div>
+  <div>집행 불가 <b>{{ live_summary.blocked }}</b></div>
+  {% if live_summary.unknown %}<div>확인 불가 <b>{{ live_summary.unknown }}</b></div>{% endif %}
+</div>
+
+<div class="card flush" style="margin-top:var(--sp-md)">
+  <div class="table-wrap">
+  <table data-sortable>
+    <thead><tr>
+      <th class="grow">대여소</th>
+      <th class="num">군집</th>
+      <th>할 일</th>
+      <th class="num"><span class="tip" data-tip="지시서에 적힌 수량입니다.">지시</span></th>
+      <th class="num"><span class="tip" data-tip="계획을 세울 때 본 재고입니다.">계획 때</span></th>
+      <th class="num"><span class="tip" data-tip="방금 타슈 API에서 받은 재고입니다.">지금</span></th>
+      <th class="num">차이</th>
+      <th class="num"><span class="tip" data-tip="지금 재고로 실제 처리할 수 있는 수량입니다.">가능</span></th>
+      <th>판정</th>
+      <th class="grow">비고</th>
+    </tr></thead>
+    <tbody>
+    {% for r in compared %}
+    <tr class="{% if r.status == '불가' %}bad{% elif r.status in ['부족', '넘침'] %}warn{% endif %}">
+      <td class="wrap">{{ r.station_name or r.station_id }}</td>
+      <td class="num muted">{{ r.cluster if r.cluster is not none else "—" }}</td>
+      <td class="{{ r.action }}">{{ r.action_label }}</td>
+      <td class="num">{{ r.need }}</td>
+      <td class="num muted">{{ r.planned_stock }}</td>
+      <td class="num">{{ r.live_stock if r.live_stock is not none else "—" }}</td>
+      <td class="num muted">{% if r.delta is not none %}{{ "%+d" | format(r.delta) }}{% else %}—{% endif %}</td>
+      <td class="num">{{ r.possible if r.possible is not none else "—" }}</td>
+      <td>{{ r.status }}</td>
+      <td class="wrap muted">{{ r.note }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="note no-print">
+  판정 기준: <b>싣기</b>는 지금 재고만큼만 가능하고, <b>내리기</b>는 거치대 수의
+  {{ upper_ratio }}배까지만 받습니다(계획이 목표 재고를 자른 것과 같은 기준).
+  작업량이 {{ min_qty }}대 이하인 대여소는 애초에 계획에 들어오지 않습니다.
+</div>
+{% endif %}
+
+{# ───────────────────────── 차량별 지시서 ───────────────────────── #}
+{% for sheet in sheets %}
+<div class="card sheet">
+  <div class="sheet-head">
+    <h3>{% if sheet.vehicle_id %}{{ sheet.vehicle_id }}{% else %}군집 {{ sheet.cluster }}{% endif %}
+      <span class="hint">군집 {{ sheet.cluster }} · {{ run_label }} · {{ duration }}</span></h3>
+    <div class="sheet-facts">
+      들를 곳 <b>{{ sheet.stations }}</b>곳 ·
+      옮길 자전거 <b>{{ sheet.bikes }}</b>대 ·
+      이동 <b>{{ sheet.distance_km }}</b> km ·
+      예상 <b>{{ sheet.minutes }}</b>분
+    </div>
+  </div>
+
+  {% if not sheet.returns %}
+  <p class="hint">※ 이 계획에는 차고지 복귀 구간이 없습니다(1.19.1 이전 산출물).
+    실제 운행 시간은 복귀분만큼 더 걸립니다.</p>
+  {% endif %}
+
+  <div class="table-wrap">
+  <table>
+    <thead><tr>
+      <th class="num">순번</th><th class="grow">대여소</th><th>할 일</th>
+      <th class="num">수량</th>
+      <th class="num"><span class="tip" data-tip="그 대여소에서 일을 마친 뒤 차에 남는 대수입니다. 적재 용량은 {{ capacity }}대입니다.">싣고 남는 수</span></th>
+      <th class="num">이동</th><th class="num">누적</th>
+    </tr></thead>
+    <tbody>
+    {% for stop in sheet.stops %}
+    <tr>
+      <td class="num muted">{{ stop.no }}</td>
+      <td class="wrap">{{ stop.station_name }}
+        <span class="hint">{{ stop.station_id }}</span></td>
+      <td class="{% if stop.action == 'return' %}back{% else %}{{ stop.action }}{% endif %}">
+        {{ stop.action_label }}</td>
+      <td class="num">{% if stop.qty %}{{ stop.qty }}대{% else %}—{% endif %}</td>
+      <td class="num muted">{{ stop.load_after }}대</td>
+      <td class="num muted">{{ stop.distance_km }} km</td>
+      <td class="num muted">{{ stop.minutes }}분</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endfor %}
+
+{% if sheets %}
+<div class="note no-print">
+  <b>차고지는 {{ depot_name }}</b>이고, 적재 용량은 한 대에 {{ capacity }}대입니다.
+  “싣고 남는 수”가 0이면 그 시점에 차가 비어 있다는 뜻입니다.
+</div>
+{% endif %}
+{% endblock %}

@@ -21,7 +21,7 @@ import db
 import demand_model
 from project_config import (
     PROJECT_ROOT,
-    TARGET_Z,
+    TARGET_QTY_UPPER_RATIO, TARGET_Z,
     duration_list,
     ensure_output_dirs,
     get_runtime_config,
@@ -102,7 +102,7 @@ def build_stats(net_daily: pd.DataFrame, st_initial_qty: pd.DataFrame, duration:
 
 
 # 시간대에 따른 target_qty(목표대수)와 rebal_qty(재배치대수)를 계산한다.
-def compute_rebal_qty(stats: pd.DataFrame, z=None, up_limit=1.5, low_limit=0.2,
+def compute_rebal_qty(stats: pd.DataFrame, z=None, up_limit=None,
                       model_target=None) -> pd.DataFrame:
     '''
     대여소별의 시간대별(_05_10, _10_15, _15_20, _20_05) mu, sigma 를 통해 목표 stock량(target_qty)에 따른 작업량(rebal_qty)를 산출
@@ -116,6 +116,9 @@ def compute_rebal_qty(stats: pd.DataFrame, z=None, up_limit=1.5, low_limit=0.2,
     측정 코드와 운영 코드가 갈리면 측정이 거짓말을 한다(docs/DEMAND_DISTRIBUTION.md 5장).
     '''
     z = TARGET_Z if z is None else z
+    # 상한 배수도 project_config에서 읽는다 — 웹의 실시간 재고 대조가 같은 값으로
+    # "더 내려놓을 수 있는가"를 판정한다(1.19.2).
+    up_limit = TARGET_QTY_UPPER_RATIO if up_limit is None else up_limit
     # 1. ---------- target_qty 계산 ----------
     # 평균 순수요(mu)가 양수(자전거가 부족한 상황)인지 확인하는 조건
     cond_pos = stats['mu'] >= 0
@@ -136,7 +139,7 @@ def compute_rebal_qty(stats: pd.DataFrame, z=None, up_limit=1.5, low_limit=0.2,
         stats.loc[~cond_pos, 'stock'] + stats.loc[~cond_pos, 'mu']
     )
 
-    # 목표 재고량 상한/하한 제한 (최솟값 : 0, 최댓값 : parking_lot * 1.5)
+    # 목표 재고량 상한/하한 제한 (최솟값 : 0, 최댓값 : parking_lot * TARGET_QTY_UPPER_RATIO)
     # (.loc 슬라이스에 inplace clip을 쓰면 pandas 2.x에서 원본 미반영 — 재할당 방식 사용)
     stats['target_qty'] = stats['target_qty'].clip(lower=0, upper=stats['parking_lot'] * up_limit)
 
@@ -176,11 +179,9 @@ def compute_rebal_qty(stats: pd.DataFrame, z=None, up_limit=1.5, low_limit=0.2,
 
 
 def calculate_rebal_qty(stats: pd.DataFrame, duration: str, now: str, z=None,
-                        up_limit=1.5, low_limit=0.2, day_type=None,
-                        model_target=None):
+                        up_limit=None, day_type=None, model_target=None):
     '''compute_rebal_qty()로 계산한 뒤 CSV·DB에 저장한다.'''
-    stats = compute_rebal_qty(stats, z=z, up_limit=up_limit,
-                              low_limit=low_limit, model_target=model_target)
+    stats = compute_rebal_qty(stats, z=z, up_limit=up_limit, model_target=model_target)
 
     stats.to_csv(out_file_path.format(duration=duration, now=now) + '.csv', encoding='utf-8', index=False)
     # z를 안 넘기면 compute_rebal_qty가 TARGET_Z로 채운다. 여기서도 같은 값을

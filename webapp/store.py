@@ -100,6 +100,29 @@ def run_labels() -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def plan_targets() -> pd.DataFrame:
+    """작업지시서를 만들 수 있는 (실행, 회차) 목록 — `vrp_plan`에 경로가 있는 것.
+
+    최근 실행이 앞에 오게 `runs.created_at`으로 정렬한다. `run_label`은 사람이
+    붙이는 이름이라 사전순으로 줄 세우면 시간 순서와 어긋난다.
+    """
+    try:
+        with db.session() as conn:
+            return pd.read_sql(
+                "SELECT v.run_label, v.duration,"
+                "       COUNT(DISTINCT v.cluster) AS clusters,"
+                "       MAX(r.created_at) AS created_at"
+                "  FROM vrp_plan v"
+                "  LEFT JOIN runs r"
+                "    ON r.run_label = v.run_label AND r.duration = v.duration"
+                " GROUP BY v.run_label, v.duration"
+                " ORDER BY created_at DESC, v.run_label DESC, v.duration ASC",
+                conn)
+    except Exception as err:
+        print(f"[경고] 경로 목록 조회 실패: {type(err).__name__}: {err}")
+        return pd.DataFrame()
+
+
 def records(frame: pd.DataFrame) -> list:
     """JSON 응답용 레코드 목록. NaN은 None으로 바꾼다."""
     if frame.empty:

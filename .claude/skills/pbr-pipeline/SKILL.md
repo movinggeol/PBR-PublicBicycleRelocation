@@ -15,7 +15,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/RETROSPECTIVE.md` | 전체 조망·측정이 뒤집은 가설·설계 결정 (처음 오면 여기부터) |
 | `docs/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/TESTING.md` | 테스트 264개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/TESTING.md` | 테스트 273개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -127,6 +127,11 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
   `catalog.safe_resolve()`를 우회하지 마라.
 - 파이프라인 로직을 웹 요청 안에서 직접 실행하지 마라(수 분 소요) —
   반드시 jobs.start_job() 경유.
+- **타슈 API는 루트 `tashu.py` 하나로 부른다** — step0 수집과 웹의 실시간 재고
+  대조가 같은 클라이언트를 쓴다. 각자 호출하면 컬럼 규약(`x_pos`가 위도)이 갈린다.
+  웹에서는 `/orders/live`처럼 **사용자가 누를 때만** 부른다.
+- 작업지시서·재고 대조 판정은 `webapp/orders.py`의 순수 계산이다. **판정만 하고
+  계획을 바꾸지 않는다** — 자동 보정을 넣으면 기사가 든 종이와 화면이 어긋난다.
 - `/api/runs/{id}`는 **웹 작업 상태**, `/api/pipeline-runs`는 **DB 실행 이력**이다.
   이름이 비슷하니 헷갈리지 마라.
 - **화면에 설정값을 하드코딩하지 마라.** 차량 대수·적재 용량·속도·시간 예산은
@@ -218,7 +223,7 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
 ## 테스트
 
 ```powershell
-python -m pytest                 # 264개, 약 50초 (tests/ 만 수집)
+python -m pytest                 # 273개, 약 50초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

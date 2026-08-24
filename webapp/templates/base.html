@@ -636,7 +636,8 @@
 {# ── 현재 위치는 요청 경로로 판단한다 — 라우트마다 변수를 넘기지 않아도 된다 ── #}
 {% set path = request.url.path %}
 {% if path.startswith('/kpi') or path.startswith('/vehicles')
-      or path.startswith('/maps') or path.startswith('/view') %}
+      or path.startswith('/maps') or path.startswith('/view')
+      or path.startswith('/orders') %}
   {% set group = 'result' %}
 {% elif path.startswith('/data') or path.startswith('/preview') %}
   {% set group = 'data' %}
@@ -689,6 +690,8 @@
        data-tip="차량마다 일이 고르게 나뉘었는지, 시간 예산을 지켰는지 봅니다.">차량 운용</a>
     <a href="/maps" {% if path.startswith('/maps') or path.startswith('/view') %}aria-current="page"{% endif %}
        data-tip="군집·경로·재고 현황을 지도 위에서 확인합니다.">지도</a>
+    <a href="/orders" {% if path.startswith('/orders') %}aria-current="page"{% endif %}
+       data-tip="차량마다 어디를 어떤 순서로 들러 몇 대를 싣고 내리는지. 인쇄해서 현장에 냅니다.">작업지시서</a>
   </div>
 </nav>
 {% endif %}

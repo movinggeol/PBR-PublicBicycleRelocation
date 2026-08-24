@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 import sys
+import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -29,13 +30,14 @@ from fastapi.templating import Jinja2Templates
 
 from project_config import (
     DAY_TYPE_AUTO, DAY_TYPE_LABELS, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_DURATION,
-    DEFAULT_NOW, DEFAULT_RAW_FILE, DURATION_LABELS, DURATIONS, FLEET_SIZE,
-    MAX_FLEET_SIZE, TARGET_Z, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY,
-    VEHICLE_SPEED_KMPH, VEHICLES_PER_ROUND,
+    DEFAULT_NOW, DEFAULT_RAW_FILE, DEPOT_NAME, DURATION_LABELS, DURATIONS,
+    FLEET_SIZE, MAX_FLEET_SIZE, REBAL_MIN_QTY, TARGET_QTY_UPPER_RATIO, TARGET_Z,
+    TIME_BUDGET_MINUTES, VEHICLE_CAPACITY, VEHICLE_SPEED_KMPH, VEHICLES_PER_ROUND,
     available_periods, latest_period, normalize_day_type, normalize_durations,
     normalize_fleet_size, normalize_per_round, normalize_period, resolve_day_type,
 )
-from webapp import catalog, jobs, store
+import tashu
+from webapp import catalog, jobs, orders, store
 
 app = FastAPI(title="PBR 파이프라인 대시보드", docs_url="/api/docs")
 
@@ -308,7 +310,60 @@ def guide_page(request: Request):
         "typical_minutes": _minutes(jobs.typical_elapsed()),
         # 회차당 대수는 작업량이 정한다 — 안내에는 지난 실행의 중앙값을 보여준다.
         "typical_vehicles": _typical_vehicles(),
+        # 계획이 쓰는 기준을 안내에 밝힌다 — 코드에만 있으면 현장에서 물어볼 곳이 없다.
+        "min_qty": REBAL_MIN_QTY,
+        "upper_ratio": TARGET_QTY_UPPER_RATIO,
     })
+
+
+def _orders_context(run_label: Optional[str], duration: Optional[str]) -> dict:
+    """작업지시서 화면의 공통 재료. 고르지 않으면 가장 최근 경로를 쓴다."""
+    targets = store.records(store.plan_targets())
+    if targets and not run_label:
+        run_label = targets[0]["run_label"]
+        duration = duration or targets[0]["duration"]
+    return {
+        "targets": targets,
+        "run_label": run_label,
+        "duration": duration,
+        "sheets": orders.build(run_label, duration) if run_label else [],
+        "capacity": VEHICLE_CAPACITY,
+        "depot_name": DEPOT_NAME,
+        "upper_ratio": TARGET_QTY_UPPER_RATIO,
+        "min_qty": REBAL_MIN_QTY,
+    }
+
+
+@app.get("/orders")
+def orders_page(request: Request, run_label: Optional[str] = None,
+                duration: Optional[str] = None):
+    """차량별 작업지시서 — 현장에 그대로 내보내는 종이."""
+    return templates.TemplateResponse(
+        request, "orders.html", _orders_context(run_label, duration))
+
+
+@app.get("/orders/live")
+def orders_live(request: Request, run_label: Optional[str] = None,
+                duration: Optional[str] = None):
+    """계획 대상 대여소만 타슈 API로 다시 조회해 집행 가능한지 대조한다.
+
+    **사용자가 눌렀을 때만 부른다.** 화면을 열 때마다 외부 API를 때리면
+    출발 직전에 정작 필요할 때 제한에 걸릴 수 있다.
+    """
+    context = _orders_context(run_label, duration)
+    planned = orders.planned_work(context["run_label"], context["duration"])
+
+    try:
+        live = tashu.fetch_stations()
+    except tashu.TashuError as err:
+        context["live_error"] = str(err)
+        return templates.TemplateResponse(request, "orders.html", context)
+
+    compared = orders.compare_stock(planned, live)
+    context["compared"] = store.records(compared)
+    context["live_summary"] = orders.summarize(compared)
+    context["checked_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    return templates.TemplateResponse(request, "orders.html", context)
 
 
 @app.get("/maps")

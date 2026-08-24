@@ -17,6 +17,7 @@
   <a class="chip" href="#what">무엇을 계산하나</a>
   <a class="chip" href="#form">입력 항목</a>
   <a class="chip" href="#read">결과 읽는 법</a>
+  <a class="chip" href="#rules">계획이 쓰는 기준</a>
   <a class="chip" href="#trouble">이럴 땐</a>
   <a class="chip" href="#words">용어</a>
 </div>
@@ -239,6 +240,15 @@
     <p style="margin:var(--sp-sm) 0 0"><a href="/maps">지도 보기 →</a></p>
   </div>
   <div class="card">
+    <h3>📋 작업지시서 — 기사에게 줄 종이</h3>
+    <p style="font-size:var(--fs-ui); color:var(--ink-3); margin:0">
+      차량 한 대가 한 장입니다. 들를 순서·대여소·싣고 내릴 수량·차에 남는 대수가
+      표로 나옵니다. <b>인쇄하면 차량마다 쪽이 나뉩니다.</b>
+      출발 직전에 <b>“지금 재고와 대조하기”</b>를 누르면 계획 대상 대여소만
+      다시 조회해 집행 가능한지 알려 줍니다.</p>
+    <p style="margin:var(--sp-sm) 0 0"><a href="/orders">작업지시서 보기 →</a></p>
+  </div>
+  <div class="card">
     <h3>📊 성과 지표 — 이 계획이 쓸 만한가</h3>
     <p style="font-size:var(--fs-ui); color:var(--ink-3); margin:0">
       계획이 목표를 얼마나 채웠는지, 그러려고 얼마나 움직였는지입니다.
@@ -342,6 +352,13 @@
           남는 차량은 배정에서 자동으로 빠지고, 나중에 늘리면 다시 들어옵니다.</td>
       </tr>
       <tr>
+        <td><b>계획을 세워 뒀는데 재고가 바뀌었습니다</b></td>
+        <td class="muted"><a href="/orders">작업지시서</a>에서 <b>“지금 재고와 대조하기”</b>를
+          누르세요. 계획 대상 대여소만 다시 조회해 <b>가능·부족·넘침·불가</b>로 나눠 줍니다.
+          <b>계획을 자동으로 바꾸지는 않습니다</b> — 몇 대를 조정할지는 현장에서 정합니다.
+          차이가 너무 크면 계획을 다시 실행하는 편이 낫습니다.</td>
+      </tr>
+      <tr>
         <td><b>표를 원하는 순서로 보고 싶습니다</b></td>
         <td class="muted"><b>열 제목을 누르면</b> 그 열로 정렬됩니다. 한 번 더 누르면 반대 방향입니다.
           숫자 열은 크기순, 글자 열은 가나다순이고 빈칸은 늘 맨 뒤로 갑니다.
@@ -386,6 +403,48 @@
         <td class="muted">한 번의 계산에 붙인 이름. 결과 파일과 기록을 이 이름으로 묶습니다.</td></tr>
       <tr><td><b>휴일</b></td>
         <td class="muted">주말 + 공휴일. 달력으로 자동 판정합니다.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+{# ───────────────────────── 계획이 쓰는 기준 ───────────────────────── #}
+<h2 id="rules">계획이 쓰는 기준</h2>
+<p class="section-lead">현장에서 “왜 이 대여소는 안 건드리지?”, “왜 여기까지만 채우지?”
+  라는 질문이 나오는 자리입니다. 코드에만 있던 값을 여기에 밝혀 둡니다.</p>
+
+<div class="card flush">
+  <div class="table-wrap">
+  <table class="table-prose">
+    <thead><tr><th>기준</th><th>값</th><th>왜</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>얼마부터 작업 대상인가</b></td>
+        <td class="num">{{ min_qty }}대 초과</td>
+        <td class="muted">모자라거나 남는 양이 {{ min_qty }}대 이하면 손대지 않습니다.
+          한두 대를 맞추러 차를 보내는 것이 손해이고, 그 정도 차이는 이용자가
+          몇 시간 안에 스스로 메웁니다.</td>
+      </tr>
+      <tr>
+        <td><b>얼마까지 채울 수 있나</b></td>
+        <td class="num">거치대 × {{ upper_ratio }}</td>
+        <td class="muted">거치대 수를 그대로 상한으로 쓰지 않습니다. 자전거는 거치대 밖에도
+          세울 수 있고, 거치대가 5대뿐인 대여소에서 상한을 딱 맞추면 수요를 아예 못
+          담기 때문입니다. <b>재고 대조의 “넘침” 판정도 같은 값을 씁니다.</b>
+          ⚠️ 현장 확인이 안 된 값이라, 운영 규칙이 다르면 알려 주세요.</td>
+      </tr>
+      <tr>
+        <td><b>한 대에 몇 대를 싣나</b></td>
+        <td class="num">{{ capacity }}대</td>
+        <td class="muted">대전교통공사 확인값입니다. 경로를 짤 때 이 용량을 넘기지 않도록
+          싣고 내리는 순서를 섞습니다.</td>
+      </tr>
+      <tr>
+        <td><b>얼마나 넉넉히 잡나</b></td>
+        <td class="num">평균 + {{ target_z }}σ</td>
+        <td class="muted">평균만 맞추면 절반은 모자랍니다. 12개월 실측 백테스트로 정한
+          값이며, 관행값 1.65가 아닙니다.</td>
+      </tr>
     </tbody>
   </table>
   </div>
