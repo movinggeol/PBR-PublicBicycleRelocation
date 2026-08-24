@@ -826,6 +826,34 @@ def test_station_coverage_needs_the_collected_station_list(step4, tmp_path, monk
                                          "station_coverage": pytest.approx(0.87)}
 
 
+def test_pick_side_harm_warns_only_when_it_is_material(step4):
+    """Pick 쪽 결품 증가는 **몫이 클 때만** 경고한다.
+
+    재고를 빼내는 곳이니 조금 나빠지는 것은 설계상 정상이다. `mu`가 크게 음수인
+    대여소는 `target_qty`가 0으로 잘려 거의 다 실어 가고, 그 대여소가 유난히 붐빈
+    하루에 결품이 한두 시간 생긴다(z가 허용한 꼬리).
+
+    실측(26년 03월 `_05_10`): Pick +1h vs Drop −2915h = 0.03%. 예전 조건
+    (`pick_delta > 0`)은 여기서도 경고를 띄웠고, 그 거짓 경보 때문에 아무 문제 없는
+    `target_qty`를 의심하고 조사했다.
+    """
+    import project_config
+
+    threshold = project_config.PICK_HARM_WARN_SHARE
+    assert 0 < threshold < 1, "문턱은 비율이다"
+
+    # 실측 사례 — 경고하지 않아야 한다
+    assert step4.pick_harm_share(1, -2915) < threshold
+
+    # Drop 이득이 미미한데 Pick만 나빠지면 알려야 한다
+    assert step4.pick_harm_share(50, -100) > threshold
+    # Drop 쪽 이득이 아예 없으면 몫을 따질 것 없이 알린다
+    assert step4.pick_harm_share(3, 0) == 1.0
+    # 나빠진 것이 없으면 잠잠하다
+    assert step4.pick_harm_share(0, 0) == 0.0
+    assert step4.pick_harm_share(0, -100) == 0.0
+
+
 def test_all_three_maps_share_one_tile_setting():
     """군집·경로·재고 지도가 **같은 배경 타일**을 써야 한다.
 

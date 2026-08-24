@@ -9,7 +9,8 @@ import pandas as pd
 
 import db
 from project_config import (
-    MAP_TILES, PROJECT_ROOT, TIME_BUDGET_MINUTES, duration_list, ensure_output_dirs,
+    MAP_TILES, PICK_HARM_WARN_SHARE, PROJECT_ROOT, TIME_BUDGET_MINUTES,
+    duration_list, ensure_output_dirs,
     get_runtime_config,
     require_columns, select_day_type,
 )
@@ -214,6 +215,21 @@ def load_vrp_plan(duration: str) -> pd.DataFrame:
     return pd.read_csv(path, encoding='utf-8')
 
 
+def pick_harm_share(pick_delta: float, drop_delta: float) -> float:
+    """Pick 쪽 결품 증가가 Drop 쪽 이득의 몇 배인가.
+
+    **Pick 대여소가 조금 나빠지는 것은 설계상 정상이다** — 재고를 빼내는 곳이고,
+    `mu`가 크게 음수인 대여소는 `target_qty`가 0으로 잘려 거의 다 실어 간다.
+    그래서 '양수면 경고'는 늘 뜨는 거짓 경보였다(1.19.6에서 고쳤다).
+
+    Drop 쪽 이득이 없으면(0) Pick 손실만 있다는 뜻이라 1을 돌려준다 — 그때는
+    몫을 따질 것 없이 알려야 한다.
+    """
+    if drop_delta:
+        return pick_delta / abs(drop_delta)
+    return 1.0 if pick_delta > 0 else 0.0
+
+
 def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
     '''재배치 전후의 결품 시간을 비교한다. (docs/KPI.md 3-B, 4단계)
 
@@ -295,8 +311,14 @@ def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
           f"  (Pick {pick_delta:+d}h / Drop {drop_delta:+d}h)")
     print(f"  계획이 100% 집행됐다면: {result['stockout_hours_plan']:.2f}h"
           f" — 계획과 집행의 격차 {result['stockout_hours_after'] - result['stockout_hours_plan']:+.2f}h")
+    # Pick 쪽이 조금 나빠지는 것은 설계상 정상이다(재고를 빼내는 곳이므로).
+    # Drop 쪽 이득에 견줘 **몫이 클 때만** 알린다 — 근거는 project_config.
+    harm_share = pick_harm_share(pick_delta, drop_delta)
     if pick_delta > 0:
-        print(f"  ⚠ Pick 대여소에서 결품이 {pick_delta}시간 늘었습니다 —"
+        print(f"  Pick 쪽 손실은 Drop 쪽 이득의 {harm_share * 100:.2f}%입니다"
+              f" (문턱 {PICK_HARM_WARN_SHARE * 100:.0f}%).")
+    if harm_share > PICK_HARM_WARN_SHARE:
+        print(f"  ⚠ Pick 대여소의 결품 증가가 문턱을 넘었습니다 —"
               f" 회수량이 과한지 target_qty를 확인하세요.")
     return result
 
