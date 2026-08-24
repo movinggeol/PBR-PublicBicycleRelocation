@@ -43,6 +43,21 @@ def test_guide_shows_live_settings(client):
     assert f"{int(round(TIME_BUDGET_MINUTES))}분" in html
 
 
+def test_expected_runtime_comes_from_past_runs(client, monkeypatch):
+    """예상 소요는 사람이 적는 것이 아니라 **지난 실행이 실제로 걸린 시간**이다.
+
+    예전 안내에는 '보통 5~10분'이 박혀 있었는데, 실측은 시간대 하나에 2분 남짓이었다.
+    """
+    from webapp import jobs
+
+    monkeypatch.setattr(jobs, "typical_elapsed", lambda limit=20: 132.0)
+
+    for path in ("/guide", "/"):
+        html = client.get(path).text
+        assert "2.2분" in html, f"{path}에 지난 실행 기준 소요가 안 보인다"
+        assert "5~10분" not in html, f"{path}에 옛 예상 소요가 남아 있다"
+
+
 def test_guide_covers_every_run_form_field(client):
     """실행 폼의 모든 항목이 안내에 설명돼 있어야 한다.
 

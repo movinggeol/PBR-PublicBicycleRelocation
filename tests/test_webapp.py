@@ -12,7 +12,8 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-from project_config import FLEET_SIZE, VEHICLES_PER_ROUND
+import project_config
+from project_config import DURATIONS, FLEET_SIZE, VEHICLES_PER_ROUND
 from webapp import app as app_module
 from webapp import jobs
 from webapp.app import app
@@ -100,6 +101,86 @@ def test_per_round_over_fleet_is_rejected(client, monkeypatch):
     assert "보유 차량 대수" in res.text
 
 
+@pytest.mark.parametrize("path", ["/", "/data", "/maps", "/kpi", "/vehicles"])
+def test_data_tables_are_sortable(client, path):
+    """표가 있는 화면은 열 정렬을 켠다.
+
+    정렬은 base.html의 공용 스크립트가 `table[data-sortable]`을 찾아 거는 방식이라,
+    템플릿에서 속성이 빠지면 조용히 기능만 사라진다.
+    """
+    html = client.get(path).text
+    body = html.split("</style>", 1)[1]      # CSS 안의 선택자는 세지 않는다
+    if "<table" not in body:
+        # 산출물이 없는 환경(빈 DB·빈 data/)에서는 표 자체가 안 그려진다.
+        pytest.skip(f"{path}에 아직 표가 없다")
+    assert "data-sortable" in body, f"{path}의 표에 정렬이 안 걸려 있다"
+
+
+def test_grouped_output_table_is_not_sortable(client):
+    """분류 이름이 첫 행에만 붙는 표에는 정렬을 걸면 안 된다.
+
+    행을 흩으면 분류 이름 없는 행만 남는다(쪽 넘기기에서 덩어리를 나눈 것과 같은 이유).
+    """
+    html = client.get("/").text
+    latest = html[html.index("최신 산출물"):html.index("저장된 실행")]
+
+    assert "data-page-item" in latest, "최신 산출물 표를 못 찾았다 — 테스트가 낡았다"
+    assert "data-sortable" not in latest, "분류 묶음 표에 정렬이 걸렸다"
+
+
+def test_index_offers_only_periods_we_have(client, monkeypatch, tmp_path):
+    """순수요 기간은 계산해 둔 달만 고르게 한다 — 없는 달은 step0에서 멈춘다."""
+    for label in ("25년 11월", "26년 03월"):
+        (tmp_path / f"st_net_daily ({label}).csv").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(project_config, "NET_DEMAND_DIR", tmp_path)
+
+    html = client.get("/").text
+    assert 'name="period"' in html and "<select" in html
+    assert 'value="26년 03월"' in html, "가진 달이 목록에 없다"
+    assert 'value="25년 12월"' not in html, "없는 달이 목록에 있다"
+
+
+def test_index_has_duration_checkboxes(client):
+    """시간대는 네 창 중에서 고른다(직접 적게 두면 오타가 step4까지 흘러간다)."""
+    html = client.get("/").text
+    for duration in DURATIONS:
+        assert f'value="{duration}"' in html, f"{duration}이 폼에 없다"
+    assert 'type="checkbox" name="duration"' in html
+
+
+def test_chosen_durations_are_passed_as_one_argument(client, monkeypatch):
+    """고른 시간대는 콤마 하나로 묶여 전달된다. 순서는 하루 흐름 순이다."""
+    captured = _capture_start(monkeypatch)
+    res = client.post("/runs",
+                      data={"duration": ["_15_20", "_05_10"]},
+                      follow_redirects=False)
+
+    assert res.status_code == 303
+    args = captured[0]
+    assert args[args.index("--duration") + 1] == "_05_10,_15_20"
+
+
+def test_unknown_duration_is_rejected(client, monkeypatch):
+    """맨 앞 밑줄이 빠진 값처럼 목록에 없는 시간대는 띄우기 전에 거른다."""
+    _reject_start(monkeypatch)
+    res = client.post("/runs", data={"duration": "10_15"}, follow_redirects=False)
+
+    assert res.status_code == 400
+    assert "시간대는" in res.text
+
+
+def test_missing_period_is_rejected(client, monkeypatch, tmp_path):
+    """계산해 둔 순수요가 없는 달로는 실행하지 않는다."""
+    (tmp_path / "st_net_daily (25년 11월).csv").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(project_config, "NET_DEMAND_DIR", tmp_path)
+    _reject_start(monkeypatch)
+
+    res = client.post("/runs", data={"period": "25년 12월"}, follow_redirects=False)
+
+    assert res.status_code == 400
+    assert "순수요가 없습니다" in res.text
+
+
 def test_index_has_day_type_select(client):
     """평일/휴일을 웹에서 고를 수 있어야 한다(기본은 오늘로 자동 판정)."""
     res = client.get("/")
@@ -125,6 +206,57 @@ def test_invalid_day_type_is_rejected(client, monkeypatch):
 
     assert res.status_code == 400
     assert "요일 구분" in res.text
+
+
+def test_pipeline_runs_unbuffered_so_progress_is_live(monkeypatch, tmp_path):
+    """진행 표시가 실시간이어야 한다.
+
+    출력을 파일로 넘기면 파이썬이 블록 버퍼링을 해서, run_pipeline이 찍는
+    '[3/11] 실행:'이 몇 KB씩 몰려 나온다 — 3초마다 새로고침하는 화면이
+    늘 실제보다 뒤처져 보인다.
+    """
+    captured = {}
+
+    class FakeProc:
+        def wait(self):
+            return 0
+
+    def fake_popen(command, **kwargs):
+        captured.update(kwargs)
+        return FakeProc()
+
+    monkeypatch.setattr(jobs, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(jobs.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(jobs, "_save_registry", lambda: None)
+    jobs.start_job([])
+
+    env = captured["env"]
+    assert env["PYTHONUNBUFFERED"] == "1"
+    assert env["PYTHONIOENCODING"] == "utf-8", "로그의 '—' 한 글자에 단계가 죽는다"
+
+
+def test_typical_elapsed_is_the_median_of_successful_runs(monkeypatch):
+    """예상 소요는 성공한 실행의 중앙값이다.
+
+    평균이 아닌 이유: 중간에 오래 멈췄던 한 건이 평균을 통째로 끌어올린다.
+    실패·중단된 실행과 시각이 없는 실행은 표본에서 뺀다.
+    """
+    def job(job_id, status, started, finished):
+        return jobs.Job(id=job_id, status=status,
+                        started_at=started, finished_at=finished)
+
+    samples = [
+        job("3", "success", "2026-08-24 10:00:00", "2026-08-24 10:02:00"),   # 120초
+        job("2", "success", "2026-08-24 09:00:00", "2026-08-24 09:04:00"),   # 240초
+        job("1", "failed", "2026-08-24 08:00:00", "2026-08-24 08:30:00"),    # 제외
+        job("0", "success", "2026-08-24 07:00:00", ""),                      # 제외
+    ]
+    monkeypatch.setattr(jobs, "list_jobs", lambda: samples)
+
+    assert jobs.typical_elapsed() == 180.0
+
+    monkeypatch.setattr(jobs, "list_jobs", lambda: [])
+    assert jobs.typical_elapsed() is None, "기록이 없으면 지어내지 않는다"
 
 
 def test_favicon_no_content(client):

@@ -38,20 +38,44 @@
           <span class="hint">산출물 파일명과 DB 실행 라벨에 쓰입니다.</span>
         </div>
 
-        <div class="field">
+        {# 계산해 둔 달만 고르게 한다 — 직접 적게 두면 없는 달을 넣어 step0가 멈춘다.
+           기본값은 가진 것 중 가장 최근 달이고, 목록은 요청마다 다시 읽는다. #}
+        <div class="field wide">
           <label for="f-period">
-            <span class="tip" data-tip="과거 수요를 어느 기간에서 뽑을지입니다. 25년 11월처럼 적습니다 — 순수요 파일 이름에 들어가는 표기 그대로입니다.">순수요 기간</span>
+            <span class="tip" data-tip="과거 수요를 어느 달에서 뽑을지입니다. 순수요를 이미 계산해 둔 달만 나옵니다. 기본값은 가진 것 중 가장 최근 달입니다.">순수요 기간</span>
           </label>
+          {% if periods %}
+          <select id="f-period" name="period">
+            {% for option in periods %}
+            <option value="{{ option }}"
+              {% if option == defaults.period %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select>
+          <span class="hint">순수요를 계산해 둔 달 {{ periods | length }}개.
+            가장 최근인 <b>{{ defaults.period }}</b>이 기본값입니다.</span>
+          {% else %}
           <input id="f-period" type="text" name="period" value="{{ defaults.period }}">
-          <span class="hint">이 기간의 대여 이력에서 수요를 추정합니다.</span>
+          <span class="hint">아직 계산해 둔 순수요가 없습니다.
+            <code>25년 11월</code> 표기로 적으면 그 달을 새로 계산합니다.</span>
+          {% endif %}
         </div>
 
-        <div class="field">
-          <label for="f-duration">
-            <span class="tip" data-tip="하루 중 어느 시간대를 계획할지입니다. 예: _10_15 는 10시~15시. 맨 앞 밑줄까지 그대로 적어야 합니다. 시간대마다 수요 방향이 달라 따로 계산합니다.">시간대</span>
+        {# 하루를 5시간 창 넷으로 자른다. 창마다 수요 방향이 반대라 한 번에
+           여러 개를 골라도 계획은 창별로 따로 세운다. #}
+        <div class="field wide">
+          <label>
+            <span class="tip" data-tip="하루 중 어느 시간대를 계획할지입니다. 시간대마다 자전거가 흐르는 방향이 달라 따로 계산합니다. 여러 개를 고르면 차례로 계획합니다.">시간대</span>
           </label>
-          <input id="f-duration" type="text" name="duration" value="{{ defaults.duration }}">
-          <span class="hint">콤마로 여러 개를 넣으면 차례로 계획합니다.</span>
+          <div class="checks">
+            {% for option in durations %}
+            <label>
+              <input type="checkbox" name="duration" value="{{ option.value }}"
+                {% if option.value in defaults.duration.split(",") %}checked{% endif %}>
+              {{ option.label }}</label>
+            {% endfor %}
+          </div>
+          <span class="hint">여러 개를 고르면 차례로 계획합니다.
+            하나도 안 고르면 기본값(<code>{{ defaults.duration }}</code>)으로 돕니다.</span>
         </div>
 
         <div class="field wide">
@@ -102,7 +126,9 @@
 
       <div class="form-foot">
         <button class="btn" type="submit">계획 실행</button>
-        <p class="hint" style="margin:var(--sp-sm) 0 0">대여소를 묶는 단계에서 몇 분이 걸릴 수 있습니다.
+        <p class="hint" style="margin:var(--sp-sm) 0 0">{% if typical_minutes %}지난 실행 기준
+          <b>보통 {{ typical_minutes }}분</b>{% else %}시간대 하나면 <b>2분 남짓</b>{% endif %}
+          걸립니다. 대여소를 묶는 단계가 대부분이고, 시간대를 여러 개 고르면 그만큼 늘어납니다.
           누르면 진행 상황 화면으로 넘어갑니다.</p>
       </div>
     </form>
@@ -153,9 +179,10 @@
 <div class="card flush">
   {% if pipeline_runs %}
   <div class="table-wrap">
-  <table>
+  <table data-sortable>
     <thead><tr>
-      <th>실행 이름</th><th>순수요 기간</th><th>시간대</th><th>요일</th><th>기록 시각</th><th>바로 보기</th>
+      <th>실행 이름</th><th>순수요 기간</th><th>시간대</th><th>요일</th><th>기록 시각</th>
+      <th data-nosort>바로 보기</th>
     </tr></thead>
     <tbody>
     {% for run in pipeline_runs %}
@@ -184,7 +211,7 @@
 <div class="card flush">
   {% if jobs %}
   <div class="table-wrap">
-  <table>
+  <table data-sortable>
     <thead><tr><th>작업</th><th>상태</th><th>시작</th><th>종료</th><th>인자</th></tr></thead>
     <tbody>
     {% for job in jobs %}

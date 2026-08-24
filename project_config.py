@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
@@ -14,8 +15,58 @@ DATA_ROOT = PROJECT_ROOT / "data"
 PP_ROOT = DATA_ROOT / "pp_data"
 
 DEFAULT_NOW = os.getenv("PBR_NOW", "2026-05-21 18")
-DEFAULT_PERIOD = os.getenv("PBR_PERIOD", "25년 11월")
+
+# ---- 시간대 (duration) ----
+# 하루를 5시간 창 넷으로 자른다. **맨 앞 밑줄까지가 값**이다(`_10_15`) — 예시를
+# `10_15`로 적으면 그대로 입력한 사용자가 step4 duration_hours()에서 크래시를 본다.
+# 창마다 수요 방향이 반대라 섞어서 평균 내지 않는다(docs/KPI.md).
+# `_20_05`는 자정을 넘긴다 — 시간 목록을 만드는 곳은 duration_hours() 하나다.
+DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
+DURATION_LABELS = {
+    "_05_10": "05~10시 (출근)",
+    "_10_15": "10~15시 (낮)",
+    "_15_20": "15~20시 (퇴근)",
+    "_20_05": "20~05시 (야간)",
+}
 DEFAULT_DURATION = os.getenv("PBR_DURATION", "_05_10")
+
+# ---- 순수요 기간 ----
+# 파일명·DB에 쓰는 표기는 '25년 11월'이다(period_label 참고).
+# 기본값은 **보유한 순수요 중 가장 최근 달**이다 — 달이 바뀔 때마다 사람이 고쳐
+# 넣게 하면 곧 낡은 달로 계획을 세우게 된다. 하나도 없는 새 저장소에서는
+# 아래 대비값을 쓴다(폼에 빈칸을 보여 주는 것보다 낫다).
+FALLBACK_PERIOD = "25년 11월"
+NET_DEMAND_DIR = PP_ROOT / "순수요"
+_PERIOD_FILE_RE = re.compile(r"^st_net_daily \((\d{2})년 (\d{2})월\)\.csv$")
+
+
+def available_periods() -> Tuple[str, ...]:
+    """순수요를 이미 계산해 둔 기간 목록(오래된 순). 없으면 빈 튜플.
+
+    **CSV를 본다.** DB에도 같은 내용이 있지만 CSV가 아직 정본이고(docs/DB_PLAN.md),
+    project_config가 db를 import하면 순환이 된다.
+    """
+    found = []
+    try:
+        entries = list(NET_DEMAND_DIR.iterdir())
+    except OSError:
+        return ()
+    for path in entries:
+        if (m := _PERIOD_FILE_RE.match(path.name)):
+            found.append((int(m.group(1)), int(m.group(2)), f"{m.group(1)}년 {m.group(2)}월"))
+    return tuple(label for _, _, label in sorted(found))
+
+
+def latest_period(fallback: str = FALLBACK_PERIOD) -> str:
+    """보유한 순수요 중 가장 최근 달. 하나도 없으면 대비값."""
+    periods = available_periods()
+    return periods[-1] if periods else fallback
+
+
+# import 시점에 한 번 정한다 — CLI 기본값이라 상수여야 한다.
+# **웹 폼은 요청마다 latest_period()/available_periods()를 다시 부른다**;
+# 서버를 띄워 둔 채 새 달을 계산해도 선택지에 바로 나와야 하기 때문이다.
+DEFAULT_PERIOD = os.getenv("PBR_PERIOD") or latest_period()
 
 # ---- 요일 구분 (평일/휴일) ----
 # **휴일 = 주말 ∪ 공휴일**이다. 평일과 휴일은 수요 구조가 다르므로 한 통계로
@@ -431,6 +482,47 @@ def duration_list(config: RuntimeConfig) -> Tuple[str, ...]:
     """
 
     return tuple(item.strip() for item in config.duration.split(",") if item.strip())
+
+
+def normalize_durations(value) -> str:
+    """시간대 입력을 검사해 콤마 표기 하나로 되돌린다.
+
+    체크박스 여러 개(리스트)도, `_05_10,_10_15` 같은 콤마 문자열도 받는다.
+    **DURATIONS에 없는 값은 되돌린다** — 오타가 step4 duration_hours()까지
+    흘러가면 크래시가 된다(1.17.3에서 실제로 겪었다).
+    중복은 지우고 순서는 DURATIONS를 따른다 — 하루 흐름 순서로 돌아야 한다.
+    """
+    if isinstance(value, str):
+        items = [item.strip() for item in value.split(",")]
+    else:
+        items = [str(item).strip() for item in (value or ())]
+    items = [item for item in items if item]
+
+    if (unknown := [item for item in items if item not in DURATIONS]):
+        raise ValueError(
+            f"시간대는 {', '.join(DURATIONS)} 중에서 고릅니다"
+            f" (모르는 값: {', '.join(unknown)})."
+        )
+    chosen = set(items)
+    return ",".join(duration for duration in DURATIONS if duration in chosen)
+
+
+def normalize_period(value: str) -> str:
+    """순수요 기간 입력을 검사한다.
+
+    표기가 맞는지 보고, 계산해 둔 기간을 알 수 있으면 그 안에 있는지까지 본다 —
+    없는 달을 넣으면 step0가 파일을 못 찾고 멈춘다. 새 저장소(목록이 빈 경우)에는
+    표기만 본다.
+    """
+    period = (value or "").strip()
+    if not period:
+        return ""
+    if not re.fullmatch(r"\d{2}년 \d{2}월", period):
+        raise ValueError("순수요 기간은 '25년 11월' 표기로 적습니다.")
+    if (periods := available_periods()) and period not in periods:
+        raise ValueError(
+            f"'{period}'의 순수요가 없습니다. 있는 기간: {', '.join(periods)}")
+    return period
 
 
 def ensure_output_dirs() -> None:

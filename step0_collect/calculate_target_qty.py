@@ -183,7 +183,11 @@ def calculate_rebal_qty(stats: pd.DataFrame, duration: str, now: str, z=None,
                               low_limit=low_limit, model_target=model_target)
 
     stats.to_csv(out_file_path.format(duration=duration, now=now) + '.csv', encoding='utf-8', index=False)
-    방식 = "분위수 모델" if model_target is not None else f"mu + {z}·sigma"
+    # z를 안 넘기면 compute_rebal_qty가 TARGET_Z로 채운다. 여기서도 같은 값을
+    # 풀어 써야 한다 — 안 그러면 로그에 'mu + None·sigma'로 찍혀, z 실험 중에
+    # 어떤 값으로 돌았는지 로그만 봐서는 알 수 없다.
+    쓴_z = TARGET_Z if z is None else z
+    방식 = "분위수 모델" if model_target is not None else f"mu + {쓴_z}·sigma"
     print(f"rebal{duration}가 저장되었습니다. ({방식}, 저장 위치 : "
           f"{out_file_path.format(duration=duration, now=now) + '.csv'})")
 

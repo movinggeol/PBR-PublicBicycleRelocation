@@ -695,6 +695,74 @@ def test_step1_thresholds_come_from_project_config():
             project_config.ADJUST_BALANCE_LIMIT) == (200, 3, 5), "기본값이 바뀌었다"
 
 
+def test_save_message_shows_the_z_actually_used(target_qty, tmp_path, monkeypatch, capsys):
+    """저장 로그에 **실제로 쓴 z**가 찍혀야 한다.
+
+    z를 안 넘기면 compute_rebal_qty가 TARGET_Z로 채우는데, 로그는 넘겨받은
+    인자를 그대로 찍어 'mu + None·sigma'가 됐다. z 실험 중에 어떤 값으로
+    돌았는지 로그만 봐서는 알 수 없었다(계산 자체는 맞았다).
+    """
+    import project_config
+
+    monkeypatch.setattr(target_qty, "out_file_path", str(tmp_path / "rebal{duration} ({now})"))
+    monkeypatch.setattr(target_qty.db, "save_output", lambda *a, **k: None)
+
+    target_qty.calculate_rebal_qty(
+        _stats(mu=[10.0], sigma=[2.0], stock=[5], parking_lot=[100]),
+        duration="_05_10", now="테스트")
+
+    message = capsys.readouterr().out
+    assert f"mu + {project_config.TARGET_Z}·sigma" in message
+    assert "None" not in message
+
+
+def test_duration_input_is_checked_against_the_real_list():
+    """시간대는 네 창이 전부다. 맨 앞 밑줄이 빠진 값은 여기서 걸러야 한다.
+
+    1.17.3 이전에는 폼 예시가 `10_15`였고, 그대로 입력한 사용자가 한참 뒤
+    step4 duration_hours()에서 크래시를 봤다.
+    """
+    import project_config
+
+    assert project_config.DURATIONS == ("_05_10", "_10_15", "_15_20", "_20_05")
+    assert set(project_config.DURATION_LABELS) == set(project_config.DURATIONS)
+
+    # 리스트(체크박스)도 콤마 문자열도 받고, 순서는 늘 하루 흐름 순으로 되돌린다.
+    assert project_config.normalize_durations(["_15_20", "_05_10"]) == "_05_10,_15_20"
+    assert project_config.normalize_durations("_10_15,_10_15") == "_10_15"
+    assert project_config.normalize_durations([]) == ""
+
+    for bad in ("10_15", "_05_09", "all"):
+        with pytest.raises(ValueError, match="시간대는"):
+            project_config.normalize_durations(bad)
+
+
+def test_period_default_follows_the_data_we_have(tmp_path, monkeypatch):
+    """순수요 기간 기본값은 **가진 것 중 가장 최근 달**이다.
+
+    달이 바뀔 때마다 사람이 상수를 고쳐 넣게 두면 곧 낡은 달로 계획하게 된다.
+    """
+    import project_config
+
+    monkeypatch.setattr(project_config, "NET_DEMAND_DIR", tmp_path)
+    assert project_config.available_periods() == ()
+    assert project_config.latest_period() == project_config.FALLBACK_PERIOD
+
+    for label in ("26년 01월", "25년 11월", "26년 03월"):
+        (tmp_path / f"st_net_daily ({label}).csv").write_text("x", encoding="utf-8")
+    (tmp_path / "st_net_daily (엉뚱한 이름).csv").write_text("x", encoding="utf-8")
+
+    assert project_config.available_periods() == ("25년 11월", "26년 01월", "26년 03월")
+    assert project_config.latest_period() == "26년 03월"
+
+    assert project_config.normalize_period("25년 11월") == "25년 11월"
+    assert project_config.normalize_period("  ") == ""
+    with pytest.raises(ValueError, match="순수요가 없습니다"):
+        project_config.normalize_period("25년 12월")
+    with pytest.raises(ValueError, match="표기"):
+        project_config.normalize_period("2025-11")
+
+
 def test_candidate_glob_does_not_catch_other_outputs():
     """후보 파일 글롭이 `top_center*.csv` 같은 다른 산출물을 잡으면 안 된다.
 

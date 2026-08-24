@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -29,10 +29,11 @@ from fastapi.templating import Jinja2Templates
 
 from project_config import (
     DAY_TYPE_AUTO, DAY_TYPE_LABELS, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_DURATION,
-    DEFAULT_NOW, DEFAULT_PERIOD, DEFAULT_RAW_FILE, FLEET_SIZE, MAX_FLEET_SIZE,
-    TARGET_Z, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY, VEHICLE_SPEED_KMPH,
-    VEHICLES_PER_ROUND,
-    normalize_day_type, normalize_fleet_size, normalize_per_round, resolve_day_type,
+    DEFAULT_NOW, DEFAULT_RAW_FILE, DURATION_LABELS, DURATIONS, FLEET_SIZE,
+    MAX_FLEET_SIZE, TARGET_Z, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY,
+    VEHICLE_SPEED_KMPH, VEHICLES_PER_ROUND,
+    available_periods, latest_period, normalize_day_type, normalize_durations,
+    normalize_fleet_size, normalize_per_round, normalize_period, resolve_day_type,
 )
 from webapp import catalog, jobs, store
 
@@ -74,7 +75,9 @@ STAGE_LABELS = {
 
 _PLAN_RE = re.compile(r"^\[(\d+)/(\d+)\] (?!실행: )(.+)$")
 _START_RE = re.compile(r"^\[(\d+)/(\d+)\] 실행: ")
-_DONE_RE = re.compile(r"^완료: (.+)$")
+# 완료 줄에는 소요 시간이 붙는다("완료: step1_cluster/top_st_clustering.py (42.1초)").
+# 괄호 부분을 떼고 파일명만 집는다 — 안 그러면 단계 표시가 통째로 안 켜진다.
+_DONE_RE = re.compile(r"^완료: (.+?)(?: \([^()]*\))?$")
 _FAIL_RE = re.compile(r"^실패: (.+?) \(exit code=")
 _MISSING_RE = re.compile(r"^파일이 없습니다: (.+)$")
 
@@ -123,11 +126,20 @@ def pipeline_progress(text: str) -> list[dict]:
 
 # ---------------- 페이지 ----------------
 
+def _minutes(seconds: Optional[float]) -> Optional[float]:
+    """초 → 분(소수 한 자리). 값이 없으면 그대로 None을 돌려준다."""
+    return None if seconds is None else round(seconds / 60, 1)
+
+
 def _index_context(error: Optional[str] = None) -> dict:
+    # 기간·시간대는 **요청마다 다시 읽는다.** 서버를 띄워 둔 채 새 달치 순수요를
+    # 계산해도 곧바로 선택지에 나와야 하기 때문이다(project_config의 상수는
+    # import 시점에 굳는다).
+    periods = available_periods()
     return {
         "defaults": {
             "now": DEFAULT_NOW,
-            "period": DEFAULT_PERIOD,
+            "period": latest_period(),
             "duration": DEFAULT_DURATION,
             "raw_file": DEFAULT_RAW_FILE,
             # 환경변수(PBR_FLEET_SIZE 등)를 걸어 뒀으면 그 값이, 아니면 기본값이 뜬다.
@@ -136,6 +148,11 @@ def _index_context(error: Optional[str] = None) -> dict:
             "day_type": DEFAULT_DAY_TYPE,
         },
         "max_fleet_size": MAX_FLEET_SIZE,
+        # 순수요를 계산해 둔 달만 고르게 한다 — 없는 달을 넣으면 step0가 멈춘다.
+        # 최근 달이 위로 오게 뒤집는다(대개 가장 최근 달로 계획한다).
+        "periods": list(reversed(periods)),
+        # 시간대는 네 창이 전부다. 창마다 수요 방향이 반대라 섞지 않는다.
+        "durations": [{"value": d, "label": DURATION_LABELS[d]} for d in DURATIONS],
         # 평일과 휴일은 수요 구조가 달라 한 실행에 섞지 않는다 (docs/steps/step0_raw.md).
         # auto는 계획 대상일(기본 오늘)을 달력으로 판정한다 — 운영 기본값.
         "day_types": (
@@ -143,6 +160,7 @@ def _index_context(error: Optional[str] = None) -> dict:
               "label": f"자동 (오늘 = {DAY_TYPE_LABELS[resolve_day_type()]})"}]
             + [{"value": v, "label": DAY_TYPE_LABELS[v]} for v in DAY_TYPES]
         ),
+        "typical_minutes": _minutes(jobs.typical_elapsed()),
         "running": jobs.running_job(),
         "jobs": jobs.list_jobs()[:15],
         "latest": catalog.latest_outputs(),
@@ -161,7 +179,7 @@ def create_run(
     request: Request,
     now: str = Form(""),
     period: str = Form(""),
-    duration: str = Form(""),
+    duration: List[str] = Form([]),
     raw_file: str = Form(""),
     day_type: str = Form(""),
     fleet_size: str = Form(""),
@@ -170,16 +188,25 @@ def create_run(
     skip_eda: Optional[str] = Form(None),
 ):
     args = []
-    for flag, value in (("--now", now), ("--period", period),
-                        ("--duration", duration), ("--raw-file", raw_file)):
+    for flag, value in (("--now", now), ("--raw-file", raw_file)):
         value = value.strip()
         if value:
             args.extend([flag, value])
 
-    # 차량 대수는 숫자여야 하므로 파이프라인을 띄우기 전에 폼 단계에서 거른다.
+    # 잘못된 입력은 파이프라인을 띄우기 전에 폼 단계에서 거른다.
     def invalid(message: str):
         return templates.TemplateResponse(
             request, "index.html", _index_context(error=message), status_code=400)
+
+    # 기간·시간대는 값이 조금만 어긋나도 한참 뒤 단계에서 파일을 못 찾고 멈춘다.
+    # 여기서 거르면 사용자가 무엇을 고르면 되는지 그 자리에서 알 수 있다.
+    try:
+        if (checked := normalize_period(period)):
+            args.extend(["--period", checked])
+        if (chosen := normalize_durations(duration)):
+            args.extend(["--duration", chosen])
+    except ValueError as err:
+        return invalid(str(err))
 
     if day_type.strip():
         try:
@@ -255,6 +282,12 @@ def guide_page(request: Request):
         "time_budget": TIME_BUDGET_MINUTES,
         "target_z": TARGET_Z,
         "today_day_type": DAY_TYPE_LABELS[resolve_day_type()],
+        # 시간대 선택지도 코드에서 읽어 넘긴다 — 안내에 창을 박아 두면
+        # 폼과 어긋나는 순간 그대로 거짓말이 된다(tests/test_guide.py).
+        "durations": [{"value": d, "label": DURATION_LABELS[d]} for d in DURATIONS],
+        # 예상 소요는 **이 서버의 지난 실행에서 뽑는다.** 사람이 적어 두면
+        # 조건이 바뀐 뒤에도 남아 거짓말이 된다(옛 안내의 '보통 5~10분'이 그랬다).
+        "typical_minutes": _minutes(jobs.typical_elapsed()),
     })
 
 

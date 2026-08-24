@@ -62,7 +62,8 @@
 {% endif %}
 
 <h2>실행·회차별 지표</h2>
-<p class="section-lead">표의 각 열 제목에 커서를 대면 그 숫자가 무엇을 뜻하는지 나옵니다.</p>
+<p class="section-lead">표의 각 열 제목에 커서를 대면 그 숫자가 무엇을 뜻하는지 나옵니다.
+  <b>열 제목을 누르면</b> 그 열로 오름차순·내림차순 정렬됩니다.</p>
 
 {% if runs %}
 <div class="filterbar">
@@ -78,7 +79,7 @@
 <div class="card flush">
   {% if rows %}
   <div class="table-wrap">
-  <table>
+  <table data-sortable>
     <thead><tr>
       <th>실행</th>
       <th><span class="tip" data-tip="계획한 시간대입니다. 예: _10_15 는 10시~15시.">회차</span></th>
@@ -92,7 +93,8 @@
       <th class="num"><span class="tip" data-tip="가장 오래 걸린 차량 한 대의 작업 시간입니다. 시간 예산을 넘으면 붉게 표시됩니다.">최장 작업</span></th>
       <th class="num"><span class="tip" data-tip="정해진 시간 안에 끝난 회차의 비율입니다. 작업이 늦어지면 예측한 시간대가 지나가 계획의 효과가 줄어듭니다.">예산 준수</span></th>
       <th class="num"><span class="tip" data-tip="1km 움직일 때마다 개선률이 얼마나 올랐는지입니다. 연료 대비 효율로 볼 수 있습니다.">km당 개선</span></th>
-      <th><span class="tip" data-tip="자전거가 없어 빌리지 못하는 시간이 재배치로 얼마나 줄었는지입니다(시뮬레이션).">결품 (전→후)</span></th>
+      {# '12.5 → 8.3시간'처럼 숫자가 둘이라 한 열로는 정렬할 수 없다. #}
+      <th data-nosort><span class="tip" data-tip="자전거가 없어 빌리지 못하는 시간이 재배치로 얼마나 줄었는지입니다(시뮬레이션).">결품 (전→후)</span></th>
     </tr></thead>
     <tbody>
     {% for r in rows %}

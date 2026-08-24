@@ -47,14 +47,14 @@
 <div class="card flush">
   {% if workload %}
   <div class="table-wrap">
-  <table>
+  <table data-sortable>
     <thead><tr>
       <th>차량</th>
       <th class="num"><span class="tip" data-tip="이 차량이 지금까지 나간 횟수입니다.">출동</span></th>
       <th class="num"><span class="tip" data-tip="이 차량이 싣고 옮긴 자전거 총 대수입니다.">옮긴 대수</span></th>
       <th class="num">누적 거리</th>
       <th class="num"><span class="tip" data-tip="이동 시간에 자전거를 싣고 내리는 시간을 더한 값입니다. 배정 순서는 이 값이 작은 차량부터입니다.">누적 시간</span></th>
-      <th class="grow">최근 작업</th><th>이력</th>
+      <th class="grow">최근 작업</th><th data-nosort>이력</th>
     </tr></thead>
     <tbody>
     {% for v in workload %}
@@ -92,7 +92,7 @@
 <div class="card flush">
   {% if assignments %}
   <div class="table-wrap">
-  <table>
+  <table data-sortable>
     <thead><tr>
       <th>실행</th><th>회차</th><th>차량</th>
       <th class="num"><span class="tip" data-tip="이 차량이 맡은 대여소 덩어리의 번호입니다.">군집</span></th>

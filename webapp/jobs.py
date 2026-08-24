@@ -121,6 +121,43 @@ def list_jobs() -> List[Job]:
         return sorted(_jobs.values(), key=lambda j: j.id, reverse=True)
 
 
+def elapsed_seconds(job: "Job") -> Optional[float]:
+    """한 작업이 걸린 시간(초). 시각이 없거나 이상하면 None."""
+    if not (job.started_at and job.finished_at):
+        return None
+    try:
+        started = time.mktime(time.strptime(job.started_at, "%Y-%m-%d %H:%M:%S"))
+        finished = time.mktime(time.strptime(job.finished_at, "%Y-%m-%d %H:%M:%S"))
+    except ValueError:
+        return None
+    return finished - started if finished >= started else None
+
+
+def typical_elapsed(limit: int = 20) -> Optional[float]:
+    """최근 성공한 실행의 **중앙값** 소요 시간(초). 기록이 없으면 None.
+
+    안내 화면의 예상 소요를 여기서 뽑는다 — 사람이 숫자를 적어 두면 조건이
+    바뀐 뒤에도 그대로 남아 거짓말이 된다(예전 안내의 '보통 5~10분'이 그랬다).
+    평균이 아니라 중앙값인 이유는, 중간에 멈췄다 이어 돌린 한 건이 평균을
+    통째로 끌어올리기 때문이다.
+    """
+    samples = []
+    for job in list_jobs():
+        if job.status != "success":
+            continue
+        if (seconds := elapsed_seconds(job)) is not None:
+            samples.append(seconds)
+        if len(samples) >= limit:
+            break
+    if not samples:
+        return None
+    samples.sort()
+    middle = len(samples) // 2
+    if len(samples) % 2:
+        return samples[middle]
+    return (samples[middle - 1] + samples[middle]) / 2
+
+
 def get_job(job_id: str) -> Optional[Job]:
     with _lock:
         return _jobs.get(job_id)
@@ -232,6 +269,10 @@ def start_job(pipeline_args: List[str]) -> Job:
             env = dict(os.environ)
             env["PYTHONUTF8"] = "1"
             env["PYTHONIOENCODING"] = "utf-8"
+            # 출력이 파일로 가면 파이썬이 블록 버퍼링을 하는 탓에, run_pipeline이
+            # 찍는 진행 표시('[3/11] 실행:')가 몇 KB씩 몰려서 뒤늦게 나온다.
+            # 3초마다 새로고침하는 진행 화면이 실제보다 늘 뒤처져 보인다.
+            env["PYTHONUNBUFFERED"] = "1"
 
             command = [sys.executable, str(PROJECT_ROOT / "run_pipeline.py")] + list(pipeline_args)
             log_file.write("$ " + " ".join(command) + "\n\n")

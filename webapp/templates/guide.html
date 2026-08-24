@@ -42,9 +42,17 @@
       <span class="step-body">
         <span class="step-name"><b>끝날 때까지 기다립니다</b> — 진행 단계가 화면에 나옵니다</span>
         <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
-          대여소를 묶는 단계에서 몇 분이 걸립니다. 화면은 3초마다 저절로 새로고침됩니다.</span>
+          <b>대여소를 묶는 단계</b>가 전체 시간의 3분의 2 이상을 차지합니다.
+          화면은 3초마다 저절로 새로고침됩니다.
+          {% if typical_minutes %}
+            옆의 숫자는 이 서버에서 <b>지난 실행들이 실제로 걸린 시간</b>의 중앙값입니다.
+          {% else %}
+            시간대 하나면 <b>2분 남짓</b>, 세 개를 함께 고르면 <b>4분 안팎</b>입니다
+            (2026-08-24 실측). 대여소 수집·순수요 계산은 한 번만 하고, 군집·경로·지표는
+            시간대마다 다시 계산하기 때문에 고른 만큼 늘어납니다.
+          {% endif %}</span>
       </span>
-      <span class="step-state">보통 5~10분</span>
+      <span class="step-state">{% if typical_minutes %}보통 {{ typical_minutes }}분{% else %}보통 2~4분{% endif %}</span>
     </li>
     <li class="step">
       <span class="step-mark" aria-hidden="true">3</span>
@@ -161,14 +169,17 @@
       </tr>
       <tr>
         <td><b>순수요 기간</b></td>
-        <td class="muted">과거 수요를 어느 달에서 뽑을지. <code>25년 11월</code>처럼 적습니다.</td>
-        <td class="muted">계절이 바뀌었을 때. 여름 계획에 겨울 수요를 쓰면 맞지 않습니다.</td>
+        <td class="muted">과거 수요를 어느 달에서 뽑을지. <b>계산해 둔 달만 목록에 나옵니다</b>
+          (<code>25년 11월</code> 표기). 기본값은 가진 것 중 가장 최근 달입니다.</td>
+        <td class="muted">계절이 바뀌었을 때. 여름 계획에 겨울 수요를 쓰면 맞지 않습니다.
+          평소엔 기본값(최근 달) 그대로 두세요.</td>
       </tr>
       <tr>
         <td><b>시간대</b></td>
-        <td class="muted">하루 중 어느 시간을 계획할지. <code>_10_15</code>는 10시~15시
-          (<b>맨 앞 밑줄까지</b> 그대로 적습니다).</td>
-        <td class="muted">다른 시간대를 계획할 때. 콤마로 여러 개를 넣으면 차례로 돕니다.</td>
+        <td class="muted">하루 중 어느 시간을 계획할지. 5시간짜리 창 넷 중에서 고릅니다 —
+          {% for option in durations %}<code>{{ option.value }}</code>({{ option.label }}){% if not loop.last %}, {% endif %}{% endfor %}.</td>
+        <td class="muted">다른 시간대를 계획할 때. <b>여러 개를 고르면 차례로 돕니다.</b>
+          시간대마다 자전거가 흐르는 방향이 반대라 계획은 따로 세웁니다.</td>
       </tr>
       <tr>
         <td><b>요일 구분</b></td>
@@ -316,6 +327,12 @@
         <td><b>차가 몇 대 빠졌습니다</b></td>
         <td class="muted">실행할 때 <b>보유 차량 대수</b>를 실제 대수로 줄이세요.
           남는 차량은 배정에서 자동으로 빠지고, 나중에 늘리면 다시 들어옵니다.</td>
+      </tr>
+      <tr>
+        <td><b>표를 원하는 순서로 보고 싶습니다</b></td>
+        <td class="muted"><b>열 제목을 누르면</b> 그 열로 정렬됩니다. 한 번 더 누르면 반대 방향입니다.
+          숫자 열은 크기순, 글자 열은 가나다순이고 빈칸은 늘 맨 뒤로 갑니다.
+          링크만 있는 열(‘열기’·‘바로 보기’)은 정렬되지 않습니다.</td>
       </tr>
       <tr>
         <td><b>지난 결과를 다시 보고 싶습니다</b></td>

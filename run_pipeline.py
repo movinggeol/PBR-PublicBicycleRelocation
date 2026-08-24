@@ -19,6 +19,7 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Iterable
 
@@ -166,6 +167,13 @@ def build_env(args: argparse.Namespace) -> dict:
     """
 
     env = dict(os.environ)
+
+    # 윈도우 파이썬은 stdout이 콘솔이 아니라 **파이프·파일이면** 로캘 코드페이지
+    # (한국어 윈도우에서 cp949)로 인코딩한다. 그러면 로그 문구의 '—' 한 글자에
+    # 단계가 통째로 죽는다(실제로 calculate_target_qty가 그렇게 멈췄다).
+    # 웹은 jobs.py가 이미 같은 방어를 하고 있다 — CLI에도 똑같이 건다.
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+
     if args.fleet_size is not None:
         env["PBR_FLEET_SIZE"] = str(normalize_fleet_size(args.fleet_size))
     if args.vehicles_per_round is not None:
@@ -196,6 +204,13 @@ def selected_scripts(args: argparse.Namespace) -> Iterable[Path]:
 
     for group in groups:
         yield from STAGES[group]
+
+
+def format_elapsed(seconds: float) -> str:
+    """경과 시간을 사람이 읽는 말로. 1분을 넘으면 분·초로 끊는다."""
+    if seconds < 60:
+        return f"{seconds:.1f}초"
+    return f"{int(seconds // 60)}분 {seconds % 60:.0f}초"
 
 
 def main() -> int:
@@ -237,6 +252,10 @@ def main() -> int:
     ensure_output_dirs()
 
     failures: list[tuple[Path, int]] = []
+    # 단계별 소요를 재 둔다 — "얼마나 걸리나"를 짐작으로 적으면 안내 문구가
+    # 곧 거짓말이 된다(웹 사용 안내의 예상 소요가 실제로 그랬다).
+    timings: list[tuple[Path, float]] = []
+    started_all = time.perf_counter()
 
     for index, script in enumerate(scripts, start=1):
         full_path = ROOT / script
@@ -253,10 +272,13 @@ def main() -> int:
         print(f"\n[{index}/{len(scripts)}] 실행: {' '.join(command)}")
 
         # cwd를 ROOT로 고정해야 data/ 상대 경로가 모든 단계에서 동일합니다.
+        started = time.perf_counter()
         completed = subprocess.run(command, cwd=ROOT, env=env)
+        elapsed = time.perf_counter() - started
+        timings.append((script, elapsed))
 
         if completed.returncode == 0:
-            print(f"완료: {script}")
+            print(f"완료: {script} ({format_elapsed(elapsed)})")
             continue
 
         print(f"실패: {script} (exit code={completed.returncode})")
@@ -266,6 +288,15 @@ def main() -> int:
         if not args.continue_on_error:
             print("파이프라인을 중단합니다.")
             return completed.returncode
+
+    if timings:
+        print()
+        print("=== 단계별 소요 시간 ===")
+        for script, elapsed in timings:
+            print(f"  {format_elapsed(elapsed):>10}  {script}")
+        total = time.perf_counter() - started_all
+        print(f"  {'합계':>9} {format_elapsed(total):>10}"
+              f"  ({len(timings)}단계, 시간대 {args.duration or resolved.duration})")
 
     if failures:
         print("\n실패한 단계:")

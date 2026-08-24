@@ -47,6 +47,23 @@ def test_marks_running_and_done():
     assert [s["status"] for s in pipeline_progress(log)] == ["done", "running", "pending"]
 
 
+def test_done_line_carries_the_elapsed_time():
+    """완료 줄에 소요 시간이 붙어도 단계 표시가 켜져야 한다.
+
+    run_pipeline이 '완료: <파일> (42.1초)'로 찍는다 — 괄호를 안 떼면
+    파일명이 안 맞아 진행 단계가 통째로 '대기'로 남는다.
+    """
+    log = "\n".join([
+        PLAN,
+        "[1/3] 실행: python raw_to_net.py",
+        r"완료: step0_collect\raw_to_net.py (3.3초)",
+        "[2/3] 실행: python ilp.py",
+        r"완료: step2_optimize\ilp.py (1분 12초)",
+    ])
+
+    assert [s["status"] for s in pipeline_progress(log)] == ["done", "done", "pending"]
+
+
 def test_marks_failure():
     log = "\n".join([
         PLAN,

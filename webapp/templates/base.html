@@ -405,6 +405,24 @@
     tr.over-budget td:first-child { box-shadow: inset 3px 0 0 var(--critical); }
     td.over-budget, .over { color: var(--critical-ink); font-weight: 600; }
 
+    /* 정렬 가능한 열 — 머리글을 누르면 오름/내림이 바뀐다.
+       화살표 자리를 처음부터 잡아 둬야 정렬을 켤 때 열 너비가 흔들리지 않는다.
+       정렬을 켤 수 없는 열(링크·복합 표기)에는 aria-sort가 붙지 않아 표시도 안 난다. */
+    table[data-sortable] thead th[aria-sort] { cursor: pointer; user-select: none; }
+    table[data-sortable] thead th[aria-sort]:hover { color: var(--ink); }
+    table[data-sortable] thead th[aria-sort]::after {
+      content: "↕"; margin-left: 5px; opacity: .3; font-size: .9em;
+    }
+    table[data-sortable] thead th[aria-sort="ascending"]::after {
+      content: "↑"; opacity: 1; color: var(--blue);
+    }
+    table[data-sortable] thead th[aria-sort="descending"]::after {
+      content: "↓"; opacity: 1; color: var(--blue);
+    }
+    table[data-sortable] thead th[aria-sort]:focus-visible {
+      outline: 2px solid var(--blue-focus); outline-offset: -2px;
+    }
+
     /* ════════ 버튼 — 두 문법뿐: 파란 알약(동작) / 조밀한 사각(유틸리티) ════════ */
     .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 7px;
@@ -460,6 +478,9 @@
       color: var(--ink); font-size: var(--fs-ui); letter-spacing: -.224px; cursor: pointer;
     }
     .checks input { accent-color: var(--blue); width: 16px; height: 16px; }
+    /* 폼 칸 안에 든 체크박스 묶음(시간대)은 구분선을 긋지 않는다 —
+       .checks의 윗줄은 폼 맨 아래 '생략' 묶음을 본문과 가르려고 있는 것이다. */
+    .field .checks { margin: 0; padding-top: 0; border-top: 0; gap: var(--sp-md); }
     .form-foot { margin-top: var(--sp-md); padding-top: var(--sp-md); border-top: 1px solid var(--divider-soft); }
 
     /* ════════ 로그 — 어두운 타일 ════════ */
@@ -745,12 +766,20 @@
   (function () {
     document.querySelectorAll("[data-pager]").forEach(function (box) {
       var size = parseInt(box.dataset.pager, 10) || 10;
-      var items = Array.prototype.slice.call(box.querySelectorAll("[data-page-item]"));
-      var keys = [];
-      items.forEach(function (el) {
-        if (keys.indexOf(el.dataset.pageItem) < 0) keys.push(el.dataset.pageItem);
-      });
-      var pages = Math.ceil(keys.length / size);
+      var items = [], keys = [], pages = 0;
+
+      /* 덩어리 목록은 **그때그때 DOM 순서에서** 만든다 — 표를 정렬하면 행 순서가
+         바뀌므로, 처음 한 번 읽어 두면 정렬 뒤에 엉뚱한 쪽이 나온다. */
+      function collect() {
+        items = Array.prototype.slice.call(box.querySelectorAll("[data-page-item]"));
+        keys = [];
+        items.forEach(function (el) {
+          if (keys.indexOf(el.dataset.pageItem) < 0) keys.push(el.dataset.pageItem);
+        });
+        pages = Math.ceil(keys.length / size);
+      }
+
+      collect();
       if (pages < 2) return;          /* 한 쪽에 다 들어가면 조작부를 만들지 않는다 */
 
       var nav = document.createElement("nav");
@@ -785,7 +814,83 @@
 
       prev.addEventListener("click", function () { go(-1); });
       next.addEventListener("click", function () { go(1); });
+
+      /* 표 정렬이 행 순서를 바꾸면 불러 준다(아래 표 정렬). 첫 쪽으로 되돌린다 —
+         정렬한 사람은 맨 위를 보고 싶어 한다. */
+      box.__pbrPagerRefresh = function () { collect(); page = 0; render(); };
       render();
+    });
+  })();
+
+  /* 표 정렬.
+     table[data-sortable]의 머리글을 누르면 그 열로 오름/내림을 오간다.
+     - 열 종류는 값에서 판단한다. 결측(빈칸·—)을 뺀 모든 칸이 숫자로 읽히면
+       숫자 열, 아니면 글자 열(한국어 정렬)이다. 단위가 붙은 '12.5 km'·'86분'도
+       숫자로 읽지만, '12.5 → 8.3시간'처럼 숫자가 둘이면 글자 열로 다룬다.
+     - 결측은 오름·내림과 무관하게 늘 뒤로 보낸다. 안 그러면 내림차순 첫 화면이
+       빈칸으로 가득 찬다.
+     - data-nosort를 단 머리글(링크만 든 열 등)은 건너뛴다.
+     - 분류 이름이 첫 행에만 붙는 표(index.html의 최신 산출물)에는 걸지 마라.
+       행을 흩으면 이름 없는 행만 남는다. */
+  (function () {
+    var MISSING = { "": 1, "—": 1, "-": 1 };
+
+    function cellText(row, index) {
+      var cell = row.children[index];
+      if (!cell) return "";
+      if (cell.dataset && cell.dataset.sort !== undefined) return cell.dataset.sort;
+      return cell.textContent.replace(/\s+/g, " ").trim();
+    }
+
+    function asNumber(text) {
+      var t = text.replace(/,/g, "").trim();
+      var head = t.match(/^-?\d+(?:\.\d+)?/);
+      if (!head) return null;
+      if (/\d/.test(t.slice(head[0].length))) return null;   /* 숫자가 또 나오면 글자 열 */
+      return parseFloat(head[0]);
+    }
+
+    document.querySelectorAll("table[data-sortable]").forEach(function (table) {
+      var head = table.tHead, body = table.tBodies[0];
+      if (!head || !body || !head.rows.length) return;
+      var headRow = head.rows[head.rows.length - 1];
+      var rows = Array.prototype.slice.call(body.rows);
+      if (rows.length < 2) return;      /* 한 줄짜리 표는 정렬할 것이 없다 */
+
+      Array.prototype.forEach.call(headRow.cells, function (th, index) {
+        if (th.dataset.nosort !== undefined) return;
+        var filled = rows.map(function (row) { return cellText(row, index); })
+                         .filter(function (v) { return !MISSING[v]; });
+        if (!filled.length) return;     /* 전부 비어 있으면 정렬을 걸지 않는다 */
+        var numeric = filled.every(function (v) { return asNumber(v) !== null; });
+
+        th.setAttribute("aria-sort", "none");
+        th.tabIndex = 0;
+
+        function sort() {
+          var desc = th.getAttribute("aria-sort") === "ascending";
+          Array.prototype.forEach.call(headRow.cells, function (other) {
+            if (other.hasAttribute("aria-sort")) other.setAttribute("aria-sort", "none");
+          });
+          th.setAttribute("aria-sort", desc ? "descending" : "ascending");
+
+          rows.slice().sort(function (a, b) {
+            var x = cellText(a, index), y = cellText(b, index);
+            var xm = !!MISSING[x], ym = !!MISSING[y];
+            if (xm || ym) return xm && ym ? 0 : (xm ? 1 : -1);
+            var diff = numeric ? asNumber(x) - asNumber(y) : x.localeCompare(y, "ko");
+            return desc ? -diff : diff;
+          }).forEach(function (row) { body.appendChild(row); });
+
+          var box = table.closest("[data-pager]");
+          if (box && box.__pbrPagerRefresh) box.__pbrPagerRefresh();
+        }
+
+        th.addEventListener("click", sort);
+        th.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sort(); }
+        });
+      });
     });
   })();
 </script>

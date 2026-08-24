@@ -15,8 +15,9 @@
 <div class="card flush" data-pager="5" data-pager-label="{{ group.title }} 쪽 넘기기">
   {% if group.entries %}
   <div class="table-wrap">
-  <table>
-    <thead><tr><th class="grow">파일</th><th>수정 시각</th><th class="num">크기</th><th>열기</th></tr></thead>
+  <table data-sortable>
+    <thead><tr><th class="grow">파일</th><th>수정 시각</th><th class="num">크기</th>
+        <th data-nosort>열기</th></tr></thead>
     <tbody>
     {% for e in group.entries %}
     <tr data-page-item="{{ loop.index0 }}">
