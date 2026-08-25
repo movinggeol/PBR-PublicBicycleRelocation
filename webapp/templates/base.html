@@ -514,11 +514,13 @@
       outline: 2px solid var(--blue-focus); outline-offset: 2px; border-radius: 3px;
     }
 
-    /* 처음 뜨는 자리는 **화면 세로 중앙의 오른쪽**이다. 본문이 왼쪽에 있으므로
-       오른쪽에 띄워야 그래프를 가리지 않고 나란히 볼 수 있다(1.21.4). */
+    /* 처음 뜨는 자리는 **세로 중앙 · 가로는 중앙에서 살짝 오른쪽**이다(1.21.5).
+       화면 끝(`right: 24px`)에 붙이면 넓은 모니터에서 본문과 너무 멀어져 시선이
+       크게 튄다. 정중앙은 `translateX(-50%)`이므로 `-10%`는 **창 너비의 40%만큼**
+       오른쪽으로 민 자리다 — 본문 위를 덜 가리면서 눈이 닿는 거리에 둔다. */
     .table-panel {
-      position: fixed; z-index: 60; top: 50%; right: var(--sp-lg); left: auto;
-      transform: translateY(-50%);
+      position: fixed; z-index: 60; top: 50%; left: 50%; right: auto;
+      transform: translate(-10%, -50%);
       width: min(560px, calc(100vw - 2 * var(--sp-md)));
       background: var(--surface); border: 1px solid var(--hairline);
       border-radius: var(--r-lg); box-shadow: 0 12px 40px rgba(0, 0, 0, .22);
