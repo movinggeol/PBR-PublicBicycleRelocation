@@ -20,6 +20,13 @@
   <div class="card" id="run">
     <div class="card-head"><h2>새 실행</h2></div>
 
+    {# 계획을 세우는 자리에 지금 날씨를 띄운다. 비 오는 날 실제 재배치 필요량은
+       평소의 40~55%인데(docs/WEATHER.md) 계획은 지난달 통계라 그것을 모른다.
+       **계획을 바꾸지는 않는다** — 작업지시서와 같이 사실만 알리고 판단은 사람이 한다.
+       화면을 그리는 요청에서 외부 API를 부르면 폼 자체가 늦게 뜨므로, 띄운 뒤
+       브라우저가 따로 물어본다(응답은 10분 캐시). 실패하면 조용히 접는다. #}
+    <div id="weather" hidden></div>
+
     {% if running %}
       <p class="row" style="margin:var(--sp-md) 0 0">
         <span class="badge running">실행 중</span>
@@ -231,4 +238,45 @@
   <p class="empty">아직 실행한 작업이 없습니다.</p>
   {% endif %}
 </div>
+
+<script>
+  /* 지금 날씨 — 계획을 내보내기 전에 비가 오는지 알린다.
+     비가 오면 눈에 띄게(경고 상자), 아니면 한 줄로 조용히 둔다. */
+  (function () {
+    var box = document.getElementById("weather");
+    if (!box) return;
+
+    function bits(w) {
+      var out = [];
+      if (w.temp !== null && w.temp !== undefined) out.push(w.temp.toFixed(1) + "℃");
+      if (w.rain !== null && w.rain !== undefined) out.push("시간당 " + w.rain.toFixed(1) + "mm");
+      else if (w.rain_day !== null && w.rain_day !== undefined) out.push("오늘 " + w.rain_day.toFixed(1) + "mm");
+      if (w.wind !== null && w.wind !== undefined) out.push("바람 " + w.wind.toFixed(1) + "m/s");
+      if (w.humid !== null && w.humid !== undefined) out.push("습도 " + Math.round(w.humid) + "%");
+      return out.join(" · ");
+    }
+
+    function render(w) {
+      if (!w || !w.available) { box.hidden = true; return; }
+      var detail = bits(w);
+      var when = w.observed_at ? w.observed_at + " 대전 관측" : "대전 관측";
+      if (w.raining) {
+        box.className = "alert";
+        box.innerHTML = "<div><b>" + w.headline + "</b> — " + detail
+          + "<br><span class=\"hint\">" + w.note + "</span>"
+          + "<br><span class=\"hint\">" + when + "</span></div>";
+      } else {
+        box.className = "note";
+        box.innerHTML = "<span class=\"hint\">" + w.headline
+          + (detail ? " · " + detail : "") + " · " + when + "</span>";
+      }
+      box.hidden = false;
+    }
+
+    fetch("/api/weather")
+      .then(function (r) { return r.json(); })
+      .then(render)
+      .catch(function () { box.hidden = true; });   /* 날씨는 있으면 좋고 없어도 되는 정보다 */
+  })();
+</script>
 {% endblock %}

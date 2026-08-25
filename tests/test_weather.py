@@ -188,7 +188,9 @@ def test_API_응답에서_값을_꺼내고_결측은_None(monkeypatch):
     assert observed["temp"] == pytest.approx(5.5)
     assert observed["humid"] == pytest.approx(55.0)
     assert observed["wind"] == pytest.approx(0.6)
-    assert observed["rain"] is None                   # 겨울 3의 배수 아닌 시각
+    # -9는 숫자가 아니라 '없음'이라 None으로 온다. 그것이 무강수인지 자료없음인지는
+    # 부르는 쪽이 계절·시각을 보고 판단한다(webapp/weather_view.py).
+    assert observed["rain"] is None
     assert observed["time"] == pd.Timestamp("2025-11-03 09:00")
 
 
@@ -215,3 +217,114 @@ def test_긴_기간을_시각별_호출로_받지_않는다(monkeypatch):
     monkeypatch.setenv(weather.API_KEY_ENV, "테스트키")
     with pytest.raises(weather.WeatherError, match="상한"):
         weather.fetch_range("2025-01-01 00:00", "2025-01-31 23:00")
+
+
+# ---------------- 계획 화면의 '지금 날씨' (webapp/weather_view.py) ----------------
+#
+# 지키는 것:
+#   - **화면을 그리는 요청에서 외부 API를 부르지 않는다** — 폼이 늦게 뜨면 안 된다.
+#   - **API가 죽어도 화면은 산다** — 날씨는 있으면 좋고 없어도 되는 정보다.
+#   - **-9를 '모름'으로 읽지 않는다** — 여름 내내 '모름'만 뜨게 된다.
+
+from webapp import weather_view
+
+
+def observation(**over) -> dict:
+    base = {"time": pd.Timestamp("2026-07-05 05:00"), "stn": 133, "temp": 23.1,
+            "wind": 0.0, "humid": 97.0, "rain": None, "rain_day": None, "snow": None}
+    base.update(over)
+    return base
+
+
+def test_비가_오면_눈에_띄게_알리고_필요량을_말해_준다():
+    described = weather_view.describe(observation(rain=9.4, rain_day=9.7))
+
+    assert described["raining"] is True
+    assert described["state"] == "raining"
+    assert weather_view.RAINY_NEED_SHARE in described["note"]
+
+
+def test_약한_비는_비_온_날로_치지_않는다():
+    """문턱은 weather.RAIN_MM 하나다 — 학습·측정·화면이 같은 '비'를 가리켜야 한다."""
+    described = weather_view.describe(observation(rain=0.2))
+    assert described["raining"] is False
+
+
+def test_여름의_결측은_무강수로_읽는다():
+    """API는 비가 안 오면 -9를 준다(실측). 이걸 '모름'으로 읽으면 늘 모름만 뜬다."""
+    described = weather_view.describe(observation())
+    assert described["state"] == "dry"
+
+
+def test_겨울의_3시간_사이_시각만_모른다고_말한다():
+    """11~3월은 3시간마다만 강수가 온다 — 그 사이 시각의 -9는 진짜 모름이다."""
+    between = weather_view.describe(observation(time=pd.Timestamp("2026-01-10 07:00")))
+    on_mark = weather_view.describe(observation(time=pd.Timestamp("2026-01-10 06:00")))
+
+    assert between["state"] == "unknown"
+    assert on_mark["state"] == "dry"
+
+
+def test_지금은_그쳤어도_오늘_비가_왔으면_알린다():
+    described = weather_view.describe(observation(rain=None, rain_day=12.0))
+    assert described["state"] == "rained_today" and described["raining"] is True
+
+
+def test_API가_죽어도_화면은_산다(monkeypatch):
+    weather_view.reset_cache()
+    monkeypatch.setattr(weather_view.weather, "fetch_hour",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            weather.WeatherError("키가 없습니다")))
+
+    described = weather_view.current()
+    assert described["available"] is False and described["raining"] is False
+    assert "키가 없습니다" in described["error"]
+
+
+def test_화면을_여러_번_열어도_API는_한_번만_부른다(monkeypatch):
+    """정시마다 갱신되는 값이라 10분 캐시로 충분하다."""
+    weather_view.reset_cache()
+    calls = []
+    monkeypatch.setattr(weather_view.weather, "fetch_hour",
+                        lambda *a, **k: calls.append(1) or observation(rain=5.0))
+
+    weather_view.current()
+    weather_view.current()
+    assert len(calls) == 1
+
+    weather_view.current(force=True)          # 새로고침은 다시 부른다
+    assert len(calls) == 2
+    weather_view.reset_cache()
+
+
+def test_실행_화면은_외부_API를_부르지_않고_뜬다(monkeypatch):
+    """폼을 그리는 요청 안에서 날씨를 부르면, API가 느릴 때 폼 자체가 늦게 뜬다."""
+    from fastapi.testclient import TestClient
+
+    from webapp.app import app
+
+    called = []
+    monkeypatch.setattr(weather_view.weather, "fetch_hour",
+                        lambda *a, **k: called.append(1) or observation())
+
+    page = TestClient(app).get("/")
+    assert page.status_code == 200
+    assert 'id="weather"' in page.text        # 자리는 있고
+    assert not called                          # 부르지는 않았다
+
+
+def test_날씨_API는_실패해도_200으로_답한다(monkeypatch):
+    """화면이 이걸로 죽으면 안 된다 — 실패도 available=false로 알린다."""
+    from fastapi.testclient import TestClient
+
+    from webapp.app import app
+
+    weather_view.reset_cache()
+    monkeypatch.setattr(weather_view.weather, "fetch_hour",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            weather.WeatherError("기상청 API 호출 실패: 500")))
+
+    response = TestClient(app).get("/api/weather")
+    assert response.status_code == 200
+    assert response.json()["available"] is False
+    weather_view.reset_cache()

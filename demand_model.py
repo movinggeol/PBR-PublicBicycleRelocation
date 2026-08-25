@@ -33,6 +33,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+import weather
 from project_config import DATA_ROOT, DAY_TYPES, duration_hours, select_day_type
 
 MODEL_PATH = DATA_ROOT / "models" / "target_quantile.pkl"
@@ -53,7 +54,6 @@ DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
 # 근거는 docs/WEATHER.md. **비 오는 날에 몰린 개선**이라는 것이 핵심이다 —
 # 비 오는 날(전체의 10%) 예측 오차가 40% 줄고, 나머지 날엔 거의 그대로다.
 WEATHER_FEATURES = ["rain", "rainy", "temp", "wind"]
-RAIN_MM = 1.0                 # 이 이상 오면 '비 온 날'. 약한 비는 이용에 거의 영향이 없다
 
 # 직전 달 통계에서 뽑는 피처. **예측 시점에 알 수 있는 것만** 넣는다.
 FEATURES = [
@@ -150,19 +150,16 @@ _HOURLY = None                # 관측 자료는 한 번만 읽는다(학습이 
 def _hourly() -> pd.DataFrame:
     global _HOURLY
     if _HOURLY is None:
-        import weather
         _HOURLY = weather.load_hourly()
     return _HOURLY
 
 
 def weather_frame(duration: str) -> pd.DataFrame:
     """날짜 → 그 창의 날씨 피처. 자료가 없으면 빈 표를 돌려준다."""
-    import weather
-
     folded = weather.window_frame(_hourly(), duration)
     if folded.empty:
         return pd.DataFrame(columns=["date", *WEATHER_FEATURES])
-    folded["rainy"] = (folded["rain"] >= RAIN_MM).astype(float)
+    folded["rainy"] = (folded["rain"] >= weather.RAIN_MM).astype(float)
     return folded[["date", *WEATHER_FEATURES]]
 
 

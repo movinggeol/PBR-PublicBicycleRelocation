@@ -37,7 +37,7 @@ from project_config import (
     normalize_fleet_size, normalize_per_round, normalize_period, resolve_day_type,
 )
 import tashu
-from webapp import catalog, charts, jobs, kpi_view, orders, store
+from webapp import catalog, charts, jobs, kpi_view, orders, store, weather_view
 
 app = FastAPI(title="PBR 파이프라인 대시보드", docs_url="/api/docs")
 
@@ -192,6 +192,17 @@ def _index_context(error: Optional[str] = None) -> dict:
 @app.get("/")
 def index(request: Request):
     return templates.TemplateResponse(request, "index.html", _index_context())
+
+
+@app.get("/api/weather")
+def weather_now(refresh: int = 0):
+    """지금 날씨. 계획 화면이 비 여부를 띄우는 데 쓴다 (docs/WEATHER.md).
+
+    **화면을 그리는 요청 안에서 부르지 않는다** — 외부 API가 느리면 실행 폼 자체가
+    늦게 뜬다. 브라우저가 화면을 띄운 뒤 따로 물어보고, 응답은 10분 캐시한다.
+    실패해도 200에 available=false로 답한다(화면이 죽으면 안 된다).
+    """
+    return JSONResponse(weather_view.current(force=bool(refresh)))
 
 
 @app.post("/runs")
