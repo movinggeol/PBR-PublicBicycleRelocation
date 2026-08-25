@@ -394,6 +394,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/DB_PLAN.md](docs/DB_PLAN.md) | SQLite 도입 결정·이관 계획·성능 측정 |
 | [docs/COLLECTOR.md](docs/COLLECTOR.md) | **재고 시계열 수집** — 평일 09–17시 10분 간격 수집기·운영(시작/일시정지/중지) |
 | [docs/WEATHER.md](docs/WEATHER.md) | **날씨** — 어떤 기상청 API를 받는지, 결측·겨울 3시간 누적 처리, 순수요 설명력 측정 |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | **기술 선택의 근거** — 왜 ILP·VRP·K-Medoids인지, 이상치·결측·정합성을 왜 그렇게 다뤘는지, 얻음과 잃음 |
 | [docs/GLOSSARY.md](docs/GLOSSARY.md) | **용어집** — 한국어 용어 ↔ 코드 이름, 헷갈리기 쉬운 짝 |
 | [docs/KPI.md](docs/KPI.md) | 성과 지표 체계 설계 (현재 지표의 한계와 개선안) |
 | [docs/FLEET.md](docs/FLEET.md) | 차량 운용 — 하루 3회차 로테이션과 형평성 기록 |
