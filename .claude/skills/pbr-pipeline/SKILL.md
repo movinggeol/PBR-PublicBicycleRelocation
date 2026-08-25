@@ -106,7 +106,11 @@ step4                   : imbalance
    바꾸면 화면을 여는 것만으로 직전 실행의 보유 대수가 되돌아간다.
    하루 여러 회차를 돌리므로 **한쪽 후보만 있는 시간대는 크래시가 아니라 건너뛴다** —
    step1/step2/step4의 건너뛰기 가드를 지우지 마라.
-7. **일회성 스크립트는 `experiments/`에 둔다** — step 폴더나 루트에 test.py를 만들지 마라.
+7. **일회성 스크립트는 `experiments/<분류>/`에 둔다** — step 폴더나 루트에 test.py를
+   만들지 마라. 분류는 params·baseline·structure·diagnostic·learning 다섯이고,
+   스크립트 상단의 `sys.path.insert`는 **`parents[2]`**(저장소 루트)를 가리켜야 한다.
+   루트에 있던 `db_test.py`는 1.20.7에서 `tools/show_schema.py`로 옮겼다 —
+   **여러 번 쓰는 도구는 `tools/`, 한 번 재고 마는 것은 `experiments/`다.**
 8. **가상환경은 `.venv`** (검증 환경: Python 3.14.7). 명령은 `.\.venv\Scripts\python.exe ...`로
    실행하라 — 시스템 `python`에는 의존성이 없다.
 9. **K-Medoids는 `kmedoids` 패키지**(FasterPAM)다. `sklearn_extra`는 아카이브되어
@@ -184,7 +188,7 @@ python tools/collect_stock.py --status    # 수집 현황
 - **계절 보정(warmup)이 기본으로 켜져 있다** — 계획 대상 달 첫 14일 실적으로 도시
   전체 배율을 구해 mu·sigma에 곱한다(`--warmup-days 0`으로 끔). 배율을 대여소별로
   추정하지 마라 — 며칠치로 나누면 잡음만 커진다.
-- **수요 예측을 바꾸려면 `experiments/quantile_model_eval.py`의 판정을 통과해야 한다** —
+- **수요 예측을 바꾸려면 `experiments/structure/quantile_model_eval.py`의 판정을 통과해야 한다** —
   작업 대상만·평일/휴일 따로·표본 밖·베이스라인 초과.
 - **분위수 모델은 꺼져 있다** — 1.15.2에서 채택했다가 1.15.3에서 되돌렸다.
   그 '승리'는 계절 배율이 과대추정된 베이스라인과 겨룬 결과였다

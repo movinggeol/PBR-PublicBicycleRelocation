@@ -123,7 +123,7 @@ python run_pipeline.py --target-date 2026-09-25   # 추석 계획을 미리 뽑�
 있던 수요입니다. 그리고 섞었다면 57곳이 사라졌을 것입니다.
 
 그래서 `day_type`에 `all`을 두지 않았습니다 — 섞는 선택지를 아예 만들지 않습니다.
-재현: `python experiments/weekend_profile.py`
+재현: `python experiments/structure/weekend_profile.py`
 
 ### 왜 골라야 하는가 ② — 공휴일이 평일 수요를 가리고 있었습니다 (1.14.1)
 
@@ -140,7 +140,7 @@ python run_pipeline.py --target-date 2026-09-25   # 추석 계획을 미리 뽑�
 
 **연휴가 낀 달에는 평일 재배치 수요를 20~50% 과소평가하고 있었습니다.**
 `sigma`는 거의 그대로(-5~+1%)이므로, 바뀐 것은 분산이 아니라 **평균**입니다.
-재현: `python experiments/holiday_impact.py`
+재현: `python experiments/structure/holiday_impact.py`
 
 ### 계절이 바뀌는 달 — warmup 보정 (1.15.1)
 
@@ -190,7 +190,7 @@ python tools/rebuild_net_demand.py --dry-run  # 대상만 확인
 > **`z`는 1.99입니다** (기존 1.65). 백테스트(2025-04~2026-03)에서 z=1.65의 실제
 > 커버리지가 91.7~92.8%로 설계 의도(95%)에 못 미쳤습니다. 순수요 분포의 꼬리가
 > 정규분포보다 두껍기 때문입니다. z=1.99에서 94.9%가 됩니다.
-> 근거·재현은 [EXPERIMENTS.md](../../분석/EXPERIMENTS.md) 1장 (`python experiments/z_sweep.py`).
+> 근거·재현은 [EXPERIMENTS.md](../../분석/EXPERIMENTS.md) 1장 (`python experiments/params/z_sweep.py`).
 >
 > `_10_15` 시간대의 `mu`가 "순수요 0"과 차이가 없다던 결과는 **측정 오류였습니다.**
 > 전체 대여소 평균이라 파이프라인이 손대지 않는 곳(72.8%가 `|mu| < 0.5`)에
@@ -217,7 +217,7 @@ python tools/rebuild_net_demand.py --dry-run  # 대상만 확인
 | --- | --- |
 | 🟢 | `설명.txt` 4·5번 항목 미완 — 본 문서로 대체 후 삭제 검토 |
 
-※ 구 `test.py`는 `experiments/step0_rebal_qty_check.py`로 이동했습니다 (1.2.0).
+※ 구 `test.py`는 `experiments/diagnostic/step0_rebal_qty_check.py`로 이동했습니다 (1.2.0).
 
 ## 작업 목록
 

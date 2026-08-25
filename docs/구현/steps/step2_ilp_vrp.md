@@ -49,7 +49,7 @@
 > **1.19.1 이전에 잰 수치와 섞어서 비교하지 마라.** → [TODO.md](../../기록/TODO.md) 1-1
 
 > **greedy의 최적성 갭**: 같은 노드·같은 적재 제약으로 OR-Tools와 비교하면
-> 이동거리가 클러스터 평균 11% 더 깁니다(`experiments/ortools_gap.py`).
+> 이동거리가 클러스터 평균 11% 더 깁니다(`experiments/baseline/ortools_gap.py`).
 
 ### 운영 상수
 

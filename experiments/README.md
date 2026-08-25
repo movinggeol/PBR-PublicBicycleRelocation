@@ -1,8 +1,24 @@
 # experiments/
 
-파이프라인에 속하지 않는 검증·실험 스크립트 모음입니다.
+파이프라인에 속하지 않는 검증·실험 스크립트 모음입니다. 18개가 되면서 **성격별로
+다섯 갈래로 나눴습니다**(1.20.7).
 
-## 파라미터 실험 (결과는 [../docs/분석/EXPERIMENTS.md](../docs/분석/EXPERIMENTS.md))
+```text
+experiments/
+├── params/       파라미터를 정한 실험 (z · γ · 학습 창)
+├── baseline/     대조군 비교와 반복 실행 (논문용)
+├── structure/    설계를 정하기 위한 측정 (섞어도 되나 · 붙일 값어치가 있나)
+├── diagnostic/   중간 산출물 진단 (수급 격차 · 군집 결과)
+└── learning/     학습용 예제 (파이프라인과 무관)
+```
+
+**서로 import 하는 스크립트는 같은 폴더에 뒀습니다** — `gamma_recheck.py`가
+`baseline_compare.py`를 부르므로 둘 다 `baseline/`입니다.
+
+> 새 실험을 추가할 때: 어느 갈래인지 정하고, 스크립트 맨 위의 `sys.path.insert`는
+> `parents[2]`(저장소 루트)를 가리켜야 합니다. 한 칸 깊어졌기 때문입니다.
+
+## params/ — 파라미터 실험 (결과는 [../docs/분석/EXPERIMENTS.md](../docs/분석/EXPERIMENTS.md))
 
 기본값으로 쓰이는 `z`와 `γ`는 아래 스크립트로 정했습니다. **값을 바꾸려면
 같은 스크립트를 다시 돌려 근거를 남기세요.**
@@ -14,15 +30,15 @@
 | `seasonal_window.py` | 계절 전환기를 어떻게 넘나 | 분석 달 첫 14일로 배율 보정 |
 
 ```powershell
-python experiments/z_sweep.py            # 커버리지 vs 작업량
-python experiments/predictor_compare.py  # 예측기 비교 + 무리별 진단
-python experiments/seasonal_window.py    # 학습 창 비교
+python experiments/params/z_sweep.py            # 커버리지 vs 작업량
+python experiments/params/predictor_compare.py  # 예측기 비교 + 무리별 진단
+python experiments/params/seasonal_window.py    # 학습 창 비교
 ```
 
 셋 다 DB의 `net_demand`를 읽으므로 **여러 달의 순수요가 적재돼 있어야** 합니다
 (연속된 달이 최소 2개). 적재는 `tools/load_rentals.py --split-by-month` 참고.
 
-## 대조군 비교와 반복 실행 (논문용, 결과는 [../docs/분석/EXPERIMENTS.md](../docs/분석/EXPERIMENTS.md) 5장)
+## baseline/ — 대조군 비교와 반복 실행 (논문용, 결과는 [../docs/분석/EXPERIMENTS.md](../docs/분석/EXPERIMENTS.md) 5장)
 
 제안 방법이 **단순한 방법보다 정말 나은지**를 재는 자리입니다. 그전까지 모든 수치는
 '재배치 전 → 후' 자기 비교뿐이었습니다 ([../docs/연구/THESIS.md](../docs/연구/THESIS.md) 3장).
@@ -41,8 +57,8 @@ pip install ortools      # 이 실험 전용
 ```
 
 ```powershell
-python experiments/baseline_compare.py --period "25년 11월" --plan-basis
-python experiments/repeat_eval.py --periods "25년 09월,25년 10월,25년 11월" --methods P,B0,B1
+python experiments/baseline/baseline_compare.py --period "25년 11월" --plan-basis
+python experiments/baseline/repeat_eval.py --periods "25년 09월,25년 10월,25년 11월" --methods P,B0,B1
 ```
 
 - 대조군은 **B0 무재배치 / B1 그리디(군집·ILP 없음) / B2 평균 목표재고(z=0) /
@@ -56,7 +72,7 @@ python experiments/repeat_eval.py --periods "25년 09월,25년 10월,25년 11월
   `adjust_clustering`, `solve_cluster_moves`, `greedy_route`, `_stockout_hours`).
   측정 코드가 제 방식대로 계산하면 측정이 거짓말을 합니다.
 
-## 구조 결정을 위한 측정 (1.14.0)
+## structure/ — 설계를 정하기 위한 측정
 
 파라미터가 아니라 **설계를 정하기 위해** 잰 것들입니다. 결과는
 [docs/구현/steps/step0_raw.md](../docs/구현/steps/step0_raw.md)에 정리돼 있습니다.
@@ -71,23 +87,33 @@ python experiments/repeat_eval.py --periods "25년 09월,25년 10월,25년 11월
 | `weather_impact.py` | 날씨가 순수요를 설명하나 | 그렇다. 표본 밖 R² +0.412, 작업 대상 MAE +4.3% — **개선은 비 오는 날(10%)에 몰려 있다(+40%)** |
 
 ```powershell
-python experiments/net_vs_volume.py     # 이용량 ↔ 필요량 상관
-python experiments/weekend_profile.py   # 평일/휴일 수요 구조 비교
-python experiments/holiday_impact.py    # 공휴일 제거 효과
-python experiments/demand_distribution.py            # 분포 진단
-python experiments/quantile_model_eval.py --holdout "25년 11월"   # 모델 채택 판정
-python experiments/weather_impact.py    # 날씨 → 이용량 → 순수요 전달 측정
+python experiments/structure/net_vs_volume.py     # 이용량 ↔ 필요량 상관
+python experiments/structure/weekend_profile.py   # 평일/휴일 수요 구조 비교
+python experiments/structure/holiday_impact.py    # 공휴일 제거 효과
+python experiments/structure/demand_distribution.py            # 분포 진단
+python experiments/structure/quantile_model_eval.py --holdout "25년 11월"   # 모델 채택 판정
+python experiments/structure/weather_impact.py    # 날씨 → 이용량 → 순수요 전달 측정
 ```
 
 `rental_history`와 `net_demand`를 읽습니다. `weather_impact.py`는 여기에 더해
 `data/raw_data/날씨`의 관측 자료가 있어야 합니다(docs/분석/WEATHER.md).
 
-## 학습용 스크립트
+## diagnostic/ — 중간 산출물 진단
+
+파이프라인이 만든 것을 **눈으로 확인**하는 자리입니다. 결론을 내는 실험이 아니라,
+"지금 무엇이 나왔나"를 보는 도구에 가깝습니다.
+
+| 파일 | 내용 | 원래 위치 |
+| --- | --- | --- |
+| `step0_rebal_qty_check.py` | 재배치량 진단 — 작업 대상 수와 **Pick·Drop 수급 격차** (1.18.8에서 되살림) | `step0_collect/test.py` |
+| `step1_cluster_memo.py` | 클러스터링 실행 결과 메모 | `step1 (...)/test.py` |
+
+## learning/ — 학습용 예제
+
+**파이프라인과 무관합니다.** 라이브러리를 익히며 남긴 것이라 지우지 않고 모아 뒀습니다.
 
 | 파일 | 내용 | 원래 위치 |
 | --- | --- | --- |
 | `pulp_test.py` | PuLP 라이브러리 튜토리얼 | `test/` |
 | `pulp_test2.py` | PuLP 최소 예제 | `test/` |
 | `matplotlib_month_graph.py` | 월별 대여량 그래프(더미 데이터, 한글 폰트 설정 예시) | `test/test.py` |
-| `step0_rebal_qty_check.py` | 재배치량 진단 — 작업 대상 수와 **Pick·Drop 수급 격차** (1.18.8에서 되살림) | `step0_collect/test.py` |
-| `step1_cluster_memo.py` | 클러스터링 실행 결과 메모 | `step1 (...)/test.py` |

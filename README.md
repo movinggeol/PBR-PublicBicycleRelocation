@@ -91,7 +91,9 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 ├── webapp/                                # 웹 대시보드 (FastAPI, 파이썬 단독)
 ├── tests/                                 # 스모크 테스트 (pytest)
 ├── tools/                                 # 합성 데이터 생성기 등 보조 도구
-├── experiments/                           # 일회성 학습·검증 스크립트
+├── experiments/                           # 검증·실험 스크립트 (성격별 5분류)
+│   ├── params/ baseline/ structure/       #   파라미터·대조군·설계 측정
+│   └── diagnostic/ learning/              #   산출물 진단·학습용 예제
 ├── project_config.py                      # 공통 설정(now/period/duration/day_type/…)·운영 상수
 ├── demand_model.py                        # 수요 피처·계절 보정(warmup)·모델 하네스
 ├── tashu.py                               # 타슈 API 클라이언트 (수집·실시간 대조 공용)

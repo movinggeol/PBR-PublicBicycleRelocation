@@ -326,7 +326,7 @@ $$
 
 - $\Delta_i = r_i$ — **계획 기준**. step4가 쓰는 방식이며, 계획이 100% 집행된다고 가정한다.
 - $\Delta_i$ = VRP가 실제로 싣고 내린 양 — **집행 기준**. 대조군 비교는 이쪽을 쓴다
-  (`experiments/baseline_compare.py`). 계획 기준으로 재면 군집·ILP를 건너뛴 대조군도
+  (`experiments/baseline/baseline_compare.py`). 계획 기준으로 재면 군집·ILP를 건너뛴 대조군도
   같은 점수가 나와 비교가 성립하지 않는다.
 - 0에서 자르므로 이 값은 **결품의 하한**이다. 못 빌린 수요는 사라진다.
 

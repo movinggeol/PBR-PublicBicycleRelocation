@@ -132,7 +132,7 @@ def load_net_demand() -> pd.DataFrame:
     순수요로 평가해야 한다 — 앞 단계(calculate_target_qty)가 이미 한쪽만 골라
     목표 재고를 잡았기 때문이다. 섞으면 평일 계획을 주말 수요로 채점하게 되고,
     대여소의 33~37%가 두 구분에서 부호가 반대라 결과가 실제와 달라진다
-    (experiments/weekend_profile.py, docs/구현/steps/step0_raw.md).
+    (experiments/structure/weekend_profile.py, docs/구현/steps/step0_raw.md).
     '''
     frame = pd.DataFrame()
     try:
@@ -188,7 +188,7 @@ def executed_delta(vrp: pd.DataFrame) -> pd.Series:
     건너뛴 방법과 점수가 같아져 비교 자체가 불가능**해진다
     (docs/분석/EXPERIMENTS.md 5장에서 실측으로 확인).
 
-    실험 스크립트(experiments/baseline_compare.py)도 이 함수를 그대로 쓴다.
+    실험 스크립트(experiments/baseline/baseline_compare.py)도 이 함수를 그대로 쓴다.
     """
     if vrp.empty:
         return pd.Series(dtype=float)

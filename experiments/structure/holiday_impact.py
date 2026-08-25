@@ -8,12 +8,12 @@
   새 규칙: 평일 = 월~금 중 공휴일이 아닌 날 (holidays 패키지)
 
 같은 net_demand를 두 규칙으로 각각 집계해 mu·sigma·target_qty와 작업 대상 수를
-비교한다. 실행: python experiments/holiday_impact.py
+비교한다. 실행: python experiments/structure/holiday_impact.py
 """
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pandas as pd
 

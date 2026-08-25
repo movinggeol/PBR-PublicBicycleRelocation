@@ -2,7 +2,7 @@
 
 **평일과 휴일 중 한쪽만 골라 계산한다**(`--day-type`, 기본 auto = 오늘로 판정).
 휴일 = 주말 ∪ 공휴일이다. 두 구분은 수요 구조가 달라 섞으면 안 된다 — 실측에서
-대여소의 33~37%가 부호가 반대였다(experiments/weekend_profile.py). 섞어서 평균 내면
+대여소의 33~37%가 부호가 반대였다(experiments/structure/weekend_profile.py). 섞어서 평균 내면
 서로 상쇄돼 작업 대상에서 빠진다.
 
 입력: st_info ({now}).csv, st_net_daily ({period}).csv
@@ -115,7 +115,7 @@ def compute_rebal_qty(stats: pd.DataFrame, z=None, up_limit=None,
     환경변수 PBR_TARGET_Z로 바꿀 수 있다 — 근거는 docs/분석/EXPERIMENTS.md 1장.
 
     **저장하지 않는 순수 계산이다.** 파일·DB에 남기는 것은 calculate_rebal_qty()이고,
-    실험 스크립트(experiments/baseline_compare.py의 z=0 대조군)는 이 함수를 직접 쓴다 —
+    실험 스크립트(experiments/baseline/baseline_compare.py의 z=0 대조군)는 이 함수를 직접 쓴다 —
     측정 코드와 운영 코드가 갈리면 측정이 거짓말을 한다(docs/분석/DEMAND_DISTRIBUTION.md 5장).
     '''
     z = TARGET_Z if z is None else z

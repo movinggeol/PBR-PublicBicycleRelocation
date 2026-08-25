@@ -21,12 +21,12 @@ CV가 0.20~0.24이고, 날씨는 그것의 유력한 설명 변수로 지목돼 
     표본 밖 R²가 0에 가깝거나 음수  → 붙이지 않는다. 지금까지와 같은 규칙이다.
     표본 밖 R²가 뚜렷하게 양수      → demand_model.build_features()에 붙일 값어치가 있다.
 
-실행: python experiments/weather_impact.py
+실행: python experiments/structure/weather_impact.py
 """
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import numpy as np
 import pandas as pd

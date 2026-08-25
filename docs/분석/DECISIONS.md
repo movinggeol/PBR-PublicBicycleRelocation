@@ -140,7 +140,7 @@ pick/drop) 중 가장 가까운 곳으로 갑니다.
 
 ### 얼마나 손해인지 **쟀습니다**
 
-`experiments/ortools_gap.py`로 OR-Tools 최적해와 비교했습니다.
+`experiments/baseline/ortools_gap.py`로 OR-Tools 최적해와 비교했습니다.
 
 | | 값 |
 | --- | --- |

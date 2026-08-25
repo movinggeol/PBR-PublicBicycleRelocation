@@ -95,7 +95,7 @@ DEFAULT_PERIOD = os.getenv("PBR_PERIOD") or latest_period()
 # **휴일 = 주말 ∪ 공휴일**이다. 평일과 휴일은 수요 구조가 다르므로 한 통계로
 # 섞지 않는다. 실측(12개월): `_10_15`·`_15_20`에서 대여소의 33~37%가 두 구분에서
 # **부호가 반대**였다(평일엔 채워야 할 곳이 휴일엔 빼 와야 할 곳). 섞어서 평균 내면
-# 서로 상쇄돼 작업 대상에서 빠진다. 근거: experiments/weekend_profile.py
+# 서로 상쇄돼 작업 대상에서 빠진다. 근거: experiments/structure/weekend_profile.py
 #
 # 그래서 시간대(duration)와 같은 급의 실행 설정으로 둔다 — 한 번의 실행은
 # 평일 계획이거나 휴일 계획이지, 둘을 합친 무언가가 아니다.
@@ -393,7 +393,7 @@ ADJUST_BALANCE_LIMIT = int(os.getenv("PBR_ADJUST_BALANCE_LIMIT", "5"))
 # 91.7~92.8%에 그쳤다. 순수요 분포의 꼬리가 정규분포보다 두껍기 때문이다.
 # z=1.99로 올리면 평균 94.9%가 되고, 대가는 처리 상한 +30%다. 다만 회차마다 대가가
 # 다르다 — pick 가능량이 이미 병목인 _05_10은 작업량이 늘지 않는다(-1.8%).
-# 근거·재현: docs/분석/EXPERIMENTS.md 1장, python experiments/z_sweep.py
+# 근거·재현: docs/분석/EXPERIMENTS.md 1장, python experiments/params/z_sweep.py
 TARGET_Z = float(os.getenv("PBR_TARGET_Z", "1.99"))
 
 

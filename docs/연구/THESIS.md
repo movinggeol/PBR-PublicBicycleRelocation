@@ -81,7 +81,7 @@ README의 "평균 불균형 개선 65%", "결품 시간 2.16h → 0.42h"는 전�
 
 ### 구현
 
-`experiments/baseline_compare.py` 하나로 묶습니다. 기존 실험 스크립트
+`experiments/baseline/baseline_compare.py` 하나로 묶습니다. 기존 실험 스크립트
 (`z_sweep.py`, `predictor_compare.py`)와 같은 규약을 따릅니다 — DB의 `net_demand`를
 읽고, 결과를 표로 출력하고, 파이프라인 산출물을 건드리지 않습니다.
 
@@ -215,12 +215,12 @@ README의 모든 수치는 **25년 11월 데이터로 2026-08-12에 한 번 돌�
 
 | 순위 | 할 일 | 산출물 | 상태 |
 | --- | --- | --- | --- |
-| 1 | **대조군 실험** (B1~B3) | `experiments/baseline_compare.py`, [EXPERIMENTS.md](../분석/EXPERIMENTS.md) 5장 | ✅ 완료 (1.18.0) |
-| 2 | **반복 실행·통계** | `experiments/repeat_eval.py` — 5개월·4씨앗, Wilcoxon | ✅ 완료 (1.18.0) |
+| 1 | **대조군 실험** (B1~B3) | `experiments/baseline/baseline_compare.py`, [EXPERIMENTS.md](../분석/EXPERIMENTS.md) 5장 | ✅ 완료 (1.18.0) |
+| 2 | **반복 실행·통계** | `experiments/baseline/repeat_eval.py` — 5개월·4씨앗, Wilcoxon | ✅ 완료 (1.18.0) |
 | 3 | **선행연구·정형화** | [FORMULATION.md](../분석/FORMULATION.md) ✅ / [RELATED_WORK.md](RELATED_WORK.md) 문헌 11편 확정 | 🟡 **전문 읽기가 남음** |
 | 4 | 문서 정합성 수정 | RETROSPECTIVE·EXPERIMENTS·KPI·DB_PLAN 갱신 | ✅ 완료 (1.17.6) |
-| 5 | `γ = 3000` 다른 달 재확인 | `experiments/gamma_recheck.py` | ✅ 완료 (1.18.0) |
-| 6 | OR-Tools 대비 갭 측정 | `experiments/ortools_gap.py` | ✅ 완료 (1.18.0) |
+| 5 | `γ = 3000` 다른 달 재확인 | `experiments/baseline/gamma_recheck.py` | ✅ 완료 (1.18.0) |
+| 6 | OR-Tools 대비 갭 측정 | `experiments/baseline/ortools_gap.py` | ✅ 완료 (1.18.0) |
 | 7 | 시간 예산을 실제 제약으로 | — | ⏸ **보류 (사용자 결정, 2026-08-21)** |
 | 8 | CI·LICENSE·재현 패키지 | GitHub Actions, MIT, README 5분 절차 | ✅ 완료 (1.18.0) |
 | 9 | **박정연 외(2024) 모형 대비 예측 비교** | 논문 5·6장 보조 표 | 🔴 **새로 생김 — 값어치 큼** |
@@ -229,7 +229,7 @@ README의 모든 수치는 **25년 11월 데이터로 2026-08-12에 한 번 돌�
 **9번이 남은 실험 중 가장 값어치 있습니다.** 같은 도시·같은 시스템의 선행연구가 쓴
 모형(선형회귀·음이항회귀·선형혼합효과)과 본 연구의 `μ + zσ`를 **같은 자로** 비교하면
 "왜 단순한 방법을 썼는가"에 측정으로 답할 수 있습니다. 판정 기준은
-`experiments/quantile_model_eval.py`의 것을 그대로 쓰십시오 — 작업 대상만·평일/휴일
+`experiments/structure/quantile_model_eval.py`의 것을 그대로 쓰십시오 — 작업 대상만·평일/휴일
 따로·표본 밖·베이스라인 초과. 분위수 모델을 철회했을 때와 같은 방식입니다
 ([DEMAND_DISTRIBUTION.md](../분석/DEMAND_DISTRIBUTION.md) 5장).
 

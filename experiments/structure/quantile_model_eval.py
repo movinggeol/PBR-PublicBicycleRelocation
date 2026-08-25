@@ -13,7 +13,7 @@
   · **과잉(overshoot)** — 덮되 얼마나 넉넉히 덮는가. 커버리지만 보면
     "target을 무한대로" 두는 게 이기므로, 비용도 함께 봐야 한다.
 
-실행: python experiments/quantile_model_eval.py
+실행: python experiments/structure/quantile_model_eval.py
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import numpy as np
 import pandas as pd

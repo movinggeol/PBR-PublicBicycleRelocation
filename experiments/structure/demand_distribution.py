@@ -13,8 +13,8 @@
 **표본이 수십만이라 정규성 검정의 p값은 의미가 없다**(무엇이든 기각된다).
 그래서 p값이 아니라 **효과 크기**(왜도·첨도·분위수 차이)를 본다.
 
-실행: python experiments/demand_distribution.py
-      python experiments/demand_distribution.py --day-type holiday
+실행: python experiments/structure/demand_distribution.py
+      python experiments/structure/demand_distribution.py --day-type holiday
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import numpy as np
 import pandas as pd

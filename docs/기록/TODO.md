@@ -61,7 +61,7 @@ step4는 **계획량(`rebal_qty`)이 전부 집행됐다고 보고** 재고를 �
 **계획과 집행의 격차**를 볼 수 있게 했습니다. VRP 결과가 없는 구버전 산출물에서는
 경고를 찍고 계획량으로 물러섭니다.
 
-- `experiments/baseline_compare.py`도 이제 **같은 함수**를 씁니다 — 측정 코드와 운영
+- `experiments/baseline/baseline_compare.py`도 이제 **같은 함수**를 씁니다 — 측정 코드와 운영
   코드가 갈리지 않습니다.
 - 재발 방지 테스트 4개 추가(`tests/test_calculations.py`): 부호·합산·복귀 제외,
   집행 기준과 계획 기준이 실제로 다른지, 폴백.
@@ -78,7 +78,7 @@ step4의 `load_net_demand()`는 **필터 없이 그 기간 전체를 읽고 있�
 평일 순수요로** 자동으로 평가됩니다. 몇 일치를 썼는지 콘솔에 찍습니다.
 재발 방지 테스트 2개 추가(`tests/test_day_type.py`, 평일·휴일 각각).
 
-> 대조군 실험(`experiments/baseline_compare.py`)은 처음부터 요일 구분을 적용했으므로
+> 대조군 실험(`experiments/baseline/baseline_compare.py`)은 처음부터 요일 구분을 적용했으므로
 > [EXPERIMENTS.md](../분석/EXPERIMENTS.md) 5·6장과 README의 수치는 **영향받지 않습니다.**
 > 바뀌는 것은 파이프라인이 `kpi_summary`에 쌓는 값입니다.
 
@@ -120,7 +120,7 @@ step4의 `load_net_demand()`는 **필터 없이 그 기간 전체를 읽고 있�
 - 🟡 **greedy 경로의 최적성 갭이 평균 9.7%, 최악 46.4%다** (1.18.0 실측,
   [EXPERIMENTS.md](../분석/EXPERIMENTS.md) 6장). 전면 교체는 하지 않기로 했지만,
   **갭이 20%를 넘는 클러스터(30개 중 5개)만 OR-Tools로 다시 푸는 절충안**은
-  싸게 손해의 대부분을 회수합니다. 재현: `experiments/ortools_gap.py`.
+  싸게 손해의 대부분을 회수합니다. 재현: `experiments/baseline/ortools_gap.py`.
 - `VEHICLES_PER_ROUND = 10`의 현장 근거 확인 필요. (1.13.0부터 보유 대수·회차당 대수
   모두 웹 실행 폼과 `--fleet-size`/`--vehicles-per-round`로 실행마다 조정할 수 있으므로,
   현장 값이 정해지면 기본값만 바꾸면 된다.)
@@ -196,7 +196,7 @@ PuLP 4.0이 나온 뒤 새 환경에서 설치하면 **step2가 통째로 깨집
      의도적으로 자동화하지 않음). 기본값 없는 NOT NULL 추가도 SQLite 제약으로 불가 —
      경고만 낸다. 그런 변경이 실제로 필요해지면 그때 테이블 재생성 절차를 만들 것.
 6. **EDA 시각화**: `month_graph`에 matplotlib 그래프 통합
-   (`experiments/matplotlib_month_graph.py`의 한글 폰트 설정 참고).
+   (`experiments/learning/matplotlib_month_graph.py`의 한글 폰트 설정 참고).
 7. ~~**step1 매직 넘버**~~ → **완료(1.18.8).** 여섯 개를 `project_config`로 뺐다:
    `REBAL_MIN_QTY`(2) · `TOP_STATION_LIMIT`(50) · `TARGET_CLUSTER_SIZE`(7) ·
    `ADJUST_MAX_ITER`(200) · `ADJUST_BALANCE_OK`(3) · `ADJUST_BALANCE_LIMIT`(5).
@@ -249,7 +249,7 @@ PuLP 4.0이 나온 뒤 새 환경에서 설치하면 **step2가 통째로 깨집
 17. 🟡 **날씨를 수요 예측에 붙일지 — 측정은 끝났고, 붙이는 것만 남았다 (1.20.1)**
 
     자료를 받았고(대전 133, 2025-01 ~ 2026-07, 13,848시간) 읽는 코드(`weather.py`)와
-    측정(`experiments/weather_impact.py`)까지 끝냈다. 결과는
+    측정(`experiments/structure/weather_impact.py`)까지 끝냈다. 결과는
     [WEATHER.md](../분석/WEATHER.md)에 있다. **채택 기준을 통과했다.**
 
     - 작업 대상 대여소·표본 밖·계절 보정을 켠 베이스라인 대비 MAE **+4.3%**
@@ -286,6 +286,16 @@ PuLP 4.0이 나온 뒤 새 환경에서 설치하면 **step2가 통째로 깨집
     - **재는 방법**: 이상 기록을 뺀 순수요와 그대로인 순수요로 각각 계획을 만들어
       결품 시간을 비교한다. 차이가 없으면 지금이 맞고, 있으면 필터를 계획 경로로
       옮긴다. 자세한 것은 [DECISIONS.md](../분석/DECISIONS.md) 6-1.
+
+19. 🟢 **노션의 초기 정리 문서를 docs에 반영** (수정안 10번, 착수 보류)
+
+    프로젝트 초창기의 정리와 문제상황을 담은 문서가 노션에 있다.
+    링크: https://groovy-dessert-319.notion.site/2aae690dad7a80d99fb1ec4375eadeee
+
+    - 사용자가 2026-08-25에 링크를 주며 **"나중에 작업해"** 라고 했다. 지시가 오기
+      전에는 손대지 않는다.
+    - 넣을 자리 후보: [RETROSPECTIVE.md](RETROSPECTIVE.md)(초기 상황·시행착오),
+      [THESIS.md](../연구/THESIS.md)(논문 1장 서론 재료).
 
 ---
 
@@ -597,7 +607,7 @@ step 스크립트는 아직 CSV를 쓰며, 이관은 [DB_PLAN.md](../구현/DB_P
 | `tests/test_webapp.py` (17개) | 라우트 렌더링·경로 탈출 차단·허용 확장자·404 처리. Starlette 시그니처 변경 같은 회귀를 즉시 잡는다 |
 | `tests/test_pipeline.py` (17개) | 합성 데이터로 step0→step1→step2→step4 실제 실행. 산출물 존재·스키마, ILP 공급 제약, VRP 시간 컬럼, 개선량 부호까지 검증 |
 | 실데이터 안전성 | 실행마다 고유 라벨(`smoketest-{pid}`)을 써서 실데이터와 파일명이 겹치지 않고, 종료 시 해당 라벨 파일만 정리 |
-| `pytest.ini` | `testpaths = tests` — `experiments/pulp_test.py`가 pytest 기본 패턴에 걸려 수집되던 문제 차단 |
+| `pytest.ini` | `testpaths = tests` — `experiments/learning/pulp_test.py`가 pytest 기본 패턴에 걸려 수집되던 문제 차단 |
 | `requirements-dev.txt` | pytest·httpx 분리 (런타임 의존성에 섞지 않음) |
 
 ## ✅ 완료 (2026-08-10, 버전 1.2.2) — 웹 대시보드 코드 리뷰 수정

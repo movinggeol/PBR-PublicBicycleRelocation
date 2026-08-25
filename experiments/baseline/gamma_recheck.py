@@ -15,8 +15,8 @@
   · 개선률·목표 도달률은 쓰지 않는다(γ와 무관하게 target_qty가 분모라 흔들린다).
 
 사용법:
-    python experiments/gamma_recheck.py --period "26년 03월"
-    python experiments/gamma_recheck.py --period "25년 11월" --gammas 1000,2000,3000,5000
+    python experiments/baseline/gamma_recheck.py --period "26년 03월"
+    python experiments/baseline/gamma_recheck.py --period "25년 11월" --gammas 1000,2000,3000,5000
 """
 import argparse
 import sys

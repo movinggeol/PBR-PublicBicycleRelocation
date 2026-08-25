@@ -12,12 +12,12 @@
 "시간대가 다르면 수요 구조가 반대이므로 섞어서 평균 내지 마라"(SKILL.md).
 요일도 같은 논리가 적용되는지 본다.
 
-실행: python experiments/weekend_profile.py
+실행: python experiments/structure/weekend_profile.py
 """
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import numpy as np
 import pandas as pd

@@ -12,9 +12,9 @@
 계획 단위는 baseline_compare.py 그대로다 — 여기서 다시 계산하는 것은 없다.
 
 사용법:
-    python experiments/repeat_eval.py --periods "25년 09월,25년 10월,25년 11월"
-    python experiments/repeat_eval.py --periods "25년 11월" --seeds 42,7,13,99
-    python experiments/repeat_eval.py --methods P,B0,B1 --duration "_05_10"
+    python experiments/baseline/repeat_eval.py --periods "25년 09월,25년 10월,25년 11월"
+    python experiments/baseline/repeat_eval.py --periods "25년 11월" --seeds 42,7,13,99
+    python experiments/baseline/repeat_eval.py --methods P,B0,B1 --duration "_05_10"
 
 검정: 같은 (기간, 씨앗, 시간대)에서 두 방법을 짝지어 Wilcoxon 부호순위 검정을 한다.
 정규성을 가정하지 않고 표본이 적어도 쓸 수 있다. 표본이 5쌍 미만이면 검정을

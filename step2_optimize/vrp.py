@@ -76,7 +76,7 @@ def greedy_route(nodes: dict, cluster, time_budget_sec: float = None) -> list:
     """노드 목록을 받아 차량 1대의 방문 순서를 greedy로 만든다.
 
     **저장하지 않는 순수 계산이다.** 파일·DB에 남기는 것은 run_vrp_plan()이고,
-    실험 스크립트(experiments/baseline_compare.py)는 이 함수를 직접 쓴다 —
+    실험 스크립트(experiments/baseline/baseline_compare.py)는 이 함수를 직접 쓴다 —
     측정 코드와 운영 코드가 갈리면 비교가 성립하지 않는다.
 
     nodes: {(station_id, 'pick'|'drop'): {'qty', 'lat', 'lon'}}  (호출 측에서 소모된다)
@@ -135,7 +135,7 @@ def greedy_route(nodes: dict, cluster, time_budget_sec: float = None) -> list:
         # 실데이터 15개 실행·회차 1,224행에 `return` 행이 0건인 이유다.
         #
         # 살아 있는 호출부는 수급이 안 맞는 노드 집합을 주는
-        # experiments/baseline_compare.py의 그리디 대조군(B1)뿐이다. 지우지 마라.
+        # experiments/baseline/baseline_compare.py의 그리디 대조군(B1)뿐이다. 지우지 마라.
         if not candidates:
             if current_id == DEPOT_ID and current_load == 0:
                 # depot에서 빈 차로도 후보가 없으면 더 진행 불가 (무한루프 방지)

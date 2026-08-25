@@ -143,7 +143,7 @@ now    = weather.fetch_hour()                  # 지금 관측값 (API 허브)
 
 ## 4. 측정 — 날씨가 순수요를 설명하는가
 
-재현: `python experiments/weather_impact.py`
+재현: `python experiments/structure/weather_impact.py`
 
 붙이기 전에 재는 것이 이 저장소의 규칙입니다. 이유가 있습니다 — **날씨가 흔드는 것은
 이용량이고, 이 파이프라인이 맞혀야 하는 것은 순수요(반납 − 대여)입니다.** 비가 와서
@@ -211,9 +211,9 @@ now    = weather.fetch_hour()                  # 지금 관측값 (API 허브)
 사용자 질문: "머신러닝 예측 알고리즘을 도입할 수 있을까?" 이 저장소에는 이미 분위수
 회귀 하네스가 있고(`demand_model.py`, HistGradientBoosting), 1.15.3에서 채택을
 되돌린 뒤 **다음 시도(날씨)를 위해 남겨 둔** 상태였습니다. 그래서 날씨를 피처로 넣고
-같은 채택 기준(`experiments/quantile_model_eval.py`)으로 다시 판정했습니다.
+같은 채택 기준(`experiments/structure/quantile_model_eval.py`)으로 다시 판정했습니다.
 
-재현: `python experiments/quantile_model_eval.py --holdout "26년 03월" --quantile 0.97`
+재현: `python experiments/structure/quantile_model_eval.py --holdout "26년 03월" --quantile 0.97`
 
 | 검증 달 | 모델 | 커버리지 (목표 95%) | 95%에서 벗어난 정도 | 과잉 |
 | --- | --- | ---: | ---: | ---: |

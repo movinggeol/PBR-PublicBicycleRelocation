@@ -12,12 +12,12 @@
 - 같이 움직인다 → 날씨가 이용량을 통해 순수요에 전달된다. 붙일 값어치가 있다.
 - 따로 논다     → 날씨를 넣어도 순수요 예측은 별로 안 좋아진다.
 
-실행: python experiments/net_vs_volume.py
+실행: python experiments/structure/net_vs_volume.py
 """
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import numpy as np
 import pandas as pd

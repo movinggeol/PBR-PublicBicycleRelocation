@@ -108,7 +108,7 @@ def solve_cluster_moves(cluster_df: pd.DataFrame, solver: pulp.LpSolver,
     '''클러스터 1개의 ILP를 풀어 이동 계획(행 목록)을 돌려준다.
 
     **저장하지 않는 순수 계산이다.** 파일·DB에 남기는 것은 run_ilp_plan()이고,
-    실험 스크립트(experiments/baseline_compare.py)는 이 함수를 직접 쓴다 —
+    실험 스크립트(experiments/baseline/baseline_compare.py)는 이 함수를 직접 쓴다 —
     측정 코드와 운영 코드가 갈리면 비교가 성립하지 않는다.
 
     반환: [{'pick_station_id', 'drop_station_id', 'qty', 'travel_time_sec'}, ...]

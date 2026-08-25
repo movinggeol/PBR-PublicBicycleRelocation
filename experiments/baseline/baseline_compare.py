@@ -24,9 +24,9 @@ greedy_route·_stockout_hours 전부 파이프라인의 함수다. 측정이 제
 측정이 거짓말을 한다(docs/분석/DEMAND_DISTRIBUTION.md 5장에서 실제로 겪었다).
 
 사용법:
-    python experiments/baseline_compare.py --period "25년 11월"
-    python experiments/baseline_compare.py --period "26년 03월" --duration "_05_10"
-    python experiments/baseline_compare.py --methods P,B1 --seed 7
+    python experiments/baseline/baseline_compare.py --period "25년 11월"
+    python experiments/baseline/baseline_compare.py --period "26년 03월" --duration "_05_10"
+    python experiments/baseline/baseline_compare.py --methods P,B1 --seed 7
 """
 import argparse
 import contextlib
@@ -39,7 +39,7 @@ import numpy as np
 import pandas as pd
 import pulp
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]      # experiments/<분류>/ 아래에 있다
 sys.path.insert(0, str(ROOT))
 for _folder in ("step0_collect", "step1_cluster",
                 "step2_optimize", "step4_metrics"):

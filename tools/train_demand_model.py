@@ -68,7 +68,7 @@ def main() -> int:
 
     print(f"저장: {path}")
     print("\n다음 실행부터 calculate_target_qty가 이 모델을 씁니다.")
-    print("먼저 검증하세요 — python experiments/quantile_model_eval.py")
+    print("먼저 검증하세요 — python experiments/structure/quantile_model_eval.py")
     print("(베이스라인을 못 이기면 모델 파일을 지우면 기존 공식으로 돌아갑니다.)")
     return 0
 

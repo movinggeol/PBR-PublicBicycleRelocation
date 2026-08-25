@@ -11,8 +11,8 @@
            (실제 st_info로 rebal_qty를 다시 계산)
 
 실행:
-    python experiments/z_sweep.py
-    python experiments/z_sweep.py --duration _05_10 --period "25년 11월"
+    python experiments/params/z_sweep.py
+    python experiments/params/z_sweep.py --duration _05_10 --period "25년 11월"
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import argparse
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]      # experiments/<분류>/ 아래에 있다
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
 

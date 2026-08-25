@@ -38,7 +38,7 @@ DEFAULT_RAW = "data/raw_data/합성_대여이력.csv"
 #   (시작시, 끝시, 방향)  방향 +1 = 앞쪽→뒤쪽 대여소, -1 = 반대
 #
 # **평일과 휴일의 방향을 다르게 둔다.** 실데이터에서 `_10_15`·`_15_20`은 대여소의
-# 33~37%가 평일과 휴일에 부호가 반대였다(experiments/weekend_profile.py).
+# 33~37%가 평일과 휴일에 부호가 반대였다(experiments/structure/weekend_profile.py).
 # 합성 데이터도 그 구조를 흉내 내야 "섞으면 상쇄된다"를 테스트할 수 있다.
 FLOW_WINDOWS = {
     "weekday": [

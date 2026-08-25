@@ -7,13 +7,13 @@
 돌아가며, 아래 명령으로 그대로 재현됩니다.
 
 ```powershell
-python experiments/z_sweep.py            # 1장
-python experiments/predictor_compare.py  # 2장
-python experiments/seasonal_window.py    # 3장
-python experiments/baseline_compare.py --period "25년 11월" --plan-basis   # 5장
-python experiments/repeat_eval.py --periods "25년 09월,25년 10월,25년 11월,26년 01월,26년 03월" --methods P,B0,B1,B3
-python experiments/gamma_recheck.py --period "26년 03월"    # 4장 후속-2
-python experiments/ortools_gap.py --period "25년 11월"      # greedy 경로의 갭 (pip install ortools)
+python experiments/params/z_sweep.py            # 1장
+python experiments/params/predictor_compare.py  # 2장
+python experiments/params/seasonal_window.py    # 3장
+python experiments/baseline/baseline_compare.py --period "25년 11월" --plan-basis   # 5장
+python experiments/baseline/repeat_eval.py --periods "25년 09월,25년 10월,25년 11월,26년 01월,26년 03월" --methods P,B0,B1,B3
+python experiments/baseline/gamma_recheck.py --period "26년 03월"    # 4장 후속-2
+python experiments/baseline/ortools_gap.py --period "25년 11월"      # greedy 경로의 갭 (pip install ortools)
 ```
 
 | 실험 | 물음 | 결론 | 반영 |
@@ -358,7 +358,7 @@ step0 전처리부터 step4까지 두 번 실행했습니다. 기준 데이터�
 ### 후속-2 — 다른 달에서 다시 확인 (1.18.0)
 
 근거가 **한 달(25년 11월)** 뿐이었으므로, 계절이 다른 **26년 03월(봄, 수요가 큰 달)** 에서
-다시 돌렸습니다 (`experiments/gamma_recheck.py`, 3회차 합계).
+다시 돌렸습니다 (`experiments/baseline/gamma_recheck.py`, 3회차 합계).
 
 | γ | 처리 대수 | 총 이동 | 최장 소요 | 예산 초과 | 결품 감소 |
 | --- | --- | --- | --- | --- | --- |
@@ -413,7 +413,7 @@ z가 다른 B2와는 비교조차 할 수 없습니다(4장에서 배운 것).
 
 **평가는 VRP가 실제로 옮긴 대수로 합니다.** 이유는 아래 '측정이 또 뒤집은 것'에.
 
-재현: `python experiments/baseline_compare.py`, `python experiments/repeat_eval.py`.
+재현: `python experiments/baseline/baseline_compare.py`, `python experiments/baseline/repeat_eval.py`.
 두 스크립트 모두 파이프라인 함수를 그대로 호출합니다 — 측정 코드가 제 방식대로
 계산하면 측정이 거짓말을 합니다([DEMAND_DISTRIBUTION.md](DEMAND_DISTRIBUTION.md) 5장).
 
@@ -536,7 +536,7 @@ B1은 예산 안에서 멈추도록 만들었으므로 초과가 0인 대신 일
 
 같은 노드 집합(ILP가 정한 대여소별 pick/drop 수량)·같은 적재 용량(10대)·같은 거리
 (Haversine)로 OR-Tools(GUIDED_LOCAL_SEARCH, 클러스터당 10초)와 비교했습니다.
-재현: `python experiments/ortools_gap.py --period "25년 11월"` (`pip install ortools` 필요).
+재현: `python experiments/baseline/ortools_gap.py --period "25년 11월"` (`pip install ortools` 필요).
 
 > **모델링에서 한 번 막혔습니다.** 처음에는 대여소 하나를 노드 하나로 두었는데
 > **실행 불가능한 인스턴스**가 나왔습니다. 적재 10대에 pick {10, 10, 7},

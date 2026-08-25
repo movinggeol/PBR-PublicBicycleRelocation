@@ -9,15 +9,15 @@ Pick 가능량과 Drop 필요량이 얼마나 어긋나 있는지가 핵심이�
 라벨이므로 `project_config`에서 읽어야 한다.
 
 사용법:
-    python experiments/step0_rebal_qty_check.py
-    python experiments/step0_rebal_qty_check.py --now "2026-08-11 real" --duration "_05_10"
+    python experiments/diagnostic/step0_rebal_qty_check.py
+    python experiments/diagnostic/step0_rebal_qty_check.py --now "2026-08-11 real" --duration "_05_10"
 """
 import sys
 from pathlib import Path
 
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from project_config import (  # noqa: E402
     PROJECT_ROOT, REBAL_MIN_QTY, duration_list, get_runtime_config,

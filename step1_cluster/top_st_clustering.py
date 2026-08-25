@@ -140,7 +140,7 @@ def make_clustering(pick_drop: pd.DataFrame, random_state: int = 42) -> pd.DataF
     (docs/구현/FLEET.md)
 
     random_state는 파이프라인에서 늘 42다. 실험이 씨앗을 바꿔 가며 돌려
-    greedy 탐색의 변동성을 재려고 열어 둔 인자다(experiments/baseline_compare.py).
+    greedy 탐색의 변동성을 재려고 열어 둔 인자다(experiments/baseline/baseline_compare.py).
     '''
 
     wanted = wanted_vehicles(pick_drop)

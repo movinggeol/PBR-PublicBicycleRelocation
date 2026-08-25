@@ -1,6 +1,6 @@
 # 순수요는 정규분포인가 — `mu + z·sigma`의 전제 검증
 
-> 2026-08-14 측정. 재현: `python experiments/demand_distribution.py`
+> 2026-08-14 측정. 재현: `python experiments/structure/demand_distribution.py`
 >
 > **결론부터**: 순수요 원자료는 정규분포와 한참 멀지만(초과첨도 13~101),
 > 그건 **대여소를 섞어서 생긴 착시**다. 대여소별로 보면 거의 정규분포다.
@@ -215,7 +215,7 @@ HistGradientBoostingRegressor(loss="quantile", quantile=0.95)
 ### 1차 시도 — 아직 이기지 못했다 (2026-08-14)
 
 구현하고 재 봤다. **채택하지 않았다.** 검증 달을 셋 바꿔 가며 확인했다
-(`python experiments/quantile_model_eval.py --holdout "25년 11월"`).
+(`python experiments/structure/quantile_model_eval.py --holdout "25년 11월"`).
 
 | 검증 달 | 커버리지 (기준 → 모델) | 과잉 (기준 → 모델) | 판정 |
 | --- | --- | --- | --- |
@@ -292,7 +292,7 @@ z를 1.65 → 1.99로 올린 것과 같은 보정을 한 것이었다.
 | --- | --- |
 | `demand_model.py` | 피처 구성·계절 배율·학습·예측. 모델이 없거나 깨졌으면 폴백 |
 | `tools/train_demand_model.py` | 학습 CLI (`data/models/target_quantile.pkl`) |
-| `experiments/quantile_model_eval.py` | 채택 기준 그대로 적용한 표본 밖 비교 |
+| `experiments/structure/quantile_model_eval.py` | 채택 기준 그대로 적용한 표본 밖 비교 |
 
 **코드는 남겨 뒀다.** 다음 시도(날씨·대여소 특성)를 위한 하네스이고, 채택 판정을
 자동으로 내려 주는 장치이기도 하다. 학습해서 파일이 생기면 그때 켜진다.
@@ -312,7 +312,7 @@ z를 1.65 → 1.99로 올린 것과 같은 보정을 한 것이었다.
    설명 변수로 지목했었고, 실제로 그랬다. 도시 총량의 표본 밖 R²가 0.344 → 0.756
    (+0.412)이고, 작업 대상 대여소에서도 MAE가 +4.3% 좋아진다. **다만 그 개선은
    비 오는 날(전체의 10%)에 몰려 있다 — 그 날들에서 +40%, 나머지 날엔 +0.4%다.**
-   전달 경로도 확인돼 있었다(`experiments/net_vs_volume.py`, R² 0.88~0.96).
+   전달 경로도 확인돼 있었다(`experiments/structure/net_vs_volume.py`, R² 0.88~0.96).
    붙이는 방식과 남은 결정은 [WEATHER.md](WEATHER.md) 5장.
 2. **대여소 특성** — 거치대 수·주변 대여소 밀도·위경도. 지금은 직전 달 통계만
    쓰므로, 표본이 적은 대여소가 이웃에게서 배울 통로가 없다.
@@ -335,5 +335,5 @@ z를 1.65 → 1.99로 올린 것과 같은 보정을 한 것이었다.
 | [EXPERIMENTS.md](EXPERIMENTS.md) | `z`·`γ`·학습 창 실험 (1장의 z 설명은 이 문서로 정정됨) |
 | [steps/step0_raw.md](../구현/steps/step0_raw.md) | 평일/휴일 분리와 공휴일 처리 |
 | [KPI.md](KPI.md) | 지표 정의와 비교 규칙 |
-| `experiments/demand_distribution.py` | 이 문서의 모든 수치를 재현 |
+| `experiments/structure/demand_distribution.py` | 이 문서의 모든 수치를 재현 |
 | `tools/backtest_demand.py` | 표본 밖 정확도 측정 |

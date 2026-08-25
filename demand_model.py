@@ -22,7 +22,7 @@
     않는 것과 같은 원칙이다(DB_PLAN 2단계).
 
 학습:  python tools/train_demand_model.py
-평가:  python experiments/quantile_model_eval.py
+평가:  python experiments/structure/quantile_model_eval.py
 """
 from __future__ import annotations
 

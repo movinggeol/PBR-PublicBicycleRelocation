@@ -397,9 +397,9 @@ python tools/backtest_demand.py                   # 수요 예측 검증
 python -m webapp                                  # http://127.0.0.1:8000
 
 # 파라미터 실험 재현 (docs/분석/EXPERIMENTS.md) — 여러 달의 순수요가 적재돼 있어야 함
-python experiments/z_sweep.py                     # z: 커버리지 vs 작업량
-python experiments/predictor_compare.py           # 예측기 비교·무리별 진단
-python experiments/seasonal_window.py             # 학습 창 (계절 전환기)
+python experiments/params/z_sweep.py                     # z: 커버리지 vs 작업량
+python experiments/params/predictor_compare.py           # 예측기 비교·무리별 진단
+python experiments/params/seasonal_window.py             # 학습 창 (계절 전환기)
 ```
 
 ## 관련 문서

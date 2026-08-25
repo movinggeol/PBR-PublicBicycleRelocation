@@ -24,8 +24,8 @@
 그 누락분이 얼마인지 함께 낸다.
 
 사용법:
-    python experiments/ortools_gap.py --period "25년 11월" --duration "_05_10"
-    python experiments/ortools_gap.py --period "25년 11월" --limit-sec 30
+    python experiments/baseline/ortools_gap.py --period "25년 11월" --duration "_05_10"
+    python experiments/baseline/ortools_gap.py --period "25년 11월" --limit-sec 30
 
 설치: pip install ortools   (파이프라인 의존성이 아니다 — 이 실험 전용)
 """

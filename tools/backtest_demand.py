@@ -227,7 +227,7 @@ def main() -> int:
         print(f"\n  참고: 월별 '필요 z'의 평균은 {total['z_for_95'].mean():.2f}지만,"
               f" 그 값을 실제로 적용했을 때의 커버리지는 따로 확인해야 한다.")
         print(f"  커버리지는 z에 대해 비선형이라 두 값이 일치하지 않는다"
-              f" — python experiments/z_sweep.py 로 z별 실제 커버리지를 볼 수 있다.")
+              f" — python experiments/params/z_sweep.py 로 z별 실제 커버리지를 볼 수 있다.")
 
         # DB에도 남긴다(1.19.3) — 그전에는 콘솔에만 찍혀서, 예측이 얼마나 맞는지
         # 웹에서 볼 수 없었다. 실패해도 측정 자체는 이미 끝났으니 경고만 남긴다

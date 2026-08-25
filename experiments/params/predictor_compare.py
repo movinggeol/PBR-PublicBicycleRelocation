@@ -13,8 +13,8 @@ MAE가 낮은 것은 그 시간대의 수요 자체가 작기 때문이지 예�
      0 / 전체평균 / 대여소평균(현행) / 대여소중앙값 / 요일별평균 / 최근 7일
 
 실행:
-    python experiments/predictor_compare.py
-    python experiments/predictor_compare.py --duration _10_15
+    python experiments/params/predictor_compare.py
+    python experiments/params/predictor_compare.py --duration _10_15
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ import argparse
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]      # experiments/<분류>/ 아래에 있다
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
 

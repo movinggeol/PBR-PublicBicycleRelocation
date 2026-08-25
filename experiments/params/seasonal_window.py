@@ -11,8 +11,8 @@
   · warmup14 같은 방식, 14일
 
 실행:
-    python experiments/seasonal_window.py
-    python experiments/seasonal_window.py --duration _05_10 --z 2.10
+    python experiments/params/seasonal_window.py
+    python experiments/params/seasonal_window.py --duration _05_10 --z 2.10
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import argparse
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]      # experiments/<분류>/ 아래에 있다
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
 
