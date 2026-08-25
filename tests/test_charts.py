@@ -224,6 +224,26 @@ def test_표는_카드가_아니라_창으로_뜬다():
     assert "max-height" in block.group(0), "창이 화면보다 길어지면 안 된다"
 
 
+def test_창은_화면_우측_중앙에_뜬다():
+    """본문이 왼쪽에 있으므로 **오른쪽 세로 중앙**에 띄워야 그래프를 가리지 않는다.
+
+    처음 자리를 CSS가 `right`/`transform`으로 잡으므로, 끌기 전에는 `style.left`가
+    비어 있다. 그 값을 그대로 읽으면 0으로 보여 창이 왼쪽 위로 튄다 — 그래서
+    스크립트는 **실제로 그려진 자리**(getBoundingClientRect)에서 좌표를 잡는다.
+    """
+    css = BASE_TEMPLATE.read_text(encoding="utf-8")
+    block = re.search(r"\.table-panel\s*\{[^}]*\}", css)
+
+    assert block, ".table-panel 규칙이 없다"
+    rule = block.group(0)
+    assert "top: 50%" in rule and "translateY(-50%)" in rule, "세로 중앙이 아니다"
+    assert re.search(r"right:\s*var\(--sp-", rule), "우측 기준이 아니다"
+
+    # 좌표 전환은 pin() 한 곳에서만 한다 — 두 곳으로 갈리면 한쪽만 고쳐진다.
+    assert "function pin(" in css
+    assert css.count("panel.style.right") >= 1, "right를 풀지 않으면 left가 안 먹는다"
+
+
 def test_창_머리는_끌_수_있어야_한다():
     """머리를 끌어 옮길 수 있어야 그래프 옆에 놓고 볼 수 있다.
 

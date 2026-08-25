@@ -514,8 +514,11 @@
       outline: 2px solid var(--blue-focus); outline-offset: 2px; border-radius: 3px;
     }
 
+    /* 처음 뜨는 자리는 **화면 세로 중앙의 오른쪽**이다. 본문이 왼쪽에 있으므로
+       오른쪽에 띄워야 그래프를 가리지 않고 나란히 볼 수 있다(1.21.4). */
     .table-panel {
-      position: fixed; z-index: 60; top: 96px; left: 50%; transform: translateX(-50%);
+      position: fixed; z-index: 60; top: 50%; right: var(--sp-lg); left: auto;
+      transform: translateY(-50%);
       width: min(560px, calc(100vw - 2 * var(--sp-md)));
       background: var(--surface); border: 1px solid var(--hairline);
       border-radius: var(--r-lg); box-shadow: 0 12px 40px rgba(0, 0, 0, .22);
@@ -1065,12 +1068,25 @@
       return { head: head, close: close };
     }
 
-    function clamp(panel) {
+    /* 창을 화면 안으로 되돌린다.
+       **실제로 그려진 자리에서 읽는다** — 처음 뜰 때는 CSS가 right/transform으로
+       자리를 잡아 `style.left`가 비어 있다. 그 값을 읽으면 0으로 보여 창이 왼쪽
+       위로 튄다(1.21.4). */
+    function pin(panel) {
       var box = panel.getBoundingClientRect();
+      panel.style.transform = "none";
+      panel.style.right = "auto";
+      panel.style.left = box.left + "px";
+      panel.style.top = box.top + "px";
+      return box;
+    }
+
+    function clamp(panel) {
+      var box = pin(panel);
       var maxLeft = window.innerWidth - box.width - MARGIN;
       var maxTop = window.innerHeight - box.height - MARGIN;
-      var left = Math.min(Math.max(parseFloat(panel.style.left) || 0, MARGIN), Math.max(MARGIN, maxLeft));
-      var top = Math.min(Math.max(parseFloat(panel.style.top) || 0, MARGIN), Math.max(MARGIN, maxTop));
+      var left = Math.min(Math.max(box.left, MARGIN), Math.max(MARGIN, maxLeft));
+      var top = Math.min(Math.max(box.top, MARGIN), Math.max(MARGIN, maxTop));
       panel.style.left = left + "px";
       panel.style.top = top + "px";
     }
@@ -1082,11 +1098,9 @@
         /* 좁은 화면에서는 아래 판으로 눕히므로 끌지 않는다. */
         if (window.matchMedia("(max-width: 560px)").matches) return;
 
-        var box = panel.getBoundingClientRect();
+        /* 세로 가운데 정렬(top/transform)과 우측 기준(right)을 풀고 좌표로 바꾼다. */
+        var box = pin(panel);
         var dx = e.clientX - box.left, dy = e.clientY - box.top;
-        panel.style.transform = "none";          /* 가운데 정렬을 풀고 좌표로 옮긴다 */
-        panel.style.left = box.left + "px";
-        panel.style.top = box.top + "px";
         head.setPointerCapture(e.pointerId);
         e.preventDefault();
 
