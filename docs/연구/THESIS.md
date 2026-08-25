@@ -13,7 +13,7 @@
 
 | 구분 | 상태 | 판정 |
 | --- | --- | --- |
-| 동작하는 시스템 | step0~4 실데이터 완주, 웹 대시보드, 테스트 350개 | ✅ 졸업작품으로 충분 |
+| 동작하는 시스템 | step0~4 실데이터 완주, 웹 대시보드, 테스트 357개 | ✅ 졸업작품으로 충분 |
 | 설계 근거 | 설계 문서 18개, `z`·`γ`를 실측 실험으로 결정 | ✅ 학부 기준 이상 |
 | 실패·수정 기록 | [RETROSPECTIVE.md](../기록/RETROSPECTIVE.md) 4장 "측정이 뒤집은 가설 7가지" | ✅ **논문 고찰에 그대로 쓸 수 있는 자산** |
 | 비교 대조군 | 대조군 4종 비교 완료 ([EXPERIMENTS.md](../분석/EXPERIMENTS.md) 5장) | ✅ 1.18.0 |
@@ -38,7 +38,7 @@
 | 4. 시스템 설계 | 파이프라인 구조, 저장소, 웹 | [PROJECT_PIPELINE](../구현/PROJECT_PIPELINE.md), [DB_SCHEMA](../구현/DB_SCHEMA.md), [WEBAPP](../구현/WEBAPP.md) | ✅ 거의 그대로 |
 | 5. 실험 — 파라미터 | `z`·`γ`·학습 창 결정 | [EXPERIMENTS.md](../분석/EXPERIMENTS.md) | ✅ 그대로 |
 | 6. 실험 — 성능 평가 | **대조군 대비 개선**, 반복 실행 분포 | **없음** | 🔴 신규 (아래 3·4장) |
-| 7. 고찰 | 측정이 뒤집은 가설 **열 가지**, 지표 설계의 함정 | [RETROSPECTIVE 4장](../기록/RETROSPECTIVE.md), [KPI 7장](../분석/KPI.md), [WEATHER 4-1](../분석/WEATHER.md) | ✅ **최대 강점** |
+| 7. 고찰 | 측정이 뒤집은 가설 **열세 가지**, 지표 설계의 함정 | [RETROSPECTIVE 4장](../기록/RETROSPECTIVE.md), [KPI 7장](../분석/KPI.md), [WEATHER 4-1](../분석/WEATHER.md) | ✅ **최대 강점** |
 | 8. 한계와 향후 과제 | 시뮬레이션의 하한성, 직선거리, 단일 도시 | [RETROSPECTIVE 6장](../기록/RETROSPECTIVE.md), 아래 9장 | ✅ 정리만 |
 
 4·5·7장은 이미 있습니다. **비어 있는 것은 2·3·6장이고, 그중 6장이 가장 급합니다.**
@@ -183,7 +183,7 @@ README의 모든 수치는 **25년 11월 데이터로 2026-08-12에 한 번 돌�
 
 | 항목 | 현재 | 할 일 |
 | --- | --- | --- |
-| CI | ✅ GitHub Actions (`.github/workflows/tests.yml`) | push·PR마다 테스트 350개 자동 실행 |
+| CI | ✅ GitHub Actions (`.github/workflows/tests.yml`) | push·PR마다 테스트 357개 자동 실행 |
 | LICENSE | ✅ 있음 (`LICENSE`) | — |
 | 재현 패키지 | ✅ README "5분 안에 직접 돌려보기" (`tools/make_sample_data.py`) | — |
 | 웹 인증 | 없음 (로컬 전용) | 고치지 말고 **한계로 명시** |
