@@ -645,7 +645,7 @@ def test_solver_factory_says_what_to_install_when_nothing_is_available(step2, mo
                         lambda **kwargs: type("X", (), {"available": lambda self: False})())
     monkeypatch.setitem(sys.modules, "cbcbox", None)   # import 시 ImportError
 
-    with pytest.raises(SystemExit, match="pip install pulp\[cbc\]"):
+    with pytest.raises(SystemExit, match=r"pip install pulp\[cbc\]"):
         ilp.build_solver()
 
 

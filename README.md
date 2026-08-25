@@ -313,7 +313,8 @@ python tools/make_sample_data.py --now "데모"
 python -m webapp        # http://127.0.0.1:8000
 ```
 
-- `/` 실행 폼·DB 실행 이력·작업 이력·최신 산출물
+- `/` 실행 폼·DB 실행 이력·작업 이력·최신 산출물 + **지금 날씨**
+  (비가 오면 "실제 재배치 필요량은 평소의 40~55% 수준"을 알립니다 — 계획을 바꾸지는 않습니다)
 - `/guide` 사용 안내 — 시작 순서·입력 항목·지표 읽는 법·문제 해결·용어
 - `/runs/{id}` 실행 상태·진행 단계·로그 (실행 중단 포함)
 - `/kpi` 실행별 성과 지표와 직전 실행 대비 증감, **그래프 3종**
@@ -397,7 +398,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/구현/WEBAPP.md](docs/구현/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/구현/DESIGN.md](docs/구현/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |
 | [docs/분석/DEMAND_DISTRIBUTION.md](docs/분석/DEMAND_DISTRIBUTION.md) | **순수요 분포** — 정규분포 전제 검증, 커버리지 원인 정정, ML 방향 |
-| [docs/구현/DB_SCHEMA.md](docs/구현/DB_SCHEMA.md) | **DB 스키마** — ERD, 테이블 15개 컬럼 레퍼런스, 조인 쿼리 |
+| [docs/구현/DB_SCHEMA.md](docs/구현/DB_SCHEMA.md) | **DB 스키마** — ERD, 테이블 18개 컬럼 레퍼런스, 조인 쿼리 |
 | [docs/구현/DB_PLAN.md](docs/구현/DB_PLAN.md) | SQLite 도입 결정·이관 계획·성능 측정 |
 | [docs/구현/COLLECTOR.md](docs/구현/COLLECTOR.md) | **재고 시계열 수집** — 평일 09–17시 10분 간격 수집기·운영(시작/일시정지/중지) |
 | [docs/분석/WEATHER.md](docs/분석/WEATHER.md) | **날씨** — 어떤 기상청 API를 받는지, 결측·겨울 3시간 누적 처리, 순수요 설명력 측정 |

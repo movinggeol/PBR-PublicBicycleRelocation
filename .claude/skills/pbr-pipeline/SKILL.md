@@ -27,7 +27,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/구현/steps/step*.md` | 단계별 입출력·문제점·작업 목록 |
 | `docs/구현/WEBAPP.md` | 웹 대시보드(webapp/) 실행·구조·API |
 | `docs/구현/DESIGN.md` | 화면 디자인 시스템 — 색 토큰·글꼴·내비·타일 (**템플릿을 건드리기 전 필독**) |
-| `docs/구현/DB_SCHEMA.md` | ERD·테이블 16개 컬럼·스코프 규칙 (**DB를 건드리기 전 필독**) |
+| `docs/구현/DB_SCHEMA.md` | ERD·테이블 18개 컬럼·스코프 규칙 (**DB를 건드리기 전 필독**) |
 | `docs/구현/DB_PLAN.md` | SQLite 도입 결정·이관 단계·성능 측정 (CSV→DB 작업 시 필독) |
 | `docs/구현/COLLECTOR.md` | 재고 시계열 수집 — 창 가드·스케줄·운영 (**수집기를 건드리기 전 필독**) |
 | `docs/분석/WEATHER.md` | 날씨 원천·측정 결과 (**날씨를 건드리기 전 필독**) |
@@ -124,7 +124,7 @@ python run_pipeline.py                    # 전체 실행 (기본 설정)
 python run_pipeline.py --skip-api --skip-eda  # 수집·EDA 생략
 python run_pipeline.py --skip-map             # TMAP 지도 생략 (키 없는 환경)
 python run_pipeline.py --now "2026-05-21 18" --period "25년 11월" --duration "_05_10,_10_15"
-python run_pipeline.py --fleet-size 15 --vehicles-per-round 6   # 차량 대수 (기본 21 / 10)
+python run_pipeline.py --fleet-size 15 --vehicles-per-round 6   # 차량 대수 (기본 21 / 21)
 python run_pipeline.py --day-type holiday --now "260813 휴일"   # 휴일 계획 (기본 auto)
 python run_pipeline.py --target-date 2026-09-25                # 그날로 자동 판정
 python run_pipeline.py --warmup-period "26년 03월"             # 계절 보정 (기본 14일)

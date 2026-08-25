@@ -28,7 +28,7 @@ flowchart TD
 ~~~text
 .
 ├── data/
-│   ├── raw_data/                         # 공공데이터포털 대여 이력
+│   ├── raw_data/                         # 공공데이터포털 대여 이력 · 날씨(대전 ASOS)
 │   └── pp_data/                          # 처리 결과
 │       ├── 대여소별 재고/
 │       ├── 대여소별 주차대수/
@@ -46,10 +46,15 @@ flowchart TD
 ├── step3_map/
 ├── step4_metrics/
 ├── webapp/                               # 웹 대시보드 (FastAPI + Jinja2)
-├── tests/                                # pytest 200개
-├── tools/                                # 합성 데이터·적재·백테스트 보조 도구
+├── tests/                                # pytest 350개
+├── tools/                                # 합성 데이터·적재·백테스트·재고 수집 도구
 ├── experiments/                          # 파라미터 실험·구조 결정용 측정
-└── docs/
+├── project_config.py                     # 공통 설정·운영 상수 (now/period/duration/day_type)
+├── demand_model.py                       # 수요 피처·계절 보정·분위수 모델 하네스
+├── db.py                                 # SQLite 저장소 (CSV와 이중 기록)
+├── tashu.py                              # 타슈 API 클라이언트 (수집·실시간 대조 공용)
+├── weather.py                            # 날씨 원천 (포털 CSV + 기상청 API 허브)
+└── docs/                                 # 분석/ 구현/ 연구/ 기록/ (목차는 docs/README.md)
 ~~~
 
 지도 HTML은 각 산출 폴더 아래 `visualization/`에 저장됩니다
@@ -276,7 +281,9 @@ python "step4_metrics/imbalance.py"
   `--now/--period/--duration/--raw-file` 인자가 그대로 전달됨 (버전 1.0.3)
 - ~~step0 스크립트 간 import 부작용 체인 제거~~ → 완료. 각 스크립트가 독립 실행되며
   순서는 run_pipeline.py가 제어 (버전 1.0.3)
-- CSV 파일 간 암묵적 스키마를 검증하는 코드 추가
+- ~~CSV 파일 간 암묵적 스키마를 검증하는 코드 추가~~ → 완료(1.18.8).
+  `project_config.require_columns()`가 step1·step2·step4의 읽는 자리에서 **어느 산출물의
+  무엇이 없는지 밝히며 즉시 멈춥니다**
 - ~~데이터 규모가 커질 경우 SQLite 등으로 중간 데이터 관리~~ → 완료. `db.py`가
   CSV와 **이중 기록**하며, 웹 산출물 API는 DB를 읽는다
   ([DB_SCHEMA.md](DB_SCHEMA.md) · [DB_PLAN.md](DB_PLAN.md) 1~4단계)
