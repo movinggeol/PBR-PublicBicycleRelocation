@@ -20,6 +20,7 @@ docs/
 | 하려는 것 | 여기부터 |
 | --- | --- |
 | **전체를 빠르게 파악** | [기록/RETROSPECTIVE.md](기록/RETROSPECTIVE.md) — 무엇을 했고 무엇이 예상과 달랐나 |
+| **어떻게 시작했는지** | [기록/ORIGINS.md](기록/ORIGINS.md) — 초기 문제 인식과 시행착오 |
 | **말이 무슨 뜻인지 모르겠다** | [GLOSSARY.md](GLOSSARY.md) — 특히 마지막 '헷갈리기 쉬운 짝' |
 | **코드를 고치려 한다** | [구현/PROJECT_PIPELINE.md](구현/PROJECT_PIPELINE.md) → [구현/steps/](구현/steps/) 해당 단계 |
 | **왜 이 방법인지 알고 싶다** | [분석/DECISIONS.md](분석/DECISIONS.md) — 선택의 근거와 대가 |
@@ -66,7 +67,8 @@ docs/
 
 | 문서 | 담고 있는 것 |
 | --- | --- |
-| [RETROSPECTIVE.md](기록/RETROSPECTIVE.md) | 전체 조망, **측정이 뒤집은 가설 여덟 가지**, 설계 결정, 알려진 한계 |
+| [ORIGINS.md](기록/ORIGINS.md) | **시작 기록** — 저장소 이전의 초기 작업(문제 인식·시행착오·현장 확인). 노션에서 옮겼습니다 |
+| [RETROSPECTIVE.md](기록/RETROSPECTIVE.md) | 전체 조망, **측정이 뒤집은 가설 열 가지**, 설계 결정, 알려진 한계 |
 | [TODO.md](기록/TODO.md) | 남은 과제 전체 (🔴 파이프라인이 깨짐 / 🟡 결과가 틀림 / 🟢 품질) |
 | [버전관리.md](기록/버전관리.md) | 버전 이력. **무엇을 바꿨는지보다 왜 바꿨는지**를 남깁니다 |
 | [메모.md](기록/메모.md) | 개인 작업 메모 (README·포트폴리오 정리 노트) |

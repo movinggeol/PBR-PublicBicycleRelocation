@@ -31,7 +31,7 @@
 
 | 장 | 내용 | 쓸 재료 | 상태 |
 | --- | --- | --- | --- |
-| 1. 서론 | 공공자전거 수급 불균형 문제, 대전 타슈 현황 | [README](../../README.md) 개요, EDA | 🟡 재작성 |
+| 1. 서론 | 공공자전거 수급 불균형 문제, 대전 타슈 현황 | [README](../../README.md) 개요, EDA, **[ORIGINS.md](../기록/ORIGINS.md)**(문제 인식의 출처·현장 확인) | 🟡 재작성 |
 | 2. 관련 연구 | BSS 재배치 문헌, 본 연구의 위치 | [RELATED_WORK.md](RELATED_WORK.md) | 🟡 문헌 11편 확정, **전문 읽기가 남음** |
 | 3. 문제 정형화 | 목표재고·ILP·VRP 수식, 운영 제약 | [FORMULATION.md](../분석/FORMULATION.md) | ✅ 완료 |
 | 3-보. 방법 선택의 근거 | **왜 ILP·VRP·K-Medoids인가**, 대안과 대가 | [DECISIONS.md](../분석/DECISIONS.md) | ✅ 완료 (1.20.4) |
@@ -274,5 +274,6 @@ README의 모든 수치는 **25년 11월 데이터로 2026-08-12에 한 번 돌�
 | [KPI.md](../분석/KPI.md) | 지표 체계와 그 함정 (논문 6장 판정 규칙) |
 | [DEMAND_DISTRIBUTION.md](../분석/DEMAND_DISTRIBUTION.md) | 순수요 분포 진단·분위수 모델 철회 근거 |
 | [DECISIONS.md](../분석/DECISIONS.md) | 방법 선택의 근거와 대가 (논문 3장 보론·8장 재료) |
+| [ORIGINS.md](../기록/ORIGINS.md) | 초기 문제 인식·시행착오·현장 확인 (논문 1장 서론 재료) |
 | [WEATHER.md](../분석/WEATHER.md) | 날씨 측정과 판정 (논문 7장 고찰 재료) |
 | [TODO.md](../기록/TODO.md) | 시스템 쪽 남은 과제 |

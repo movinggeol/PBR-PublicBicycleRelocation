@@ -389,6 +389,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | 문서 | 내용 |
 | --- | --- |
 | [docs/README.md](docs/README.md) | **문서 목차** — 어느 폴더에 무엇이 있는지, 겹치는 내용의 정본은 어디인지 |
+| [docs/기록/ORIGINS.md](docs/기록/ORIGINS.md) | **시작 기록** — 초기 문제 인식·시행착오·현장 확인 (노션에서 옮김) |
 | [docs/기록/RETROSPECTIVE.md](docs/기록/RETROSPECTIVE.md) | **작업 회고** — 전체 조망, 측정이 뒤집은 가설, 설계 결정 |
 | [docs/연구/THESIS.md](docs/연구/THESIS.md) | **졸업작품·논문** — 장별 재료 매핑, 대조군·반복 실험 설계, 체크리스트 |
 | [docs/분석/FORMULATION.md](docs/분석/FORMULATION.md) | **문제 정형화** — 기호표·목표재고·군집 목적함수·ILP·VRP 수식 |
