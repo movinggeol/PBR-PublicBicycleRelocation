@@ -314,6 +314,20 @@ VEHICLE_ID_FORMAT = "V{:02d}"                                   # V01 ~ V21
 # (docs/구현/FLEET.md, docs/분석/KPI.md)
 TIME_BUDGET_MINUTES = float(os.getenv("PBR_TIME_BUDGET_MINUTES", "120"))
 
+# 시간 예산을 **제약으로 걸 것인가**. 켜면 VRP가 예산을 넘기는 작업 앞에서 멈추고
+# depot으로 돌아온다(남은 작업은 미집행으로 남는다).
+#
+# 실측(sweep-21, 3회차): 초과 4건 → **0건**, 최장 196분 → 117분.
+# 대가는 미집행 25대(계획 793대의 3.2%)이고 **결품은 대여소·일 평균 +0.011h(40초)**.
+# `_10_15`·`_15_20`은 미집행 0대로 순서만 바뀌어 시간이 줄었다.
+# 근거·재현: experiments/baseline/budget_enforce.py
+#
+# ⚠️ **기본은 꺼 둔다.** 계획의 성격이 바뀌는 변경이라(못 옮기는 대수가 생긴다)
+# 현장 확인 뒤에 기본값을 정한다. 켜려면 `--enforce-time-budget` 또는
+# `PBR_ENFORCE_TIME_BUDGET=1`.
+ENFORCE_TIME_BUDGET = os.getenv("PBR_ENFORCE_TIME_BUDGET", "").strip().lower() in (
+    "1", "true", "yes", "on")
+
 # ---- step1 군집 조정 목적함수 가중치 ----
 # score = ALPHA·balance² + BETA·size분산 + GAMMA·거리합
 #   balance : 군집별 rebal_qty 합 (대 단위)

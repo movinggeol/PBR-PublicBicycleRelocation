@@ -106,6 +106,12 @@ def parse_args() -> argparse.Namespace:
         help=f"보유 차량 대수 (기본 {DEFAULT_FLEET_SIZE}). 회차 투입 상한도 이 값을 넘지 않는다",
     )
     parser.add_argument(
+        "--enforce-time-budget",
+        action="store_true",
+        help="시간 예산을 제약으로 건다. VRP가 예산을 넘기는 작업 앞에서 멈추고"
+             " depot으로 돌아온다(남은 작업은 미집행). 기본은 사후 점검만",
+    )
+    parser.add_argument(
         "--vehicles-per-round",
         type=int,
         help=f"한 회차 투입 대수 상한 (기본 {DEFAULT_VEHICLES_PER_ROUND})."
@@ -180,6 +186,8 @@ def build_env(args: argparse.Namespace) -> dict:
         env["PBR_FLEET_SIZE"] = str(normalize_fleet_size(args.fleet_size))
     if args.vehicles_per_round is not None:
         env["PBR_VEHICLES_PER_ROUND"] = str(normalize_per_round(args.vehicles_per_round))
+    if getattr(args, "enforce_time_budget", False):
+        env["PBR_ENFORCE_TIME_BUDGET"] = "1"
     return env
 
 

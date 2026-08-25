@@ -19,7 +19,8 @@ from ilp import haversine_km
 import db
 from project_config import (
     DEPOT_ID, DEPOT_LAT, DEPOT_LON, DROP_TIME_SEC, PICK_TIME_SEC, PROJECT_ROOT,
-    TIME_BUDGET_MINUTES, VEHICLE_CAPACITY, VEHICLE_SPEED_KMPH,
+    ENFORCE_TIME_BUDGET, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY,
+    VEHICLE_SPEED_KMPH,
     duration_list, ensure_output_dirs, get_runtime_config, require_columns,
 )
 
@@ -218,6 +219,12 @@ def run_vrp_plan(ilp_plan: pd.DataFrame, duration: str):
     클러스터별 작업 분리 -> pick/drop 노드 정리 -> 현재 위치 기준 최적 후보 선택 ->
     pick/drop 수행 -> 남은 작업이 없을 때까지 반복 -> VRP 결과 저장
     '''
+    # 시간 예산을 제약으로 걸지 여부(기본 꺼짐). 근거는 project_config.
+    budget_sec = TIME_BUDGET_MINUTES * 60 if ENFORCE_TIME_BUDGET else None
+    if budget_sec:
+        print(f"  시간 예산 {TIME_BUDGET_MINUTES:.0f}분을 **제약으로** 적용합니다"
+              " — 넘기는 작업은 미집행으로 남습니다.")
+
     results = []
     clusters = ilp_plan['cluster'].unique()
 
@@ -268,7 +275,7 @@ def run_vrp_plan(ilp_plan: pd.DataFrame, duration: str):
                 'lon': station_info.loc[sid, 'lon'],
             }
 
-        results.extend(greedy_route(nodes, c))
+        results.extend(greedy_route(nodes, c, time_budget_sec=budget_sec))
 
     # -------------------------
     # 차량 배정 (로테이션) — docs/구현/FLEET.md

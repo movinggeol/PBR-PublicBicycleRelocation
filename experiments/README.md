@@ -48,6 +48,7 @@ python experiments/params/seasonal_window.py    # 학습 창 비교
 | `baseline_compare.py` | 군집·ILP·`z`는 각각 제 몫을 하나 | 셋 다 한다. 특히 계획 기준 지표로는 **대조군을 구분조차 못 한다** |
 | `repeat_eval.py` | 그 차이가 달·씨앗을 바꿔도 유지되나 | 평균±표준편차와 Wilcoxon 검정으로 확인 |
 | `gamma_recheck.py` | `γ = 3000`이 다른 달에서도 맞나 | 편익(결품)과 비용(거리·시간)을 함께 본다 |
+| `budget_enforce.py` | 시간 예산을 제약으로 걸면 무엇을 잃나 | 초과 4건 → 0건, 대가는 **결품 +40초**. 기본은 꺼 둠 |
 | `ortools_gap.py` | greedy 경로가 최적에서 얼마나 떨어져 있나 | 갭을 재고, **빠져 있는 depot 복귀**도 함께 잰다 |
 
 `ortools_gap.py`만 별도 설치가 필요합니다 — **파이프라인 의존성이 아닙니다.**

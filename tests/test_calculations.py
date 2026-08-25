@@ -962,3 +962,34 @@ def test_candidate_glob_does_not_catch_other_outputs():
     _subdir, pattern = CSV_FALLBACK["pick_drop"]
     assert fnmatch.fnmatch("top_05_10 (2026-08-11 real).csv", pattern)
     assert not fnmatch.fnmatch("top_center_05_10 (2026-08-11 real).csv", pattern)
+
+
+# ---------------- 시간 예산을 제약으로 걸 때 (1.21.6) ----------------
+
+def test_예산을_주면_넘기기_전에_멈춘다(step2):
+    """예산을 주면 **복귀 여유까지 계산해** 멈춰야 한다.
+
+    돌아올 시간을 안 빼고 멈추면 '예산 안에 끝났는데 차고지에는 못 오는' 계획이 된다.
+    """
+    depot_far = {
+        ("ST1", "pick"): {"qty": 5, "lat": 36.50, "lon": 127.50},
+        ("ST2", "drop"): {"qty": 5, "lat": 36.60, "lon": 127.60},
+    }
+    _, vrp = step2
+    unlimited = vrp.greedy_route(dict(depot_far), 0)
+    assert unlimited, "예산이 없으면 끝까지 간다"
+
+    # 아주 짧은 예산이면 첫 작업조차 못 간다(복귀분을 감안하므로).
+    stopped = vrp.greedy_route(dict(depot_far), 0, time_budget_sec=60)
+    assert len(stopped) < len(unlimited)
+
+
+def test_예산_강제는_기본으로_꺼져_있다():
+    """계획의 성격이 바뀌는 변경이라 **현장 확인 전에는 켜지 않는다.**
+
+    켜면 못 옮기는 대수가 생긴다(실측 3.2%). 기본값이 조용히 바뀌면 지난 실행과
+    비교가 성립하지 않는다.
+    """
+    import project_config
+
+    assert project_config.ENFORCE_TIME_BUDGET is False
