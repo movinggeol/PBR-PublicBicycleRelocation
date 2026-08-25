@@ -84,6 +84,7 @@ python experiments/baseline/repeat_eval.py --periods "25년 09월,25년 10월,25
 | `holiday_impact.py` | 공휴일을 평일에서 빼면 얼마나 달라지나 | 연휴 낀 달의 작업 대상이 20~50% 늘어난다 |
 | `demand_distribution.py` | 순수요가 정규분포인가 | 대여소별로는 거의 정규. 문제는 꼬리가 아니라 추정 오차 |
 | `quantile_model_eval.py` | 분위수 모델이 mu+z·sigma를 이기나 | **아직 못 이긴다**(3개 검증 달 중 2패) |
+| `observed_stockout.py` | 결품을 관측에서 직접 세면 복원과 얼마나 다른가 | 실측이 **+13% 크다**(복원은 하한이 맞았다). 수집 하루치라 잠정 |
 | `outlier_impact.py` | 이상치 제거가 계획을 바꾸나 | 바꾼다(작업 대상 13.4%). **그런데 IQR이 자르는 것은 오류가 아니라 정상 상위 4%였다** — 옮기지 않는다 |
 | `weather_impact.py` | 날씨가 순수요를 설명하나 | 그렇다. 표본 밖 R² +0.412, 작업 대상 MAE +4.3% — **개선은 비 오는 날(10%)에 몰려 있다(+40%)** |
 
@@ -95,6 +96,7 @@ python experiments/structure/demand_distribution.py            # 분포 진단
 python experiments/structure/quantile_model_eval.py --holdout "25년 11월"   # 모델 채택 판정
 python experiments/structure/weather_impact.py    # 날씨 → 이용량 → 순수요 전달 측정
 python experiments/structure/outlier_impact.py    # 이상치 제거가 계획을 바꾸는가
+python experiments/structure/observed_stockout.py  # 관측 재고로 결품 실측
 ```
 
 `rental_history`와 `net_demand`를 읽습니다. `weather_impact.py`는 여기에 더해
