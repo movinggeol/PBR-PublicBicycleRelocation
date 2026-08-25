@@ -10,7 +10,7 @@ import pandas as pd
 import db
 from project_config import (
     MAP_TILES, PICK_HARM_WARN_SHARE, PROJECT_ROOT, TIME_BUDGET_MINUTES,
-    VEHICLE_CAPACITY, duration_list, ensure_output_dirs,
+    VEHICLE_CAPACITY, duration_hours, duration_list, ensure_output_dirs,
     get_runtime_config,
     require_columns, select_day_type,
 )
@@ -123,13 +123,6 @@ def route_summary(duration: str):
     # CSV·DB 이중 기록 (DB_PLAN 2단계). 한글 컬럼은 db가 ASCII로 변환한다.
     db.save_output("route_summary", summary, run_label=now, duration=duration)
     return summary
-
-
-def duration_hours(duration: str) -> list:
-    '''시간대 문자열(_05_10)을 시간 목록으로. 자정을 넘기면 이어서 돈다.'''
-    start, end = int(duration.split('_')[1]), int(duration.split('_')[2])
-    return list(range(start, end)) if start < end else \
-        list(range(start, 24)) + list(range(0, end))
 
 
 def load_net_demand() -> pd.DataFrame:

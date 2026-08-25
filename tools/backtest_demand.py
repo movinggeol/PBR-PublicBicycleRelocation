@@ -30,16 +30,16 @@ import pandas as pd
 import db
 import demand_model
 from project_config import (
-    DAY_TYPE_AUTO, DAY_TYPES, TARGET_Z, normalize_day_type, select_day_type,
+    DAY_TYPE_AUTO, DAY_TYPES, TARGET_Z, duration_hours, normalize_day_type,
+    select_day_type,
 )
 
 DURATIONS = ["_05_10", "_10_15", "_15_20", "_20_05"]
 
 
 def window_hours(duration: str) -> list:
-    start, end = int(duration.split("_")[1]), int(duration.split("_")[2])
-    return list(range(start, end)) if start < end else \
-        list(range(start, 24)) + list(range(0, end))
+    """시간대 -> 시각 목록. 규칙은 project_config 하나를 쓴다."""
+    return duration_hours(duration)
 
 
 def daily_window_demand(net: pd.DataFrame, duration: str) -> pd.DataFrame:

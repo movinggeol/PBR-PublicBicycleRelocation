@@ -202,12 +202,12 @@ DEFAULT_RAW_FILE = os.getenv(
 )
 
 # 날씨 원천(기상자료개방포털 ASOS 시간자료, 대전 지점 133).
-# ⚠️ **아직 어떤 단계도 이 값을 읽지 않는다** — 수요 예측에 날씨를 붙일 때 쓰려고
-# 경로 규약만 먼저 잡아 둔 것이다(docs/TODO.md 17번). 붙이는 값어치가 있다는
-# 근거는 experiments/net_vs_volume.py(이용량 ↔ 필요량 R² 0.88~0.96).
+# **파일 하나여도 되고 디렉터리여도 된다** — 포털은 해가 바뀌면 파일을 나눠 주므로
+# 기본값은 디렉터리이고, weather.load_hourly()가 그 안의 CSV를 모두 이어 붙인다.
+# 읽는 곳은 루트 weather.py 하나다(받는 방법·측정 결과는 docs/WEATHER.md).
 DEFAULT_WEATHER_FILE = os.getenv(
     "PBR_WEATHER_FILE",
-    "data/raw_data/날씨/대전_ASOS_시간자료.csv",
+    "data/raw_data/날씨",
 )
 
 # Pick 쪽 결품 증가를 경고할 문턱 (Drop 쪽 이득에 대한 몫).
@@ -556,6 +556,18 @@ def select_day_type(frame, date_column: str, day_type: str):
     """
     mask = holiday_mask(frame[date_column])
     return frame[mask if normalize_day_type(day_type) == "holiday" else ~mask]
+
+
+def duration_hours(duration: str) -> list:
+    """시간대 문자열(`_05_10`)을 그 창에 드는 시각 목록으로.
+
+    **시간 목록을 만드는 곳은 여기 하나다.** `_20_05`처럼 자정을 넘기는 창이 있어
+    단순한 range로는 안 되는데, 같은 규칙이 step0·step4·demand_model·tools에
+    네 번 복제돼 있었다. 한 곳이라도 다르게 고치면 계획을 세운 창과 채점한 창이
+    조용히 어긋난다.
+    """
+    start, end = int(duration.split("_")[1]), int(duration.split("_")[2])
+    return list(range(start, end)) if start < end else         list(range(start, 24)) + list(range(0, end))
 
 
 def duration_list(config: RuntimeConfig) -> Tuple[str, ...]:

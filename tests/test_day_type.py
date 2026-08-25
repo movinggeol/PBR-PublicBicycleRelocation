@@ -225,7 +225,11 @@ def test_training_frame_uses_only_previous_month():
     # 허용: 직전 달 통계(prev_*), 달력에서 오는 것(month/duration/day_type),
     #      계획 대상 달의 **첫 N일**로 구하는 계절 배율(warmup_ratio).
     #      셋 다 계획을 세우는 시점에 손에 있는 정보다.
-    allowed = ("month", "duration_idx", "day_type_idx", "warmup_ratio")
+    #      그리고 계획 대상 날짜의 **날씨**(rain/rainy/temp/wind). 이것만 성격이 다르다 —
+    #      운영에서는 관측이 아니라 **예보**로 채워야 손에 있는 정보가 된다.
+    #      예보가 없으면 NaN으로 남고 모델이 알아서 처리한다(docs/WEATHER.md 5장).
+    allowed = ("month", "duration_idx", "day_type_idx", "warmup_ratio",
+               *demand_model.WEATHER_FEATURES)
     assert all(f.startswith("prev_") or f in allowed
                for f in demand_model.FEATURES), \
         "예측 시점에 알 수 없는 피처가 섞였다"
@@ -324,9 +328,19 @@ def test_train_and_serve_use_the_same_features():
 
     features = demand_model.build_features(daily, "_05_10", "weekday", 3, ratio)
 
-    assert list(features.columns[-len(demand_model.FEATURES):]) or True
-    assert set(demand_model.FEATURES) <= set(features.columns), \
-        "build_features가 FEATURES를 전부 만들지 않으면 예측 때 KeyError가 난다"
+    # 날씨는 **날짜별**이라 대여소별 통계를 접는 build_features에 들어갈 수 없다.
+    # 그래서 두 함수가 짝을 이룬다 — 학습도 예측도 반드시 둘 다 거쳐야 FEATURES가
+    # 채워진다. 한쪽만 거치면 예측에서 KeyError가 난다.
+    station_features = set(demand_model.FEATURES) - set(demand_model.WEATHER_FEATURES)
+    assert station_features <= set(features.columns), \
+        "build_features가 대여소 피처를 전부 만들지 않으면 예측 때 KeyError가 난다"
+
+    with_weather = demand_model.add_weather(features, "_05_10", date="2026-03-02")
+    assert set(demand_model.FEATURES) <= set(with_weather.columns), \
+        "build_features + add_weather가 FEATURES를 전부 채워야 한다"
+    # 날씨는 도시 하나의 값이다 — 그 날짜의 모든 대여소가 같은 값을 받는다.
+    for column in demand_model.WEATHER_FEATURES:
+        assert with_weather[column].nunique(dropna=False) == 1
     assert features["warmup_ratio"].iloc[0] == pytest.approx(ratio)
 
     # 배율은 '수준' 피처에만 곱해야 한다

@@ -68,6 +68,7 @@ python experiments/repeat_eval.py --periods "25년 09월,25년 10월,25년 11월
 | `holiday_impact.py` | 공휴일을 평일에서 빼면 얼마나 달라지나 | 연휴 낀 달의 작업 대상이 20~50% 늘어난다 |
 | `demand_distribution.py` | 순수요가 정규분포인가 | 대여소별로는 거의 정규. 문제는 꼬리가 아니라 추정 오차 |
 | `quantile_model_eval.py` | 분위수 모델이 mu+z·sigma를 이기나 | **아직 못 이긴다**(3개 검증 달 중 2패) |
+| `weather_impact.py` | 날씨가 순수요를 설명하나 | 그렇다. 표본 밖 R² +0.412, 작업 대상 MAE +4.3% — **개선은 비 오는 날(10%)에 몰려 있다(+40%)** |
 
 ```powershell
 python experiments/net_vs_volume.py     # 이용량 ↔ 필요량 상관
@@ -75,9 +76,11 @@ python experiments/weekend_profile.py   # 평일/휴일 수요 구조 비교
 python experiments/holiday_impact.py    # 공휴일 제거 효과
 python experiments/demand_distribution.py            # 분포 진단
 python experiments/quantile_model_eval.py --holdout "25년 11월"   # 모델 채택 판정
+python experiments/weather_impact.py    # 날씨 → 이용량 → 순수요 전달 측정
 ```
 
-둘 다 `rental_history`를 읽습니다(`net_vs_volume.py`는 `net_demand`도 함께).
+`rental_history`와 `net_demand`를 읽습니다. `weather_impact.py`는 여기에 더해
+`data/raw_data/날씨`의 관측 자료가 있어야 합니다(docs/WEATHER.md).
 
 ## 학습용 스크립트
 

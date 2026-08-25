@@ -22,6 +22,7 @@ import demand_model
 from project_config import (
     PROJECT_ROOT,
     TARGET_QTY_UPPER_RATIO, TARGET_Z, VEHICLE_CAPACITY,
+    duration_hours,
     duration_list,
     ensure_output_dirs,
     get_runtime_config,
@@ -44,8 +45,7 @@ MAX_CAPACITY = VEHICLE_CAPACITY
 
 def duration_columns(duration: str) -> list:
     """시간대 문자열(_05_10) -> 순수요 컬럼 목록. 자정을 넘기면 이어서 돈다."""
-    start, end = int(duration.split('_')[1]), int(duration.split('_')[2])
-    hours = list(range(start, end)) if start < end else         list(range(start, 24)) + list(range(0, end))
+    hours = duration_hours(duration)
     return [f"net_{h:02d}" for h in hours]
 
 
@@ -267,6 +267,11 @@ if __name__ == '__main__':
                     daily, duration, config.day_type,
                     target_stamp(config.target_date).month, ratio)
                 merged = stats[["station_id"]].merge(features, on="station_id", how="left")
+                # 날씨는 **계획 대상 날짜 하루**의 값을 모든 대여소에 같이 넣는다
+                # (도시 하나의 값이다). 자료가 없으면 NaN으로 남고 모델이 알아서
+                # 처리한다 — 0으로 채우면 '비가 안 왔다'는 뜻이 되어 버린다.
+                merged = demand_model.add_weather(
+                    merged, duration, date=target_stamp(config.target_date))
                 predicted = demand_model.predict(bundle, merged)
                 model_target = pd.Series(predicted, index=stats.index)
             except Exception as err:      # 모델 문제로 파이프라인을 멈추지 않는다

@@ -140,6 +140,26 @@ def main() -> int:
     print(f"\n95%에서 벗어난 정도  기준 {base_gap * 100:.1f}%p"
           f"  →  모델 {model_gap * 100:.1f}%p")
 
+    # 비 온 날만 갈라 본다. 날씨가 주는 이득은 **그 날들에 몰려 있고**(docs/WEATHER.md),
+    # 전체 평균은 90%인 맑은 날에 희석돼 성격을 감춘다. 조건부로 쓸지(비 오는 날에만)
+    # 판단하려면 이 줄이 필요하다.
+    if "rainy" in targets.columns and targets["rainy"].notna().any():
+        for label, part in (("비 온 날", targets[targets["rainy"] == 1]),
+                            ("맑은 날", targets[targets["rainy"] == 0])):
+            if len(part) < 50:
+                continue
+            actual = part["demand"]
+            base_cov = float((actual <= part["baseline"]).mean())
+            model_cov = float((actual <= part["model"]).mean())
+            # 과잉은 '덮은 만큼 넉넉했던 대수' = 헛일의 크기다. 비 오는 날의 손실은
+            # 결품(커버리지)이 아니라 이쪽으로 나타난다 — 필요량이 줄었는데 계획은
+            # 그대로이므로 덮기는 덮되 과하게 덮는다.
+            base_over = float((part["baseline"] - actual)[actual <= part["baseline"]].mean())
+            model_over = float((part["model"] - actual)[actual <= part["model"]].mean())
+            print(f"  {label} ({len(part):,}건)  커버리지 기준 {base_cov * 100:.1f}%"
+                  f" → 모델 {model_cov * 100:.1f}%   |   과잉 기준 {base_over:.2f}대"
+                  f" → 모델 {model_over:.2f}대")
+
     if model_gap < base_gap and summary["over_model"].mean() <= summary["over_baseline"].mean():
         print("\n판정: 모델이 커버리지와 과잉 **둘 다** 개선했다 → 채택 검토")
     elif model_gap < base_gap:

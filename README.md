@@ -88,6 +88,8 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 ├── experiments/                           # 일회성 학습·검증 스크립트
 ├── project_config.py                      # 공통 설정(now/period/duration/day_type/…)·운영 상수
 ├── demand_model.py                        # 수요 피처·계절 보정(warmup)·모델 하네스
+├── tashu.py                               # 타슈 API 클라이언트 (수집·실시간 대조 공용)
+├── weather.py                             # 날씨 원천 (포털 CSV + 기상청 API 허브)
 ├── db.py                                  # SQLite 저장소 (CSV와 이중 기록, DB_SCHEMA.md)
 ├── run_pipeline.py                        # 전체 단계 일괄 실행기
 └── requirements.txt                       # 런타임 의존성 (하한 `>=` 고정)
@@ -259,7 +261,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 
-python -m pytest                                   # 323개 통과 확인 (약 50~80초)
+python -m pytest                                   # 338개 통과 확인 (약 50~80초)
 python tools/make_sample_data.py --now "데모"       # 합성 대여소·순수요 생성
 python run_pipeline.py --skip-api --skip-eda --skip-map --now "데모"   # step0~2·4 실행
 python -m webapp                                   # http://127.0.0.1:8000 에서 결과 확인
@@ -275,7 +277,7 @@ python -m webapp                                   # http://127.0.0.1:8000 에�
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest                 # 323개, 약 50~80초 (tests/ 만 수집)
+python -m pytest                 # 338개, 약 50~80초 (tests/ 만 수집)
 ```
 
 - `tests/test_pipeline.py` (32) — 합성 데이터로 step0→step1→step2→step4를
@@ -383,7 +385,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/RELATED_WORK.md](docs/RELATED_WORK.md) | **관련 연구** — 문제의 갈래와 본 연구의 위치 |
 | [docs/LITERATURE.md](docs/LITERATURE.md) | **문헌 분석** — 논문 11편 한 편씩 분석·비교표·인용 지도 |
 | [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
-| [docs/TESTING.md](docs/TESTING.md) | **테스트** — 323개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
+| [docs/TESTING.md](docs/TESTING.md) | **테스트** — 338개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/PROJECT_PIPELINE.md](docs/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/WEBAPP.md](docs/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/DESIGN.md](docs/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |
@@ -391,6 +393,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/DB_SCHEMA.md](docs/DB_SCHEMA.md) | **DB 스키마** — ERD, 테이블 15개 컬럼 레퍼런스, 조인 쿼리 |
 | [docs/DB_PLAN.md](docs/DB_PLAN.md) | SQLite 도입 결정·이관 계획·성능 측정 |
 | [docs/COLLECTOR.md](docs/COLLECTOR.md) | **재고 시계열 수집** — 평일 09–17시 10분 간격 수집기·운영(시작/일시정지/중지) |
+| [docs/WEATHER.md](docs/WEATHER.md) | **날씨** — 어떤 기상청 API를 받는지, 결측·겨울 3시간 누적 처리, 순수요 설명력 측정 |
 | [docs/KPI.md](docs/KPI.md) | 성과 지표 체계 설계 (현재 지표의 한계와 개선안) |
 | [docs/FLEET.md](docs/FLEET.md) | 차량 운용 — 하루 3회차 로테이션과 형평성 기록 |
 | [docs/TODO.md](docs/TODO.md) | 해야 할 것·고쳐야 할 것 (우선순위별) |

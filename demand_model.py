@@ -33,7 +33,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from project_config import DATA_ROOT, DAY_TYPES, select_day_type
+from project_config import DATA_ROOT, DAY_TYPES, duration_hours, select_day_type
 
 MODEL_PATH = DATA_ROOT / "models" / "target_quantile.pkl"
 
@@ -47,12 +47,21 @@ TARGET_QUANTILE = 0.95
 
 DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
 
+# 계획 대상 **날짜**의 날씨. 위 피처들과 성격이 다르다 — 대여소마다가 아니라
+# 날마다 달라지고, 도시 전체에 같은 값이 들어간다(관측소가 대전에 하나뿐이다).
+#
+# 근거는 docs/WEATHER.md. **비 오는 날에 몰린 개선**이라는 것이 핵심이다 —
+# 비 오는 날(전체의 10%) 예측 오차가 40% 줄고, 나머지 날엔 거의 그대로다.
+WEATHER_FEATURES = ["rain", "rainy", "temp", "wind"]
+RAIN_MM = 1.0                 # 이 이상 오면 '비 온 날'. 약한 비는 이용에 거의 영향이 없다
+
 # 직전 달 통계에서 뽑는 피처. **예측 시점에 알 수 있는 것만** 넣는다.
 FEATURES = [
     "prev_mu", "prev_sigma", "prev_abs_mu", "prev_median",
     "prev_q90", "prev_max", "prev_min", "prev_zero_ratio", "prev_days",
     "warmup_ratio",
     "month", "duration_idx", "day_type_idx",
+    *WEATHER_FEATURES,
 ]
 CATEGORICAL = ["duration_idx", "day_type_idx"]
 
@@ -63,9 +72,8 @@ LEVEL_FEATURES = ("prev_mu", "prev_sigma", "prev_abs_mu", "prev_median",
 
 
 def window_hours(duration: str) -> list:
-    start, end = int(duration.split("_")[1]), int(duration.split("_")[2])
-    return list(range(start, end)) if start < end else \
-        list(range(start, 24)) + list(range(0, end))
+    """시간대 -> 시각 목록. 규칙은 project_config 하나를 쓴다."""
+    return duration_hours(duration)
 
 
 def window_demand(net: pd.DataFrame, duration: str) -> pd.DataFrame:
@@ -134,6 +142,63 @@ def build_features(train_demand: pd.DataFrame, duration: str, day_type: str,
     return add_context(features, duration, day_type, month)
 
 
+# ---------------- 날씨 (있으면 좋고 없어도 되는 입력) ----------------
+
+_HOURLY = None                # 관측 자료는 한 번만 읽는다(학습이 수십 번 부른다)
+
+
+def _hourly() -> pd.DataFrame:
+    global _HOURLY
+    if _HOURLY is None:
+        import weather
+        _HOURLY = weather.load_hourly()
+    return _HOURLY
+
+
+def weather_frame(duration: str) -> pd.DataFrame:
+    """날짜 → 그 창의 날씨 피처. 자료가 없으면 빈 표를 돌려준다."""
+    import weather
+
+    folded = weather.window_frame(_hourly(), duration)
+    if folded.empty:
+        return pd.DataFrame(columns=["date", *WEATHER_FEATURES])
+    folded["rainy"] = (folded["rain"] >= RAIN_MM).astype(float)
+    return folded[["date", *WEATHER_FEATURES]]
+
+
+def add_weather(frame: pd.DataFrame, duration: str, date=None) -> pd.DataFrame:
+    """(대여소, 날짜) 표에 그날의 날씨를 붙인다.
+
+    **학습과 예측이 반드시 이 함수를 거쳐야 한다.** 다른 피처와 달리 날씨는 행마다
+    날짜가 다른 학습 표와, 계획 대상 날짜 **하나뿐인** 예측 표가 모양이 다르다.
+    `date`를 주면 그 하루의 값을 모든 행에 같이 넣는다 — 날씨는 도시 하나의 값이니
+    맞는 처리다. 두 경로를 따로 만들면 학습이 본 것과 예측이 주는 것이 어긋난다.
+
+    자료가 없거나 그 날짜가 자료 밖이면 **NaN으로 남긴다.** 0으로 채우면 안 된다 —
+    '비가 안 왔다'와 '모른다'는 다르고, 0은 전자를 뜻한다.
+    """
+    frame = frame.copy()
+    table = weather_frame(duration)
+
+    if date is not None:
+        stamp = pd.to_datetime(date).strftime("%Y-%m-%d")
+        row = table[table["date"] == stamp]
+        for column in WEATHER_FEATURES:
+            frame[column] = float(row[column].iloc[0]) if not row.empty else np.nan
+        return frame
+
+    if "date" not in frame.columns or table.empty:
+        for column in WEATHER_FEATURES:
+            frame[column] = np.nan
+        return frame
+
+    key = pd.to_datetime(frame["date"], errors="coerce").dt.strftime("%Y-%m-%d")
+    joined = key.to_frame("date").merge(table, on="date", how="left")
+    for column in WEATHER_FEATURES:
+        frame[column] = joined[column].to_numpy()
+    return frame
+
+
 def season_ratio(train_demand: pd.DataFrame, recent: Optional[pd.DataFrame],
                  warmup_days: int) -> Optional[float]:
     """직전 달 통계와 계획 대상 달의 부분 실적으로 계절 배율을 구한다.
@@ -179,7 +244,9 @@ def training_frame(net_by_period: dict, day_types=DAY_TYPES,
                                           month, ratio)
                 merged = test_demand.merge(features, on="station_id", how="inner")
                 if not merged.empty:
-                    rows.append(merged)
+                    # 날짜별 피처는 여기서 붙는다 — build_features는 대여소별 통계라
+                    # 날짜 축이 없다(한 대여소 = 한 행).
+                    rows.append(add_weather(merged, duration))
 
     if not rows:
         return pd.DataFrame(columns=["station_id", "date", "demand", *FEATURES])
@@ -270,6 +337,15 @@ def train(frame: pd.DataFrame, quantile: float = TARGET_QUANTILE,
 
     if frame.empty:
         raise ValueError("학습 데이터가 비었습니다. 순수요를 여러 달 만들어 두세요.")
+
+    # 날씨 자료가 아예 없으면 그 컬럼이 통째로 NaN이 된다. 부분 결측은 이 모델이
+    # 알아서 다루지만 **전부 NaN이면 구간화 자체가 깨진다**(joblib에서
+    # "window shape cannot be larger than input array shape"로 터진다).
+    # 정보가 없는 컬럼이므로 상수로 눕힌다 — 트리는 상수로 나눌 수 없어 무해하다.
+    frame = frame.copy()
+    for column in WEATHER_FEATURES:
+        if frame[column].isna().all():
+            frame[column] = 0.0
 
     model = HistGradientBoostingRegressor(
         loss="quantile", quantile=quantile,
