@@ -475,8 +475,11 @@
     .viz-card { padding: var(--sp-md) var(--sp-md) var(--sp-sm); }
     .viz-card h3 { margin: 0 0 2px; font-size: var(--fs-ui); color: var(--ink-2); }
     .viz-card .hint { display: block; margin-bottom: var(--sp-xs); }
+    /* 그리드 항목은 기본이 stretch라, 한 카드에서 '표로 보기'를 펴면 **같은 행의 다른
+       카드가 그 높이만큼 함께 늘어나** 빈 칸이 생긴다. start를 주면 각 카드가 제
+       내용만큼만 높아진다(1.21.1). */
     .viz-grid2 {
-      display: grid; gap: var(--sp-sm);
+      display: grid; gap: var(--sp-sm); align-items: start;
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     }
     /* 발산 척도 범례. 히트맵과 반드시 함께 낸다 — 색만으로 값을 읽게 두지 않는다. */

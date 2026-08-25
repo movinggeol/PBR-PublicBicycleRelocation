@@ -203,3 +203,23 @@ def test_cost_benefit_reports_what_it_dropped():
 
     assert len(result["points"]) == 1
     assert "1건" in result["note"]
+
+
+# ---------------- 그래프 카드의 배치 규약 (1.21.1) ----------------
+
+BASE_TEMPLATE = Path(__file__).resolve().parents[1] / "webapp" / "templates" / "base.html"
+
+
+def test_그래프_그리드는_카드를_늘리지_않는다():
+    """'표로 보기'를 편 카드 때문에 **옆 카드에 빈 칸이 생기면 안 된다.**
+
+    CSS Grid 항목은 기본이 `stretch`라, 한 카드에서 `<details>`를 펴면 같은 행의
+    다른 카드가 그 높이만큼 함께 늘어난다. 내용은 그대로인데 아래가 텅 빈 채로
+    커지므로 화면이 어수선해진다. `align-items: start`가 그걸 막는다.
+    """
+    css = BASE_TEMPLATE.read_text(encoding="utf-8")
+    block = re.search(r"\.viz-grid2\s*\{[^}]*\}", css)
+
+    assert block, ".viz-grid2 규칙을 찾지 못했다"
+    assert "align-items: start" in block.group(0), (
+        "그래프 그리드에 align-items: start가 없다 — '표로 보기'를 펴면 옆 카드가 늘어난다")
