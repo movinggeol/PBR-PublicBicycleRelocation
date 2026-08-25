@@ -28,6 +28,8 @@ experiments/
 | `z_sweep.py` | `z = 1.65`가 정말 95%를 덮나 | 92.5%뿐 → `TARGET_Z = 1.99` |
 | `predictor_compare.py` | `_10_15`의 `mu`는 쓸모없나 | 측정이 틀렸다 (작업 대상만 보면 +40.2%) |
 | `seasonal_window.py` | 계절 전환기를 어떻게 넘나 | 분석 달 첫 14일로 배율 보정 |
+| `travel_estimate.py` | 이동시간 추정에 '퍼짐'을 넣으면 나아지나 | **아니다.** 계수가 음수로 나온다 — 퍼짐은 대여소 수의 대리 변수일 뿐 |
+| `min_qty_sweep.py` | 작업 문턱(2)이 맞나 | **문턱이 작동하지 않는다.** TOP_STATION_LIMIT(50)이 먼저 자른다 |
 
 ```powershell
 python experiments/params/z_sweep.py            # 커버리지 vs 작업량

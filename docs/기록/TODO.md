@@ -133,6 +133,11 @@ step4의 `load_net_demand()`는 **필터 없이 그 기간 전체를 읽고 있�
   [EXPERIMENTS.md](../분석/EXPERIMENTS.md) 6장). 전면 교체는 하지 않기로 했지만,
   **갭이 20%를 넘는 클러스터(30개 중 5개)만 OR-Tools로 다시 푸는 절충안**은
   싸게 손해의 대부분을 회수합니다. 재현: `experiments/baseline/ortools_gap.py`.
+- 🟡 **`TOP_STATION_LIMIT = 50`이 계획 규모를 정하는데 근거가 없다 (1.21.7에서 발견)** —
+  `REBAL_MIN_QTY`가 아니라 이 값이 후보 수를 결정한다(문턱 2의 자격자는 pick 76~89곳,
+  drop 208~298곳인데 각 50곳으로 잘린다). drop 자격자 298곳 중 50곳만 고르면 그
+  50곳이 도시 전역에 흩어지므로 **예산 초과 원인의 상류**다. 스윕 대상:
+  `experiments/params/min_qty_sweep.py`를 상한 축으로 바꿔 결품 대비 이동·소요를 재라.
 - `VEHICLES_PER_ROUND = 10`의 현장 근거 확인 필요. (1.13.0부터 보유 대수·회차당 대수
   모두 웹 실행 폼과 `--fleet-size`/`--vehicles-per-round`로 실행마다 조정할 수 있으므로,
   현장 값이 정해지면 기본값만 바꾸면 된다.)
