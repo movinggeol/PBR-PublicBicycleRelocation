@@ -492,34 +492,70 @@
     /* '표로 보기'는 **그래프를 대신 읽는 보조 수단**이다. 펴도 카드가 표 길이만큼
        늘어나면 그래프가 화면 밖으로 밀려나 오히려 읽기 나빠진다(1.21.2).
        그래서 편 표는 카드 안에서 **제 높이를 갖고 스스로 스크롤**한다. */
-    .viz-table { margin-top: var(--sp-sm); border-top: 1px solid var(--hairline); }
-    .viz-table summary {
-      cursor: pointer; font-size: var(--fs-fine); color: var(--blue);
-      letter-spacing: -.08px; padding: var(--sp-xs) 0; list-style: none;
-      display: flex; align-items: center; gap: 5px;
+    /* ════════ 표 창 (1.21.3) ════════
+       '표로 보기'를 카드 안에서 펴면 그래프가 밀려나고, 그래프와 표를 나란히 볼 수
+       없다. 그래서 **떠 있는 창**으로 낸다 — 머리를 끌어 옮길 수 있으므로 그래프
+       옆에 놓고 맞대어 볼 수 있다. */
+    .viz-table { margin-top: var(--sp-sm); border-top: 1px solid var(--hairline);
+                 padding-top: var(--sp-xs); }
+    .table-open {
+      appearance: none; background: none; border: 0; padding: 2px 0;
+      font-family: inherit; font-size: var(--fs-fine); color: var(--blue);
+      letter-spacing: -.08px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 5px;
     }
-    .viz-table summary::-webkit-details-marker { display: none; }
-    /* 삼각형을 직접 그린다 — 브라우저 기본 마커는 위치·크기가 제각각이다. */
-    .viz-table summary::before {
-      content: ""; width: 0; height: 0; flex: none;
-      border-left: 4px solid currentColor;
-      border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent;
-      transition: transform .15s ease;
+    .table-open::before {
+      content: ""; width: 9px; height: 9px; flex: none;
+      border: 1px solid currentColor; border-radius: 2px;
+      box-shadow: inset 0 3px 0 -2px currentColor;   /* 표 머리글을 닮은 표시 */
     }
-    .viz-table[open] summary::before { transform: rotate(90deg); }
-    .viz-table summary:hover { text-decoration: underline; }
-    .viz-table summary:focus-visible {
+    .table-open:hover { text-decoration: underline; }
+    .table-open:focus-visible {
       outline: 2px solid var(--blue-focus); outline-offset: 2px; border-radius: 3px;
     }
-    /* 표가 길어도 카드는 이만큼만 커진다. 12행쯤 보이고 나머지는 스크롤. */
-    .viz-table .table-wrap { max-height: 15rem; overflow-y: auto; }
+
+    .table-panel {
+      position: fixed; z-index: 60; top: 96px; left: 50%; transform: translateX(-50%);
+      width: min(560px, calc(100vw - 2 * var(--sp-md)));
+      background: var(--surface); border: 1px solid var(--hairline);
+      border-radius: var(--r-lg); box-shadow: 0 12px 40px rgba(0, 0, 0, .22);
+      display: flex; flex-direction: column; max-height: min(70vh, 34rem);
+    }
+    .table-panel[hidden] { display: none; }
+    /* 끌 수 있는 머리. 손잡이라는 것이 커서로 드러나야 한다. */
+    .table-panel-head {
+      display: flex; align-items: center; gap: var(--sp-sm);
+      padding: 10px var(--sp-md); border-bottom: 1px solid var(--hairline);
+      cursor: grab; user-select: none; touch-action: none;
+    }
+    .table-panel-head:active { cursor: grabbing; }
+    .table-panel-title {
+      flex: 1; min-width: 0; font-size: var(--fs-ui); font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .table-panel-close {
+      appearance: none; background: none; border: 0; cursor: pointer;
+      color: var(--ink-3); font-size: 18px; line-height: 1; padding: 2px 4px;
+      border-radius: var(--r-sm); flex: none;
+    }
+    .table-panel-close:hover { color: var(--ink); background: var(--surface-2); }
+    .table-panel-close:focus-visible { outline: 2px solid var(--blue-focus); }
+    .table-panel-body { overflow: auto; }
     /* 스크롤되는 표에서는 머리글이 붙어 있어야 무슨 열인지 안다. */
-    .viz-table thead th {
+    .table-panel thead th {
       position: sticky; top: 0; z-index: 1;
       background: var(--surface); box-shadow: 0 1px 0 var(--hairline);
     }
-    .viz-table table { font-size: var(--fs-fine); }
-    .viz-table td { padding-top: 5px; padding-bottom: 5px; }
+    .table-panel table { font-size: var(--fs-fine); width: 100%; }
+    .table-panel td { padding-top: 6px; padding-bottom: 6px; }
+    /* 좁은 화면에서는 끌 곳이 마땅치 않다 — 아래에서 올라오는 판으로 눕힌다. */
+    @media (max-width: 560px) {
+      .table-panel {
+        top: auto; bottom: 0; left: 0; right: 0; transform: none;
+        width: auto; max-height: 70vh; border-radius: var(--r-lg) var(--r-lg) 0 0;
+      }
+      .table-panel-head { cursor: default; }
+    }
 
     /* ════════ 버튼 — 두 문법뿐: 파란 알약(동작) / 조밀한 사각(유틸리티) ════════ */
     .btn {
@@ -991,6 +1027,111 @@
         th.addEventListener("keydown", function (e) {
           if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sort(); }
         });
+      });
+    });
+  })();
+
+  /* 표 창 — 그래프 옆에 놓고 맞대어 보라고 띄운다.
+     머리를 끌면 옮겨진다. 위치는 옮긴 그대로 두되, 화면 밖으로는 못 나간다. */
+  (function () {
+    var MARGIN = 8;
+
+    function build(panel, title) {
+      var head = document.createElement("div");
+      head.className = "table-panel-head";
+
+      var name = document.createElement("span");
+      name.className = "table-panel-title";
+      name.textContent = title;
+
+      var close = document.createElement("button");
+      close.type = "button";
+      close.className = "table-panel-close";
+      close.setAttribute("aria-label", "표 창 닫기");
+      close.textContent = "×";
+
+      head.appendChild(name);
+      head.appendChild(close);
+
+      /* 표를 스크롤 영역으로 감싼다 — 머리는 고정된 채 본문만 움직여야 한다. */
+      var body = document.createElement("div");
+      body.className = "table-panel-body";
+      while (panel.firstChild) body.appendChild(panel.firstChild);
+
+      panel.appendChild(head);
+      panel.appendChild(body);
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-label", title);
+      return { head: head, close: close };
+    }
+
+    function clamp(panel) {
+      var box = panel.getBoundingClientRect();
+      var maxLeft = window.innerWidth - box.width - MARGIN;
+      var maxTop = window.innerHeight - box.height - MARGIN;
+      var left = Math.min(Math.max(parseFloat(panel.style.left) || 0, MARGIN), Math.max(MARGIN, maxLeft));
+      var top = Math.min(Math.max(parseFloat(panel.style.top) || 0, MARGIN), Math.max(MARGIN, maxTop));
+      panel.style.left = left + "px";
+      panel.style.top = top + "px";
+    }
+
+    function drag(panel, head) {
+      head.addEventListener("pointerdown", function (e) {
+        /* 닫기 단추를 누른 것은 끄는 것이 아니다. */
+        if (e.target.closest(".table-panel-close")) return;
+        /* 좁은 화면에서는 아래 판으로 눕히므로 끌지 않는다. */
+        if (window.matchMedia("(max-width: 560px)").matches) return;
+
+        var box = panel.getBoundingClientRect();
+        var dx = e.clientX - box.left, dy = e.clientY - box.top;
+        panel.style.transform = "none";          /* 가운데 정렬을 풀고 좌표로 옮긴다 */
+        panel.style.left = box.left + "px";
+        panel.style.top = box.top + "px";
+        head.setPointerCapture(e.pointerId);
+        e.preventDefault();
+
+        function move(ev) {
+          panel.style.left = (ev.clientX - dx) + "px";
+          panel.style.top = (ev.clientY - dy) + "px";
+        }
+        function done() {
+          head.removeEventListener("pointermove", move);
+          head.removeEventListener("pointerup", done);
+          head.removeEventListener("pointercancel", done);
+          clamp(panel);
+        }
+        head.addEventListener("pointermove", move);
+        head.addEventListener("pointerup", done);
+        head.addEventListener("pointercancel", done);
+      });
+    }
+
+    document.querySelectorAll("[data-table-open]").forEach(function (trigger) {
+      var panel = trigger.parentNode.querySelector(".table-panel");
+      if (!panel) return;
+
+      var parts = build(panel, trigger.getAttribute("data-table-open"));
+      drag(panel, parts.head);
+      trigger.setAttribute("aria-expanded", "false");
+
+      function open() {
+        panel.hidden = false;
+        trigger.setAttribute("aria-expanded", "true");
+        clamp(panel);
+        parts.close.focus();
+      }
+      function close() {
+        panel.hidden = true;
+        trigger.setAttribute("aria-expanded", "false");
+        trigger.focus();
+      }
+
+      trigger.addEventListener("click", function () {
+        panel.hidden ? open() : close();
+      });
+      parts.close.addEventListener("click", close);
+      panel.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") { e.preventDefault(); close(); }
       });
     });
   })();

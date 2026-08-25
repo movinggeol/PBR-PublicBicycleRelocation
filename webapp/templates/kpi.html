@@ -79,9 +79,9 @@
     <span class="hint">{{ t.hint }}</span>
     {{ t.svg | safe }}
     {# 커서만으로 값을 읽게 두지 않는다 — 같은 값을 표로도 낸다. #}
-    <details class="viz-table">
-      <summary>표로 보기</summary>
-      <div class="table-wrap">
+    <div class="viz-table">
+      <button type="button" class="table-open" data-table-open="{{ t.title }}">표로 보기</button>
+      <div class="table-panel" hidden>
         <table>
           <thead><tr><th class="grow">실행</th><th class="num">{{ t.title }}</th></tr></thead>
           <tbody>
@@ -92,7 +92,7 @@
           </tbody>
         </table>
       </div>
-    </details>
+    </div>
   </div>
   {% endfor %}
 </div>
@@ -233,9 +233,9 @@
     <h3>{{ s.title }}</h3>
     <span class="hint">{{ s.hint }}</span>
     {{ s.svg | safe }}
-    <details class="viz-table">
-      <summary>표로 보기</summary>
-      <div class="table-wrap">
+    <div class="viz-table">
+      <button type="button" class="table-open" data-table-open="{{ s.title }}">표로 보기</button>
+      <div class="table-panel" hidden>
         <table>
           <thead><tr><th class="grow">검증 월</th><th class="num">예측 오차</th></tr></thead>
           <tbody>
@@ -245,7 +245,7 @@
           </tbody>
         </table>
       </div>
-    </details>
+    </div>
   </div>
   {% endfor %}
 </div>
@@ -275,9 +275,9 @@
     빠져나가는 대여소가 주말에는 쌓입니다. 두 날을 한 통계로 섞으면 서로 상쇄돼
     “아무 데도 옮길 필요가 없다”는 답이 나옵니다 — 그래서 한 번에 한쪽만 계획합니다.
   </p>
-  <details class="viz-table">
-    <summary>표로 보기</summary>
-    <div class="table-wrap">
+  <div class="viz-table">
+    <button type="button" class="table-open" data-table-open="수요 구조 — 요일 × 시간">표로 보기</button>
+    <div class="table-panel" hidden>
       <table>
         <thead><tr><th>요일</th>{% for c in heat.cols %}<th class="num">{{ c }}</th>{% endfor %}</tr></thead>
         <tbody>
@@ -291,7 +291,7 @@
         </tbody>
       </table>
     </div>
-  </details>
+  </div>
 </div>
 {% endif %}
 {% endblock %}

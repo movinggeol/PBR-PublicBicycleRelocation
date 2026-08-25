@@ -210,27 +210,46 @@ def test_cost_benefit_reports_what_it_dropped():
 BASE_TEMPLATE = Path(__file__).resolve().parents[1] / "webapp" / "templates" / "base.html"
 
 
-def test_표로_보기는_카드를_밀어내지_않는다():
-    """편 표가 **제 높이를 갖고 스스로 스크롤**해야 한다.
+def test_표는_카드가_아니라_창으로_뜬다():
+    """표를 카드 안에서 펴면 그래프가 밀려나고, **둘을 나란히 볼 수 없다.**
 
-    표가 카드를 통째로 늘리면 그래프가 화면 밖으로 밀려난다. '표로 보기'는 그래프를
-    대신 읽는 보조 수단이지 그래프를 치우는 장치가 아니다.
+    그래서 떠 있는 창으로 낸다(1.21.3). 창은 화면에 고정되어 카드 높이를 건드리지
+    않으므로, 그래프를 보면서 표를 맞대어 볼 수 있다.
     """
     css = BASE_TEMPLATE.read_text(encoding="utf-8")
-    block = re.search(r"\.viz-table \.table-wrap\s*\{[^}]*\}", css)
+    block = re.search(r"\.table-panel\s*\{[^}]*\}", css)
 
-    assert block, ".viz-table .table-wrap 규칙이 없다"
-    assert "max-height" in block.group(0) and "overflow-y" in block.group(0)
+    assert block, ".table-panel 규칙이 없다"
+    assert "position: fixed" in block.group(0)
+    assert "max-height" in block.group(0), "창이 화면보다 길어지면 안 된다"
+
+
+def test_창_머리는_끌_수_있어야_한다():
+    """머리를 끌어 옮길 수 있어야 그래프 옆에 놓고 볼 수 있다.
+
+    손잡이라는 것이 **커서로 드러나야** 하고(`cursor: grab`), 끄는 동안 글자가
+    선택되면 안 된다(`user-select: none`). 포인터 이벤트가 스크롤로 새지 않도록
+    `touch-action: none`도 필요하다.
+    """
+    css = BASE_TEMPLATE.read_text(encoding="utf-8")
+    block = re.search(r"\.table-panel-head\s*\{[^}]*\}", css)
+
+    assert block, ".table-panel-head 규칙이 없다"
+    for rule in ("cursor: grab", "user-select: none", "touch-action: none"):
+        assert rule in block.group(0), f"끌 수 있는 머리에 {rule}이 없다"
+
+    # 끄는 동작은 pointer 이벤트 하나로 마우스·터치를 함께 받는다.
+    assert "pointerdown" in css and "setPointerCapture" in css
 
 
 def test_스크롤되는_표는_머리글이_붙어_있다():
     """무슨 열인지 모르는 숫자는 읽을 수 없다."""
     css = BASE_TEMPLATE.read_text(encoding="utf-8")
-    block = re.search(r"\.viz-table thead th\s*\{[^}]*\}", css)
+    block = re.search(r"\.table-panel thead th\s*\{[^}]*\}", css)
 
-    assert block, ".viz-table thead th 규칙이 없다"
+    assert block, ".table-panel thead th 규칙이 없다"
     assert "position: sticky" in block.group(0)
-    # 머리글이 비쳐 보이면 아래 행과 겹쳐 읽힌다 — 카드와 같은 배경을 깔아야 한다.
+    # 머리글이 비쳐 보이면 아래 행과 겹쳐 읽힌다 — 창과 같은 배경을 깔아야 한다.
     assert "var(--surface)" in block.group(0)
 
 
