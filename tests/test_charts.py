@@ -210,6 +210,30 @@ def test_cost_benefit_reports_what_it_dropped():
 BASE_TEMPLATE = Path(__file__).resolve().parents[1] / "webapp" / "templates" / "base.html"
 
 
+def test_표로_보기는_카드를_밀어내지_않는다():
+    """편 표가 **제 높이를 갖고 스스로 스크롤**해야 한다.
+
+    표가 카드를 통째로 늘리면 그래프가 화면 밖으로 밀려난다. '표로 보기'는 그래프를
+    대신 읽는 보조 수단이지 그래프를 치우는 장치가 아니다.
+    """
+    css = BASE_TEMPLATE.read_text(encoding="utf-8")
+    block = re.search(r"\.viz-table \.table-wrap\s*\{[^}]*\}", css)
+
+    assert block, ".viz-table .table-wrap 규칙이 없다"
+    assert "max-height" in block.group(0) and "overflow-y" in block.group(0)
+
+
+def test_스크롤되는_표는_머리글이_붙어_있다():
+    """무슨 열인지 모르는 숫자는 읽을 수 없다."""
+    css = BASE_TEMPLATE.read_text(encoding="utf-8")
+    block = re.search(r"\.viz-table thead th\s*\{[^}]*\}", css)
+
+    assert block, ".viz-table thead th 규칙이 없다"
+    assert "position: sticky" in block.group(0)
+    # 머리글이 비쳐 보이면 아래 행과 겹쳐 읽힌다 — 카드와 같은 배경을 깔아야 한다.
+    assert "var(--surface)" in block.group(0)
+
+
 def test_그래프_그리드는_카드를_늘리지_않는다():
     """'표로 보기'를 편 카드 때문에 **옆 카드에 빈 칸이 생기면 안 된다.**
 
