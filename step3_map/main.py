@@ -71,6 +71,39 @@ depot = {
 
 vehicle_capacity = VEHICLE_CAPACITY
 
+VISIT_SEPARATOR = "<br>-------------------------<br>"
+
+
+def visit_popup(records: list, station_id: str, capacity: int, arrival_txt) -> str:
+    """대여소 하나의 방문 기록을 팝업 HTML **문자열**로 만든다.
+
+    **문자열로 돌려주는 것이 요점이다.** 예전에는 여러 번 방문한 경우에만 join하고
+    한 번뿐이면 리스트를 그대로 f-string에 넣어, 팝업에
+    `['클러스터 : 3<br>대여소 : ST0123<br>…']`처럼 대괄호와 따옴표가 찍혔다(1.20.3).
+    방문이 한 번인 대여소가 대부분이라 거의 모든 팝업이 그랬다.
+
+    한 번만 들른 대여소에는 '방문 회차'를 적지 않는다 — 1번째 방문뿐이라 뜻이 없다.
+    """
+    single = len(records) == 1
+    parts = []
+    for record in records:
+        lines = [
+            f"클러스터 : {record['cluster']}",
+            f"대여소 : {station_id}",
+            f"방문 순서 : {record['order']}",
+        ]
+        if not single:
+            lines.append(f"방문 회차 : {record['round']}번째 방문")
+        lines += [
+            f"작업 유형 : {record['action']}",
+            f"재배치 수량 : {record['qty']}",
+            f"현재 적재량 : {record['load']}/{capacity}",
+            f"누적 도착시간 : {arrival_txt(record['order'])}",
+        ]
+        parts.append("<br>".join(lines))
+    return VISIT_SEPARATOR.join(parts)
+
+
 def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
                  duration: str, headers: dict, tmap_url: str):
     
@@ -292,14 +325,14 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
 
         arrival_popup = (
             f"<b>도착 (depot)</b><br>"
-            f"Cluster : {c}<br>"
+            f"클러스터 : {c}<br>"
             f"<b>총 누적 작업시간</b> : {total_time_txt}<br>"
             f"<b>최종 적재량</b> : {current_load}/{vehicle_capacity}"
         )
 
         folium.Marker(
             location=[depot["lat"], depot["lon"]],
-            tooltip=f"[클:{c}] 도착",
+            tooltip=f"클러스터 {c} · 도착",
             popup=folium.Popup(
                 f"""
                 <div style="width:420px;">
@@ -317,39 +350,12 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
             lon = data["lon"]
             orders_str = ",".join(data["orders"])
 
-            popup_parts = []
-
-            if len(data["records"]) == 1:
-                r = data["records"][0]
-
-                popup_parts.append(
-                    f"Cluster : {r['cluster']}<br>"
-                    f"대여소ID : {sid}<br>"
-                    f"방문 순서 : {r['order']}<br>"
-                    f"작업 유형 : {r['action']}<br>"
-                    f"재배치 수량 : {r['qty']}<br>"
-                    f"현재 적재량 : {r['load']}/{vehicle_capacity}<br>"
-                    f"누적 도착시간 : {_arrival_txt(r['order'])}"
-                )
-
-            else:
-                for r in data["records"]:
-                    popup_parts.append(
-                        f"Cluster : {r['cluster']}<br>"
-                        f"대여소ID : {sid}<br>"
-                        f"방문 순서 : {r['order']}<br>"
-                        f"방문 회차 : {r['round']}번째 방문<br>"
-                        f"작업 유형 : {r['action']}<br>"
-                        f"재배치 수량 : {r['qty']}<br>"
-                        f"현재 적재량 : {r['load']}/{vehicle_capacity}<br>"
-                        f"누적 도착시간 : {_arrival_txt(r['order'])}"
-                    )
-
-                popup_parts = "<br>-------------------------<br>".join(popup_parts)
+            popup_parts = visit_popup(data["records"], sid, vehicle_capacity,
+                                      _arrival_txt)
 
             folium.Marker(
                 location=[lat, lon],
-                tooltip=f"[클:{c}] [{sid}] [{orders_str}]",
+                tooltip=f"클러스터 {c} · {sid} · 방문 {orders_str}",
                 popup=folium.Popup(
                     f"""
                     <div style="width:420px;">

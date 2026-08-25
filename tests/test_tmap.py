@@ -165,3 +165,58 @@ def test_budget_stops_calls_before_quota_is_spent(monkeypatch):
         module.call_tmap_sequential(*_args(5), headers={})
 
     assert sent == [], "예산 초과 시 요청을 보내면 안 된다"
+
+
+# ---------------- 경로 지도의 팝업 (수정안 15) ----------------
+#
+# 지도에서 지점을 누르면 뜨는 창이다. 사람이 현장에서 읽는 글이므로 파이썬 자료구조가
+# 그대로 새어 나오면 안 된다.
+
+MAIN_PATH = Path(__file__).resolve().parents[1] / "step3_map" / "main.py"
+
+
+def load_main():
+    """main.py를 경로로 읽는다.
+
+    스크립트로 돌 때는 제 폴더가 sys.path에 들어가 `import module`이 되지만,
+    테스트에서 경로로 읽을 때는 우리가 넣어 줘야 한다.
+    """
+    import sys
+
+    folder = str(MAIN_PATH.parent)
+    if folder not in sys.path:
+        sys.path.insert(0, folder)
+    spec = importlib.util.spec_from_file_location("step3_main", MAIN_PATH)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def record(order=1, round_=1, cluster=3, action="Drop", qty=5, load=2):
+    return {"cluster": cluster, "order": order, "round": round_,
+            "action": action, "qty": qty, "load": load}
+
+
+def test_팝업에_대괄호가_새어_나오지_않는다():
+    """한 번만 들른 대여소에서 리스트가 그대로 찍혔다 — 방문 대부분이 이 경우다."""
+    html = load_main().visit_popup([record()], "ST0123", 10, lambda o: "00:12:30")
+
+    assert "[" not in html and "]" not in html
+    assert "'" not in html                      # 리스트를 찍으면 따옴표도 함께 나온다
+    assert "ST0123" in html and "00:12:30" in html
+
+
+def test_한_번만_들른_대여소에는_방문_회차를_적지_않는다():
+    """'1번째 방문'은 뜻이 없는 줄이다 — 여러 번 들를 때만 필요하다."""
+    once = load_main().visit_popup([record()], "ST0123", 10, lambda o: "-")
+    assert "방문 회차" not in once
+
+
+def test_여러_번_들르면_회차를_구분해_이어_붙인다():
+    main = load_main()
+    html = main.visit_popup([record(order=2, round_=1), record(order=7, round_=2)],
+                            "ST0123", 10, lambda o: f"{o}분")
+
+    assert main.VISIT_SEPARATOR in html
+    assert "1번째 방문" in html and "2번째 방문" in html
+    assert "[" not in html
