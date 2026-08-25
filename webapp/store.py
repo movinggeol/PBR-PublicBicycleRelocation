@@ -59,7 +59,7 @@ def load(table: str, run_label: Optional[str] = None,
 
 
 def kpi(run_label: Optional[str] = None, duration: Optional[str] = None) -> pd.DataFrame:
-    """실행별 성과 지표 (docs/KPI.md의 kpi_summary)."""
+    """실행별 성과 지표 (docs/분석/KPI.md의 kpi_summary)."""
     try:
         with db.session() as conn:
             return db.load_kpi(conn, run_label=run_label, duration=duration)

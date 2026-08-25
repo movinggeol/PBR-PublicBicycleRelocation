@@ -1,4 +1,4 @@
-"""재고 시계열 수집 회귀 테스트 (docs/COLLECTOR.md).
+"""재고 시계열 수집 회귀 테스트 (docs/구현/COLLECTOR.md).
 
 지키는 것:
   - **창 가드** — 휴일·창 밖에는 API를 부르지 않는다. 스케줄러는 공휴일을 모르므로
@@ -8,7 +8,7 @@
   - **멱등 저장** — 같은 틱을 다시 저장해도 행이 쌓이지 않는다.
   - **결측 기록** — 실패도 로그에 남아야 '데이터 없음'과 '재고 0'을 구분한다.
 
-API는 부르지 않는다(monkeypatch로 대체). 실호출 검증은 docs/TESTING.md 참고.
+API는 부르지 않는다(monkeypatch로 대체). 실호출 검증은 docs/구현/TESTING.md 참고.
 """
 import sys
 from datetime import datetime, time

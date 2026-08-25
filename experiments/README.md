@@ -2,7 +2,7 @@
 
 파이프라인에 속하지 않는 검증·실험 스크립트 모음입니다.
 
-## 파라미터 실험 (결과는 [../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md))
+## 파라미터 실험 (결과는 [../docs/분석/EXPERIMENTS.md](../docs/분석/EXPERIMENTS.md))
 
 기본값으로 쓰이는 `z`와 `γ`는 아래 스크립트로 정했습니다. **값을 바꾸려면
 같은 스크립트를 다시 돌려 근거를 남기세요.**
@@ -22,10 +22,10 @@ python experiments/seasonal_window.py    # 학습 창 비교
 셋 다 DB의 `net_demand`를 읽으므로 **여러 달의 순수요가 적재돼 있어야** 합니다
 (연속된 달이 최소 2개). 적재는 `tools/load_rentals.py --split-by-month` 참고.
 
-## 대조군 비교와 반복 실행 (논문용, 결과는 [../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md) 5장)
+## 대조군 비교와 반복 실행 (논문용, 결과는 [../docs/분석/EXPERIMENTS.md](../docs/분석/EXPERIMENTS.md) 5장)
 
 제안 방법이 **단순한 방법보다 정말 나은지**를 재는 자리입니다. 그전까지 모든 수치는
-'재배치 전 → 후' 자기 비교뿐이었습니다 ([../docs/THESIS.md](../docs/THESIS.md) 3장).
+'재배치 전 → 후' 자기 비교뿐이었습니다 ([../docs/연구/THESIS.md](../docs/연구/THESIS.md) 3장).
 
 | 파일 | 묻는 것 | 결론 |
 | --- | --- | --- |
@@ -59,7 +59,7 @@ python experiments/repeat_eval.py --periods "25년 09월,25년 10월,25년 11월
 ## 구조 결정을 위한 측정 (1.14.0)
 
 파라미터가 아니라 **설계를 정하기 위해** 잰 것들입니다. 결과는
-[docs/steps/step0_raw.md](../docs/steps/step0_raw.md)에 정리돼 있습니다.
+[docs/구현/steps/step0_raw.md](../docs/구현/steps/step0_raw.md)에 정리돼 있습니다.
 
 | 파일 | 물음 | 결론 |
 | --- | --- | --- |
@@ -80,7 +80,7 @@ python experiments/weather_impact.py    # 날씨 → 이용량 → 순수요 전
 ```
 
 `rental_history`와 `net_demand`를 읽습니다. `weather_impact.py`는 여기에 더해
-`data/raw_data/날씨`의 관측 자료가 있어야 합니다(docs/WEATHER.md).
+`data/raw_data/날씨`의 관측 자료가 있어야 합니다(docs/분석/WEATHER.md).
 
 ## 학습용 스크립트
 

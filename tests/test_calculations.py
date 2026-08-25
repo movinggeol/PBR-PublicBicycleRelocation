@@ -1,4 +1,4 @@
-"""단계별 계산 로직의 단위 테스트 (docs/TODO.md P3-11).
+"""단계별 계산 로직의 단위 테스트 (docs/기록/TODO.md P3-11).
 
 기존 테스트는 **스모크 수준**이었습니다 — 합성 데이터로 파이프라인을 끝까지 돌려
 산출물이 나오는지, 스키마가 맞는지를 봤습니다. 그래서 "돌긴 도는데 값이 틀린" 종류의
@@ -10,7 +10,7 @@
   2. 군집 조정 목적함수        (`adjust_module.compute_objective`)
   3. VRP 적재·시간 제약        (`vrp.greedy_route`), ILP 수급 제약 (`ilp.solve_cluster_moves`)
 
-수식의 근거는 [docs/FORMULATION.md](../docs/FORMULATION.md)에 있습니다.
+수식의 근거는 [docs/분석/FORMULATION.md](../docs/분석/FORMULATION.md)에 있습니다.
 **공식을 바꾸면 이 파일이 먼저 깨져야 합니다.**
 """
 import importlib.util
@@ -78,7 +78,7 @@ def test_target_uses_mu_plus_z_sigma_when_demand_flows_out(target_qty):
     """mu >= 0(순유출)이면 목표 재고 = mu + z·sigma.
 
     그 시간대에 빠져나갈 양을 미리 채워 두는 것이다. z는 관행값 1.65가 아니라
-    12개월 백테스트로 정한 1.99다 (docs/EXPERIMENTS.md 1장).
+    12개월 백테스트로 정한 1.99다 (docs/분석/EXPERIMENTS.md 1장).
     """
     frame = target_qty.compute_rebal_qty(
         _stats(mu=[10.0], sigma=[2.0], stock=[5], parking_lot=[100]), z=2.0)
@@ -223,7 +223,7 @@ def test_gamma_prices_the_spread_of_a_cluster(adjust):
 
     gamma가 0이면 흩어져도 점수가 같고, 켜면 흩어진 쪽이 비싸진다.
     (gamma=10~150에서 거리 항이 불균형 항에 묻혀 이동이 안 일어났던 이유 —
-    docs/EXPERIMENTS.md 4장)
+    docs/분석/EXPERIMENTS.md 4장)
     """
     tight = _clusters(rebal=[5, -5], cluster=[0, 0],
                       lat=[36.00, 36.01], lon=[127.0, 127.0])
@@ -320,7 +320,7 @@ def test_vrp_stops_inside_the_time_budget_when_one_is_given(step2):
     """`time_budget_sec`를 주면 예산 안에서 멈춘다.
 
     **파이프라인은 이 인자를 주지 않는다**(시간 예산은 현재 사후 점검이다).
-    대조군 실험처럼 한 대가 넓은 범위를 훑을 때만 쓴다 — docs/TODO.md 1-1.
+    대조군 실험처럼 한 대가 넓은 범위를 훑을 때만 쓴다 — docs/기록/TODO.md 1-1.
     """
     _ilp, vrp = step2
     items = [(f"ST{i:04d}", "pick" if i % 2 == 0 else "drop", 5,
@@ -338,7 +338,7 @@ def test_ilp_respects_supply_demand_and_moves_the_feasible_maximum(step2):
     """ILP는 공급·수요를 넘지 않고, 옮길 수 있는 최대치만큼 옮긴다.
 
     총 이동량 강제 제약이 없으면 '아무 것도 옮기지 않는 해'가 최적이 된다
-    (docs/FORMULATION.md 5장).
+    (docs/분석/FORMULATION.md 5장).
     """
     import pulp
 
@@ -406,7 +406,7 @@ def test_stockout_uses_what_was_moved_not_what_was_planned(step4, tmp_path, monk
     """결품 지표는 **계획량이 아니라 실제로 옮긴 양**으로 재야 한다.
 
     계획량으로 재면 계획이 같고 집행만 다른 방법들의 점수가 전부 같아져
-    **방법 간 비교가 불가능**해진다 (docs/EXPERIMENTS.md 5장, docs/TODO.md 1-2).
+    **방법 간 비교가 불가능**해진다 (docs/분석/EXPERIMENTS.md 5장, docs/기록/TODO.md 1-2).
     """
     # 하루 5시간 동안 시간당 2대씩 빠져나가는 대여소. 재고 0에서 시작한다.
     net = pd.DataFrame({
@@ -472,7 +472,7 @@ def test_balanced_input_returns_to_depot_exactly_once(step2, capsys):
 
     **1.19.1 이전에는 마지막 복귀도 없었다.** 그 불변식 탓에 `vrp_plan`에 `return`
     행이 0건이었고, 총 이동거리가 33% 과소 추정이라는 사실이 오래 묻혀 있었다
-    (docs/TODO.md 1-1).
+    (docs/기록/TODO.md 1-1).
     """
     import random
 
@@ -536,7 +536,7 @@ def test_ilp_rounds_solver_values_instead_of_truncating(step2, monkeypatch, caps
 
     정수변수라도 솔버·버전에 따라 값이 미세하게 어긋날 수 있는데, `int()`는 0 방향으로
     잘라 **조용히 대수를 깎는다.** 현재 CBC는 정확한 값을 주지만 PuLP 4.0에서
-    `PULP_CBC_CMD`가 사라지므로 솔버가 바뀐다 (docs/TODO.md).
+    `PULP_CBC_CMD`가 사라지므로 솔버가 바뀐다 (docs/기록/TODO.md).
     """
     import pulp
 
@@ -611,7 +611,7 @@ def test_solver_factory_survives_pulp4_removing_the_legacy_solver(step2, monkeyp
     """`PULP_CBC_CMD`가 사라져도 `COIN_CMD`로 넘어간다.
 
     PuLP 4.0에서 `PULP_CBC_CMD`가 없어지는데 `requirements.txt`는 하한 고정이라,
-    그날 새 환경에서 설치하면 step2가 통째로 깨진다 (docs/TODO.md P2-B).
+    그날 새 환경에서 설치하면 step2가 통째로 깨진다 (docs/기록/TODO.md P2-B).
     """
     ilp, _vrp = step2
 
@@ -769,7 +769,7 @@ def test_save_message_shows_the_z_actually_used(target_qty, tmp_path, monkeypatc
 
 
 def test_route_extras_counts_empty_running_and_returns(step4, tmp_path, monkeypatch):
-    """공차 이동은 **도착 전 적재량**으로 판단한다 (docs/KPI.md D장).
+    """공차 이동은 **도착 전 적재량**으로 판단한다 (docs/분석/KPI.md D장).
 
     차고지에서 첫 대여소로 가는 구간과 복귀 구간은 늘 빈 차다. 도착 후 적재량으로
     세면 첫 구간이 '실은 채로 달렸다'가 되어 비율이 낮게 나온다.
@@ -831,7 +831,7 @@ def test_plan_quantity_is_squashed_toward_the_truck_capacity(target_qty):
 
     **이 압축 때문에 '목표 도달'은 실행 품질을 재지 못한다.** 격차가 8대만 넘어도
     도달이 구조적으로 불가능하다 — 아무리 잘 집행해도 오르지 않는 값이라
-    1.19.7에서 헤드라인에서 내렸다(docs/KPI.md).
+    1.19.7에서 헤드라인에서 내렸다(docs/분석/KPI.md).
 
     tanh 자체는 문서화된 설계다(FORMULATION 3장). 여기서는 **그 성질**을 못 박아,
     나중에 누가 clip으로 바꾸면 이 테스트가 먼저 알려 주도록 한다.

@@ -1,7 +1,7 @@
 # 화면 디자인 시스템
 
 대시보드 UI의 규칙을 한곳에 모았습니다. 구현은 전부
-[webapp/templates/base.html](../webapp/templates/base.html)의 `<style>` 블록 안에 있습니다.
+[webapp/templates/base.html](../../webapp/templates/base.html)의 `<style>` 블록 안에 있습니다.
 별도 CSS 파일이나 빌드 단계는 없습니다.
 
 ## 무엇을 따랐나

@@ -2,10 +2,10 @@
 
 > 2026-08-21 작성, 같은 날 1.18.0으로 갱신. 코드·문서 전수 검토 결과입니다.
 > **이 문서는 "논문으로 만들기 위해 필요한 것"만 다룹니다.** 시스템 자체의 남은
-> 과제는 [TODO.md](TODO.md), 지금까지의 경위는 [RETROSPECTIVE.md](RETROSPECTIVE.md).
+> 과제는 [TODO.md](../기록/TODO.md), 지금까지의 경위는 [RETROSPECTIVE.md](../기록/RETROSPECTIVE.md).
 >
 > **1.18.0에서 1·2·5·6·8번이 끝났습니다**(10장). 대조군을 세우자 **평가 자체의 결함
-> 세 가지**가 함께 드러났습니다 — [TODO.md](TODO.md) P1을 먼저 보세요.
+> 세 가지**가 함께 드러났습니다 — [TODO.md](../기록/TODO.md) P1을 먼저 보세요.
 
 ---
 
@@ -15,10 +15,10 @@
 | --- | --- | --- |
 | 동작하는 시스템 | step0~4 실데이터 완주, 웹 대시보드, 테스트 245개 | ✅ 졸업작품으로 충분 |
 | 설계 근거 | 설계 문서 18개, `z`·`γ`를 실측 실험으로 결정 | ✅ 학부 기준 이상 |
-| 실패·수정 기록 | [RETROSPECTIVE.md](RETROSPECTIVE.md) 4장 "측정이 뒤집은 가설 7가지" | ✅ **논문 고찰에 그대로 쓸 수 있는 자산** |
-| 비교 대조군 | 대조군 4종 비교 완료 ([EXPERIMENTS.md](EXPERIMENTS.md) 5장) | ✅ 1.18.0 |
+| 실패·수정 기록 | [RETROSPECTIVE.md](../기록/RETROSPECTIVE.md) 4장 "측정이 뒤집은 가설 7가지" | ✅ **논문 고찰에 그대로 쓸 수 있는 자산** |
+| 비교 대조군 | 대조군 4종 비교 완료 ([EXPERIMENTS.md](../분석/EXPERIMENTS.md) 5장) | ✅ 1.18.0 |
 | 결과의 반복성 | 5개월 × 4씨앗 반복, Wilcoxon 검정 | ✅ 1.18.0 |
-| 문제 정형화 | [FORMULATION.md](FORMULATION.md) | ✅ 1.18.0 |
+| 문제 정형화 | [FORMULATION.md](../분석/FORMULATION.md) | ✅ 1.18.0 |
 | 선행연구 | [RELATED_WORK.md](RELATED_WORK.md) — 문헌 11편 서지 확인, **대전 타슈 선행연구 발견** | 🟡 **전문 읽기가 남음** |
 | 평가의 결함 3건 | 계획 기준 지표·요일 필터 → ✅ 수정(1.18.3~4) / depot 복귀 누락 → ✅ 수정(1.19.1) | 🟡 대조군 표 재측정 남음 |
 
@@ -31,14 +31,14 @@
 
 | 장 | 내용 | 쓸 재료 | 상태 |
 | --- | --- | --- | --- |
-| 1. 서론 | 공공자전거 수급 불균형 문제, 대전 타슈 현황 | [README](../README.md) 개요, EDA | 🟡 재작성 |
+| 1. 서론 | 공공자전거 수급 불균형 문제, 대전 타슈 현황 | [README](../../README.md) 개요, EDA | 🟡 재작성 |
 | 2. 관련 연구 | BSS 재배치 문헌, 본 연구의 위치 | [RELATED_WORK.md](RELATED_WORK.md) | 🟡 문헌 11편 확정, **전문 읽기가 남음** |
-| 3. 문제 정형화 | 목표재고·ILP·VRP 수식, 운영 제약 | [FORMULATION.md](FORMULATION.md) | ✅ 완료 |
-| 4. 시스템 설계 | 파이프라인 구조, 저장소, 웹 | [PROJECT_PIPELINE](PROJECT_PIPELINE.md), [DB_SCHEMA](DB_SCHEMA.md), [WEBAPP](WEBAPP.md) | ✅ 거의 그대로 |
-| 5. 실험 — 파라미터 | `z`·`γ`·학습 창 결정 | [EXPERIMENTS.md](EXPERIMENTS.md) | ✅ 그대로 |
+| 3. 문제 정형화 | 목표재고·ILP·VRP 수식, 운영 제약 | [FORMULATION.md](../분석/FORMULATION.md) | ✅ 완료 |
+| 4. 시스템 설계 | 파이프라인 구조, 저장소, 웹 | [PROJECT_PIPELINE](../구현/PROJECT_PIPELINE.md), [DB_SCHEMA](../구현/DB_SCHEMA.md), [WEBAPP](../구현/WEBAPP.md) | ✅ 거의 그대로 |
+| 5. 실험 — 파라미터 | `z`·`γ`·학습 창 결정 | [EXPERIMENTS.md](../분석/EXPERIMENTS.md) | ✅ 그대로 |
 | 6. 실험 — 성능 평가 | **대조군 대비 개선**, 반복 실행 분포 | **없음** | 🔴 신규 (아래 3·4장) |
-| 7. 고찰 | 측정이 뒤집은 가설, 지표 설계의 함정 | [RETROSPECTIVE 4장](RETROSPECTIVE.md), [KPI 7장](KPI.md) | ✅ **최대 강점** |
-| 8. 한계와 향후 과제 | 시뮬레이션의 하한성, 직선거리, 단일 도시 | [RETROSPECTIVE 6장](RETROSPECTIVE.md), 아래 9장 | ✅ 정리만 |
+| 7. 고찰 | 측정이 뒤집은 가설, 지표 설계의 함정 | [RETROSPECTIVE 4장](../기록/RETROSPECTIVE.md), [KPI 7장](../분석/KPI.md) | ✅ **최대 강점** |
+| 8. 한계와 향후 과제 | 시뮬레이션의 하한성, 직선거리, 단일 도시 | [RETROSPECTIVE 6장](../기록/RETROSPECTIVE.md), 아래 9장 | ✅ 정리만 |
 
 4·5·7장은 이미 있습니다. **비어 있는 것은 2·3·6장이고, 그중 6장이 가장 급합니다.**
 
@@ -51,7 +51,7 @@
 README의 "평균 불균형 개선 65%", "결품 시간 2.16h → 0.42h"는 전부 **제안 방법 자신의
 전후 비교**입니다. *"그래서 단순한 방법보다 얼마나 나은가?"* 에 답하는 숫자가 하나도
 없습니다. 게다가 `improvement_rate`는 `target_qty`를 분모로 삼아 구조적으로 높게
-나오므로([KPI.md](KPI.md) 2장), 이 값만으로는 어떤 주장도 할 수 없습니다.
+나오므로([KPI.md](../분석/KPI.md) 2장), 이 값만으로는 어떤 주장도 할 수 없습니다.
 
 ### 대조군 설계
 
@@ -72,11 +72,11 @@ README의 "평균 불균형 개선 65%", "결품 시간 2.16h → 0.42h"는 전�
 ### 판정 규칙 (미리 정해 두고 시작한다)
 
 - 시간대(`duration`)가 다르면 수요 구조가 반대이므로 **섞어서 평균 내지 않는다**
-  ([KPI.md](KPI.md) 7장).
-- 평일과 휴일은 따로 낸다 ([step0_raw.md](steps/step0_raw.md)).
+  ([KPI.md](../분석/KPI.md) 7장).
+- 평일과 휴일은 따로 낸다 ([step0_raw.md](../구현/steps/step0_raw.md)).
 - `z`가 다른 대조군(B2)과는 **개선률·목표 도달률을 비교하지 않는다** — 결품 시간만 쓴다.
 - 편익만 재지 않는다. **이동거리·소요시간(비용)을 같은 표에 둔다**
-  ([RETROSPECTIVE 4-보론](RETROSPECTIVE.md) 3번).
+  ([RETROSPECTIVE 4-보론](../기록/RETROSPECTIVE.md) 3번).
 
 ### 구현
 
@@ -91,7 +91,7 @@ README의 "평균 불균형 개선 65%", "결품 시간 2.16h → 0.42h"는 전�
 ### 무엇이 문제인가
 
 README의 모든 수치는 **25년 11월 데이터로 2026-08-12에 한 번 돌린 결과**입니다.
-그런데 우리 스스로 [RETROSPECTIVE 4장 ②](RETROSPECTIVE.md)에서 이렇게 기록했습니다:
+그런데 우리 스스로 [RETROSPECTIVE 4장 ②](../기록/RETROSPECTIVE.md)에서 이렇게 기록했습니다:
 
 > greedy 탐색이라 단일 실행 결과가 흔들립니다(γ=2000에서는 오히려 악화).
 > **단일 실행으로 판단하면 안 된다는 걸 직접 겪었습니다.**
@@ -135,7 +135,7 @@ README의 모든 수치는 **25년 11월 데이터로 2026-08-12에 한 번 돌�
 - **목표 재고 결정** — 재고 수준을 어떻게 정하는가 (본 연구: `μ + z·σ` + 계절 배율)
 - **재배치 차량 경로 문제** — Pickup-and-Delivery / 1-commodity VRP 계열
 - **수요 예측** — 시계열·ML 접근 (본 연구가 분위수 모델을 **철회한** 근거는
-  [DEMAND_DISTRIBUTION.md](DEMAND_DISTRIBUTION.md) 5장)
+  [DEMAND_DISTRIBUTION.md](../분석/DEMAND_DISTRIBUTION.md) 5장)
 
 **본 연구의 위치:** 개별 요소의 새 알고리즘이 아니라, **실제 운용 제약(보유 21대·하루
 3회차·작업량 기반 회차 투입·120분 예산·적재 10대)을 그대로 반영해 수요예측부터 경로까지
@@ -171,7 +171,7 @@ README의 모든 수치는 **25년 11월 데이터로 2026-08-12에 한 번 돌�
 논문의 주 지표는 **결품 시간(stockout hours)** 으로 세웁니다.
 
 - `improvement_rate`·`target_met_ratio`는 `target_qty`가 분모라 **계획 달성률**이지
-  이용자 편익이 아니고, `z`가 다르면 비교조차 불가합니다 ([KPI.md](KPI.md) 2장).
+  이용자 편익이 아니고, `z`가 다르면 비교조차 불가합니다 ([KPI.md](../분석/KPI.md) 2장).
 - 결품 시간은 목표값과 무관해 대조군 비교에 쓸 수 있는 **유일한** 현행 지표입니다.
 - 다만 그 한계를 4장에 반드시 명시합니다 — 실측이 아니라 **복원**이고, 초기 재고와
   순수요의 시점이 다르며, 재고를 0에서 자르므로 **결품의 하한**입니다.
@@ -207,9 +207,9 @@ README의 모든 수치는 **25년 11월 데이터로 2026-08-12에 한 번 돌�
 
 | 순위 | 할 일 | 산출물 | 상태 |
 | --- | --- | --- | --- |
-| 1 | **대조군 실험** (B1~B3) | `experiments/baseline_compare.py`, [EXPERIMENTS.md](EXPERIMENTS.md) 5장 | ✅ 완료 (1.18.0) |
+| 1 | **대조군 실험** (B1~B3) | `experiments/baseline_compare.py`, [EXPERIMENTS.md](../분석/EXPERIMENTS.md) 5장 | ✅ 완료 (1.18.0) |
 | 2 | **반복 실행·통계** | `experiments/repeat_eval.py` — 5개월·4씨앗, Wilcoxon | ✅ 완료 (1.18.0) |
-| 3 | **선행연구·정형화** | [FORMULATION.md](FORMULATION.md) ✅ / [RELATED_WORK.md](RELATED_WORK.md) 문헌 11편 확정 | 🟡 **전문 읽기가 남음** |
+| 3 | **선행연구·정형화** | [FORMULATION.md](../분석/FORMULATION.md) ✅ / [RELATED_WORK.md](RELATED_WORK.md) 문헌 11편 확정 | 🟡 **전문 읽기가 남음** |
 | 4 | 문서 정합성 수정 | RETROSPECTIVE·EXPERIMENTS·KPI·DB_PLAN 갱신 | ✅ 완료 (1.17.6) |
 | 5 | `γ = 3000` 다른 달 재확인 | `experiments/gamma_recheck.py` | ✅ 완료 (1.18.0) |
 | 6 | OR-Tools 대비 갭 측정 | `experiments/ortools_gap.py` | ✅ 완료 (1.18.0) |
@@ -223,7 +223,7 @@ README의 모든 수치는 **25년 11월 데이터로 2026-08-12에 한 번 돌�
 "왜 단순한 방법을 썼는가"에 측정으로 답할 수 있습니다. 판정 기준은
 `experiments/quantile_model_eval.py`의 것을 그대로 쓰십시오 — 작업 대상만·평일/휴일
 따로·표본 밖·베이스라인 초과. 분위수 모델을 철회했을 때와 같은 방식입니다
-([DEMAND_DISTRIBUTION.md](DEMAND_DISTRIBUTION.md) 5장).
+([DEMAND_DISTRIBUTION.md](../분석/DEMAND_DISTRIBUTION.md) 5장).
 
 **7번은 1.19.1에서 해소했습니다** (2026-08-24 결정, 2026-08-21의 보류를 뒤집음).
 복귀 구간을 넣고, 그때 드러난 예산 초과를 **회차당 대수를 작업량이 정하게** 바꿔
@@ -236,7 +236,7 @@ README의 모든 수치는 **25년 11월 데이터로 2026-08-12에 한 번 돌�
 가중치 재조정이 필요하다."*
 
 ⚠️ **대조군 비교표(5장)는 아직 복귀를 뺀 값입니다.** 논문에 넣기 전에 새 코드로
-다시 재야 합니다 — [TODO.md](TODO.md) 1-1.
+다시 재야 합니다 — [TODO.md](../기록/TODO.md) 1-1.
 
 ---
 
@@ -258,11 +258,11 @@ README의 모든 수치는 **25년 11월 데이터로 2026-08-12에 한 번 돌�
 
 | 문서 | 내용 |
 | --- | --- |
-| [RETROSPECTIVE.md](RETROSPECTIVE.md) | 전체 조망·측정이 뒤집은 가설 (논문 7장 재료) |
+| [RETROSPECTIVE.md](../기록/RETROSPECTIVE.md) | 전체 조망·측정이 뒤집은 가설 (논문 7장 재료) |
 | [RELATED_WORK.md](RELATED_WORK.md) | 관련 연구와 본 연구의 위치 (논문 2장 뼈대) |
 | [LITERATURE.md](LITERATURE.md) | 문헌 11편 분석·비교표·인용 지도·읽기 순서 |
-| [FORMULATION.md](FORMULATION.md) | 기호·수식·제약 (논문 3장) |
-| [EXPERIMENTS.md](EXPERIMENTS.md) | `z`·학습 창·`γ`의 실측 근거 (논문 5장 재료) |
-| [KPI.md](KPI.md) | 지표 체계와 그 함정 (논문 6장 판정 규칙) |
-| [DEMAND_DISTRIBUTION.md](DEMAND_DISTRIBUTION.md) | 순수요 분포 진단·분위수 모델 철회 근거 |
-| [TODO.md](TODO.md) | 시스템 쪽 남은 과제 |
+| [FORMULATION.md](../분석/FORMULATION.md) | 기호·수식·제약 (논문 3장) |
+| [EXPERIMENTS.md](../분석/EXPERIMENTS.md) | `z`·학습 창·`γ`의 실측 근거 (논문 5장 재료) |
+| [KPI.md](../분석/KPI.md) | 지표 체계와 그 함정 (논문 6장 판정 규칙) |
+| [DEMAND_DISTRIBUTION.md](../분석/DEMAND_DISTRIBUTION.md) | 순수요 분포 진단·분위수 모델 철회 근거 |
+| [TODO.md](../기록/TODO.md) | 시스템 쪽 남은 과제 |

@@ -38,7 +38,7 @@ now = config.now
 #  작업시간은 1.18.6까지 이 파일에 박혀 있어 다른 운영 상수와 따로 놀았다.)
 
 # 한 회차에 차량 1대가 클러스터 1개를 맡고 depot으로 복귀한다(사용자 결정, 1.13.2).
-# 여러 클러스터를 이어 도는 구조는 채택하지 않았다 — docs/FLEET.md '운용 모델' 참고.
+# 여러 클러스터를 이어 도는 구조는 채택하지 않았다 — docs/구현/FLEET.md '운용 모델' 참고.
 
 
 def _travel_sec(km: float) -> float:
@@ -82,7 +82,7 @@ def greedy_route(nodes: dict, cluster, time_budget_sec: float = None) -> list:
     nodes: {(station_id, 'pick'|'drop'): {'qty', 'lat', 'lon'}}  (호출 측에서 소모된다)
     time_budget_sec: 주면 예산을 넘기는 작업 앞에서 멈추고 depot으로 돌아온다.
         **파이프라인은 주지 않는다**(None) — 현행 설계에서 시간 예산은 제약이 아니라
-        사후 점검이다(docs/RETROSPECTIVE.md 6장). 대조군처럼 클러스터 없이 한 대가
+        사후 점검이다(docs/기록/RETROSPECTIVE.md 6장). 대조군처럼 클러스터 없이 한 대가
         전체 후보를 훑는 경우에는 멈출 곳이 있어야 해서 넣어 둔 선택 인자다.
     반환: VRP 행 목록(from/to·action·qty·거리·시간)
     """
@@ -200,8 +200,8 @@ def greedy_route(nodes: dict, cluster, time_budget_sec: float = None) -> list:
     # 그 전에는 작업이 끝나면 **그 자리에서 멈췄다.** 위의 '작업 불가' 분기가 복귀
     # 행을 만들긴 하지만 ILP를 거친 입력에서는 실행될 수 없어(총 pick = 총 drop),
     # 실데이터 1,224행에 return이 0건이었다. 그래서 총 이동거리가 33% 과소 추정이고
-    # 시간 예산 판정도 그만큼 낙관적이었다(docs/TODO.md 1-1의 실측).
-    # 설계는 처음부터 '차량 1대 = 클러스터 1개 + depot 복귀'였다(docs/FLEET.md).
+    # 시간 예산 판정도 그만큼 낙관적이었다(docs/기록/TODO.md 1-1의 실측).
+    # 설계는 처음부터 '차량 1대 = 클러스터 1개 + depot 복귀'였다(docs/구현/FLEET.md).
     #
     # 이미 depot에 있으면(작업이 없었거나 방금 되돌아왔으면) 붙이지 않는다.
     if current_id != DEPOT_ID:
@@ -271,7 +271,7 @@ def run_vrp_plan(ilp_plan: pd.DataFrame, duration: str):
         results.extend(greedy_route(nodes, c))
 
     # -------------------------
-    # 차량 배정 (로테이션) — docs/FLEET.md
+    # 차량 배정 (로테이션) — docs/구현/FLEET.md
     # -------------------------
     vrp_result = pd.DataFrame(results)
     vrp_result = _assign_fleet(vrp_result, duration)

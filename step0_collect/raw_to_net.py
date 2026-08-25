@@ -2,7 +2,7 @@
 
 **평일과 휴일을 모두 계산한다.** 어느 쪽으로 계획할지는 다음 단계
 (calculate_target_qty)가 `--day-type`으로 고른다 — 두 구분은 수요 구조가
-달라 한 통계로 섞으면 안 되기 때문이다(docs/steps/step0_raw.md).
+달라 한 통계로 섞으면 안 되기 때문이다(docs/구현/steps/step0_raw.md).
 
 입력: DB의 rental_history(해당 period가 적재돼 있으면) 또는 원천 CSV
       적재는 `python tools/load_rentals.py`

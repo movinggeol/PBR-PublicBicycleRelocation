@@ -1,4 +1,4 @@
-"""TMAP 엔드포인트 선택과 폴백 검증 (docs/steps/step3_visualization.md).
+"""TMAP 엔드포인트 선택과 폴백 검증 (docs/구현/steps/step3_visualization.md).
 
 실제 API는 일일 한도가 있는 유료 서비스라 자동 테스트에서 부르지 않는다.
 대신 `requests.post`를 가로채 **어느 엔드포인트로 보냈는지**만 본다 —

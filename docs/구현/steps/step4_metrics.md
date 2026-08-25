@@ -10,7 +10,7 @@
   - `data/pp_data/성능 지표/route_summary{duration} ({now}).csv` (클러스터별 이동거리·운행시간)
   - `data/pp_data/성능 지표/visualization/imbalance_map{duration} ({now}).html` (개선 지도)
   - SQLite `metrics`·`route_summary` 테이블 (이중 기록, 한글 컬럼은 ASCII로 변환)
-  - SQLite `kpi_summary` 테이블 (실행 1건 = 1행, [KPI.md](../KPI.md))
+  - SQLite `kpi_summary` 테이블 (실행 1건 = 1행, [KPI.md](../../분석/KPI.md))
   - 콘솔에 전체·Pick·Drop 평균 개선률과 경로 요약 출력
 
 ### 결품 시뮬레이션 (`stockout_simulation`)
@@ -25,7 +25,7 @@ stock(t+1) = clip(stock(t) − 순수요(t), 0, 거치대 수)
 개선률이 "계획 달성률"인 것과 달리, 이 지표는 **이용자가 자전거를 못 타는 시간**에
 한 걸음 다가갑니다. 다만 실제 집행 후 관측이 아니라 시뮬레이션이며,
 초기 재고와 순수요의 시점이 다르고, 재고를 0에서 자르므로 **하한**입니다
-(자세한 한계는 [KPI.md](../KPI.md) 3-B).
+(자세한 한계는 [KPI.md](../../분석/KPI.md) 3-B).
 
 ### 지표 정의
 
@@ -45,7 +45,7 @@ tanh 완화·정수화로 부분 재배치가 되는 경우 1.0 미만이 되며
 > ⚠️ **이 값은 "계획 달성률"입니다.** `rebal_qty`가 `target_qty − stock`에서 파생되므로,
 > 계획이 자기가 세운 목표를 얼마나 채웠는지를 잽니다. 이용자가 실제로 자전거를 탈 수
 > 있었는지는 측정하지 않으며, `target_qty` 자체가 틀렸다면 이 값이 높아도 의미가 없습니다.
-> 실측 성격의 지표(결품 시간, 수요 충족률)와 KPI 체계 개선안은 [KPI.md](../KPI.md) 참고.
+> 실측 성격의 지표(결품 시간, 수요 충족률)와 KPI 체계 개선안은 [KPI.md](../../분석/KPI.md) 참고.
 
 ### 경로 요약 (`route_summary`)
 

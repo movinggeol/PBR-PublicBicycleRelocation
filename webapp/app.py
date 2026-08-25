@@ -172,7 +172,7 @@ def _index_context(error: Optional[str] = None) -> dict:
         "periods": list(reversed(periods)),
         # 시간대는 네 창이 전부다. 창마다 수요 방향이 반대라 섞지 않는다.
         "durations": [{"value": d, "label": DURATION_LABELS[d]} for d in DURATIONS],
-        # 평일과 휴일은 수요 구조가 달라 한 실행에 섞지 않는다 (docs/steps/step0_raw.md).
+        # 평일과 휴일은 수요 구조가 달라 한 실행에 섞지 않는다 (docs/구현/steps/step0_raw.md).
         # auto는 계획 대상일(기본 오늘)을 달력으로 판정한다 — 운영 기본값.
         "day_types": (
             [{"value": DAY_TYPE_AUTO,
@@ -196,7 +196,7 @@ def index(request: Request):
 
 @app.get("/api/weather")
 def weather_now(refresh: int = 0):
-    """지금 날씨. 계획 화면이 비 여부를 띄우는 데 쓴다 (docs/WEATHER.md).
+    """지금 날씨. 계획 화면이 비 여부를 띄우는 데 쓴다 (docs/분석/WEATHER.md).
 
     **화면을 그리는 요청 안에서 부르지 않는다** — 외부 API가 느리면 실행 폼 자체가
     늦게 뜬다. 브라우저가 화면을 띄운 뒤 따로 물어보고, 응답은 10분 캐시한다.
@@ -393,7 +393,7 @@ def data_page(request: Request):
 
 @app.get("/kpi")
 def kpi_page(request: Request, run_label: Optional[str] = None):
-    """실행별 성과 지표와 실행 간 비교 (docs/KPI.md)."""
+    """실행별 성과 지표와 실행 간 비교 (docs/분석/KPI.md)."""
     rows = store.kpi(run_label=run_label)
 
     latest = None
@@ -425,7 +425,7 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
         # 헤드라인에는 **목표 재고를 분모로 삼지 않는 값**을 앞세운다.
         # '목표 도달 비율'은 1.19.7에서 내렸다 — 계획량이 `Q·tanh(격차/Q)`로 눌려
         # 격차가 8대만 넘어도 도달이 구조적으로 불가능하다. 실행을 아무리 잘해도
-        # 오르지 않는 값을 헤드라인에 두면 화면이 거짓말을 한다(docs/KPI.md).
+        # 오르지 않는 값을 헤드라인에 두면 화면이 거짓말을 한다(docs/분석/KPI.md).
         # 표에는 그대로 있고, 대신 '한 번에 닿는 범위'가 그 자리를 설명한다.
         for label, column, weight, fmt in [
             ("평균 개선률", "avg_improvement_rate", "stations", "pct"),
@@ -442,7 +442,7 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
                 "fmt": fmt,
             })
 
-    # ── 그래프 (docs/DESIGN.md '그래프') ──
+    # ── 그래프 (docs/구현/DESIGN.md '그래프') ──
     # SVG 문자열을 만들어 넘긴다. 라이브러리를 넣지 않고, 색은 CSS 변수를 상속한다.
     trends = []
     for series in kpi_view.trends(rows):
@@ -502,7 +502,7 @@ def api_kpi(run_label: Optional[str] = None, duration: Optional[str] = None):
 
 @app.get("/vehicles")
 def vehicles_page(request: Request, run_label: Optional[str] = None):
-    """차량별 누적 작업량과 회차 배정 이력 (docs/FLEET.md)."""
+    """차량별 누적 작업량과 회차 배정 이력 (docs/구현/FLEET.md)."""
     workload = store.vehicle_workload()
     assignments = store.vehicle_assignments(run_label=run_label)
 

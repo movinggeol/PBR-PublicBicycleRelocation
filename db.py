@@ -272,7 +272,7 @@ CREATE TABLE IF NOT EXISTS vehicle_assignment (
 CREATE INDEX IF NOT EXISTS idx_assignment_vehicle ON vehicle_assignment(vehicle_id);
 
 -- 실행 1건(run_label + duration) = 1행. 흩어져 있는 지표를 한 줄로 모아
--- 실행 간 비교를 쿼리 하나로 만든다. (docs/KPI.md)
+-- 실행 간 비교를 쿼리 하나로 만든다. (docs/분석/KPI.md)
 CREATE TABLE IF NOT EXISTS kpi_summary (
     run_label             TEXT NOT NULL,
     duration              TEXT NOT NULL,
@@ -304,7 +304,7 @@ CREATE TABLE IF NOT EXISTS kpi_summary (
     stockout_hours_plan   REAL,      -- 계획량(rebal_qty)이 전부 집행됐다고 본 값
     demand_mae            REAL,
 
-    -- C. 운영 / D. 효율 (1.19.3, docs/KPI.md)
+    -- C. 운영 / D. 효율 (1.19.3, docs/분석/KPI.md)
     travel_time_ratio     REAL,      -- 이동시간 / 총 소요시간 (낮을수록 좋다)
     empty_distance_ratio  REAL,      -- 빈 차로 달린 거리 비율 (차고지 왕복 포함)
     depot_returns         INTEGER,   -- 복귀 행 수. 1.19.1부터 클러스터당 1건이 정상
@@ -343,7 +343,7 @@ CREATE TABLE IF NOT EXISTS rental_history (
 
 CREATE INDEX IF NOT EXISTS idx_rental_period ON rental_history(period);
 CREATE INDEX IF NOT EXISTS idx_rental_rent_at ON rental_history(rent_at);
--- 수요 예측 백테스트 (1.19.3, docs/KPI.md E장).
+-- 수요 예측 백테스트 (1.19.3, docs/분석/KPI.md E장).
 -- 한 달로 만든 mu가 **다음 달**을 얼마나 맞히는지. tools/backtest_demand.py가 채운다.
 -- 파이프라인 실행과 무관한 기록이라 run_label이 없다 — 축은 (시간대, 월쌍, 요일)이다.
 -- 같은 축을 다시 재면 덮어쓴다. z·min_demand는 그때 쓴 설정이라 함께 남긴다.
@@ -367,7 +367,7 @@ CREATE TABLE IF NOT EXISTS demand_backtest (
     PRIMARY KEY (duration, train_period, test_period, day_type)
 );
 
--- 재고 시계열 (1.20.0, docs/COLLECTOR.md).
+-- 재고 시계열 (1.20.0, docs/구현/COLLECTOR.md).
 -- tools/collect_stock.py가 평일 09~17시에 10분마다 한 틱씩 쌓는다.
 -- 파이프라인 실행과 무관한 관측 기록이라 run_label이 없다 — 축은 (시각, 대여소)다.
 -- day_type·duration을 컬럼으로 두지 않는 이유: observed_at에서 파생되는 값이고,
@@ -669,7 +669,7 @@ def list_runs(conn: sqlite3.Connection) -> pd.DataFrame:
     return pd.read_sql("SELECT * FROM runs ORDER BY run_label DESC", conn)
 
 
-# ---------------- 성과 지표 (docs/KPI.md) ----------------
+# ---------------- 성과 지표 (docs/분석/KPI.md) ----------------
 
 # kpi_summary에 저장할 수 있는 컬럼(키·시각 제외). 넘겨받은 dict에서 이것만 골라 쓴다.
 KPI_FIELDS = (
@@ -680,7 +680,7 @@ KPI_FIELDS = (
     "vehicle_load_gap", "improvement_per_km", "cluster_max_imbalance",
     "stockout_hours_before", "stockout_hours_after", "stockout_hours_plan",
     "demand_mae",
-    # 운영·효율 지표 (1.19.3, docs/KPI.md C·D장)
+    # 운영·효율 지표 (1.19.3, docs/분석/KPI.md C·D장)
     "travel_time_ratio", "empty_distance_ratio", "depot_returns",
     "bikes_per_minute", "stations_total", "station_coverage",
     # 목표까지의 격차와 '한 번에 닿는 범위' (1.19.7)
@@ -747,7 +747,7 @@ def load_backtest(conn: sqlite3.Connection,
         " ORDER BY duration ASC, test_period ASC", conn, params=params)
 
 
-# ---- 재고 시계열 (docs/COLLECTOR.md) ----
+# ---- 재고 시계열 (docs/구현/COLLECTOR.md) ----
 # TABLES/save_frame 규약을 쓰지 않는다 — 그쪽은 run_label 스코프 산출물 전용이고,
 # 여기 축은 (시각, 대여소)다. demand_backtest와 같은 자리다.
 

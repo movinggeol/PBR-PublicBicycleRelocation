@@ -136,7 +136,7 @@ def test_vrp_plan_has_time_columns(pipeline_run):
 
 
 def test_vrp_assigns_real_vehicles(pipeline_run, smoke_db):
-    """클러스터마다 실제 차량이 배정되고 기록된다 (docs/FLEET.md)."""
+    """클러스터마다 실제 차량이 배정되고 기록된다 (docs/구현/FLEET.md)."""
     import db
 
     plan = pd.read_csv(_out("VRP/VRP_plan{duration} ({label}).csv"), encoding="utf-8")
@@ -226,7 +226,7 @@ def test_database_matches_csv(pipeline_run, smoke_db):
 
 
 def test_kpi_summary_written(pipeline_run, smoke_db):
-    """step4가 실행 지표를 kpi_summary에 한 줄로 기록한다 (docs/KPI.md)."""
+    """step4가 실행 지표를 kpi_summary에 한 줄로 기록한다 (docs/분석/KPI.md)."""
     import db
 
     with db.session(smoke_db) as conn:

@@ -2,7 +2,7 @@
 
 지금까지 프로젝트의 모든 수치는 **"재배치 전 → 후"** 자기 비교였다. 그래서
 "그냥 부족한 데부터 채우면 되지 않나"에 답하는 숫자가 하나도 없었다
-(docs/THESIS.md 3장). 이 스크립트가 그 표를 만든다.
+(docs/연구/THESIS.md 3장). 이 스크립트가 그 표를 만든다.
 
     P   제안 방법        군집(K-Medoids + 불균형 조정) → ILP → VRP
     B0  무재배치         아무 것도 하지 않는다 (하한선)
@@ -11,7 +11,7 @@
     B3  지리 균등 군집   K-Medoids만 쓰고 불균형 조정을 하지 않는다, 이후는 P와 같다
 
 **모든 방법을 같은 자로 잰다.** 판정 기준은 결품 시간이다 — 개선률·목표 도달률은
-`target_qty`를 분모로 삼아 z가 다른 B2와는 비교조차 할 수 없다(docs/KPI.md).
+`target_qty`를 분모로 삼아 z가 다른 B2와는 비교조차 할 수 없다(docs/분석/KPI.md).
 
 **'실제로 옮긴 대수'로 평가한다.** ILP는 군집 안에서 min(pick, drop)만큼만 옮기므로
 계획량(rebal_qty)이 전부 집행되지는 않는다. 계획으로 재면 군집·ILP를 건너뛴 B1도
@@ -21,7 +21,7 @@
 측정 코드는 운영 코드를 그대로 부른다 — build_stats·compute_rebal_qty·
 select_top_unbalanced_st·make_clustering·adjust_clustering·solve_cluster_moves·
 greedy_route·_stockout_hours 전부 파이프라인의 함수다. 측정이 제 방식대로 계산하면
-측정이 거짓말을 한다(docs/DEMAND_DISTRIBUTION.md 5장에서 실제로 겪었다).
+측정이 거짓말을 한다(docs/분석/DEMAND_DISTRIBUTION.md 5장에서 실제로 겪었다).
 
 사용법:
     python experiments/baseline_compare.py --period "25년 11월"

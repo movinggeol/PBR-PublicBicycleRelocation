@@ -17,22 +17,22 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 
 | 파일 | 개수 | 무엇을 지키는가 |
 | --- | --- | --- |
-| [tests/test_pipeline.py](../tests/test_pipeline.py) | 35 | step0→1→2→4를 **실제로 실행**해 산출물·스키마 확인 |
-| [tests/test_calculations.py](../tests/test_calculations.py) | 46 | **계산 자체** — 목표재고 공식·군집 목적함수·VRP 적재/시간 제약·ILP 수급 제약·집행 기준 결품·**솔버 값 반올림/입력 방어** ([FORMULATION.md](FORMULATION.md)) |
-| [tests/test_kpi.py](../tests/test_kpi.py) | 19 | 성과 지표 계산과 `/kpi` 화면, 결측 지표 렌더링 ([KPI.md](KPI.md)) |
-| [tests/test_db.py](../tests/test_db.py) | 22 | SQLite 저장소의 스코프·멱등성·최신 라벨·스키마 마이그레이션 ([DB_SCHEMA.md](DB_SCHEMA.md)) |
-| [tests/test_webapp.py](../tests/test_webapp.py) | 50 | 웹 라우트가 통째로 깨지는 사고 방지, 실행 폼 입력 검증(기간·시간대 목록 포함), 파일 목록 쪽 나눔, **표 정렬을 건 표/걸지 않은 표** ([WEBAPP.md](WEBAPP.md)) |
-| [tests/test_pipeline_progress.py](../tests/test_pipeline_progress.py) | 9 | 실행 로그에서 진행 단계를 뽑는 규약 ([WEBAPP.md](WEBAPP.md)) |
-| [tests/test_charts.py](../tests/test_charts.py) | 15 | **그래프 규칙** — 계열 하나에 선 하나(축 둘 금지), 색을 SVG에 박지 않는지, 값 표시는 끝점만, 좌표가 뷰박스 안인지, 발산 척도의 가운데가 무채색인지 |
-| [tests/test_orders.py](../tests/test_orders.py) | 9 | **작업지시서·실시간 재고 대조** — 대조가 지시량(요구량 아님)을 보는지, 집행 가능 판정이 계획과 같은 상한을 쓰는지, 타슈 API를 누를 때만 부르고 실패해도 500이 아닌지 |
-| [tests/test_guide.py](../tests/test_guide.py) | 8 | 사용 안내가 설정값을 하드코딩하지 않는지, 폼 항목을 빠짐없이 설명하는지, **입력 예시가 실제로 통하는 형식인지**, 예상 소요를 지난 실행에서 뽑는지 |
-| [tests/test_webapp_db.py](../tests/test_webapp_db.py) | 14 | 웹 API가 CSV 대신 DB를 읽는지 |
-| [tests/test_rentals.py](../tests/test_rentals.py) | 10 | 대여이력 적재와 **CSV·DB 결과 동일성** |
-| [tests/test_fleet.py](../tests/test_fleet.py) | 13 | 차량 로테이션·형평성과 보유 대수 변경 ([FLEET.md](FLEET.md)) |
-| [tests/test_tmap.py](../tests/test_tmap.py) | 11 | TMAP 엔드포인트 선택·폴백 ([steps/step3_visualization.md](steps/step3_visualization.md)) |
-| [tests/test_day_type.py](../tests/test_day_type.py) | 36 | 평일/휴일 분리·공휴일 판정·수요 모델 폴백·계절 보정, **평가도 같은 구분을 쓰는지** ([steps/step0_raw.md](steps/step0_raw.md)) |
-| [tests/test_stock_history.py](../tests/test_stock_history.py) | 23 | **재고 시계열 수집** — 창 가드(휴일·창 밖에 API를 부르지 않는지), 틱 격자 반올림, 멱등 저장, 실패도 로그에 남는지, 파이프라인 이력을 건드리지 않는지 ([COLLECTOR.md](COLLECTOR.md)) |
-| [tests/test_weather.py](../tests/test_weather.py) | 24 | **날씨 원천** — 빈칸의 뜻이 컬럼마다 다른지(강수는 0, 기온은 보간), 겨울 3시간 누적 강수를 펴는지, 창 접기(합·평균·최대)와 자정을 넘긴 창, 자료가 없어도 죽지 않는지, API 결측(-9)을 값으로 읽지 않는지 ([WEATHER.md](WEATHER.md)) |
+| [tests/test_pipeline.py](../../tests/test_pipeline.py) | 35 | step0→1→2→4를 **실제로 실행**해 산출물·스키마 확인 |
+| [tests/test_calculations.py](../../tests/test_calculations.py) | 46 | **계산 자체** — 목표재고 공식·군집 목적함수·VRP 적재/시간 제약·ILP 수급 제약·집행 기준 결품·**솔버 값 반올림/입력 방어** ([FORMULATION.md](../분석/FORMULATION.md)) |
+| [tests/test_kpi.py](../../tests/test_kpi.py) | 19 | 성과 지표 계산과 `/kpi` 화면, 결측 지표 렌더링 ([KPI.md](../분석/KPI.md)) |
+| [tests/test_db.py](../../tests/test_db.py) | 22 | SQLite 저장소의 스코프·멱등성·최신 라벨·스키마 마이그레이션 ([DB_SCHEMA.md](DB_SCHEMA.md)) |
+| [tests/test_webapp.py](../../tests/test_webapp.py) | 50 | 웹 라우트가 통째로 깨지는 사고 방지, 실행 폼 입력 검증(기간·시간대 목록 포함), 파일 목록 쪽 나눔, **표 정렬을 건 표/걸지 않은 표** ([WEBAPP.md](WEBAPP.md)) |
+| [tests/test_pipeline_progress.py](../../tests/test_pipeline_progress.py) | 9 | 실행 로그에서 진행 단계를 뽑는 규약 ([WEBAPP.md](WEBAPP.md)) |
+| [tests/test_charts.py](../../tests/test_charts.py) | 15 | **그래프 규칙** — 계열 하나에 선 하나(축 둘 금지), 색을 SVG에 박지 않는지, 값 표시는 끝점만, 좌표가 뷰박스 안인지, 발산 척도의 가운데가 무채색인지 |
+| [tests/test_orders.py](../../tests/test_orders.py) | 9 | **작업지시서·실시간 재고 대조** — 대조가 지시량(요구량 아님)을 보는지, 집행 가능 판정이 계획과 같은 상한을 쓰는지, 타슈 API를 누를 때만 부르고 실패해도 500이 아닌지 |
+| [tests/test_guide.py](../../tests/test_guide.py) | 8 | 사용 안내가 설정값을 하드코딩하지 않는지, 폼 항목을 빠짐없이 설명하는지, **입력 예시가 실제로 통하는 형식인지**, 예상 소요를 지난 실행에서 뽑는지 |
+| [tests/test_webapp_db.py](../../tests/test_webapp_db.py) | 14 | 웹 API가 CSV 대신 DB를 읽는지 |
+| [tests/test_rentals.py](../../tests/test_rentals.py) | 10 | 대여이력 적재와 **CSV·DB 결과 동일성** |
+| [tests/test_fleet.py](../../tests/test_fleet.py) | 13 | 차량 로테이션·형평성과 보유 대수 변경 ([FLEET.md](FLEET.md)) |
+| [tests/test_tmap.py](../../tests/test_tmap.py) | 11 | TMAP 엔드포인트 선택·폴백 ([steps/step3_visualization.md](steps/step3_visualization.md)) |
+| [tests/test_day_type.py](../../tests/test_day_type.py) | 36 | 평일/휴일 분리·공휴일 판정·수요 모델 폴백·계절 보정, **평가도 같은 구분을 쓰는지** ([steps/step0_raw.md](steps/step0_raw.md)) |
+| [tests/test_stock_history.py](../../tests/test_stock_history.py) | 23 | **재고 시계열 수집** — 창 가드(휴일·창 밖에 API를 부르지 않는지), 틱 격자 반올림, 멱등 저장, 실패도 로그에 남는지, 파이프라인 이력을 건드리지 않는지 ([COLLECTOR.md](COLLECTOR.md)) |
+| [tests/test_weather.py](../../tests/test_weather.py) | 24 | **날씨 원천** — 빈칸의 뜻이 컬럼마다 다른지(강수는 0, 기온은 보간), 겨울 3시간 누적 강수를 펴는지, 창 접기(합·평균·최대)와 자정을 넘긴 창, 자료가 없어도 죽지 않는지, API 결측(-9)을 값으로 읽지 않는지 ([WEATHER.md](../분석/WEATHER.md)) |
 
 **API 키가 필요한 두 단계는 자동 테스트에서 제외**했습니다 —
 `step0/tashu_api.py`(TASHU)와 `step3/main.py`(TMAP). 검증 방법은 4장에 있습니다.
@@ -65,7 +65,7 @@ DB로 한 번 계산해 결과가 **완전히 같은지** 봅니다. 저장소�
 
 | 장치 | 위치 | 하는 일 |
 | --- | --- | --- |
-| `isolate_db` (autouse) | [tests/conftest.py](../tests/conftest.py) | 모든 테스트에 `PBR_DB_PATH`를 임시 경로로 강제 |
+| `isolate_db` (autouse) | [tests/conftest.py](../../tests/conftest.py) | 모든 테스트에 `PBR_DB_PATH`를 임시 경로로 강제 |
 | `PP_ROOT` 격리 (autouse) | `tests/test_webapp_db.py` | `catalog.PP_ROOT`를 임시 디렉터리로 |
 | 고유 실행 라벨 | `tests/test_pipeline.py` | `now`/`period`를 `smoketest-{PID}`로 두고, 끝나면 그 라벨 파일만 삭제 |
 
@@ -77,7 +77,7 @@ DB로 한 번 계산해 결과가 **완전히 같은지** 봅니다. 저장소�
 
 ## 3. 합성 데이터
 
-실데이터 없이도 전 단계가 돌아가야 합니다. [tools/make_sample_data.py](../tools/make_sample_data.py)가
+실데이터 없이도 전 단계가 돌아가야 합니다. [tools/make_sample_data.py](../../tools/make_sample_data.py)가
 대여소·재고·대여이력을 만들어 냅니다.
 
 **무작위 난수가 아니라 방향성 있는 수요를 심었습니다.** `FLOW_WINDOWS`로 시간대마다
@@ -125,7 +125,7 @@ python "step3_map/main.py" --now "<라벨>" --duration "_15_20"
 
 `z`·`γ` 같은 모델 파라미터는 "맞다/틀리다"가 아니라 **맞바꿈(trade-off)** 이라
 단위 테스트로 판정할 수 없습니다. 대신 실데이터 실험으로 근거를 남깁니다
-→ [EXPERIMENTS.md](EXPERIMENTS.md), 재현 스크립트는 [experiments/](../experiments/).
+→ [EXPERIMENTS.md](../분석/EXPERIMENTS.md), 재현 스크립트는 [experiments/](../../experiments).
 
 파라미터를 바꿀 때 지켜야 할 것:
 
@@ -146,7 +146,7 @@ python "step3_map/main.py" --now "<라벨>" --duration "_15_20"
 | `step3/main.py` | 위 4장 참고 (수동) |
 | `step0_eda` | 산출물이 분석용이라 파이프라인 의존이 없다 |
 
-→ [TODO.md](TODO.md) 11번
+→ [TODO.md](../기록/TODO.md) 11번
 
 ---
 
@@ -166,7 +166,7 @@ python "step3_map/main.py" --now "<라벨>" --duration "_15_20"
 
 | 문서 | 내용 |
 | --- | --- |
-| [TODO.md](TODO.md) | 테스트 확장 과제 (11번) |
-| [EXPERIMENTS.md](EXPERIMENTS.md) | 파라미터를 실험으로 정하는 방법 |
+| [TODO.md](../기록/TODO.md) | 테스트 확장 과제 (11번) |
+| [EXPERIMENTS.md](../분석/EXPERIMENTS.md) | 파라미터를 실험으로 정하는 방법 |
 | [DB_PLAN.md](DB_PLAN.md) | CSV·DB 동일성 검증의 배경 |
 | [steps/step3_visualization.md](steps/step3_visualization.md) | TMAP 호출 한도와 폴백 |

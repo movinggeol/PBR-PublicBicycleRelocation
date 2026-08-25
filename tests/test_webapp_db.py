@@ -147,7 +147,7 @@ def test_missing_table_returns_404(client):
     assert client.get("/api/route-summary").status_code == 404
 
 
-# ---------------- 차량 운용 (docs/FLEET.md) ----------------
+# ---------------- 차량 운용 (docs/구현/FLEET.md) ----------------
 
 @pytest.fixture
 def fleet_client(tmp_path, monkeypatch):

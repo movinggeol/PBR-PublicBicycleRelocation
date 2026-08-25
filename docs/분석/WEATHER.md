@@ -339,5 +339,5 @@ target_qty = mu · (계절 배율) · (날씨 배율) + z · sigma · (…)
 
 - [DEMAND_DISTRIBUTION.md](DEMAND_DISTRIBUTION.md) — 순수요 분포 진단, 남은 변동(CV 0.20~0.24)의 정체
 - [EXPERIMENTS.md](EXPERIMENTS.md) — `z`·학습 창·`γ`를 실데이터로 정한 과정, 채택 기준의 유래
-- [TODO.md](TODO.md) 17번 — 이 작업의 원래 항목
-- [COLLECTOR.md](COLLECTOR.md) — 재고 시계열 수집(같은 성격의 '외부에서 받아 오는 자료')
+- [TODO.md](../기록/TODO.md) 17번 — 이 작업의 원래 항목
+- [COLLECTOR.md](../구현/COLLECTOR.md) — 재고 시계열 수집(같은 성격의 '외부에서 받아 오는 자료')

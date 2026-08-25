@@ -53,7 +53,7 @@ python tools/load_rentals.py --status         # 기간별 적재 현황
   (station_id, station_name, parking_info, lat, lon, stock)
 - **주의**: API 응답의 `x_pos`가 위도, `y_pos`가 경도 (순서 주의, 코드에 반영됨)
 - **한계**: 이 CSV는 **실행하는 순간의 스냅샷 한 장**입니다. 계획 대상일의 요일
-  구분과 일치한다는 보장이 없습니다 ([TODO.md](../TODO.md) 1-4).
+  구분과 일치한다는 보장이 없습니다 ([TODO.md](../../기록/TODO.md) 1-4).
   시간에 따른 실측 재고가 필요하면 `tools/collect_stock.py`가 평일 09~17시에
   10분마다 `stock_history`에 쌓습니다 — [COLLECTOR.md](../COLLECTOR.md).
   **둘은 별개 저장소입니다**: 파이프라인은 이 CSV/`station_stock`을 쓰고,
@@ -169,7 +169,7 @@ python run_pipeline.py --warmup-days 0        # 보정 끄기
 > `z`를 올리는 것과는 다릅니다. `z`는 분산만 부풀려 전 구간에 일률적으로 여유를
 > 주지만(작업량 +30%), warmup은 **중심을 옮깁니다.** 그래서 MAE도 함께 좋아집니다.
 > 실제로 z=2.10까지 올려도 전환 달은 90.4%에 머물렀습니다
-> ([EXPERIMENTS.md](../EXPERIMENTS.md) 3장).
+> ([EXPERIMENTS.md](../../분석/EXPERIMENTS.md) 3장).
 
 ### 기존 순수요를 다시 만들려면
 
@@ -190,16 +190,16 @@ python tools/rebuild_net_demand.py --dry-run  # 대상만 확인
 > **`z`는 1.99입니다** (기존 1.65). 백테스트(2025-04~2026-03)에서 z=1.65의 실제
 > 커버리지가 91.7~92.8%로 설계 의도(95%)에 못 미쳤습니다. 순수요 분포의 꼬리가
 > 정규분포보다 두껍기 때문입니다. z=1.99에서 94.9%가 됩니다.
-> 근거·재현은 [EXPERIMENTS.md](../EXPERIMENTS.md) 1장 (`python experiments/z_sweep.py`).
+> 근거·재현은 [EXPERIMENTS.md](../../분석/EXPERIMENTS.md) 1장 (`python experiments/z_sweep.py`).
 >
 > `_10_15` 시간대의 `mu`가 "순수요 0"과 차이가 없다던 결과는 **측정 오류였습니다.**
 > 전체 대여소 평균이라 파이프라인이 손대지 않는 곳(72.8%가 `|mu| < 0.5`)에
 > 희석된 것이고, 작업 대상 31곳만 보면 오차를 40.2% 줄입니다
-> ([EXPERIMENTS.md](../EXPERIMENTS.md) 2장).
+> ([EXPERIMENTS.md](../../분석/EXPERIMENTS.md) 2장).
 >
 > 남은 약점은 **계절 전환기**입니다. 2월→3월처럼 수요가 1.5배 뛰는 구간은
 > z를 올려도 커버리지가 90% 언저리에 머뭅니다. 분석 달 초 실적으로 배율을 보정하면
-> 95%대로 회복되지만 아직 구현하지 않았습니다 ([EXPERIMENTS.md](../EXPERIMENTS.md) 3장).
+> 95%대로 회복되지만 아직 구현하지 않았습니다 ([EXPERIMENTS.md](../../분석/EXPERIMENTS.md) 3장).
 
 ### 5. `calculate_target_qty.py`
 - **입력**: st_info, st_net_daily
@@ -211,7 +211,7 @@ python tools/rebuild_net_demand.py --dry-run  # 대상만 확인
     (양수 = Drop 필요, 음수 = Pick 가능)
 - **출력**: `data/pp_data/재배치 정보/rebal_qty{duration} ({now}).csv`
 
-## 현재 문제점 (자세한 내용은 [../TODO.md](../TODO.md))
+## 현재 문제점 (자세한 내용은 [../TODO.md](../../기록/TODO.md))
 
 | 우선순위 | 문제 |
 | --- | --- |

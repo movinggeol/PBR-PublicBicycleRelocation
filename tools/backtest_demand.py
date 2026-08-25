@@ -1,4 +1,4 @@
-"""수요 예측 백테스트 — `mu`가 다음 달을 얼마나 맞히는가 (docs/KPI.md 5단계).
+"""수요 예측 백테스트 — `mu`가 다음 달을 얼마나 맞히는가 (docs/분석/KPI.md 5단계).
 
 파이프라인의 모든 지표는 `target_qty`를 기준으로 계산되고, `target_qty`는
 `mu`(평균 순수요)와 `sigma`에서 나온다. **그런데 `mu`가 맞는지는 검증된 적이 없다.**
@@ -7,7 +7,7 @@
 이 도구는 한 달로 만든 `mu`가 다음 달 실제 순수요를 얼마나 맞히는지 잰다.
 
 **평일과 휴일은 따로 잰다**(`--day-type`, 기본 weekday). 두 구분은 수요 구조가
-달라 섞으면 학습·검증 양쪽이 오염된다(docs/steps/step0_raw.md).
+달라 섞으면 학습·검증 양쪽이 오염된다(docs/구현/steps/step0_raw.md).
 
 실행:
     python tools/backtest_demand.py                       # 평일, 전 시간대
@@ -70,7 +70,7 @@ def evaluate(train: pd.DataFrame, test: pd.DataFrame, z: float,
 
     min_demand > 0이면 **작업 대상 대여소만** 본다(|mu| > min_demand).
     전체 평균은 파이프라인이 손대지도 않는 대여소에 희석돼 정반대 결론이 나온 적이
-    있다(docs/EXPERIMENTS.md 2장) — 정확도를 인용할 때는 이 필터를 켜야 한다.
+    있다(docs/분석/EXPERIMENTS.md 2장) — 정확도를 인용할 때는 이 필터를 켜야 한다.
     """
     stats = train.groupby("station_id")["demand"].agg(mu="mean", sigma="std").fillna(0)
     global_mu = train["demand"].mean()

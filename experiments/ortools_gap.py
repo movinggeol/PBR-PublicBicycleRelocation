@@ -2,7 +2,7 @@
 
 현행 경로는 greedy 휴리스틱이고 **최적성 보장이 없다**. 논문 심사에서 가장 먼저
 나오는 지적이므로, 대체하지 말고 **갭을 재서 근거로 삼는다**
-([RELATED_WORK.md](../docs/RELATED_WORK.md) 4장).
+([RELATED_WORK.md](../docs/연구/RELATED_WORK.md) 4장).
 
     갭이 작다 → greedy를 쓴 것이 정당화된다
     갭이 크다 → 한계가 정량화된다

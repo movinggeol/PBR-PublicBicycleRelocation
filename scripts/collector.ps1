@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    타슈 재고 시계열 수집기 운영 — 시작·일시정지·중지 (docs/COLLECTOR.md).
+    타슈 재고 시계열 수집기 운영 — 시작·일시정지·중지 (docs/구현/COLLECTOR.md).
 
 .DESCRIPTION
     Windows 작업 스케줄러 등록을 동사 하나로 감싼다. schtasks.exe 대신
@@ -152,7 +152,7 @@ function Invoke-Install {
         Action      = $action
         Trigger     = $trigger
         Settings    = $settings
-        Description = "타슈 대여소 재고를 평일 $Window, ${Interval}분 간격으로 수집합니다 (docs/COLLECTOR.md)."
+        Description = "타슈 대여소 재고를 평일 $Window, ${Interval}분 간격으로 수집합니다 (docs/구현/COLLECTOR.md)."
         Force       = $true
     }
     if ($RunWhenLoggedOff) {

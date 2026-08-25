@@ -61,7 +61,7 @@ data/bike_system.db  (WAL 모드)
 ```
 
 > 위 3개(`vehicle`·`vehicle_assignment`·`kpi_summary`)는 이관 계획 이후에 추가된
-> 테이블입니다. 이관 단계와 무관하게 [FLEET.md](FLEET.md)·[KPI.md](KPI.md)에서 생겼습니다.
+> 테이블입니다. 이관 단계와 무관하게 [FLEET.md](FLEET.md)·[KPI.md](../분석/KPI.md)에서 생겼습니다.
 
 설계 시 실제 산출물 CSV의 컬럼을 뽑아 맞췄습니다. 주의할 점 3가지:
 
@@ -79,7 +79,7 @@ data/bike_system.db  (WAL 모드)
 - 웹 API의 최신 파일 휴리스틱 → `ORDER BY run_label DESC LIMIT 1`
 - 파일명 규약(`이름{duration} ({now}).csv`) 의존성이 사라짐
 
-초기 테이블 DDL 초안은 [메모.md](메모.md)의 SQLite 섹션 참고
+초기 테이블 DDL 초안은 [메모.md](../기록/메모.md)의 SQLite 섹션 참고
 (rental_history / station_info / station_workload / inventory_movement / visit_sequence —
 실제 이관 시 위 스키마 기준으로 재정리).
 

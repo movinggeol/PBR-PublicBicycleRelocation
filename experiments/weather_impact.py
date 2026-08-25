@@ -14,7 +14,7 @@
 **남은 변동이 대상이다.** 달마다 이용량 수준이 다르고 평일/휴일이 다르므로, 그 둘을
 먼저 빼고(달 평균으로 나누고, 평일·휴일을 따로 재고) 남은 변동만 본다. 그 남은 변동의
 CV가 0.20~0.24이고, 날씨는 그것의 유력한 설명 변수로 지목돼 있었다
-(docs/DEMAND_DISTRIBUTION.md).
+(docs/분석/DEMAND_DISTRIBUTION.md).
 
 판정:
 
@@ -252,7 +252,7 @@ def station_level(conn, hourly, duration: str, day_type: str) -> list:
     이 저장소의 채택 기준을 그대로 쓴다 — 작업 대상만(|mu| > 2), 평일/휴일 따로,
     직전 달로만 학습(표본 밖), 계절 보정을 켠 베이스라인과 겨룬다. 도시 총량이
     설명된다고 대여소별 예측이 그만큼 좋아지지는 않는다. 전체 평균으로 재서
-    정반대 결론을 낸 적이 있다(docs/EXPERIMENTS.md 2장).
+    정반대 결론을 낸 적이 있다(docs/분석/EXPERIMENTS.md 2장).
     """
     periods = sorted({r[0] for r in conn.execute(
         "SELECT DISTINCT period FROM net_demand")}, key=demand_model.month_index)
@@ -318,7 +318,7 @@ def station_level(conn, hourly, duration: str, day_type: str) -> list:
 def main() -> int:
     hourly = weather.load_hourly()
     if hourly.empty:
-        print("날씨 자료가 없습니다. data/raw_data/날씨에 CSV를 두세요 (docs/WEATHER.md).")
+        print("날씨 자료가 없습니다. data/raw_data/날씨에 CSV를 두세요 (docs/분석/WEATHER.md).")
         return 1
     print(f"날씨 자료 {len(hourly):,}시간 "
           f"({hourly['time'].min():%Y-%m-%d} ~ {hourly['time'].max():%Y-%m-%d})\n")

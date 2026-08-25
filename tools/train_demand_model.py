@@ -1,4 +1,4 @@
-"""목표 재고 분위수 모델을 학습한다 (docs/DEMAND_DISTRIBUTION.md 5장).
+"""목표 재고 분위수 모델을 학습한다 (docs/분석/DEMAND_DISTRIBUTION.md 5장).
 
 DB에 적재된 순수요 전 기간으로 (직전 달 피처 → 이번 달 실제 순수요) 표를 만들고
 95분위 회귀를 학습해 `data/models/target_quantile.pkl`에 저장한다.

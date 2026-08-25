@@ -132,7 +132,7 @@ def load_net_demand() -> pd.DataFrame:
     순수요로 평가해야 한다 — 앞 단계(calculate_target_qty)가 이미 한쪽만 골라
     목표 재고를 잡았기 때문이다. 섞으면 평일 계획을 주말 수요로 채점하게 되고,
     대여소의 33~37%가 두 구분에서 부호가 반대라 결과가 실제와 달라진다
-    (experiments/weekend_profile.py, docs/steps/step0_raw.md).
+    (experiments/weekend_profile.py, docs/구현/steps/step0_raw.md).
     '''
     frame = pd.DataFrame()
     try:
@@ -186,7 +186,7 @@ def executed_delta(vrp: pd.DataFrame) -> pd.Series:
     계획량(`rebal_qty`)과 다르다. ILP는 군집 안에서 `min(총 pick, 총 drop)`만큼만
     옮기므로 계획이 전부 집행되지는 않는다. 계획량으로 결품을 재면 **군집·ILP를
     건너뛴 방법과 점수가 같아져 비교 자체가 불가능**해진다
-    (docs/EXPERIMENTS.md 5장에서 실측으로 확인).
+    (docs/분석/EXPERIMENTS.md 5장에서 실측으로 확인).
 
     실험 스크립트(experiments/baseline_compare.py)도 이 함수를 그대로 쓴다.
     """
@@ -224,7 +224,7 @@ def pick_harm_share(pick_delta: float, drop_delta: float) -> float:
 
 
 def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
-    '''재배치 전후의 결품 시간을 비교한다. (docs/KPI.md 3-B, 4단계)
+    '''재배치 전후의 결품 시간을 비교한다. (docs/분석/KPI.md 3-B, 4단계)
 
     지금까지의 지표는 전부 "계획이 목표 재고를 얼마나 채웠나"(계획 달성률)였다.
     이 지표는 **이용자가 실제로 자전거를 탈 수 있었는지**에 한 걸음 다가간다.
@@ -317,7 +317,7 @@ def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
 
 
 def route_extras(duration: str) -> dict:
-    """경로에서만 알 수 있는 운영·효율 지표 (docs/KPI.md C·D장).
+    """경로에서만 알 수 있는 운영·효율 지표 (docs/분석/KPI.md C·D장).
 
     route_summary는 클러스터 단위 합계라 **구간별 적재량**을 모른다. 공차 이동
     비율은 각 이동을 시작할 때 차에 몇 대가 있었는지 되짚어야 나온다.
@@ -367,7 +367,7 @@ def route_extras(duration: str) -> dict:
 
 
 def station_coverage(worked: int) -> dict:
-    """분석 대상 대여소 가운데 몇 곳을 손댔나 (docs/KPI.md C장).
+    """분석 대상 대여소 가운데 몇 곳을 손댔나 (docs/분석/KPI.md C장).
 
     전체 대여소 수는 이번 실행이 수집한 대여소 정보에서 센다. 파일이 없으면
     지표를 빼고 넘긴다 — 지어내지 않는다.
@@ -384,7 +384,7 @@ def station_coverage(worked: int) -> dict:
 def save_kpi_summary(duration: str, imbalance_df: pd.DataFrame,
                      summary: pd.DataFrame) -> None:
     '''
-    흩어져 있는 지표를 실행 1건 = 1행으로 모아 kpi_summary에 기록한다. (docs/KPI.md)
+    흩어져 있는 지표를 실행 1건 = 1행으로 모아 kpi_summary에 기록한다. (docs/분석/KPI.md)
 
     지금까지는 개선률은 콘솔에, 이동거리·시간은 route_summary CSV에, 차량 배정은
     또 다른 테이블에 있어 실행 간 비교를 매번 손으로 맞춰야 했다.
@@ -403,7 +403,7 @@ def save_kpi_summary(duration: str, imbalance_df: pd.DataFrame,
         'drop_improvement_rate': float(rate[imbalance_df['rebal_qty'] > 0].mean()),
         # 목표에 사실상 도달한 대여소 비율 (평균 개선률이 감추는 분포를 보완).
         # ⚠️ **실행 품질을 재는 값이 아니다.** 계획량이 `Q·tanh(격차/Q)`로 눌리므로
-        # 격차가 8대만 넘어도 도달이 구조적으로 불가능하다(docs/KPI.md).
+        # 격차가 8대만 넘어도 도달이 구조적으로 불가능하다(docs/분석/KPI.md).
         'target_met_ratio': float((imbalance_df['af_imbalance'] <= 1).mean()),
         # 한 번 방문으로 닿을 수 있는 범위였던 대여소 비율.
         # 트럭 적재 용량이 10대인데 격차는 최대 58대까지 벌어진다 — 얼마나 많은

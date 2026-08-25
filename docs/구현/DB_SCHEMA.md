@@ -3,7 +3,7 @@
 > `data/bike_system.db` (SQLite, WAL 모드) 의 구조 문서입니다.
 > **왜 SQLite인가·어떻게 이관했는가**는 [DB_PLAN.md](DB_PLAN.md)에 있고,
 > 이 문서는 **지금 무엇이 어떻게 들어 있는가**만 다룹니다.
-> 정본은 언제나 [db.py](../db.py)의 `SCHEMA` 상수입니다 — 스키마를 바꾸면 이 문서도 함께 고치세요.
+> 정본은 언제나 [db.py](../../db.py)의 `SCHEMA` 상수입니다 — 스키마를 바꾸면 이 문서도 함께 고치세요.
 
 | | |
 | --- | --- |
@@ -262,7 +262,7 @@ DB 기록이 실패해도 파이프라인을 멈추지 않습니다(DB_PLAN 2단
 | `mu`, `sigma` | REAL | 순수요 평균·표준편차 |
 | `parking_lot` | INTEGER | 거치대 수 |
 | `stock` | INTEGER | 현재 재고 |
-| `target_qty` | REAL | `mu + z·sigma` (z=`TARGET_Z`, 근거는 [EXPERIMENTS.md](EXPERIMENTS.md)) |
+| `target_qty` | REAL | `mu + z·sigma` (z=`TARGET_Z`, 근거는 [EXPERIMENTS.md](../분석/EXPERIMENTS.md)) |
 | `rebal_qty` | INTEGER | **양수 = Drop 필요, 음수 = Pick 가능** |
 
 </details>
@@ -339,7 +339,7 @@ CSV의 `hour` 컬럼은 `duration`과 같은 값이라 **저장하지 않습니�
 | `improvement_rate` | REAL | ⚠️ **"계획 달성률"이지 실제 효과가 아닙니다** |
 
 `improvement_rate`는 `rebal_qty`가 `target_qty − stock`에서 파생되므로 구조적으로
-높게 나옵니다. 대외 인용 시 성격을 밝히세요 ([KPI.md](KPI.md)).
+높게 나옵니다. 대외 인용 시 성격을 밝히세요 ([KPI.md](../분석/KPI.md)).
 </details>
 
 <details>
@@ -376,7 +376,7 @@ CSV의 `hour` 컬럼은 `duration`과 같은 값이라 **저장하지 않습니�
 
 `gap_*`·`reachable_ratio`는 1.19.7에서 붙었습니다. **`target_met_ratio`를 읽을 때
 반드시 함께 보세요** — 계획량이 `Q·tanh(격차/Q)`로 눌려 격차가 8대만 넘어도
-도달이 구조적으로 불가능합니다([KPI.md](KPI.md)).
+도달이 구조적으로 불가능합니다([KPI.md](../분석/KPI.md)).
 
 C·D의 뒤쪽 여섯 개는 1.19.3에서 붙었습니다. `empty_distance_ratio`는 **도착 전
 적재량**으로 판단합니다 — 도착 후 적재량으로 세면 차고지에서 첫 대여소로 가는
@@ -565,7 +565,7 @@ SEARCH metrics USING INDEX sqlite_autoindex_metrics_1 (run_label=? AND duration=
 
 같은 계획으로 떨어집니다. **지워도 성능이 같고 쓰기 비용만 줄지만**, 실측 이득이
 미미하고 스키마 변경은 위험 대비 효용이 낮아 지금은 그대로 뒀습니다
-([TODO.md](TODO.md)에 기록).
+([TODO.md](../기록/TODO.md)에 기록).
 `idx_pick_drop_cluster`는 `cluster`가 PK에 없으므로 **중복이 아닙니다.**
 
 ---
@@ -673,7 +673,7 @@ CSV의 한글 컬럼은 DB에서 ASCII로 바뀝니다. 변환표는 `db.TABLES`
    `rename`으로 한글 컬럼 변환을, `drop`으로 버릴 컬럼을 지정합니다.
 3. **단계 스크립트에 `db.save_output(...)` 호출 추가.** 빠뜨리면 테스트가 잡습니다.
 4. **테스트 추가** — `tests/test_db.py`에 스코프·멱등성, `tests/test_pipeline.py`에 적재 검사.
-5. **이 문서와 [DB_PLAN.md](DB_PLAN.md)를 갱신**하고 [버전관리.md](버전관리.md)에 이유를 남기세요.
+5. **이 문서와 [DB_PLAN.md](DB_PLAN.md)를 갱신**하고 [버전관리.md](../기록/버전관리.md)에 이유를 남기세요.
 
 ### 마이그레이션 — 컬럼 추가는 자동, 나머지는 수동
 
@@ -719,7 +719,7 @@ CSV의 한글 컬럼은 DB에서 ASCII로 바뀝니다. 변환표는 `db.TABLES`
 | [DB_PLAN.md](DB_PLAN.md) | **왜** SQLite인가, 이관 단계, 성능 실측(CSV vs DB) |
 | [COLLECTOR.md](COLLECTOR.md) | `stock_history`를 채우는 수집기 — 창 가드·스케줄·운영 |
 | [FLEET.md](FLEET.md) | `vehicle`·`vehicle_assignment`를 쓰는 로테이션·형평성 규칙 |
-| [KPI.md](KPI.md) | `kpi_summary` 각 지표의 정의와 해석 주의점 |
+| [KPI.md](../분석/KPI.md) | `kpi_summary` 각 지표의 정의와 해석 주의점 |
 | [PROJECT_PIPELINE.md](PROJECT_PIPELINE.md) | 어느 단계가 어느 테이블을 만드는가 |
 | [TESTING.md](TESTING.md) | CSV·DB 동일성 테스트와 DB 격리 장치 |
 | [WEBAPP.md](WEBAPP.md) | 웹 API가 DB를 읽는 경로(`store.py`) |

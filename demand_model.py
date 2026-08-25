@@ -1,4 +1,4 @@
-"""목표 재고(target_qty)를 분위수 회귀로 직접 예측한다 (docs/DEMAND_DISTRIBUTION.md).
+"""목표 재고(target_qty)를 분위수 회귀로 직접 예측한다 (docs/분석/DEMAND_DISTRIBUTION.md).
 
 기존 방식은 `target_qty = mu + z·sigma`다. `mu`와 `sigma`를 **따로 추정해 조립**
 하므로 오차가 두 번 쌓이고, `z`는 손으로 고른 상수다.
@@ -43,7 +43,7 @@ MODEL_PATH = DATA_ROOT / "models" / "target_quantile.pkl"
 # 1.15.2에서 0.97로 올려 '채택'했다가 1.15.3에서 되돌렸다. 그 보정은 **계절 배율이
 # 과대추정된 베이스라인**에 맞춰 고른 값이었고, 배율을 고치자 어느 분위수에서도
 # 베이스라인을 이기지 못했다(0.93/0.95/0.97 전부 확인).
-# 자세한 경위: docs/DEMAND_DISTRIBUTION.md 5장.
+# 자세한 경위: docs/분석/DEMAND_DISTRIBUTION.md 5장.
 TARGET_QUANTILE = 0.95
 
 DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
@@ -51,7 +51,7 @@ DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
 # 계획 대상 **날짜**의 날씨. 위 피처들과 성격이 다르다 — 대여소마다가 아니라
 # 날마다 달라지고, 도시 전체에 같은 값이 들어간다(관측소가 대전에 하나뿐이다).
 #
-# 근거는 docs/WEATHER.md. **비 오는 날에 몰린 개선**이라는 것이 핵심이다 —
+# 근거는 docs/분석/WEATHER.md. **비 오는 날에 몰린 개선**이라는 것이 핵심이다 —
 # 비 오는 날(전체의 10%) 예측 오차가 40% 줄고, 나머지 날엔 거의 그대로다.
 WEATHER_FEATURES = ["rain", "rainy", "temp", "wind"]
 
@@ -257,7 +257,7 @@ def training_frame(net_by_period: dict, day_types=DAY_TYPES,
 # ML이 아니다. 지난달 통계에 **배율 하나**를 곱하는 것뿐이다.
 # 계절이 도약하는 달(2월→3월 수요 1.5배)에는 지난달 평균이 구조적으로 낮게 나오고,
 # z를 올리는 것으로는 대체되지 않는다(z=2.10에서도 전환 달 커버리지 90.4%).
-# 근거: docs/EXPERIMENTS.md 3장.
+# 근거: docs/분석/EXPERIMENTS.md 3장.
 
 WARMUP_CLIP = (0.5, 2.0)      # 며칠치 잡음으로 배율이 과하게 튀는 것을 막는다
 

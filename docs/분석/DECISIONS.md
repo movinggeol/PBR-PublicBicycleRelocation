@@ -9,8 +9,8 @@
 > | --- | --- |
 > | 수식이 정확히 무엇인가 | [FORMULATION.md](FORMULATION.md) |
 > | 파라미터 값을 어떻게 정했나 (`z`·`γ`·학습 창) | [EXPERIMENTS.md](EXPERIMENTS.md) |
-> | 선행 연구 중 어디에 서 있나 | [RELATED_WORK.md](RELATED_WORK.md) · [LITERATURE.md](LITERATURE.md) |
-> | 무엇을 했고 무엇이 예상과 달랐나 | [RETROSPECTIVE.md](RETROSPECTIVE.md) |
+> | 선행 연구 중 어디에 서 있나 | [RELATED_WORK.md](../연구/RELATED_WORK.md) · [LITERATURE.md](../연구/LITERATURE.md) |
+> | 무엇을 했고 무엇이 예상과 달랐나 | [RETROSPECTIVE.md](../기록/RETROSPECTIVE.md) |
 > | **왜 이 방법을 골랐고 대가는 무엇인가** | **이 문서** |
 >
 > **원칙 하나**: 여기 적힌 근거는 되도록 **측정된 것**입니다. 측정하지 않고 고른
@@ -121,7 +121,7 @@ step2b 순서(VRP)  그 이동을 어떤 순서로 돌 것인가          (greed
 
 **잃은 것**:
 - 의존성이 하나 늘었습니다(PuLP + CBC). 그리고 **PuLP 4.0에서 `PULP_CBC_CMD`가
-  사라집니다** — 대비는 해 뒀지만([TODO.md](TODO.md) P2-B) 언젠가 손봐야 합니다.
+  사라집니다** — 대비는 해 뒀지만([TODO.md](../기록/TODO.md) P2-B) 언젠가 손봐야 합니다.
 - 거리는 **직선거리(Haversine)** 입니다. 실도로가 아닙니다. 실도로는 직선보다 길고
   방향에 따라 다르게 길기 때문에, ILP가 고른 배분이 실도로 기준으로도 최적이라는
   보장은 없습니다. **얼마나 어긋나는지는 재지 않았습니다** — 재려면 TMAP 실도로
@@ -152,11 +152,11 @@ pick/drop) 중 가장 가까운 곳으로 갑니다.
 
 1. **손해가 고르게 퍼져 있지 않습니다.** 30개 중 25개는 갭이 작고, 5개가 전체 손해의
    대부분을 냅니다. 전부 바꾸는 것보다 **그 5개만 다시 푸는 절충안**이 싸게 대부분을
-   회수합니다. 아직 구현하지 않았습니다([TODO.md](TODO.md) P2).
+   회수합니다. 아직 구현하지 않았습니다([TODO.md](../기록/TODO.md) P2).
 2. **의존성이 큽니다.** OR-Tools는 무거운 패키지이고, 이 저장소는 "새 Python에서
    설치가 깨지는" 사고를 이미 겪었습니다(1.2.1).
 3. **더 큰 오차가 위에 있습니다.** 경로 9.7%보다, 지금 빠져 있는 **마지막 depot 복귀**가
-   총 이동의 33%(286km)입니다([TODO.md](TODO.md) 1-1). 경로를 정밀하게 푸는 것보다
+   총 이동의 33%(286km)입니다([TODO.md](../기록/TODO.md) 1-1). 경로를 정밀하게 푸는 것보다
    빠진 구간을 넣는 것이 먼저입니다.
 
 **얻은 것**: 의존성 없이 수 초에 돕니다. 동작을 눈으로 따라갈 수 있어(“왜 여기로
@@ -268,7 +268,7 @@ IQR × 1.5 밖을 잘라 냅니다.
 
 **왜 예외로 멈추지 않는 자리도 있는가**: `db.save_output()`은 DB 기록에 실패해도
 경고만 남기고 파이프라인을 계속합니다. **CSV가 아직 정본**이기 때문입니다 — 전환기
-설계이고, DB 실패가 계획 산출을 막으면 안 됩니다([DB_PLAN.md](DB_PLAN.md) 2단계).
+설계이고, DB 실패가 계획 산출을 막으면 안 됩니다([DB_PLAN.md](../구현/DB_PLAN.md) 2단계).
 
 **잃은 것**: 정합성 검사는 **컬럼 존재**까지입니다. 값의 범위(음수 재고, 미래 날짜),
 대여소 ID가 마스터에 있는지 같은 **내용 검증은 없습니다.**
@@ -312,5 +312,5 @@ IQR × 1.5 밖을 잘라 냅니다.
 - [EXPERIMENTS.md](EXPERIMENTS.md) — `z`·`γ`·대조군 실측
 - [DEMAND_DISTRIBUTION.md](DEMAND_DISTRIBUTION.md) — 분포 진단과 ML 시도의 전말
 - [WEATHER.md](WEATHER.md) — 3차 ML 시도(날씨)의 측정과 판정
-- [RETROSPECTIVE.md](RETROSPECTIVE.md) — 측정이 뒤집은 가설들
-- [GLOSSARY.md](GLOSSARY.md) — 여기 나온 용어의 뜻
+- [RETROSPECTIVE.md](../기록/RETROSPECTIVE.md) — 측정이 뒤집은 가설들
+- [GLOSSARY.md](../GLOSSARY.md) — 여기 나온 용어의 뜻

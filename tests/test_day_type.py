@@ -1,4 +1,4 @@
-"""평일/휴일 분리 검증 (docs/steps/step0_raw.md).
+"""평일/휴일 분리 검증 (docs/구현/steps/step0_raw.md).
 
 **휴일 = 주말 ∪ 공휴일**이다. 파이프라인은 첫 커밋부터 평일만 다뤘고, 그마저도
 평일 자리에 걸린 공휴일(설·추석 연휴 등)이 섞여 있었다. 지켜야 할 것이 넷이다.
@@ -175,7 +175,7 @@ def test_day_type_is_recorded_in_runs(prepared):
     assert row is not None and row[0] == "holiday"
 
 
-# ---------------- 분위수 모델 (docs/DEMAND_DISTRIBUTION.md) ----------------
+# ---------------- 분위수 모델 (docs/분석/DEMAND_DISTRIBUTION.md) ----------------
 #
 # 현재 모델은 베이스라인을 이기지 못해 **기본으로 켜지 않는다**.
 # 그래서 여기서 지켜야 할 핵심은 "모델이 없어도, 깨져 있어도 파이프라인이 돈다"이다.
@@ -227,7 +227,7 @@ def test_training_frame_uses_only_previous_month():
     #      셋 다 계획을 세우는 시점에 손에 있는 정보다.
     #      그리고 계획 대상 날짜의 **날씨**(rain/rainy/temp/wind). 이것만 성격이 다르다 —
     #      운영에서는 관측이 아니라 **예보**로 채워야 손에 있는 정보가 된다.
-    #      예보가 없으면 NaN으로 남고 모델이 알아서 처리한다(docs/WEATHER.md 5장).
+    #      예보가 없으면 NaN으로 남고 모델이 알아서 처리한다(docs/분석/WEATHER.md 5장).
     allowed = ("month", "duration_idx", "day_type_idx", "warmup_ratio",
                *demand_model.WEATHER_FEATURES)
     assert all(f.startswith("prev_") or f in allowed

@@ -20,7 +20,7 @@
     snow   적설 cm (그 시각에 쌓여 있는 높이)
 
 빈칸의 뜻이 컬럼마다 다르다 — 자세한 것은 `_fill_missing()`에 적어 두었다.
-받는 방법과 측정 결과는 docs/WEATHER.md에 있다.
+받는 방법과 측정 결과는 docs/분석/WEATHER.md에 있다.
 """
 from __future__ import annotations
 

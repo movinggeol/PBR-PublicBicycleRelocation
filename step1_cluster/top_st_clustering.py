@@ -114,7 +114,7 @@ def wanted_vehicles(pick_drop: pd.DataFrame) -> int:
     이동을 **대여소 수에 비례**하게 잡는 근거: 같은 재고로 K만 바꿔 재 보면
     총 소요시간이 거의 변하지 않는다(K=10 → 18에서 이동분/곳 10.2 → 13.0).
     군집을 쪼개면 depot 왕복이 늘지만 군집 안 이동이 그만큼 줄기 때문이다.
-    근거와 계수는 project_config와 docs/EXPERIMENTS.md에 있다.
+    근거와 계수는 project_config와 docs/분석/EXPERIMENTS.md에 있다.
 
     **저장하지 않는 순수 계산이다** — 실험이 계수를 바꿔 가며 직접 부른다.
     """
@@ -137,7 +137,7 @@ def make_clustering(pick_drop: pd.DataFrame, random_state: int = 42) -> pd.DataF
 
     군집 1개 = 차량 1대가 맡는 작업이므로, 군집 수는 한 회차에 투입할 수 있는
     차량 수를 넘을 수 없다. 상한에 걸리면 군집이 커지고 차량당 작업량이 늘어난다.
-    (docs/FLEET.md)
+    (docs/구현/FLEET.md)
 
     random_state는 파이프라인에서 늘 42다. 실험이 씨앗을 바꿔 가며 돌려
     greedy 탐색의 변동성을 재려고 열어 둔 인자다(experiments/baseline_compare.py).

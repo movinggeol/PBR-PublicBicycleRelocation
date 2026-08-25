@@ -1,7 +1,7 @@
 """그래프 테스트 — 그림이 아니라 **규칙**을 검사한다.
 
 색이 맞는지는 눈으로 볼 수 없으니, 대신 규칙을 코드로 지킨다
-(규칙 전문은 docs/DESIGN.md '그래프').
+(규칙 전문은 docs/구현/DESIGN.md '그래프').
 
 - 계열이 하나면 선도 하나다. 축이 둘인 그래프를 만들지 않는다.
 - 색을 SVG에 박지 않는다 — CSS 변수를 상속해야 다크 모드가 저절로 갈린다.
@@ -73,7 +73,7 @@ def test_chart_coordinates_stay_inside_the_box():
 def test_colors_come_from_css_variables_not_hex():
     """색을 SVG에 박으면 다크 모드에서 그대로 남는다.
 
-    docs/DESIGN.md 규칙 1: 색은 반드시 토큰으로 쓴다.
+    docs/구현/DESIGN.md 규칙 1: 색은 반드시 토큰으로 쓴다.
     """
     svg = (charts.line(["A", "B"], [1.0, 2.0], title="T")
            + charts.heatmap(["월"], ["00", "01"], [[5, -5]])

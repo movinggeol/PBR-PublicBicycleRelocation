@@ -1,4 +1,4 @@
-"""날씨 원천 회귀 테스트 (docs/WEATHER.md).
+"""날씨 원천 회귀 테스트 (docs/분석/WEATHER.md).
 
 지키는 것:
   - **빈칸의 뜻이 컬럼마다 다르다** — 강수·적설의 빈칸은 0(안 왔다)이고,
@@ -11,7 +11,7 @@
   - **자료가 없어도 죽지 않는다** — 날씨는 있으면 좋고 없어도 되는 입력이다.
 
 API는 부르지 않는다(응답 문자열을 직접 넣어 파싱만 본다). 실호출 검증은
-docs/TESTING.md 참고.
+docs/구현/TESTING.md 참고.
 """
 import sys
 from pathlib import Path

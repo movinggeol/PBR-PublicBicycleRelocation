@@ -42,7 +42,7 @@ DEFAULT_NOW = os.getenv("PBR_NOW", "2026-05-21 18")
 # ---- 시간대 (duration) ----
 # 하루를 5시간 창 넷으로 자른다. **맨 앞 밑줄까지가 값**이다(`_10_15`) — 예시를
 # `10_15`로 적으면 그대로 입력한 사용자가 step4 duration_hours()에서 크래시를 본다.
-# 창마다 수요 방향이 반대라 섞어서 평균 내지 않는다(docs/KPI.md).
+# 창마다 수요 방향이 반대라 섞어서 평균 내지 않는다(docs/분석/KPI.md).
 # `_20_05`는 자정을 넘긴다 — 시간 목록을 만드는 곳은 duration_hours() 하나다.
 DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
 DURATION_LABELS = {
@@ -66,7 +66,7 @@ _PERIOD_FILE_RE = re.compile(r"^st_net_daily \((\d{2})년 (\d{2})월\)\.csv$")
 def available_periods() -> Tuple[str, ...]:
     """순수요를 이미 계산해 둔 기간 목록(오래된 순). 없으면 빈 튜플.
 
-    **CSV를 본다.** DB에도 같은 내용이 있지만 CSV가 아직 정본이고(docs/DB_PLAN.md),
+    **CSV를 본다.** DB에도 같은 내용이 있지만 CSV가 아직 정본이고(docs/구현/DB_PLAN.md),
     project_config가 db를 import하면 순환이 된다.
     """
     found = []
@@ -192,7 +192,7 @@ def period_label(date) -> str:
 # 계절이 바뀌는 달에는 지난달 통계가 못 따라간다(2월→3월 수요 1.5배).
 # 계획 대상 달의 **첫 N일 실적**으로 도시 전체 배율 하나를 구해 mu·sigma에 곱한다.
 # 배율을 대여소별로 추정하지 않는 이유: 며칠치로 나누면 잡음만 커지고, 계절 효과는
-# 도시 전체에 같은 방향으로 오기 때문이다. 근거: docs/EXPERIMENTS.md 3장.
+# 도시 전체에 같은 방향으로 오기 때문이다. 근거: docs/분석/EXPERIMENTS.md 3장.
 # 0이면 끈다.
 DEFAULT_WARMUP_DAYS = int(os.getenv("PBR_WARMUP_DAYS", "14"))
 
@@ -204,7 +204,7 @@ DEFAULT_RAW_FILE = os.getenv(
 # 날씨 원천(기상자료개방포털 ASOS 시간자료, 대전 지점 133).
 # **파일 하나여도 되고 디렉터리여도 된다** — 포털은 해가 바뀌면 파일을 나눠 주므로
 # 기본값은 디렉터리이고, weather.load_hourly()가 그 안의 CSV를 모두 이어 붙인다.
-# 읽는 곳은 루트 weather.py 하나다(받는 방법·측정 결과는 docs/WEATHER.md).
+# 읽는 곳은 루트 weather.py 하나다(받는 방법·측정 결과는 docs/분석/WEATHER.md).
 DEFAULT_WEATHER_FILE = os.getenv(
     "PBR_WEATHER_FILE",
     "data/raw_data/날씨",
@@ -247,12 +247,12 @@ VEHICLE_CAPACITY = 10        # 차량 최대 적재 대수 (대전교통공사 �
 VEHICLE_SPEED_KMPH = float(os.getenv("PBR_VEHICLE_SPEED_KMPH", "25"))
 
 # 자전거 1대를 싣고/내리는 데 걸리는 시간(초). VRP의 작업시간 계산에 쓴다.
-# ⚠️ **현장 확인이 안 된 가정값이다** (docs/TODO.md 2-1). 실측이 나오면 여기만 바꾼다.
+# ⚠️ **현장 확인이 안 된 가정값이다** (docs/기록/TODO.md 2-1). 실측이 나오면 여기만 바꾼다.
 # 소요시간의 20~30%가 이 값에서 나오므로 시간 예산 판정에 직접 영향을 준다.
 PICK_TIME_SEC = float(os.getenv("PBR_PICK_TIME_SEC", "30"))
 DROP_TIME_SEC = float(os.getenv("PBR_DROP_TIME_SEC", "30"))
 
-# ---- 차량 운용 (docs/FLEET.md) ----
+# ---- 차량 운용 (docs/구현/FLEET.md) ----
 # 하루 약 3회차를 돌리며, 회차마다 나가는 대수는 **그 회차의 작업량이 정한다**
 # (step1의 wanted_vehicles). 두 대수 모두 웹 실행 폼에서 바꿀 수 있다
 # (--fleet-size → PBR_FLEET_SIZE, --vehicles-per-round → PBR_VEHICLES_PER_ROUND).
@@ -311,7 +311,7 @@ VEHICLE_ID_FORMAT = "V{:02d}"                                   # V01 ~ V21
 # 한 회차 작업이 끝나야 하는 시한(분).
 # target_qty는 특정 시간 창(예: 05~10시)의 수요를 전제로 계산되므로, 작업이 늦어지면
 # 자전거가 '필요했던 시각이 지난 뒤'에 도착한다. 현재는 제약이 아니라 사후 점검 기준이다.
-# (docs/FLEET.md, docs/KPI.md)
+# (docs/구현/FLEET.md, docs/분석/KPI.md)
 TIME_BUDGET_MINUTES = float(os.getenv("PBR_TIME_BUDGET_MINUTES", "120"))
 
 # ---- step1 군집 조정 목적함수 가중치 ----
@@ -329,7 +329,7 @@ TIME_BUDGET_MINUTES = float(os.getenv("PBR_TIME_BUDGET_MINUTES", "120"))
 #                총 이동거리 870→854km. 대가는 처리 대수 756→748(-1%).
 # 주의: γ=2000은 γ=1000보다 나빴다(160.9분). 군집 조정이 탐욕적 국소 탐색이라
 # 목적함수 지형이 γ에 대해 매끄럽지 않다 — 중간값을 보간해 추정하면 안 된다.
-# 근거: docs/EXPERIMENTS.md 4장, docs/steps/step1_clustering.md의 '거리 가중치' 절
+# 근거: docs/분석/EXPERIMENTS.md 4장, docs/구현/steps/step1_clustering.md의 '거리 가중치' 절
 CLUSTER_ALPHA = float(os.getenv("PBR_CLUSTER_ALPHA", "1"))
 CLUSTER_BETA = float(os.getenv("PBR_CLUSTER_BETA", "100"))
 CLUSTER_GAMMA = float(os.getenv("PBR_CLUSTER_GAMMA", "3000"))
@@ -393,7 +393,7 @@ ADJUST_BALANCE_LIMIT = int(os.getenv("PBR_ADJUST_BALANCE_LIMIT", "5"))
 # 91.7~92.8%에 그쳤다. 순수요 분포의 꼬리가 정규분포보다 두껍기 때문이다.
 # z=1.99로 올리면 평균 94.9%가 되고, 대가는 처리 상한 +30%다. 다만 회차마다 대가가
 # 다르다 — pick 가능량이 이미 병목인 _05_10은 작업량이 늘지 않는다(-1.8%).
-# 근거·재현: docs/EXPERIMENTS.md 1장, python experiments/z_sweep.py
+# 근거·재현: docs/분석/EXPERIMENTS.md 1장, python experiments/z_sweep.py
 TARGET_Z = float(os.getenv("PBR_TARGET_Z", "1.99"))
 
 

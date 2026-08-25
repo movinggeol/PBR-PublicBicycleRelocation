@@ -1,4 +1,4 @@
-"""타슈 재고 시계열 수집기 — 평일 09~17시, 10분 간격 (docs/COLLECTOR.md).
+"""타슈 재고 시계열 수집기 — 평일 09~17시, 10분 간격 (docs/구현/COLLECTOR.md).
 
 **한 번 실행 = 한 틱.** 창 밖이면 아무 것도 하지 않고 끝난다. Windows 작업
 스케줄러는 요일만 알고 **공휴일을 모르므로**, 휴일을 거르는 실질적 방어선은
@@ -98,7 +98,7 @@ def keep_awake() -> None:
 
     한 번 부르면 타이머가 처음으로 돌아가므로, 10분마다 도는 틱이 절전 임계값을
     계속 밀어낸다. **임계값이 간격과 비슷하면(배터리 기본값 10분) 이것만으로는
-    못 막는다** — 그때는 전원을 꽂아야 한다 (docs/COLLECTOR.md 7장).
+    못 막는다** — 그때는 전원을 꽂아야 한다 (docs/구현/COLLECTOR.md 7장).
 
     부가 기능이라 실패해도 수집은 그대로 진행한다.
     """
@@ -285,7 +285,7 @@ def print_status(start: clock, end: clock, interval: int) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="타슈 대여소 재고를 시계열로 수집한다 (docs/COLLECTOR.md).")
+        description="타슈 대여소 재고를 시계열로 수집한다 (docs/구현/COLLECTOR.md).")
     parser.add_argument("--window", default=DEFAULT_WINDOW,
                         help=f"수집 창. 기본 {DEFAULT_WINDOW}")
     parser.add_argument("--interval", type=int, default=DEFAULT_INTERVAL,

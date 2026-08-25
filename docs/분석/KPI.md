@@ -5,7 +5,7 @@
 
 ## 1. 지금 있는 것
 
-step4([imbalance.py](<../step4_metrics/imbalance.py>))가 계산합니다.
+step4([imbalance.py](../../step4_metrics/imbalance.py))가 계산합니다.
 
 | 지표 | 정의 | 저장 위치 |
 | --- | --- | --- |
@@ -127,16 +127,16 @@ stock(t) = clip(stock(0) + Σ(반납 − 대여), 0, parking_lot)
 | 공차 이동 비율 | 적재 0인 구간의 이동거리 비율 | ✅ `empty_distance_ratio` (1.19.3) |
 | depot 복귀 횟수 | `action = 'return'` 건수 | ✅ `depot_returns` (1.19.3) |
 
-차량 부하 편차와 가동률은 [FLEET.md](FLEET.md)의 로테이션이 제대로 도는지 보는 지표입니다.
+차량 부하 편차와 가동률은 [FLEET.md](../구현/FLEET.md)의 로테이션이 제대로 도는지 보는 지표입니다.
 편차가 계속 벌어지면 배정 규칙이나 회차 구성을 손봐야 한다는 신호입니다.
 
-**시간 예산 준수율이 가장 중요합니다.** [메모.md](메모.md)의 트러블슈팅 기록에
+**시간 예산 준수율이 가장 중요합니다.** [메모.md](../기록/메모.md)의 트러블슈팅 기록에
 "수요 예측이 5시간짜리인데 작업에 4시간이 걸리면 의미가 없다"는 문제가 적혀 있습니다.
 `TIME_BUDGET_MINUTES`(기본 120분) 기준으로 step4 콘솔과 `/vehicles` 화면에 표시됩니다.
 
 단, 지금은 **점검 기준일 뿐 제약이 아닙니다.** 초과해도 계획이 수정되지 않습니다.
 실측상 소요시간의 70~80%가 이동이라, 개선하려면 작업량보다 클러스터의 지리적 밀집도를
-손대는 편이 효과적입니다 ([FLEET.md](FLEET.md) 참고).
+손대는 편이 효과적입니다 ([FLEET.md](../구현/FLEET.md) 참고).
 
 ### D. 효율 지표 — 투입 대비 산출 ✅ 구현됨 (1.19.3)
 
@@ -214,7 +214,7 @@ python tools/backtest_demand.py --duration _05_10  # 하나만
 **`z`를 올리는 것만으로는 해결되지 않습니다.** z=2.10까지 올려도 전환 달의
 `_05_10`은 90.4%에 머뭅니다. 분석 달 첫 14일 실적으로 배율을 보정하면
 z=1.99에서 95.6%까지 회복됩니다 — 근거는 [EXPERIMENTS.md](EXPERIMENTS.md) 3장이고,
-구현은 아직 하지 않았습니다([TODO.md](TODO.md)).
+구현은 아직 하지 않았습니다([TODO.md](../기록/TODO.md)).
 
 ### ⚠️ z가 다른 실행끼리 개선률·목표 도달률을 비교하지 마세요
 
@@ -234,7 +234,7 @@ z=1.99에서 95.6%까지 회복됩니다 — 근거는 [EXPERIMENTS.md](EXPERIME
 "이번 실행의 요약 숫자 한 줄"을 얻으려면 매번 집계해야 했습니다.
 
 **`kpi_summary` 테이블**로 해결했습니다 — 실행 1건(run_label + duration) = 1행.
-step4가 자동으로 채웁니다. 실제 스키마는 [db.py](../db.py)의 `SCHEMA`에 있고,
+step4가 자동으로 채웁니다. 실제 스키마는 [db.py](../../db.py)의 `SCHEMA`에 있고,
 아래는 설계 의도를 보여주는 요약입니다.
 
 ```sql
@@ -300,7 +300,7 @@ FROM kpi_summary WHERE duration = '_05_10' ORDER BY run_label;
 
 **5장의 3단 구성이 1.19.3에서 실제로 구현되었습니다.** 헤드라인 → 추세 꺾은선 →
 실행 비교 표에, 효과·비용 산점도와 요일 × 시간 수요 히트맵을 더했습니다.
-그래프 규칙(축 둘 금지, 한 색, 표 보기 병행)은 [DESIGN.md](DESIGN.md) '그래프'에 있습니다.
+그래프 규칙(축 둘 금지, 한 색, 표 보기 병행)은 [DESIGN.md](../구현/DESIGN.md) '그래프'에 있습니다.
 
 **KPI 체계 구축은 여기서 일단락됩니다.** 백테스트가 드러낸 세 문제는
 [EXPERIMENTS.md](EXPERIMENTS.md)에서 각각 실험했고, 결과는 이렇습니다.
@@ -376,7 +376,7 @@ km당 개선은 오히려 가장 높습니다(2.08 vs 1.55). **효과·비용·�
   ⚠️ **1.18.4 이전에 쌓인 `stockout_hours_after`는 계획 기준입니다** — 실행 라벨이
   다른 값을 비교할 때 주의하세요.
 - ✅ **소요시간은 depot 복귀까지 포함합니다 (1.19.1).** 그전에는 빠져 있어
-  `max_cluster_minutes`와 `time_budget_met`이 낙관적이었습니다 ([TODO.md](TODO.md) 1-1).
+  `max_cluster_minutes`와 `time_budget_met`이 낙관적이었습니다 ([TODO.md](../기록/TODO.md) 1-1).
   ⚠️ **1.19.1 이전에 쌓인 값과 섞어서 비교하지 마세요** — 같은 계획이라도
   소요시간이 30%가량 낮게 찍혀 있습니다.
 
@@ -409,7 +409,7 @@ km당 개선은 오히려 가장 높습니다(2.08 vs 1.55). **효과·비용·�
 > **`tanh`가 옳은지는 아직 실험한 적이 없습니다.** `z`·`γ`와 달리 근거 기록이
 > 없는 관행값입니다. `clip(±Q)`으로 바꾸면 격차 10대까지 한 번에 메울 수 있게
 > 되지만 대여소당 작업량이 늘어 시간 예산을 압박합니다 — 재실험 과제입니다
-> ([TODO.md](TODO.md)).
+> ([TODO.md](../기록/TODO.md)).
 
 ### Pick 쪽 결품이 조금 느는 것은 정상입니다 (1.19.6)
 
@@ -426,8 +426,8 @@ step4는 이 몫이 `PICK_HARM_WARN_SHARE`(5%)를 넘을 때만 경고합니다.
 
 ## 관련 문서
 
-- [steps/step4_metrics.md](steps/step4_metrics.md) — 현재 지표 계산 코드
-- [FLEET.md](FLEET.md) — 차량 부하 편차·가동률의 근거가 되는 로테이션 설계
-- [DB_SCHEMA.md](DB_SCHEMA.md) — `kpi_summary` 컬럼 레퍼런스
-- [DB_PLAN.md](DB_PLAN.md) — 5단계(실행 이력 비교)가 이 문서의 4·5장과 이어집니다
-- [TODO.md](TODO.md) — 미구현 항목 추적
+- [steps/step4_metrics.md](../구현/steps/step4_metrics.md) — 현재 지표 계산 코드
+- [FLEET.md](../구현/FLEET.md) — 차량 부하 편차·가동률의 근거가 되는 로테이션 설계
+- [DB_SCHEMA.md](../구현/DB_SCHEMA.md) — `kpi_summary` 컬럼 레퍼런스
+- [DB_PLAN.md](../구현/DB_PLAN.md) — 5단계(실행 이력 비교)가 이 문서의 4·5장과 이어집니다
+- [TODO.md](../기록/TODO.md) — 미구현 항목 추적

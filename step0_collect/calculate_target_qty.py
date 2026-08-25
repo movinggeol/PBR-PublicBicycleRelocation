@@ -55,7 +55,7 @@ def build_stats(net_daily: pd.DataFrame, st_initial_qty: pd.DataFrame, duration:
 
     **저장하지 않는 순수 계산이다.** 실험 스크립트도 이 함수를 그대로 쓴다 —
     측정 코드가 운영 코드와 다른 방식으로 mu·sigma를 구하면 비교 자체가
-    성립하지 않는다(docs/DEMAND_DISTRIBUTION.md 5장에서 실제로 겪었다).
+    성립하지 않는다(docs/분석/DEMAND_DISTRIBUTION.md 5장에서 실제로 겪었다).
 
     반환: (stats, daily, ratio)
     """
@@ -112,11 +112,11 @@ def compute_rebal_qty(stats: pd.DataFrame, z=None, up_limit=None,
     기본 파라미터 : 신뢰구간 z, 상한/하한 비율
 
     z를 지정하지 않으면 project_config.TARGET_Z(기본 1.99)를 쓴다.
-    환경변수 PBR_TARGET_Z로 바꿀 수 있다 — 근거는 docs/EXPERIMENTS.md 1장.
+    환경변수 PBR_TARGET_Z로 바꿀 수 있다 — 근거는 docs/분석/EXPERIMENTS.md 1장.
 
     **저장하지 않는 순수 계산이다.** 파일·DB에 남기는 것은 calculate_rebal_qty()이고,
     실험 스크립트(experiments/baseline_compare.py의 z=0 대조군)는 이 함수를 직접 쓴다 —
-    측정 코드와 운영 코드가 갈리면 측정이 거짓말을 한다(docs/DEMAND_DISTRIBUTION.md 5장).
+    측정 코드와 운영 코드가 갈리면 측정이 거짓말을 한다(docs/분석/DEMAND_DISTRIBUTION.md 5장).
     '''
     z = TARGET_Z if z is None else z
     # 상한 배수도 project_config에서 읽는다 — 웹의 실시간 재고 대조가 같은 값으로
@@ -129,7 +129,7 @@ def compute_rebal_qty(stats: pd.DataFrame, z=None, up_limit=None,
     # mu > 0 : 목표 재고량(target_qty) = 평균(mu) + 신뢰계수 (z : 1.99) * 표준편차(sigma)
     #
     # model_target이 오면 그 값이 **mu + z·sigma를 대신한다** — 분위수 모델이
-    # 다음 기간 순수요의 95분위를 직접 예측한 것이다(docs/DEMAND_DISTRIBUTION.md).
+    # 다음 기간 순수요의 95분위를 직접 예측한 것이다(docs/분석/DEMAND_DISTRIBUTION.md).
     # 모델이 없으면(기본) 여기로 오지 않으므로 기존 동작이 그대로다.
     if model_target is not None:
         stats.loc[cond_pos, 'target_qty'] = model_target[cond_pos]
@@ -226,7 +226,7 @@ if __name__ == '__main__':
 
     # 분위수 모델이 학습돼 있으면 target_qty를 그것으로 잡는다.
     # **없는 것이 기본이다** — 현재 모델은 베이스라인을 이기지 못했다
-    # (docs/DEMAND_DISTRIBUTION.md 5장). 학습은 tools/train_demand_model.py.
+    # (docs/분석/DEMAND_DISTRIBUTION.md 5장). 학습은 tools/train_demand_model.py.
     bundle = demand_model.load()
     if bundle is not None:
         print(f"분위수 모델을 사용합니다 (q={bundle['quantile']:.0%})."

@@ -4,7 +4,7 @@
 > **여기 있는 모든 수식은 코드에서 그대로 옮긴 것입니다.** 코드를 바꾸면 이 문서도
 > 바꿔야 합니다 — 근거는 각 절 끝의 파일·함수 표시를 보세요.
 > 파라미터를 왜 그 값으로 두었는지는 [EXPERIMENTS.md](EXPERIMENTS.md),
-> 논문 전체 구성은 [THESIS.md](THESIS.md)에 있습니다.
+> 논문 전체 구성은 [THESIS.md](../연구/THESIS.md)에 있습니다.
 
 ---
 
@@ -41,7 +41,7 @@
 
 **운영 모델:** 하루 3회차(`_05_10`, `_10_15`, `_15_20`), 회차당 차량 10대,
 **차량 1대 = 군집 1개**, 보유 21대는 누적 부하 기준으로 로테이션한다
-([FLEET.md](FLEET.md)). 설계상으로는 depot으로 복귀하지만 **계산에는 마지막 복귀
+([FLEET.md](../구현/FLEET.md)). 설계상으로는 depot으로 복귀하지만 **계산에는 마지막 복귀
 구간이 빠져 있다** — 6장 참고.
 
 ---
@@ -57,7 +57,7 @@ N_{i,d} = \sum_{h \in H(D)} n_{i,d,h}, \qquad
 $$
 
 $d$는 **평일과 휴일 중 한쪽만** 쓴다. 휴일 = 주말 ∪ 공휴일이며, 두 구분을 섞으면
-대여소의 33~37%가 부호가 반대라 상쇄된다([step0_raw.md](steps/step0_raw.md)).
+대여소의 33~37%가 부호가 반대라 상쇄된다([step0_raw.md](../구현/steps/step0_raw.md)).
 
 > 코드: `calculate_target_qty.build_stats()`, `project_config.select_day_type()`
 
@@ -302,7 +302,7 @@ $$
 $$
 
 ⚠️ **이 제약은 현재 모델에 들어 있지 않다.** 계산 후 초과 여부를 경고할 뿐 계획을
-바꾸지 않는다(사후 점검). 논문에서는 이를 한계로 밝혀야 한다 — [THESIS.md](THESIS.md) 6장.
+바꾸지 않는다(사후 점검). 논문에서는 이를 한계로 밝혀야 한다 — [THESIS.md](../연구/THESIS.md) 6장.
 `greedy_route(time_budget_sec=…)`로 예산 안에서 멈추는 경로도 만들 수 있지만
 파이프라인은 쓰지 않는다(대조군 실험 전용).
 
@@ -371,8 +371,8 @@ $$
 
 | 문서 | 내용 |
 | --- | --- |
-| [THESIS.md](THESIS.md) | 논문 전체 구성과 남은 것 |
+| [THESIS.md](../연구/THESIS.md) | 논문 전체 구성과 남은 것 |
 | [EXPERIMENTS.md](EXPERIMENTS.md) | $z$·$\gamma$·학습 창을 이 값으로 정한 근거 |
 | [KPI.md](KPI.md) | 지표 체계와 그 함정 |
-| [PROJECT_PIPELINE.md](PROJECT_PIPELINE.md) | 단계별 입출력 |
-| [FLEET.md](FLEET.md) | 차량 로테이션·시간 예산 |
+| [PROJECT_PIPELINE.md](../구현/PROJECT_PIPELINE.md) | 단계별 입출력 |
+| [FLEET.md](../구현/FLEET.md) | 차량 로테이션·시간 예산 |

@@ -1,6 +1,6 @@
 """분위수 모델이 `mu + z·sigma`를 이기는가 — 표본 밖 비교.
 
-**채택 기준**(docs/DEMAND_DISTRIBUTION.md 5장)을 그대로 적용한다.
+**채택 기준**(docs/분석/DEMAND_DISTRIBUTION.md 5장)을 그대로 적용한다.
 
   1. 작업 대상 대여소에서만 (`|prev_mu| > 2`)
   2. 평일과 휴일을 따로
@@ -140,7 +140,7 @@ def main() -> int:
     print(f"\n95%에서 벗어난 정도  기준 {base_gap * 100:.1f}%p"
           f"  →  모델 {model_gap * 100:.1f}%p")
 
-    # 비 온 날만 갈라 본다. 날씨가 주는 이득은 **그 날들에 몰려 있고**(docs/WEATHER.md),
+    # 비 온 날만 갈라 본다. 날씨가 주는 이득은 **그 날들에 몰려 있고**(docs/분석/WEATHER.md),
     # 전체 평균은 90%인 맑은 날에 희석돼 성격을 감춘다. 조건부로 쓸지(비 오는 날에만)
     # 판단하려면 이 줄이 필요하다.
     if "rainy" in targets.columns and targets["rainy"].notna().any():

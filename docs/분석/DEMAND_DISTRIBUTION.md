@@ -333,7 +333,7 @@ z를 1.65 → 1.99로 올린 것과 같은 보정을 한 것이었다.
 | 문서 | 내용 |
 | --- | --- |
 | [EXPERIMENTS.md](EXPERIMENTS.md) | `z`·`γ`·학습 창 실험 (1장의 z 설명은 이 문서로 정정됨) |
-| [steps/step0_raw.md](steps/step0_raw.md) | 평일/휴일 분리와 공휴일 처리 |
+| [steps/step0_raw.md](../구현/steps/step0_raw.md) | 평일/휴일 분리와 공휴일 처리 |
 | [KPI.md](KPI.md) | 지표 정의와 비교 규칙 |
 | `experiments/demand_distribution.py` | 이 문서의 모든 수치를 재현 |
 | `tools/backtest_demand.py` | 표본 밖 정확도 측정 |

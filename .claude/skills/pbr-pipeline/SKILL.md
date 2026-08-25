@@ -10,30 +10,32 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 
 ## 문서 위치 (수정 전 필독)
 
+**목차는 `docs/README.md`다** — 문서가 30개를 넘어 분석·구현·연구·기록 네 폴더로 나눠 두었다. 어디에 무엇이 있는지는 거기서 본다.
+
 | 문서 | 내용 |
 | --- | --- |
-| `docs/RETROSPECTIVE.md` | 전체 조망·측정이 뒤집은 가설·설계 결정 (처음 오면 여기부터) |
-| `docs/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
-| `docs/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/TESTING.md` | 테스트 350개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
-| `docs/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
-| `docs/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
-| `docs/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
-| `docs/RELATED_WORK.md` | 관련 연구와 본 연구의 위치 |
-| `docs/LITERATURE.md` | 문헌 11편 분석·비교 (**선행연구를 인용하기 전 필독**) |
-| `docs/PROJECT_PIPELINE.md` | 파이프라인 전체 구조 |
-| `docs/steps/step*.md` | 단계별 입출력·문제점·작업 목록 |
-| `docs/WEBAPP.md` | 웹 대시보드(webapp/) 실행·구조·API |
-| `docs/DESIGN.md` | 화면 디자인 시스템 — 색 토큰·글꼴·내비·타일 (**템플릿을 건드리기 전 필독**) |
-| `docs/DB_SCHEMA.md` | ERD·테이블 16개 컬럼·스코프 규칙 (**DB를 건드리기 전 필독**) |
-| `docs/DB_PLAN.md` | SQLite 도입 결정·이관 단계·성능 측정 (CSV→DB 작업 시 필독) |
-| `docs/COLLECTOR.md` | 재고 시계열 수집 — 창 가드·스케줄·운영 (**수집기를 건드리기 전 필독**) |
-| `docs/WEATHER.md` | 날씨 원천·측정 결과 (**날씨를 건드리기 전 필독**) |
-| `docs/DECISIONS.md` | 기술 선택의 근거와 대가 (**방법을 바꾸기 전 필독**) |
+| `docs/기록/RETROSPECTIVE.md` | 전체 조망·측정이 뒤집은 가설·설계 결정 (처음 오면 여기부터) |
+| `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
+| `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 350개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
+| `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
+| `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
+| `docs/연구/RELATED_WORK.md` | 관련 연구와 본 연구의 위치 |
+| `docs/연구/LITERATURE.md` | 문헌 11편 분석·비교 (**선행연구를 인용하기 전 필독**) |
+| `docs/구현/PROJECT_PIPELINE.md` | 파이프라인 전체 구조 |
+| `docs/구현/steps/step*.md` | 단계별 입출력·문제점·작업 목록 |
+| `docs/구현/WEBAPP.md` | 웹 대시보드(webapp/) 실행·구조·API |
+| `docs/구현/DESIGN.md` | 화면 디자인 시스템 — 색 토큰·글꼴·내비·타일 (**템플릿을 건드리기 전 필독**) |
+| `docs/구현/DB_SCHEMA.md` | ERD·테이블 16개 컬럼·스코프 규칙 (**DB를 건드리기 전 필독**) |
+| `docs/구현/DB_PLAN.md` | SQLite 도입 결정·이관 단계·성능 측정 (CSV→DB 작업 시 필독) |
+| `docs/구현/COLLECTOR.md` | 재고 시계열 수집 — 창 가드·스케줄·운영 (**수집기를 건드리기 전 필독**) |
+| `docs/분석/WEATHER.md` | 날씨 원천·측정 결과 (**날씨를 건드리기 전 필독**) |
+| `docs/분석/DECISIONS.md` | 기술 선택의 근거와 대가 (**방법을 바꾸기 전 필독**) |
 | `docs/GLOSSARY.md` | 용어집 — 한국어 용어 ↔ 코드 이름, 헷갈리기 쉬운 짝 |
-| `docs/KPI.md` | 성과 지표 체계 설계 (지표를 건드리기 전 필독) |
-| `docs/FLEET.md` | 차량 로테이션·형평성 (차량/클러스터 수를 건드리기 전 필독) |
-| `docs/버전관리.md` | 버전 이력, 수정 이유 기록 |
+| `docs/분석/KPI.md` | 성과 지표 체계 설계 (지표를 건드리기 전 필독) |
+| `docs/구현/FLEET.md` | 차량 로테이션·형평성 (차량/클러스터 수를 건드리기 전 필독) |
+| `docs/기록/버전관리.md` | 버전 이력, 수정 이유 기록 |
 
 ## 파이프라인 구조 (실행 순서 = 데이터 의존 순서)
 
@@ -92,13 +94,13 @@ step4                   : imbalance
    시각을 넣으면 `latest_label()`(**사전순** MAX)이 파이프라인 실행을 밀어낸다.
    수집기(`tools/collect_stock.py`)는 `runs`·`station_stock`을 건드리지 않는다 —
    테스트가 지킨다. **휴일을 거르는 것은 스케줄러가 아니라 스크립트의 창 가드다**
-   (작업 스케줄러는 요일만 안다). 자세한 것은 docs/COLLECTOR.md.
+   (작업 스케줄러는 요일만 안다). 자세한 것은 docs/구현/COLLECTOR.md.
 6. **depot·차량 상수는 project_config에 있다**(DEPOT_ID/LAT/LON/NAME, VEHICLE_CAPACITY,
    FLEET_SIZE, VEHICLES_PER_ROUND). step2·step3에서 별도 하드코딩하지 마라.
    **클러스터 1개 = 차량 1대**이므로 step1의 K는 `VEHICLES_PER_ROUND`를 넘을 수 없다.
    두 대수 모두 **실행마다 바뀐다** — 웹 실행 폼/`--fleet-size`/`--vehicles-per-round`가
    `PBR_FLEET_SIZE`·`PBR_VEHICLES_PER_ROUND`로 전달되고 후자는 전자로 잘린다.
-   차량 배정·로테이션은 `db.assign_vehicles()`가 담당한다 (docs/FLEET.md).
+   차량 배정·로테이션은 `db.assign_vehicles()`가 담당한다 (docs/구현/FLEET.md).
    마스터를 대수에 맞추는 것은
    `db.sync_fleet()`(실행 경로)뿐이고 **조회 경로는 `db.ensure_fleet()`를 쓴다** —
    바꾸면 화면을 여는 것만으로 직전 실행의 보유 대수가 되돌아간다.
@@ -169,7 +171,7 @@ python tools/collect_stock.py --status    # 수집 현황
   차량 속도 25km/h(`VEHICLE_SPEED_KMPH` — **ILP·VRP가 반드시 같은 값**),
   depot=타슈 관제센터(ST0001). 한 회차에 차량 1대 = 클러스터 1개 + depot 복귀.
 - **모델 파라미터는 실측 실험으로 정해져 있다** — `TARGET_Z = 1.99`,
-  `CLUSTER_GAMMA = 3000`. 근거는 `docs/EXPERIMENTS.md`이고 재현 스크립트는
+  `CLUSTER_GAMMA = 3000`. 근거는 `docs/분석/EXPERIMENTS.md`이고 재현 스크립트는
   `experiments/`에 있다. **바꾸려면 같은 방식으로 재실험할 것.** 특히:
   - `γ`는 **비단조**다(γ=2000이 γ=1000보다 나빴다). 두 점 사이를 보간하면 안 된다.
   - **한 회차만 보고 판단하지 말 것.** 3회차 전부로 재확인한다 (과거에 틀린 적 있음).
@@ -178,7 +180,7 @@ python tools/collect_stock.py --status    # 수집 현황
     될 수 없다.** 결품 시간으로 비교할 것.
   - **z가 필요한 이유는 '꼬리가 두꺼워서'가 아니다** — 대여소별로 보면 거의
     정규분포다. 진짜 원인은 지난달 통계로 이번 달을 맞히는 **추정 오차**다
-    (docs/DEMAND_DISTRIBUTION.md). 분포를 고치는 처방은 헛다리다.
+    (docs/분석/DEMAND_DISTRIBUTION.md). 분포를 고치는 처방은 헛다리다.
 - **계절 보정(warmup)이 기본으로 켜져 있다** — 계획 대상 달 첫 14일 실적으로 도시
   전체 배율을 구해 mu·sigma에 곱한다(`--warmup-days 0`으로 끔). 배율을 대여소별로
   추정하지 마라 — 며칠치로 나누면 잡음만 커진다.
@@ -186,7 +188,7 @@ python tools/collect_stock.py --status    # 수집 현황
   작업 대상만·평일/휴일 따로·표본 밖·베이스라인 초과.
 - **분위수 모델은 꺼져 있다** — 1.15.2에서 채택했다가 1.15.3에서 되돌렸다.
   그 '승리'는 계절 배율이 과대추정된 베이스라인과 겨룬 결과였다
-  (docs/DEMAND_DISTRIBUTION.md 5장). 코드는 다음 시도를 위한 하네스로 남겨 뒀다.
+  (docs/분석/DEMAND_DISTRIBUTION.md 5장). 코드는 다음 시도를 위한 하네스로 남겨 뒀다.
   **학습·예측은 반드시 `demand_model.build_features()` 하나를 거쳐야 한다** —
   한쪽만 계절 배율을 곱하면 조용히 틀린 값이 나온다(테스트가 지킨다).
 - **계절 배율은 `season_ratio()` 하나로만 구하라.** 0 근처 대여소를 넣으면
@@ -195,7 +197,7 @@ python tools/collect_stock.py --status    # 수집 현황
 - 예측 정확도는 **작업 대상 대여소(`|rebal_qty| > 2`)에서** 재야 한다. 전체 평균은
   파이프라인이 손대지 않는 대여소에 희석돼 정반대 결론이 나온 적이 있다.
 - pandas 2.x 기준으로 작성 (`.loc` 슬라이스에 inplace 연산 금지).
-- 버전에 영향 주는 수정을 하면 `docs/버전관리.md`에 이유와 함께 기록한다.
+- 버전에 영향 주는 수정을 하면 `docs/기록/버전관리.md`에 이유와 함께 기록한다.
 
 ## 저장소 (db.py — CSV·DB 이중 기록 중)
 
@@ -228,7 +230,7 @@ python tools/collect_stock.py --status    # 수집 현황
 
 - **`improvement_rate`는 "계획 달성률"이지 실제 효과가 아니다.** `rebal_qty`가
   `target_qty − stock`에서 파생되므로 구조적으로 높게 나온다. 이 값을 대외 성과로
-  인용할 때는 성격을 밝혀라. 자세한 근거와 개선안은 `docs/KPI.md`.
+  인용할 때는 성격을 밝혀라. 자세한 근거와 개선안은 `docs/분석/KPI.md`.
 - 지표를 추가할 때는 **효과·비용·효율을 함께** 둬라. 개선률만 올리면 소요시간이 늘어난다.
   실측에서 `_05_10`은 개선률이 가장 낮은데(65%) km당 개선은 가장 높았다(2.08대).
 - 새 지표는 `kpi_summary` 테이블(실행 1건 = 1행)에 넣는다. `db.KPI_FIELDS`에 컬럼을
@@ -257,5 +259,5 @@ python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 1. `python -m py_compile <수정한 파일>` 로 구문 확인
 2. 수정한 파일이 읽는/쓰는 파일명 패턴(`{now}`, `{duration}`, `{period}`)이
    앞뒤 단계와 일치하는지 확인
-3. `docs/TODO.md`의 해당 항목을 완료 처리하고, 새로 발견한 문제는 추가
-4. 동작이 바뀌었으면 `docs/steps/` 해당 단계 문서도 갱신
+3. `docs/기록/TODO.md`의 해당 항목을 완료 처리하고, 새로 발견한 문제는 추가
+4. 동작이 바뀌었으면 `docs/구현/steps/` 해당 단계 문서도 갱신

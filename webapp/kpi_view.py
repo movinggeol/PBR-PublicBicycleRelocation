@@ -1,6 +1,6 @@
 """성과 지표 화면의 데이터 조립.
 
-화면은 [KPI.md](../docs/KPI.md) 5장의 3단 구성을 따른다.
+화면은 [KPI.md](../docs/분석/KPI.md) 5장의 3단 구성을 따른다.
 
 1. 헤드라인 몇 개 — 이번 실행 값 + 직전 실행 대비 증감
 2. **추세** — 실행 축의 꺾은선. 조건을 바꿨을 때 효과를 눈으로 본다
@@ -159,7 +159,7 @@ def cost_benefit(rows: pd.DataFrame) -> dict:
 
 
 def forecast_accuracy(day_type: str = "weekday") -> dict:
-    """수요 예측이 얼마나 맞는가 (docs/KPI.md E장).
+    """수요 예측이 얼마나 맞는가 (docs/분석/KPI.md E장).
 
     `tools/backtest_demand.py`가 쌓아 둔 월쌍 백테스트를 시간대별로 요약한다.
     **파이프라인 실행과 무관한 기록이다** — 한 달로 만든 mu가 다음 달을 맞히는지

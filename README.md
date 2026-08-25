@@ -26,7 +26,7 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 5개월(25년 09·10·11월, 26년 01·03월)로 반복해도 유지됩니다 —
 제안 방법 **0.50 ± 0.03 / 0.36 ± 0.09 / 0.41 ± 0.06**,
 무재배치·그리디·지리 군집 대비 모두 유의합니다(Wilcoxon, n = 15, p < 0.001).
-근거·재현은 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) 5장.
+근거·재현은 [docs/분석/EXPERIMENTS.md](docs/분석/EXPERIMENTS.md) 5장.
 
 > **그리디는 제안 방법보다 더 많이 옮기고도(319대 vs 313대) 결품을 더 남깁니다.**
 > 몇 대를 옮기느냐가 아니라 어디로 옮기느냐의 문제입니다.
@@ -58,15 +58,15 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 >
 > 1. **개선률·목표 도달률은 `z`가 다른 실행끼리 비교할 수 없습니다.** 두 지표는 목표
 >    재고를 분모로 삼아, `z`를 올리면 결품이 줄어도 함께 떨어집니다. 그래서 위 표는
->    목표값과 무관한 **결품 시간**으로 냈습니다 — [docs/KPI.md](docs/KPI.md).
+>    목표값과 무관한 **결품 시간**으로 냈습니다 — [docs/분석/KPI.md](docs/분석/KPI.md).
 > 2. **결품 시간은 실측이 아니라 순수요로 복원한 시뮬레이션**이고, 재고를 0에서
 >    자르므로 **결품의 하한**입니다.
 > 3. **위 표는 마지막 depot 복귀를 빼고 잰 값입니다(1.19.0 이전).** 복귀는
 >    1.19.1에서 넣었고, 그만큼 이동거리와 소요시간이 늘어납니다. 표의 대조군
 >    실험을 새 코드로 다시 재는 일은 남아 있습니다 —
->    [docs/TODO.md](docs/TODO.md) 1-1.
+>    [docs/기록/TODO.md](docs/기록/TODO.md) 1-1.
 > 4. **경로는 greedy 휴리스틱**이며 OR-Tools 대비 이동거리가 평균 9.7%,
->    최악 46.4% 깁니다 — [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) 6장.
+>    최악 46.4% 깁니다 — [docs/분석/EXPERIMENTS.md](docs/분석/EXPERIMENTS.md) 6장.
 
 ## 프로젝트 구조
 
@@ -81,7 +81,13 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 ├── step2_optimize/                      # 수량·경로 최적화
 ├── step3_map/                   # TMAP/Folium 지도
 ├── step4_metrics/                     # 불균형 평가
-├── docs/                                  # 문서 (파이프라인 설명·단계별 문서·TODO)
+├── docs/                                  # 문서 — 읽는 사람 기준으로 나눠 두었습니다
+│   ├── README.md                          #   목차: 어느 폴더에 무엇이 있는지
+│   ├── GLOSSARY.md                        #   용어집
+│   ├── 분석/                              #   수요 모델·지표·실험 (FORMULATION, DECISIONS, KPI …)
+│   ├── 구현/                              #   파이프라인·화면·DB·테스트 (steps/ 포함)
+│   ├── 연구/                              #   졸업작품·논문 (THESIS, RELATED_WORK, LITERATURE)
+│   └── 기록/                              #   회고·TODO·버전 이력
 ├── webapp/                                # 웹 대시보드 (FastAPI, 파이썬 단독)
 ├── tests/                                 # 스모크 테스트 (pytest)
 ├── tools/                                 # 합성 데이터 생성기 등 보조 도구
@@ -196,7 +202,7 @@ python run_pipeline.py --warmup-days 0                         # 계절 보정 �
 
 **평일과 휴일은 한 실행에 섞지 마세요.** 시간대별로 대여소의 33~37%가 두 구분에서
 부호가 반대(평일엔 채울 곳이 휴일엔 빼 올 곳)라 평균을 내면 상쇄돼 작업 대상에서
-빠집니다 ([docs/steps/step0_raw.md](docs/steps/step0_raw.md)).
+빠집니다 ([docs/구현/steps/step0_raw.md](docs/구현/steps/step0_raw.md)).
 
 단계별 개별 실행:
 
@@ -221,7 +227,7 @@ python "step4_metrics/imbalance.py"
 파이프라인이 쓰는 초기 재고는 **실행하는 순간의 스냅샷 한 장**입니다. 실측 재고가
 시간에 따라 어떻게 움직이는지 남겨 두면, 결품을 시뮬레이션이 아니라 **실측으로**
 잴 수 있습니다. 그래서 평일 09~17시 재고를 10분마다 모읍니다
-([docs/COLLECTOR.md](docs/COLLECTOR.md)).
+([docs/구현/COLLECTOR.md](docs/구현/COLLECTOR.md)).
 
 ```powershell
 .\scripts\collector.ps1 install     # 수집 시작 (최초 1회 등록)
@@ -287,10 +293,10 @@ python -m pytest                 # 350개, 약 50~80초 (tests/ 만 수집)
 - `tests/test_webapp.py` (37) — 라우트·경로 탈출 차단·실행 폼 입력 검증
 - `tests/test_calculations.py` (36) — **계산 단위 테스트**: 목표재고 공식(`μ + zσ`,
   거치대 상한, tanh 제한, 0 방향 정수화), 군집 목적함수, VRP 적재·시간 제약,
-  ILP 수급 제약, **집행 기준 결품 계산**. 근거는 [docs/FORMULATION.md](docs/FORMULATION.md)
+  ILP 수급 제약, **집행 기준 결품 계산**. 근거는 [docs/분석/FORMULATION.md](docs/분석/FORMULATION.md)
 - `tests/test_day_type.py` (36) — 평일/휴일 분리·공휴일 판정·계절 보정,
   **계획과 평가가 같은 요일 구분을 쓰는지**
-- 나머지 파일과 각 테스트가 무엇을 지키는지는 [docs/TESTING.md](docs/TESTING.md)에
+- 나머지 파일과 각 테스트가 무엇을 지키는지는 [docs/구현/TESTING.md](docs/구현/TESTING.md)에
   정리돼 있습니다.
 
 데모용 데이터만 만들고 싶다면:
@@ -301,7 +307,7 @@ python tools/make_sample_data.py --now "데모"
 
 ## 웹 대시보드
 
-브라우저에서 파이프라인 실행부터 결과 지도 열람까지 할 수 있습니다. 자세한 내용은 [docs/WEBAPP.md](docs/WEBAPP.md).
+브라우저에서 파이프라인 실행부터 결과 지도 열람까지 할 수 있습니다. 자세한 내용은 [docs/구현/WEBAPP.md](docs/구현/WEBAPP.md).
 
 ```powershell
 python -m webapp        # http://127.0.0.1:8000
@@ -331,8 +337,8 @@ GET /api/pipeline-runs                        # 실행 이력 목록
 ## 데이터 저장
 
 파이프라인은 CSV와 SQLite에 **동시에** 기록합니다(이중 기록). CSV가 아직 정본이며,
-스키마(ERD·테이블 레퍼런스)는 [docs/DB_SCHEMA.md](docs/DB_SCHEMA.md),
-DB 이관 계획은 [docs/DB_PLAN.md](docs/DB_PLAN.md)에 있습니다.
+스키마(ERD·테이블 레퍼런스)는 [docs/구현/DB_SCHEMA.md](docs/구현/DB_SCHEMA.md),
+DB 이관 계획은 [docs/구현/DB_PLAN.md](docs/구현/DB_PLAN.md)에 있습니다.
 
 ```python
 import db
@@ -359,7 +365,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 ```
 
 1년치를 적재해 두고 한 달씩 분석할 때 유리합니다 — 반대로 딱 한 달치 파일만 쓰는
-경우에는 CSV가 더 빠릅니다. 실측 비교는 [docs/DB_PLAN.md](docs/DB_PLAN.md) 4단계에 있습니다.
+경우에는 CSV가 더 빠릅니다. 실측 비교는 [docs/구현/DB_PLAN.md](docs/구현/DB_PLAN.md) 4단계에 있습니다.
 
 ## 성과 지표
 
@@ -373,41 +379,42 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 > ⚠️ 위 개선률은 **계획 달성률**입니다. `rebal_qty`가 `target_qty − stock`에서
 > 파생되므로 "계획이 자기 목표를 얼마나 채웠는가"를 재는 값이고, 이용자가 실제로
 > 자전거를 탈 수 있었는지와는 다릅니다. 지표 체계의 한계와 개선안은
-> [docs/KPI.md](docs/KPI.md)에 정리했습니다.
+> [docs/분석/KPI.md](docs/분석/KPI.md)에 정리했습니다.
 
 ## 문서
 
 | 문서 | 내용 |
 | --- | --- |
-| [docs/RETROSPECTIVE.md](docs/RETROSPECTIVE.md) | **작업 회고** — 전체 조망, 측정이 뒤집은 가설, 설계 결정 |
-| [docs/THESIS.md](docs/THESIS.md) | **졸업작품·논문** — 장별 재료 매핑, 대조군·반복 실험 설계, 체크리스트 |
-| [docs/FORMULATION.md](docs/FORMULATION.md) | **문제 정형화** — 기호표·목표재고·군집 목적함수·ILP·VRP 수식 |
-| [docs/RELATED_WORK.md](docs/RELATED_WORK.md) | **관련 연구** — 문제의 갈래와 본 연구의 위치 |
-| [docs/LITERATURE.md](docs/LITERATURE.md) | **문헌 분석** — 논문 11편 한 편씩 분석·비교표·인용 지도 |
-| [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
-| [docs/TESTING.md](docs/TESTING.md) | **테스트** — 350개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
-| [docs/PROJECT_PIPELINE.md](docs/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
-| [docs/WEBAPP.md](docs/WEBAPP.md) | 웹 대시보드 실행·구조·API |
-| [docs/DESIGN.md](docs/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |
-| [docs/DEMAND_DISTRIBUTION.md](docs/DEMAND_DISTRIBUTION.md) | **순수요 분포** — 정규분포 전제 검증, 커버리지 원인 정정, ML 방향 |
-| [docs/DB_SCHEMA.md](docs/DB_SCHEMA.md) | **DB 스키마** — ERD, 테이블 15개 컬럼 레퍼런스, 조인 쿼리 |
-| [docs/DB_PLAN.md](docs/DB_PLAN.md) | SQLite 도입 결정·이관 계획·성능 측정 |
-| [docs/COLLECTOR.md](docs/COLLECTOR.md) | **재고 시계열 수집** — 평일 09–17시 10분 간격 수집기·운영(시작/일시정지/중지) |
-| [docs/WEATHER.md](docs/WEATHER.md) | **날씨** — 어떤 기상청 API를 받는지, 결측·겨울 3시간 누적 처리, 순수요 설명력 측정 |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | **기술 선택의 근거** — 왜 ILP·VRP·K-Medoids인지, 이상치·결측·정합성을 왜 그렇게 다뤘는지, 얻음과 잃음 |
+| [docs/README.md](docs/README.md) | **문서 목차** — 어느 폴더에 무엇이 있는지, 겹치는 내용의 정본은 어디인지 |
+| [docs/기록/RETROSPECTIVE.md](docs/기록/RETROSPECTIVE.md) | **작업 회고** — 전체 조망, 측정이 뒤집은 가설, 설계 결정 |
+| [docs/연구/THESIS.md](docs/연구/THESIS.md) | **졸업작품·논문** — 장별 재료 매핑, 대조군·반복 실험 설계, 체크리스트 |
+| [docs/분석/FORMULATION.md](docs/분석/FORMULATION.md) | **문제 정형화** — 기호표·목표재고·군집 목적함수·ILP·VRP 수식 |
+| [docs/연구/RELATED_WORK.md](docs/연구/RELATED_WORK.md) | **관련 연구** — 문제의 갈래와 본 연구의 위치 |
+| [docs/연구/LITERATURE.md](docs/연구/LITERATURE.md) | **문헌 분석** — 논문 11편 한 편씩 분석·비교표·인용 지도 |
+| [docs/분석/EXPERIMENTS.md](docs/분석/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
+| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 350개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
+| [docs/구현/PROJECT_PIPELINE.md](docs/구현/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
+| [docs/구현/WEBAPP.md](docs/구현/WEBAPP.md) | 웹 대시보드 실행·구조·API |
+| [docs/구현/DESIGN.md](docs/구현/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |
+| [docs/분석/DEMAND_DISTRIBUTION.md](docs/분석/DEMAND_DISTRIBUTION.md) | **순수요 분포** — 정규분포 전제 검증, 커버리지 원인 정정, ML 방향 |
+| [docs/구현/DB_SCHEMA.md](docs/구현/DB_SCHEMA.md) | **DB 스키마** — ERD, 테이블 15개 컬럼 레퍼런스, 조인 쿼리 |
+| [docs/구현/DB_PLAN.md](docs/구현/DB_PLAN.md) | SQLite 도입 결정·이관 계획·성능 측정 |
+| [docs/구현/COLLECTOR.md](docs/구현/COLLECTOR.md) | **재고 시계열 수집** — 평일 09–17시 10분 간격 수집기·운영(시작/일시정지/중지) |
+| [docs/분석/WEATHER.md](docs/분석/WEATHER.md) | **날씨** — 어떤 기상청 API를 받는지, 결측·겨울 3시간 누적 처리, 순수요 설명력 측정 |
+| [docs/분석/DECISIONS.md](docs/분석/DECISIONS.md) | **기술 선택의 근거** — 왜 ILP·VRP·K-Medoids인지, 이상치·결측·정합성을 왜 그렇게 다뤘는지, 얻음과 잃음 |
 | [docs/GLOSSARY.md](docs/GLOSSARY.md) | **용어집** — 한국어 용어 ↔ 코드 이름, 헷갈리기 쉬운 짝 |
-| [docs/KPI.md](docs/KPI.md) | 성과 지표 체계 설계 (현재 지표의 한계와 개선안) |
-| [docs/FLEET.md](docs/FLEET.md) | 차량 운용 — 하루 3회차 로테이션과 형평성 기록 |
-| [docs/TODO.md](docs/TODO.md) | 해야 할 것·고쳐야 할 것 (우선순위별) |
-| [docs/버전관리.md](docs/버전관리.md) | **버전 이력** — 무엇을 왜 바꿨는지 (최신순, 1.0 ~ 현재) |
-| [docs/메모.md](docs/메모.md) | 작업 메모 — README·포트폴리오 정리 노트 (개인 메모) |
-| [docs/출발지-도착지.md](docs/출발지-도착지.md) | depot 좌표 메모 — 초기 설계의 출발지·도착지 |
-| [docs/steps/step0_raw.md](docs/steps/step0_raw.md) | Step 0: 수집·전처리·순수요·재배치량 |
-| [docs/steps/step0_eda.md](docs/steps/step0_eda.md) | Step 0: 이력 병합·EDA |
-| [docs/steps/step1_clustering.md](docs/steps/step1_clustering.md) | Step 1: Pick/Drop 선정·클러스터링 |
-| [docs/steps/step2_ilp_vrp.md](docs/steps/step2_ilp_vrp.md) | Step 2: ILP 수량·VRP 경로 최적화 |
-| [docs/steps/step3_visualization.md](docs/steps/step3_visualization.md) | Step 3: TMAP·Folium 지도 |
-| [docs/steps/step4_metrics.md](docs/steps/step4_metrics.md) | Step 4: 불균형 개선 평가 |
+| [docs/분석/KPI.md](docs/분석/KPI.md) | 성과 지표 체계 설계 (현재 지표의 한계와 개선안) |
+| [docs/구현/FLEET.md](docs/구현/FLEET.md) | 차량 운용 — 하루 3회차 로테이션과 형평성 기록 |
+| [docs/기록/TODO.md](docs/기록/TODO.md) | 해야 할 것·고쳐야 할 것 (우선순위별) |
+| [docs/기록/버전관리.md](docs/기록/버전관리.md) | **버전 이력** — 무엇을 왜 바꿨는지 (최신순, 1.0 ~ 현재) |
+| [docs/기록/메모.md](docs/기록/메모.md) | 작업 메모 — README·포트폴리오 정리 노트 (개인 메모) |
+| [docs/기록/출발지-도착지.md](docs/기록/출발지-도착지.md) | depot 좌표 메모 — 초기 설계의 출발지·도착지 |
+| [docs/구현/steps/step0_raw.md](docs/구현/steps/step0_raw.md) | Step 0: 수집·전처리·순수요·재배치량 |
+| [docs/구현/steps/step0_eda.md](docs/구현/steps/step0_eda.md) | Step 0: 이력 병합·EDA |
+| [docs/구현/steps/step1_clustering.md](docs/구현/steps/step1_clustering.md) | Step 1: Pick/Drop 선정·클러스터링 |
+| [docs/구현/steps/step2_ilp_vrp.md](docs/구현/steps/step2_ilp_vrp.md) | Step 2: ILP 수량·VRP 경로 최적화 |
+| [docs/구현/steps/step3_visualization.md](docs/구현/steps/step3_visualization.md) | Step 3: TMAP·Folium 지도 |
+| [docs/구현/steps/step4_metrics.md](docs/구현/steps/step4_metrics.md) | Step 4: 불균형 개선 평가 |
 
 ## 참고
 

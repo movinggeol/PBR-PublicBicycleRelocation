@@ -117,7 +117,7 @@ rebal_qty = target_qty − stock              (tanh로 완화 후 정수화)
 
 - **`z = 1.99`는 실측값입니다.** 관행값 1.65는 "정규분포 95%"라는 이유로 쓰였지만
   12개월 백테스트에서 실제 커버리지가 91.7~92.8%에 그쳤습니다. 근거·재현은
-  [EXPERIMENTS.md](EXPERIMENTS.md) 1장, `PBR_TARGET_Z`로 바꿉니다.
+  [EXPERIMENTS.md](../분석/EXPERIMENTS.md) 1장, `PBR_TARGET_Z`로 바꿉니다.
 - **평일과 휴일 중 한쪽만 골라 계산합니다**(`--day-type`, 기본 auto).
   휴일 = 주말 ∪ 공휴일이며, 섞으면 부호가 반대인 대여소끼리 상쇄됩니다.
 - **계절 수준 보정(warmup)이 기본으로 켜져 있습니다.** 계획 대상 달의 첫 14일
@@ -230,7 +230,7 @@ imbalance.py는 목표 재고 대비 재배치 전후의 불균형을 비교합�
 ## 10. 전체 실행 순서
 
 일괄 실행은 `run_pipeline.py`가 아래 순서를 그대로 돌립니다
-(옵션 전체는 [README](../README.md#실행) 참고).
+(옵션 전체는 [README](../../README.md#실행) 참고).
 
 ~~~powershell
 python run_pipeline.py --dry-run          # 실행 목록·파일 존재 확인
@@ -268,7 +268,7 @@ python "step4_metrics/imbalance.py"
 
 ## 12. 개선 방향
 
-상세 목록과 우선순위는 [TODO.md](TODO.md), 단계별 상세는 [steps/](steps/) 문서를 참고합니다.
+상세 목록과 우선순위는 [TODO.md](../기록/TODO.md), 단계별 상세는 [steps/](steps/) 문서를 참고합니다.
 
 - ~~requirements.txt를 추가해 패키지 버전을 고정~~ → 완료 (`requirements.txt`)
 - ~~날짜와 경로를 공통 설정으로 통합~~ → 완료. 모든 step 스크립트가

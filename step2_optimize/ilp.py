@@ -68,7 +68,7 @@ def build_solver(msg: bool = False, time_limit: int = SOLVER_TIME_LIMIT_SEC,
     raise SystemExit(
         "CBC 솔버를 찾지 못했습니다. `pip install pulp[cbc]`로 설치한 뒤 다시 실행하세요."
         " (PuLP 4.0부터 PULP_CBC_CMD가 없어져 CBC를 따로 받아야 합니다 —"
-        " docs/TODO.md P2-B)")
+        " docs/기록/TODO.md P2-B)")
 
 
 def haversine_km(lat1, lon1, lat2, lon2) -> float:
@@ -159,7 +159,7 @@ def solve_cluster_moves(cluster_df: pd.DataFrame, solver: pulp.LpSolver,
     # ⚠️ 이것은 '실제 운행시간'이 아니다. 차량은 한 번에 최대 10대를 싣고 가므로
     # 실제 소요시간은 방문 순서(VRP)가 정한다. 여기서는 자전거 1대가 i -> j로
     # 옮겨지는 데 드는 시간을 대수만큼 더한 **대리 목적함수**를 쓴다.
-    # 논문에 '총 작업시간 최소화'라고 쓰면 오해를 부른다 (docs/FORMULATION.md 5장).
+    # 논문에 '총 작업시간 최소화'라고 쓰면 오해를 부른다 (docs/분석/FORMULATION.md 5장).
     prob += pulp.lpSum(T[(i,j)] * x[(i,j)] for i in I for j in J)
 
     # ---------------- 제약조건 ---------------
@@ -196,7 +196,7 @@ def solve_cluster_moves(cluster_df: pd.DataFrame, solver: pulp.LpSolver,
             # **반올림해야 한다.** 정수변수라도 솔버는 4.999999999를 돌려줄 수 있고
             # int()는 0 방향으로 잘라 자전거를 조용히 잃는다. 현재 CBC는 정확한 값을
             # 주지만(40회 시행 오차 0), 솔버를 바꾸면 달라질 수 있다
-            # — PuLP 4.0에서 PULP_CBC_CMD가 없어진다(docs/TODO.md).
+            # — PuLP 4.0에서 PULP_CBC_CMD가 없어진다(docs/기록/TODO.md).
             v = int(round(pulp.value(x[(i,j)]) or 0))
             if v > 0:
                 moved += v
