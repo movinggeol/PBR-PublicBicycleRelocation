@@ -13,7 +13,8 @@
 ### 모델 (클러스터별 독립 수행)
 
 - 결정변수: `x(i,j)` = Pick i → Drop j 이동 대수 (음이 아닌 정수)
-- 목적함수: `min Σ T(i,j)·x(i,j)` — Haversine 거리를 25km/h로 환산한 이동시간 가중 합
+- 목적함수: `min Σ T(i,j)·x(i,j)` — Haversine 거리를 `project_config.travel_seconds()`로
+  환산한 이동시간 가중 합 (**정차 비용 + 거리/순항속도**의 아핀 모델, 1.23.0)
 - 제약조건:
   1. `Σ_j x(i,j) ≤ pick_qty(i)` — 공급 제한
   2. `Σ_i x(i,j) ≤ drop_qty(j)` — 수요 제한
@@ -59,7 +60,9 @@
 | `DEPOT_*` | ST0001 타슈 관제센터 | project_config 공통 상수 (step3와 공유) |
 | `FLEET_SIZE` | 21대 | 기본값. 웹 실행 폼·`--fleet-size`(`PBR_FLEET_SIZE`)로 실행마다 조정 |
 | `VEHICLES_PER_ROUND` | 10대 | 회차당 투입 상한 = step1의 클러스터 수 상한. 보유 대수로 잘린다 |
-| `VEHICLE_SPEED_KMPH` | 25km/h | project_config 공통 상수. **ILP와 같은 값이어야 한다**(1.13.2에서 통일) |
+| `VEHICLE_SPEED_KMPH` | 25km/h | **순항** 속도. TMAP 실측 회귀 기울기가 25.4라 그대로 뒀다 |
+| `TRAVEL_STOP_SEC` | 143초 | 거리와 무관한 정차 비용(출발·정지·신호). **1.23.0에서 추가** — 없으면 짧은 구간이 심하게 과소 추정된다 |
+| `travel_seconds()` | — | **ILP·VRP가 반드시 이 함수를 쓴다.** 상수 공유만으로는 계산식이 갈리는 것을 못 막는다 |
 | `PICK/DROP_TIME_SEC` | 30초 | 자전거 1대당 작업시간으로 사용 |
 
 ### 차량 배정 (로테이션)
