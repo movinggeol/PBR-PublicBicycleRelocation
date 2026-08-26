@@ -247,6 +247,20 @@ def main():
                 cand["season"] = fit(build(season))
             cand["all_past"] = fit(build(past))
 
+            # ---- 월중 추세: 지난달 안에서 최근을 무겁게 ----
+            # 한 달 안에서도 수준이 움직인다(후반/전반 비가 0.90~1.27).
+            # 그렇다면 "지난달 평균"보다 "지난달 후반"이 나을 수 있다.
+            # 선형 가중(첫날 1 → 마지막 날 2)으로 잰다. 후반만 쓰는 것은
+            # 표본이 절반이 되어 더 나빴다(실측).
+            recent = daily_window_demand(net[prev], duration)
+            if not recent.empty:
+                recent = recent.copy()
+                recent["date"] = pd.to_datetime(recent["date"])
+                days = sorted(recent["date"].unique())
+                order = pd.Series(range(len(days)), index=days)
+                recent["w"] = 1.0 + recent["date"].map(order) / max(1, len(days) - 1)
+                cand["wmean+warm"] = warmup_scale(fit_weighted(recent), test)
+
             # ---- 수준을 맞춰 합치기 ----
             # "한 달치는 표본이 적다"는 지적에 대한 답. 옛 달을 넣되 **그 달의
             # 수준으로 나눠 정규화**한 뒤 합치고, 직전 달 수준으로 되돌린다.
