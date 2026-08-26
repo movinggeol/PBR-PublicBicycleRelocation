@@ -220,3 +220,43 @@ def test_여러_번_들르면_회차를_구분해_이어_붙인다():
     assert main.VISIT_SEPARATOR in html
     assert "1번째 방문" in html and "2번째 방문" in html
     assert "[" not in html
+
+
+# ─────────────── 커서 요약 (수정안 25번) ───────────────
+
+def test_커서_요약은_ID가_아니라_이름을_보여준다():
+    """예전 요약은 `클러스터 3 · ST0123 · 방문 5`였다 — 기사가 아는 것은 이름이다."""
+    tip = load_main().visit_tooltip([record(order=5, action="Pick", qty=6)], "한밭수목원")
+
+    assert "한밭수목원" in tip
+    assert "ST0123" not in tip, "ID를 앞세우면 커서를 대도 어디인지 알 수 없다"
+
+
+def test_커서_요약에_무엇을_몇_대_할지가_들어간다():
+    """누르기 전에 알고 싶은 것은 '무엇을 몇 대'다."""
+    tip = load_main().visit_tooltip([record(order=5, action="Pick", qty=6)], "한밭수목원")
+
+    assert "5번째" in tip and "Pick" in tip and "6대" in tip
+
+
+def test_두_번_들르면_요약도_두_줄이_된다():
+    tip = load_main().visit_tooltip(
+        [record(order=3, action="Drop", qty=4), record(order=9, action="Pick", qty=2)],
+        "시청역")
+
+    assert "3번째" in tip and "9번째" in tip
+    assert tip.count("<br>") >= 2
+
+
+def test_커서_요약은_팝업보다_짧다():
+    """요약과 자세한 내용이 같으면 둘로 나눈 뜻이 없다.
+
+    좌표·적재량·누적 시간처럼 따져 볼 것은 팝업에만 둔다.
+    """
+    main = load_main()
+    recs = [record(order=5, action="Pick", qty=6)]
+    tip = main.visit_tooltip(recs, "한밭수목원")
+    popup = main.visit_popup(recs, "ST0123", 10, lambda o: "00:12:30")
+
+    assert len(tip) < len(popup)
+    assert "현재 적재량" not in tip and "누적 도착시간" not in tip

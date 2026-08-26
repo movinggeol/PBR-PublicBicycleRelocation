@@ -107,7 +107,9 @@ def make_clustered_map(durations: list):
                 fill_color=colors[cluster % len(colors)],
                 fill_opacity=0.5,
 
-                tooltip=tooltip
+                # sticky: 풍선이 커서를 따라온다. 점이 촘촘한 곳에서
+                # 어느 점의 설명인지 헷갈리지 않는다 (세 지도가 같게).
+                tooltip=folium.Tooltip(tooltip, sticky=True)
             ).add_to(layer)
 
         # 군집 중심(메도이드) 마커는 그리지 않는다. 예전에 주석으로 남아 있던

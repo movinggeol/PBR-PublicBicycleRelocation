@@ -104,6 +104,24 @@ def visit_popup(records: list, station_id: str, capacity: int, arrival_txt) -> s
     return VISIT_SEPARATOR.join(parts)
 
 
+def visit_tooltip(records: list, station_name: str) -> str:
+    """커서를 댔을 때 뜨는 **요약**. 눌러서 여는 팝업(`visit_popup`)의 앞자리다.
+
+    누르기 전에 알고 싶은 것만 담는다 — **어디를(이름), 무엇을(작업), 몇 대**.
+    좌표·적재량·누적 시간처럼 따져 볼 것은 팝업에 남긴다. 한 대여소를 두 번
+    들르면 줄을 둘로 나눈다.
+
+    ⚠️ 이름을 앞에 둔다. 예전에는 대여소 **ID**만 떠서(`ST0123`) 커서를 대도
+    어디인지 알 수 없었다 — 기사가 아는 것은 이름이다.
+    """
+    head = f"<b>{station_name}</b>"
+    lines = [
+        f"{r['order']}번째 · {r['action']} {r['qty']}대"
+        for r in records
+    ]
+    return head + "<br>" + "<br>".join(lines)
+
+
 def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
                  duration: str, headers: dict, tmap_url: str):
     
@@ -271,7 +289,8 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
 
         folium.Marker(
             location=[depot["lat"]-0.0003, depot["lon"]],
-            tooltip="출발",
+            tooltip=folium.Tooltip(
+                f"<b>출발 · {depot['name']}</b><br>클러스터 {c}", sticky=True),
             icon=folium.Icon(color="green", icon="play")
         ).add_to(fg)
 
@@ -305,6 +324,9 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
                 station_visits[sid] = {
                     "lat": lat,
                     "lon": lon,
+                    # 커서 요약에 쓴다 — 기사가 아는 것은 ID가 아니라 이름이다.
+                    # pick_drop에 없는 대여소는 ID로 물러선다.
+                    "name": (station_map.get(sid, {}) or {}).get("station_name") or sid,
                     "orders": [],
                     "records": []
                 }
@@ -332,7 +354,10 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
 
         folium.Marker(
             location=[depot["lat"], depot["lon"]],
-            tooltip=f"클러스터 {c} · 도착",
+            tooltip=folium.Tooltip(
+                f"<b>도착 · {depot['name']}</b><br>클러스터 {c}<br>"
+                f"총 작업시간 {total_time_txt}<br>"
+                f"최종 적재 {current_load}/{vehicle_capacity}", sticky=True),
             popup=folium.Popup(
                 f"""
                 <div style="width:420px;">
@@ -355,7 +380,8 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
 
             folium.Marker(
                 location=[lat, lon],
-                tooltip=f"클러스터 {c} · {sid} · 방문 {orders_str}",
+                tooltip=folium.Tooltip(visit_tooltip(data["records"], data["name"]),
+                                       sticky=True),
                 popup=folium.Popup(
                     f"""
                     <div style="width:420px;">
@@ -382,14 +408,30 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
                 """)
             ).add_to(fg)
     # --------- Legend ----------
+    # 범례. 화면의 나머지가 한국어이므로 여기도 한국어로 적고, 지도에 실제로
+    # 있는 것만 담는다(보라 원=방문 번호, 파랑/주황=작업 종류).
+    # 색을 값으로 읽게 두지 않는다 — 글자를 함께 적는다 (docs/구현/DESIGN.md).
     legend_html = """
-    <div style="position: fixed; bottom: 30px; left: 30px; 
-                background: white; padding: 10px; 
-                border:2px solid gray; z-index:9999;">
-      <b>Legend</b><br>
-      🟢 출발<br>
-      🔴 도착<br>
-      ▶ 차량 이동 방향<br>
+    <div style="position: fixed; bottom: 24px; left: 24px; z-index: 9999;
+                background: rgba(255,255,255,.94);
+                -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+                padding: 12px 14px; border-radius: 10px;
+                border: 1px solid rgba(0,0,0,.14);
+                box-shadow: rgba(0,0,0,.22) 3px 5px 30px 0;
+                font: 13px/1.7 -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
+                color: #1a1a1a;">
+      <div style="font-weight:700; margin-bottom:6px;">범례</div>
+      🟢 출발 (차고지)<br>
+      🔴 도착 (차고지 복귀)<br>
+      <span style="display:inline-block;width:15px;height:15px;border-radius:50%;
+                   background:purple;color:#fff;font-size:9px;font-weight:700;
+                   text-align:center;line-height:15px;vertical-align:-3px;">3</span>
+      방문 순서<br>
+      ▶ 차량 이동 방향
+      <div style="margin-top:7px; padding-top:7px; border-top:1px solid rgba(0,0,0,.12);
+                  color:#555; font-size:12px;">
+        점에 커서를 대면 요약이,<br>누르면 자세한 내용이 뜹니다.
+      </div>
     </div>
     """
     m.get_root().html.add_child(folium.Element(legend_html))

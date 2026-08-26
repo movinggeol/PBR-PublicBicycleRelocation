@@ -525,7 +525,9 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
                 fill_color=color,
                 fill_opacity=opacity,
 
-                tooltip=tooltip
+                # sticky: 풍선이 커서를 따라온다. 점이 촘촘한 곳에서
+                # 어느 점의 설명인지 헷갈리지 않는다 (세 지도가 같게).
+                tooltip=folium.Tooltip(tooltip, sticky=True)
             ).add_to(fg)
 
     legend_html = """
