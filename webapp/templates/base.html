@@ -690,6 +690,20 @@
       white-space: normal; text-align: left; font-weight: 400;
     }
     #tipbox[data-show] { opacity: 1; transform: translateY(0); }
+    /* 고정 상태 — 커서를 떼도 남는다. 닫기 단추를 눌러야 하므로 이때만
+       클릭을 받는다(평소 pointer-events:none이라야 풍선이 커서를 가리지 않는다). */
+    #tipbox[data-pinned] { pointer-events: auto; padding-right: 30px; }
+    #tipbox .tipclose {
+      position: absolute; top: 4px; right: 5px;
+      width: 20px; height: 20px; line-height: 19px; text-align: center;
+      border: 0; border-radius: var(--r-sm); cursor: pointer;
+      background: transparent; color: var(--canvas); opacity: .65;
+      font-size: 14px; font-family: inherit; padding: 0;
+    }
+    #tipbox .tipclose:hover { opacity: 1; background: rgba(255, 255, 255, .16); }
+    #tipbox .tipclose:focus-visible { outline: 2px solid var(--canvas); outline-offset: 1px; }
+    /* 고정할 수 있다는 것을 커서로 알린다 */
+    .tip { cursor: help; }
 
     /* ════════ 조각들 ════════ */
     .chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
@@ -863,13 +877,20 @@
   (function () {
     var box = document.getElementById("tipbox");
     var current = null;
+    var pinned = false;   /* 고정되면 커서를 떼도 남는다 — 닫기 단추로만 사라진다 */
 
-    function show(el) {
-      var text = el.getAttribute("data-tip");
-      if (!text) return;
-      current = el;
-      box.textContent = text;
-      box.setAttribute("data-show", "");
+    /* 본문만 갈아 끼운다. 닫기 단추는 그대로 두어야 다시 만들 필요가 없다. */
+    var body = document.createElement("span");
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "tipclose";
+    close.setAttribute("aria-label", "설명 닫기");
+    close.textContent = "×";
+    close.addEventListener("click", function (e) { e.stopPropagation(); hide(); });
+    box.appendChild(body);
+    box.appendChild(close);
+
+    function place(el) {
       var r = el.getBoundingClientRect();
       var b = box.getBoundingClientRect();
       var gap = 8;
@@ -880,24 +901,70 @@
       box.style.left = left + "px";
       box.style.top = Math.max(gap, top) + "px";
     }
-    function hide() { current = null; box.removeAttribute("data-show"); }
+
+    function show(el) {
+      var text = el.getAttribute("data-tip");
+      if (!text) return;
+      current = el;
+      body.textContent = text;
+      box.setAttribute("data-show", "");
+      place(el);
+    }
+    function hide() {
+      current = null; pinned = false;
+      box.removeAttribute("data-show");
+      box.removeAttribute("data-pinned");
+    }
 
     document.addEventListener("mouseover", function (e) {
+      if (pinned) return;               /* 고정 중에는 다른 설명이 끼어들지 않는다 */
       var el = e.target.closest("[data-tip]");
       if (el && el !== current) show(el);
     });
     document.addEventListener("mouseout", function (e) {
+      if (pinned) return;               /* 떼도 유지되는 것이 고정의 뜻이다 */
       var el = e.target.closest("[data-tip]");
       if (el && el === current && !el.contains(e.relatedTarget)) hide();
     });
+
+    /* 댔을 때 누르면 고정된다 — 떼도 남고, x를 눌러야 사라진다.
+
+       **고정은 설명용 딱지(.tip)에서만 한다.** 내비 링크와 화면 전환 단추에도
+       data-tip이 붙어 있어서, 아무 data-tip에서나 클릭을 가로채면 누르는 순간
+       고정만 되고 **페이지 이동이 막힌다**. 눌러서 무슨 일이 일어나는 것에는
+       손대지 않는다. */
+    document.addEventListener("click", function (e) {
+      if (box.contains(e.target)) return;          /* 풍선 안(닫기 단추)은 위에서 처리 */
+      var el = e.target.closest("[data-tip]");
+      var pinnable = el && el.classList && el.classList.contains("tip");
+      if (pinnable && !pinned) {
+        if (el !== current) show(el);              /* 터치처럼 호버 없이 눌린 경우 */
+        pinned = true;
+        box.setAttribute("data-pinned", "");
+        place(el);
+        e.preventDefault();
+        return;
+      }
+      if (pinned) hide();                          /* 바깥을 누르면 닫는다 */
+    });
+
     /* 키보드로도 읽을 수 있어야 한다 */
     document.addEventListener("focusin", function (e) {
+      if (pinned) return;
       var el = e.target.closest("[data-tip]");
       if (el) show(el);
     });
-    document.addEventListener("focusout", hide);
+    document.addEventListener("focusout", function () { if (!pinned) hide(); });
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") hide(); });
-    window.addEventListener("scroll", hide, true);
+    /* 스크롤: 평소엔 접고, 고정 중이면 **따라다니게** 한다 —
+       고정해 둔 설명이 엉뚱한 자리에 떠 있으면 무엇의 설명인지 알 수 없다. */
+    window.addEventListener("scroll", function () {
+      if (!pinned) { hide(); return; }
+      if (current) place(current);
+    }, true);
+    window.addEventListener("resize", function () {
+      if (pinned && current) place(current); else hide();
+    });
   })();
 
   /* 쪽 넘기기.

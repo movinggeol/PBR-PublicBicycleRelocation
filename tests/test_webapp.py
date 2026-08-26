@@ -376,3 +376,27 @@ def test_file_lists_send_every_row(client, monkeypatch, path):
 
     assert len(re.findall(r'<tr data-page-item="\d+">', html)) == 15
     assert "f14.csv" in html, "마지막 쪽에 갈 파일이 응답에서 빠졌다"
+
+
+# ───────────────── 도움말 풍선 고정 (수정안 22번) ─────────────────
+
+def test_pinned_tooltip_has_a_close_button(client):
+    """설명을 클릭해 고정하면 x를 눌러야 사라진다 — 그 장치가 실려 있는가."""
+    html = client.get("/kpi").text
+    assert "tipclose" in html, "닫기 단추가 없으면 고정한 풍선을 못 닫는다"
+    assert "data-pinned" in html, "고정 상태 표시가 있어야 한다"
+    # 고정 중에는 클릭을 받아야 x를 누를 수 있다(평소에는 pointer-events:none).
+    assert "#tipbox[data-pinned] { pointer-events: auto" in html
+
+
+def test_only_explanation_labels_are_pinnable(client):
+    """고정은 `.tip` 딱지에서만 한다.
+
+    내비 링크와 화면 전환 단추에도 data-tip이 붙어 있다. 아무 data-tip에서나
+    클릭을 가로채면 누르는 순간 고정만 되고 **페이지 이동이 막힌다**.
+    """
+    html = client.get("/").text
+    assert 'classList.contains("tip")' in html, (
+        "고정 대상을 .tip으로 좁히지 않으면 내비 링크가 죽는다")
+    # 내비 링크가 여전히 data-tip을 달고 있는지 — 전제가 무너지면 이 테스트도 무의미하다
+    assert 'href="/kpi"' in html and "data-tip=" in html
