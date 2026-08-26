@@ -260,3 +260,61 @@ def test_커서_요약은_팝업보다_짧다():
 
     assert len(tip) < len(popup)
     assert "현재 적재량" not in tip and "누적 도착시간" not in tip
+
+
+# ─────────── TMAP 실측 저장 (1.23.2) ───────────
+# 이것이 없으면 VEHICLE_SPEED_KMPH가 맞는지 검증할 방법이 없다.
+# 1.23.1에서 vrp_plan.cum_sec을 실측으로 착각해 틀린 결론을 냈다.
+
+def _pts():
+    return [{"id": "ST0001", "lat": 36.35, "lon": 127.30},
+            {"id": "ST0010", "lat": 36.36, "lon": 127.35},
+            {"id": "ST0020", "lat": 36.37, "lon": 127.40}]
+
+
+def test_누적_소요를_구간별로_풀어_낸다():
+    """TMAP은 누적 초를 준다. 앞 값과 빼야 그 구간의 실측이 된다."""
+    rows = load_main()._road_legs(3, _pts(), [0, 300, 900])
+
+    assert [r["road_sec"] for r in rows] == [300.0, 600.0]
+    assert [r["leg"] for r in rows] == [0, 1]
+    assert rows[0]["from_id"] == "ST0001" and rows[0]["to_id"] == "ST0010"
+
+
+def test_직선거리를_함께_남긴다():
+    """ILP는 계획 시점에 도로거리를 모르고 직선거리만 안다.
+
+    배워야 할 것은 **직선거리 → 실제 도로 소요**의 관계이므로 둘이 같은 행에
+    있어야 한다. 직선거리가 없으면 정답표로 쓸 수 없다.
+    """
+    rows = load_main()._road_legs(3, _pts(), [0, 300, 900])
+
+    assert all(r["straight_km"] > 0 for r in rows)
+    assert all(r["road_sec"] > 0 for r in rows)
+
+
+def test_실측이_없으면_아무것도_남기지_않는다():
+    """TMAP 한도에 걸리면 직선으로 낮춰 그린다 — 그때는 실측이 없다.
+
+    추정치를 실측인 척 남기면 정답표가 오염된다. 그것이 1.23.1의 실패였다.
+    """
+    main = load_main()
+    assert main._road_legs(3, _pts(), []) == []
+    assert main._road_legs(3, _pts(), [None, None, None]) == []
+    assert main._road_legs(3, _pts(), [0]) == []
+
+
+def test_같은_자리를_두_번_들러도_0초_구간은_버린다():
+    """누적이 그대로면 이동이 없었던 것이다 — 0km/h 표본이 되면 안 된다."""
+    rows = load_main()._road_legs(3, _pts(), [0, 300, 300])
+    assert [r["road_sec"] for r in rows] == [300.0]
+
+
+def test_road_leg가_DB_스키마에_있다():
+    """저장할 곳이 없으면 save_output이 조용히 경고만 남기고 넘어간다."""
+    import db
+
+    assert "road_leg" in db.TABLES
+    assert "road_leg" in db.SCHEMA
+    for column in ("straight_km", "road_sec", "from_id", "to_id"):
+        assert column in db.SCHEMA

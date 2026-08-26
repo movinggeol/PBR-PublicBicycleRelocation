@@ -24,6 +24,7 @@ from project_config import (
     VEHICLE_CAPACITY,
     duration_list, ensure_output_dirs, get_runtime_config,
 )
+import db
 
 '''
 <구조>
@@ -122,6 +123,54 @@ def visit_tooltip(records: list, station_name: str) -> str:
     return head + "<br>" + "<br>".join(lines)
 
 
+def _haversine_km(lat1, lon1, lat2, lon2) -> float:
+    """두 지점의 직선거리(km). ILP·VRP가 쓰는 것과 같은 계산이다."""
+    import math
+
+    r = 6371.0
+    p1, p2 = math.radians(float(lat1)), math.radians(float(lat2))
+    dp = p2 - p1
+    dl = math.radians(float(lon2) - float(lon1))
+    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(min(1.0, math.sqrt(h)))
+
+
+def _road_legs(cluster: int, route_pts: list, elapsed_sec: list) -> list:
+    """TMAP이 준 누적 소요를 **구간별 실측**으로 풀어 낸다 (1.23.2).
+
+    `elapsed_sec`는 방문 지점마다의 누적 초이므로, 앞 값과 빼면 그 구간의
+    실제 도로 소요가 된다. 지점 수와 길이가 어긋나거나 값이 비면 건너뛴다
+    (TMAP 한도에 걸리면 직선으로 낮춰 그리므로 실측이 없다).
+
+    **직선거리를 함께 남기는 것이 요점이다.** ILP는 계획 시점에 도로거리를
+    모르고 직선거리만 아는데, 배워야 할 것은 바로 그 둘의 관계다.
+    """
+    if not elapsed_sec or len(elapsed_sec) < 2:
+        return []
+
+    rows = []
+    for i in range(min(len(route_pts), len(elapsed_sec)) - 1):
+        here, nxt = elapsed_sec[i], elapsed_sec[i + 1]
+        if here is None or nxt is None:
+            continue
+        gap = float(nxt) - float(here)
+        if gap <= 0:                    # 같은 자리를 두 번 들르면 0이 나온다
+            continue
+        a, b = route_pts[i], route_pts[i + 1]
+        rows.append({
+            "cluster": int(cluster),
+            "leg": i,
+            "from_id": a.get("id"),
+            "to_id": b.get("id"),
+            "from_lat": a.get("lat"), "from_lon": a.get("lon"),
+            "to_lat": b.get("lat"), "to_lon": b.get("lon"),
+            "straight_km": round(_haversine_km(
+                a["lat"], a["lon"], b["lat"], b["lon"]), 4),
+            "road_sec": round(gap, 1),
+        })
+    return rows
+
+
 def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
                  duration: str, headers: dict, tmap_url: str):
     
@@ -136,6 +185,7 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
     )
     
 
+    road_rows = []                  # TMAP 실측 구간 (정답표). 아래에서 DB에 남긴다
     unique_clusters = sorted(vrp_plan['cluster'].unique())
 
     palette = [
@@ -242,6 +292,12 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
             print(f"  ⚠ 클러스터 {c}: TMAP 호출 실패 ({exc}) → 직선으로 그립니다")
 
         elapsed_list = merged["elapsed_sec"] if merged else []
+
+        # --------- TMAP 실측을 정답표로 남긴다 (1.23.2) ---------
+        # 지도를 그리려고 이미 받은 값이다. 저장하지 않으면 **VEHICLE_SPEED_KMPH가
+        # 맞는지 검증할 방법이 없다** — 예전에는 vrp_plan.cum_sec을 실측으로 착각해
+        # 틀린 결론을 냈다(1.23.1). 여기 들어가는 road_sec만이 도로 실측이다.
+        road_rows.extend(_road_legs(c, route_pts, elapsed_list))
 
         def _arrival_txt(order: int) -> str:
             idx = order - 1
@@ -439,6 +495,16 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
     folium.LayerControl(collapsed=False).add_to(m)
 
     m.save(result_path.format(duration=duration, now=now))
+
+    # TMAP 실측을 DB에 남긴다. CSV는 만들지 않는다 — 산출물이 아니라 **측정치**이고,
+    # 쌓여야 값어치가 생긴다(docs/분석/ML_OPPORTUNITIES.md ①).
+    if road_rows:
+        db.save_output("road_leg", pd.DataFrame(road_rows),
+                       run_label=now, duration=duration)
+        print(f"TMAP 실측 {len(road_rows)}구간을 road_leg에 남겼습니다.")
+    else:
+        print("[안내] TMAP 실측이 없어 road_leg에 남기지 않았습니다"
+              " (한도 초과 등으로 직선으로 그린 경우).")
 
     print("지도 생성 완료")
     print("result_path 파일이 저장되었습니다.", (result_path.format(duration=duration, now=now)))

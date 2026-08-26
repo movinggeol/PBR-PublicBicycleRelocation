@@ -86,6 +86,10 @@ TABLES: Dict[str, TableSpec] = {
     # ilp_plan의 'hour'는 duration과 같은 값이라 중복 저장하지 않는다.
     "ilp_plan": TableSpec(scope=("run_label", "duration"), drop=("hour",)),
     "vrp_plan": TableSpec(scope=("run_label", "duration")),
+    # TMAP이 준 **실제 도로 소요시간**. 파이프라인의 추정치가 아니라 정답표다
+    # (1.23.2). step3이 지도를 그리며 받은 값을 여기에 남긴다 —
+    # 이것이 없으면 VEHICLE_SPEED_KMPH가 맞는지 검증할 방법이 없다.
+    "road_leg": TableSpec(scope=("run_label", "duration")),
     "metrics": TableSpec(scope=("run_label", "duration")),
     "route_summary": TableSpec(
         scope=("run_label", "duration"),
@@ -193,6 +197,27 @@ CREATE TABLE IF NOT EXISTS ilp_plan (
 );
 
 -- 방문 순서는 같은 대여소를 여러 번 지날 수 있어 자연키가 없다. 행 순서를 seq로 보존.
+-- TMAP 실측 구간 (정답표). 파이프라인 추정치인 vrp_plan.travel_sec와 **다른 것**이다.
+-- straight_km은 우리가 쓰는 직선거리, road_sec은 TMAP이 준 실제 소요시간이다.
+-- 둘의 관계를 배우는 것이 ILP가 정말 필요로 하는 예측이다
+-- (ILP 시점에는 도로거리를 모르고 직선거리만 안다).
+CREATE TABLE IF NOT EXISTS road_leg (
+    run_label    TEXT NOT NULL,
+    duration     TEXT NOT NULL,
+    cluster      INTEGER NOT NULL,
+    leg          INTEGER NOT NULL,
+    from_id      TEXT,
+    to_id        TEXT,
+    from_lat     REAL,
+    from_lon     REAL,
+    to_lat       REAL,
+    to_lon       REAL,
+    straight_km  REAL,
+    road_sec     REAL,
+    observed_at  TEXT,
+    PRIMARY KEY (run_label, duration, cluster, leg)
+);
+
 CREATE TABLE IF NOT EXISTS vrp_plan (
     run_label    TEXT NOT NULL,
     duration     TEXT NOT NULL,
