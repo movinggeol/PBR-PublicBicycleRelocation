@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -30,7 +31,7 @@ from fastapi.templating import Jinja2Templates
 
 from project_config import (
     DAY_TYPE_AUTO, DAY_TYPE_LABELS, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_DURATION,
-    DEFAULT_NOW, DEFAULT_RAW_FILE, DEPOT_NAME, DURATION_LABELS, DURATIONS,
+    DEFAULT_RAW_FILE, DEPOT_NAME, DURATION_LABELS, DURATIONS,
     FLEET_SIZE, MAX_FLEET_SIZE, REBAL_MIN_QTY, TARGET_QTY_UPPER_RATIO, TARGET_Z,
     TIME_BUDGET_MINUTES, VEHICLE_CAPACITY, VEHICLE_SPEED_KMPH, VEHICLES_PER_ROUND,
     available_periods, latest_period, normalize_day_type, normalize_durations,
@@ -150,6 +151,17 @@ def _typical_vehicles() -> Optional[int]:
     return int(round(float(used.median()))) if len(used) else None
 
 
+def _suggested_now() -> str:
+    """실행 폼에 채워 넣을 **이름 제안**. 오늘 날짜 + 지금 시각대다.
+
+    `project_config.DEFAULT_NOW`는 건드리지 않는다 — `now`는 실행 시각이 아니라
+    단계 간 파일명을 묶는 **라벨**이라, 코드 기본값이 시각에 따라 흔들리면
+    step0가 쓴 파일을 step4가 못 찾는다. 여기서 만드는 것은 사람이 지우고
+    고쳐 쓸 수 있는 폼의 초기값일 뿐이다.
+    """
+    return datetime.now().strftime("%Y-%m-%d %H")
+
+
 def _index_context(error: Optional[str] = None) -> dict:
     # 기간·시간대는 **요청마다 다시 읽는다.** 서버를 띄워 둔 채 새 달치 순수요를
     # 계산해도 곧바로 선택지에 나와야 하기 때문이다(project_config의 상수는
@@ -157,7 +169,7 @@ def _index_context(error: Optional[str] = None) -> dict:
     periods = available_periods()
     return {
         "defaults": {
-            "now": DEFAULT_NOW,
+            "now": _suggested_now(),
             "period": latest_period(),
             "duration": DEFAULT_DURATION,
             "raw_file": DEFAULT_RAW_FILE,

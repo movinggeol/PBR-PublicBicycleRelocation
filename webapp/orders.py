@@ -106,9 +106,18 @@ def planned_work(run_label: Optional[str] = None,
     if work.empty:
         return pd.DataFrame()
 
-    grouped = (work.groupby(["to_id", "action"], as_index=False)
-               .agg(need=("qty", "sum"), cluster=("cluster", "first")))
+    # 방문 순서는 seq다. 없으면(구버전) 저장된 순서를 그대로 믿는다 —
+    # build_orders()와 같은 규칙이어야 지시서와 대조표의 줄 순서가 맞는다.
+    aggs = {"need": ("qty", "sum"), "cluster": ("cluster", "first")}
+    if "seq" in work:
+        aggs["seq"] = ("seq", "min")
+    grouped = work.groupby(["to_id", "action"], as_index=False).agg(**aggs)
     grouped = grouped.rename(columns={"to_id": "station_id"})
+
+    # 기사는 군집 한 장을 들고 그 안을 순서대로 돈다. groupby가 흩뜨린 줄을
+    # (군집 > 군집 내 방문 순서)로 되돌린다. 이 순서가 화면·인쇄에 그대로 간다.
+    sort_keys = ["cluster", "seq"] if "seq" in grouped else ["cluster", "station_id"]
+    grouped = grouped.sort_values(sort_keys).reset_index(drop=True)
 
     # 대여소 이름·거치대·계획 시점 재고는 후보 목록에 있다.
     candidates, _ = store.load("pick_drop", run_label=run_label, duration=duration)
@@ -142,7 +151,7 @@ def compare_stock(planned: pd.DataFrame, live: pd.DataFrame) -> pd.DataFrame:
     작업량이 `REBAL_MIN_QTY` 이하인 대여소는 애초에 계획에 들어오지 않는다
     (step1의 작업 대상 선정). 여기서 다시 거르지 않는다.
     """
-    columns = ["station_id", "station_name", "cluster", "parking_lot",
+    columns = ["station_id", "station_name", "cluster", "seq", "parking_lot",
                "planned_stock", "live_stock", "delta", "need", "action",
                "action_label", "possible", "status", "note"]
     if planned.empty:
@@ -165,6 +174,7 @@ def compare_stock(planned: pd.DataFrame, live: pd.DataFrame) -> pd.DataFrame:
                 "station_id": st["station_id"],
                 "station_name": st.get("station_name", ""),
                 "cluster": st.get("cluster"),
+                "seq": st.get("seq"),
                 "parking_lot": parking_lot,
                 "planned_stock": planned_stock,
                 "live_stock": None, "delta": None,
@@ -200,6 +210,7 @@ def compare_stock(planned: pd.DataFrame, live: pd.DataFrame) -> pd.DataFrame:
             "station_id": st["station_id"],
             "station_name": st.get("station_name", ""),
             "cluster": st.get("cluster"),
+            "seq": st.get("seq"),
             "parking_lot": parking_lot,
             "planned_stock": planned_stock,
             "live_stock": now,
@@ -214,9 +225,12 @@ def compare_stock(planned: pd.DataFrame, live: pd.DataFrame) -> pd.DataFrame:
 
     frame = pd.DataFrame(rows, columns=columns)
     # '확인 불가' 행의 None 하나 때문에 열 전체가 실수가 되면 화면에 2.0대로 찍힌다.
-    for column in ("live_stock", "delta", "possible", "cluster"):
+    for column in ("live_stock", "delta", "possible", "cluster", "seq"):
         frame[column] = pd.to_numeric(frame[column], errors="coerce").astype("Int64")
-    return frame
+    # planned의 순서를 그대로 물려받지만, 여기서 한 번 더 못박는다 —
+    # 기사가 든 종이(군집 > 군집 내 순서)와 화면이 어긋나면 안 된다.
+    frame = frame.sort_values(["cluster", "seq"], na_position="last")
+    return frame.reset_index(drop=True)
 
 
 def summarize(compared: pd.DataFrame) -> dict:

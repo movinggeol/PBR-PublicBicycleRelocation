@@ -184,3 +184,75 @@ def test_api_failure_shows_a_message_instead_of_a_500(client, monkeypatch):
     res = client.get("/orders/live")
     assert res.status_code == 200
     assert "TASHU_API_KEY" in res.text
+
+
+# ─────────────────────── 군집 > 군집 내 순서 (수정안 21번) ───────────────────────
+# 대여소 ID 오름차순과 실제 방문 순서를 **일부러 반대로** 둔다. groupby가 순서를
+# 흩뜨리면 ID 순으로 나오므로, 이 배치라야 뒤섞임이 드러난다.
+SCRAMBLED_VRP = pd.DataFrame([
+    (0, 0, "V01", "ST0001", "ST0090", "pick", 5, 1.0, 100.0),
+    (1, 0, "V01", "ST0090", "ST0070", "drop", 5, 1.0, 200.0),
+    (2, 0, "V01", "ST0070", "ST0001", "return", 0, 1.0, 300.0),
+    (0, 1, "V02", "ST0001", "ST0080", "pick", 3, 1.0, 100.0),
+    (1, 1, "V02", "ST0080", "ST0060", "drop", 3, 1.0, 200.0),
+    (2, 1, "V02", "ST0060", "ST0001", "return", 0, 1.0, 300.0),
+], columns=["seq", "cluster", "vehicle_id", "from_id", "to_id", "action", "qty",
+            "distance_km", "cum_sec"])
+
+SCRAMBLED_CANDIDATES = pd.DataFrame([
+    ("ST0060", "육십 대여소", 10, 2, 3, 1),
+    ("ST0070", "칠십 대여소", 10, 2, 5, 0),
+    ("ST0080", "팔십 대여소", 10, 9, -3, 1),
+    ("ST0090", "구십 대여소", 10, 9, -5, 0),
+], columns=["station_id", "station_name", "parking_lot", "stock", "rebal_qty", "cluster"])
+
+
+@pytest.fixture
+def scrambled(monkeypatch):
+    def fake_load(table, run_label=None, duration=None):
+        if table == "vrp_plan":
+            return SCRAMBLED_VRP.copy(), "db"
+        if table == "pick_drop":
+            return SCRAMBLED_CANDIDATES.copy(), "db"
+        return pd.DataFrame(), "none"
+
+    monkeypatch.setattr(orders.store, "load", fake_load)
+
+
+def test_planned_work_is_sorted_by_cluster_then_visit_order(scrambled):
+    """기사는 군집 한 장을 들고 그 안을 순서대로 돈다.
+
+    groupby가 대여소 ID 순으로 흩뜨리면 군집이 섞여 종이와 화면이 어긋난다.
+    """
+    work = orders.planned_work("R", "_05_10")
+
+    assert list(work["cluster"]) == [0, 0, 1, 1], "군집이 섞이면 안 된다"
+    assert list(work["station_id"]) == ["ST0090", "ST0070", "ST0080", "ST0060"], (
+        "군집 안에서는 방문 순서(seq)를 따라야 한다 — ID 순이 아니다")
+
+
+def test_live_comparison_keeps_the_same_order_as_the_sheet(scrambled):
+    """대조표도 지시서와 같은 줄 순서여야 한다 (화면·PDF 모두)."""
+    work = orders.planned_work("R", "_05_10")
+    live = _live(ST0060=2, ST0070=2, ST0080=9, ST0090=9)
+
+    compared = orders.compare_stock(work, live)
+
+    assert list(compared["cluster"]) == [0, 0, 1, 1]
+    assert list(compared["station_id"]) == ["ST0090", "ST0070", "ST0080", "ST0060"]
+    assert list(compared["seq"]) == [0, 1, 0, 1], "방문 순서를 화면까지 실어 나른다"
+
+
+def test_order_survives_plans_without_seq(monkeypatch):
+    """구버전 산출물에는 seq가 없다 — 크래시 대신 군집으로라도 묶는다."""
+    def fake_load(table, run_label=None, duration=None):
+        if table == "vrp_plan":
+            return SCRAMBLED_VRP.drop(columns=["seq"]), "db"
+        if table == "pick_drop":
+            return SCRAMBLED_CANDIDATES.copy(), "db"
+        return pd.DataFrame(), "none"
+
+    monkeypatch.setattr(orders.store, "load", fake_load)
+
+    work = orders.planned_work("R", "_05_10")
+    assert list(work["cluster"]) == [0, 0, 1, 1], "seq가 없어도 군집은 묶인다"

@@ -48,7 +48,12 @@
     <button class="btn" type="button" onclick="window.print()">인쇄</button>
     {% if run_label %}
     <a class="btn ghost" href="/orders/live?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}">
-      지금 재고와 대조하기</a>
+      {% if compared %}지금 재고 다시 조회{% else %}지금 재고와 대조하기{% endif %}</a>
+    {% if compared %}
+    {# 대조를 끄려고 다른 계획을 눌렀다 돌아올 필요가 없게, 같은 계획으로 되돌아온다. #}
+    <a class="btn ghost" href="/orders?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}">
+      대조 끄기</a>
+    {% endif %}
     {% endif %}
   </div>
 </section>
@@ -75,6 +80,12 @@
 
 {% if compared %}
 <h2>지금 재고와 대조 <span class="hint">{{ checked_at }} 조회</span></h2>
+<div class="actions no-print">
+  <a class="btn ghost" href="/orders/live?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}">
+    다시 조회</a>
+  <a class="btn ghost" href="/orders?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}">
+    대조 끄기</a>
+</div>
 <p class="section-lead">계획을 세운 뒤에도 재고는 계속 바뀝니다. <b>계획 대상 대여소만</b>
   타슈 API로 다시 조회했습니다. 여기서는 <b>표시만 하고 계획을 바꾸지 않습니다</b> —
   현장 상황을 아는 것은 사람입니다.</p>
@@ -93,6 +104,7 @@
     <thead><tr>
       <th class="grow">대여소</th>
       <th class="num">군집</th>
+      <th class="num"><span class="tip" data-tip="군집 안에서 몇 번째로 들르는지입니다. 지시서와 같은 순서입니다.">순서</span></th>
       <th>할 일</th>
       <th class="num"><span class="tip" data-tip="지시서에 적힌 수량입니다.">지시</span></th>
       <th class="num"><span class="tip" data-tip="계획을 세울 때 본 재고입니다.">계획 때</span></th>
@@ -107,6 +119,7 @@
     <tr class="{% if r.status == '불가' %}bad{% elif r.status in ['부족', '넘침'] %}warn{% endif %}">
       <td class="wrap">{{ r.station_name or r.station_id }}</td>
       <td class="num muted">{{ r.cluster if r.cluster is not none else "—" }}</td>
+      <td class="num muted">{{ r.seq if r.seq is not none else "—" }}</td>
       <td class="{{ r.action }}">{{ r.action_label }}</td>
       <td class="num">{{ r.need }}</td>
       <td class="num muted">{{ r.planned_stock }}</td>
