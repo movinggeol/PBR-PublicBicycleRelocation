@@ -41,7 +41,8 @@ docs/
 | [WEATHER.md](분석/WEATHER.md) | 어떤 기상청 API를 받는지, 결측·겨울 3시간 누적, 순수요 설명력 측정 | 날씨를 다룰 때 |
 | [KPI.md](분석/KPI.md) | 성과 지표 체계와 **현재 지표의 한계**(개선률은 계획 달성률이다) | 지표를 인용·추가하기 전 |
 | [VISUALIZATION.md](분석/VISUALIZATION.md) | **지도 html이 CDN 11개에 매여 있다**(끊기면 빈 화면). PNG·plotly·자립화 비교 | 시각화 방식을 바꾸려 할 때 |
-| [ML_OPPORTUNITIES.md](분석/ML_OPPORTUNITIES.md) | **ML·딥러닝을 어디에 쓸 것인가.** 이동시간 예측(검증 +60%)·결품 예측·OD 흐름 | ML을 붙일 자리를 찾을 때 |
+| [ML_OPPORTUNITIES.md](분석/ML_OPPORTUNITIES.md) | **ML·딥러닝을 어디에 쓸 것인가.** 셋 다 **정답표부터** 만들어야 한다 | ML을 붙일 자리를 찾을 때 |
+| [ML_ATTEMPTS.md](분석/ML_ATTEMPTS.md) | **시도 기록 7건과 실패 원인.** 잘못된 성공 1건 포함 | 같은 시도를 반복하지 않으려면 (**필독**) |
 
 ## 구현/ — 무엇이 어떻게 도는가
 
