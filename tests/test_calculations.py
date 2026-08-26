@@ -993,3 +993,56 @@ def test_예산_강제는_기본으로_꺼져_있다():
     import project_config
 
     assert project_config.ENFORCE_TIME_BUDGET is False
+
+
+# ───────── 군집 조정 성능 최적화의 안전망 (1.23.8) ─────────
+# 넘파이로 바꿔 8.6배 빨라졌다(374초 → 43초). **결과가 같아야만** 값어치가 있다.
+
+def test_메도이드는_군집_안의_실제_지점이다(adjust):
+    """medoid는 중심'점'이지 평균이 아니다 — 반드시 소속 대여소 중 하나여야 한다.
+
+    넘파이로 바꾸면서 좌표를 한 번만 꺼내게 했는데, 라벨과 좌표의 짝이
+    어긋나면 **엉뚱한 군집의 점**이 중심으로 잡힌다. 그러면 거리 항이
+    조용히 틀리고 군집 조정이 이상한 방향으로 간다.
+    """
+    frame = _clusters(rebal=[1, -1, 1, -1], cluster=[0, 0, 1, 1],
+                      lat=[36.0, 36.1, 37.0, 37.1],
+                      lon=[127.0, 127.1, 128.0, 128.1])
+
+    medoids = adjust.compute_medoids(frame)
+
+    for cluster in (0, 1):
+        point = medoids.loc[cluster]
+        members = frame[frame["cluster"] == cluster]
+        assert ((members["lat"] == point["lat"])
+                & (members["lon"] == point["lon"])).any(), (
+            f"군집 {cluster}의 메도이드가 소속 대여소가 아니다")
+
+
+def test_군집_라벨이_0부터_이어지지_않아도_맞는다(adjust):
+    """조정 과정에서 군집이 비면 라벨에 구멍이 생긴다(0, 2, 5 …).
+
+    예전 코드는 `medoid.loc[c]`로 라벨을 직접 찾았다. 넘파이로 바꾸며
+    조회 방식이 바뀌었으므로, **위치 기반으로 잘못 찾지 않는지** 지킨다.
+    """
+    frame = _clusters(rebal=[2, -2, 3, -3], cluster=[0, 0, 7, 7],
+                      lat=[36.0, 36.2, 38.0, 38.2],
+                      lon=[127.0, 127.2, 129.0, 129.2])
+
+    medoids = adjust.compute_medoids(frame)
+    assert set(medoids.index) == {0, 7}
+
+    # 거리 항이 계산되고 유한해야 한다 — 라벨을 잘못 찾으면 KeyError나 NaN이 난다
+    score = adjust.compute_objective(frame, K=2, alpha=1, beta=1, gamma=3000)
+    assert score == pytest.approx(score) and score >= 0
+
+
+def test_한_대여소짜리_군집도_처리한다(adjust):
+    """군집에 하나만 남으면 자기 자신이 메도이드이고 거리 항은 0이다."""
+    frame = _clusters(rebal=[5, -5, 0], cluster=[0, 0, 1],
+                      lat=[36.0, 36.1, 37.0], lon=[127.0, 127.1, 128.0])
+
+    medoids = adjust.compute_medoids(frame)
+
+    assert medoids.loc[1, "lat"] == pytest.approx(37.0)
+    assert medoids.loc[1, "lon"] == pytest.approx(128.0)

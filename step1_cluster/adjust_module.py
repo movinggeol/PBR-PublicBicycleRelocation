@@ -12,17 +12,21 @@ def compute_medoids(pick_drop: pd.DataFrame):
         sum(axis=1).armin() 을 통해 [ [0.3], [0.4], [0.5] ] 클러스터 C 내의 모든 대여소와의 거리합이 최소인 점(c_3)의 인덱스를 추출해 C의 중앙값으로 채택
     '''
     
-    centers = {}
+    # ⚡ 좌표·군집표를 **한 번만** 넘파이로 꺼낸다 (1.23.8).
+    # 예전에는 군집마다 `pick_drop[pick_drop['cluster'] == c][[...]]`로 DataFrame을
+    # 잘랐다. 이 함수는 목적함수 안에서 도는데, 실데이터(92곳·16군집)에서 목적함수가
+    # 최악 24만 번 호출되므로 **pandas 인덱싱 비용이 전체의 대부분**이었다
+    # (프로파일: `DataFrame.__getitem__` 누적 527초). 결과는 그대로다.
+    labels = pick_drop['cluster'].to_numpy()
+    coords = pick_drop[['lat', 'lon']].to_numpy()
 
-    for c in pick_drop['cluster'].unique():
-        cluster_points = pick_drop[pick_drop['cluster'] == c][['lat', 'lon']].values
+    centers = {}
+    for c in pd.unique(labels):
+        cluster_points = coords[labels == c]
         dist_matrix = cdist(cluster_points, cluster_points, metric='cityblock')
         medoid_idx = dist_matrix.sum(axis=1).argmin()
-        
-        #print(dist_matrix.sum(axis=1))
-
         centers[c] = cluster_points[medoid_idx]
-        
+
     centers_df = pd.DataFrame.from_dict(
         centers, orient='index', columns=['lat', 'lon']
     )
@@ -43,14 +47,16 @@ def compute_objective(pick_drop:pd.DataFrame, K:int, alpha:float, beta:float, ga
     medoid = compute_medoids(pick_drop)
     distance_term = 0
 
-    # 거리 점수 계산
-    for c in pick_drop['cluster'].unique():
-        cluster_points = pick_drop[pick_drop['cluster'] == c][['lat', 'lon']].values
-        #print(medoid)
+    # 거리 점수 계산 — 여기도 좌표를 한 번만 꺼낸다(위와 같은 이유, 1.23.8).
+    labels = pick_drop['cluster'].to_numpy()
+    coords = pick_drop[['lat', 'lon']].to_numpy()
+    medoid_lookup = {c: row for c, row in zip(medoid.index, medoid.to_numpy())}
 
-        # (2, 1) 데이터(좌표 하나)를 cdist를 위해 (1,2)로 변환(좌표 데이터를 1개 가진 2차원 테이블) [lat, lon] -> [ [lat, lon] ]
-        center = medoid.loc[c].values.reshape(1,-1) 
-        #print(center)
+    for c in pd.unique(labels):
+        cluster_points = coords[labels == c]
+
+        # (2,) 좌표 하나를 cdist가 받도록 (1, 2)로 편다.
+        center = medoid_lookup[c].reshape(1, -1)
 
         dist = cdist(cluster_points, center, metric='cityblock')
 
