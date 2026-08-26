@@ -607,49 +607,6 @@ def test_work_time_constants_come_from_project_config(step2):
     assert vrp.VEHICLE_SPEED_KMPH is project_config.VEHICLE_SPEED_KMPH
 
 
-# ───────────── 이동시간: 정차 비용 (1.23.0) ─────────────
-
-def test_ilp와_vrp가_같은_이동시간_함수를_쓴다(step2):
-    """두 단계가 갈리면 ILP가 최소라고 고른 조합이 VRP에서는 최소가 아니다.
-
-    1.13.2에 실제로 겪었다(ILP 25, VRP 30). 상수를 공유하는 것만으로는
-    계산식이 갈리는 것을 못 막으므로 **계산 자체**를 한 곳에 뒀다.
-    """
-    import project_config
-
-    ilp, vrp = step2
-    for km in (0.2, 1.0, 3.0, 10.0):
-        expected = project_config.travel_seconds(km)
-        assert ilp.km_to_travel_seconds(km) == expected
-        assert vrp._travel_sec(km) == expected
-
-
-def test_이동시간에_거리와_무관한_정차_비용이_있다(step2):
-    """고정 속도만 쓰면 짧은 구간이 심하게 과소 추정된다.
-
-    실측(TMAP 3,051구간): 0.5km 미만 구간의 실효 속도가 7.7 km/h인데
-    순항 25 km/h로 계산하면 그 구간을 1.2분으로 본다. 실제는 2.4분이다.
-    """
-    import project_config
-
-    ilp, _vrp = step2
-    # 거리 0이어도 정차 비용은 남는다
-    assert ilp.km_to_travel_seconds(0.0) == pytest.approx(project_config.TRAVEL_STOP_SEC)
-    # 짧은 구간의 실효 속도가 순항 속도보다 **한참 낮아야** 한다
-    short_kmph = 1.0 / (ilp.km_to_travel_seconds(1.0) / 3600)
-    assert short_kmph < project_config.VEHICLE_SPEED_KMPH * 0.7
-    # 길어질수록 순항 속도에 가까워진다
-    long_kmph = 20.0 / (ilp.km_to_travel_seconds(20.0) / 3600)
-    assert long_kmph > short_kmph
-    assert long_kmph < project_config.VEHICLE_SPEED_KMPH
-
-
-def test_속도를_직접_넘기면_실험용_경로를_탄다(step2):
-    """대조군 실험이 다른 속도로 재려면 정차 비용 없는 옛 계산이 필요하다."""
-    ilp, _vrp = step2
-    assert ilp.km_to_travel_seconds(10.0, speed_kmph=30.0) == pytest.approx(10 / 30 * 3600)
-
-
 def test_solver_factory_survives_pulp4_removing_the_legacy_solver(step2, monkeypatch):
     """`PULP_CBC_CMD`가 사라져도 `COIN_CMD`로 넘어간다.
 

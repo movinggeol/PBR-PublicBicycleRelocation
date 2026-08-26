@@ -21,7 +21,6 @@ from project_config import (
     DEPOT_ID, DEPOT_LAT, DEPOT_LON, DROP_TIME_SEC, PICK_TIME_SEC, PROJECT_ROOT,
     ENFORCE_TIME_BUDGET, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY,
     VEHICLE_SPEED_KMPH,
-    travel_seconds,
     duration_list, ensure_output_dirs, get_runtime_config, require_columns,
 )
 
@@ -44,8 +43,7 @@ now = config.now
 
 
 def _travel_sec(km: float) -> float:
-    """거리 → 이동시간(초). **ILP와 같은 함수를 쓴다**(project_config)."""
-    return travel_seconds(km)
+    return km / VEHICLE_SPEED_KMPH * 3600.0
 
 
 def _depot_return(cluster, from_id, from_lat, from_lon, cum_sec: float):

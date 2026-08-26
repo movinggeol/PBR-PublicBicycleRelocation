@@ -10,7 +10,6 @@ import pulp
 import db
 from project_config import (
     PROJECT_ROOT, VEHICLE_SPEED_KMPH, duration_list, ensure_output_dirs, get_runtime_config,
-    travel_seconds,
     require_columns,
 )
 
@@ -95,17 +94,13 @@ def haversine_km(lat1, lon1, lat2, lon2) -> float:
 
 
 def km_to_travel_seconds(km: float, speed_kmph: float = VEHICLE_SPEED_KMPH) -> float:
-    '''거리(km) -> 이동시간(초).
-
-    **계산은 project_config.travel_seconds() 한 곳에 있다** — VRP도 같은 함수를
-    쓴다. 여기서 따로 계산하면 두 단계가 어긋난다(1.13.2에 실제로 겪었다).
-
-    `speed_kmph`를 넘기면 그 속도로 계산한다(실험용). 기본값이면 정차 비용까지
-    포함한 실측 모델을 쓴다 — 속도만 바꾸면 정차 비용이 빠지므로 주의.
     '''
-    if speed_kmph != VEHICLE_SPEED_KMPH:
-        return float((km / speed_kmph) * 3600.0)
-    return travel_seconds(km)
+    거리(km) -> 이동시간(초)
+    '대여소 간 거리'를 '차량이 몇 초 걸려서 이동'할 수 있을지 구할 때 사용
+    time(sec) = distance(km) / speed(km/h) * 3600
+    '''
+    # return float((km / max(speed_kmph, 1e-9)) * 3600.0)
+    return float((km / speed_kmph) * 3600.0)
 
 
 def solve_cluster_moves(cluster_df: pd.DataFrame, solver: pulp.LpSolver,
