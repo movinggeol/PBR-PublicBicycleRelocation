@@ -247,6 +247,27 @@ def main():
                 cand["season"] = fit(build(season))
             cand["all_past"] = fit(build(past))
 
+            # ---- 수준을 맞춰 합치기 ----
+            # "한 달치는 표본이 적다"는 지적에 대한 답. 옛 달을 넣되 **그 달의
+            # 수준으로 나눠 정규화**한 뒤 합치고, 직전 달 수준으로 되돌린다.
+            # 달마다 수요 수준이 2.49배까지 벌어지므로, 그냥 합치면 표본은 늘어도
+            # 서로 다른 수준이 섞여 중심이 틀어진다. 그 수준 차이만 제거해 본다.
+            pooled, ref = [], None
+            for p in past:
+                f = daily_window_demand(net[p], duration)
+                if f.empty:
+                    continue
+                level = float(f["demand"].abs().mean())
+                if level <= 0:
+                    continue
+                if p == prev:
+                    ref = level
+                scaled_frame = f.copy()
+                scaled_frame["demand"] = scaled_frame["demand"] / level
+                pooled.append(scaled_frame)
+            if pooled and ref:
+                cand["pooled_norm+warm"] = warmup_scale(fit(pooled) * ref, test)
+
             # ---- 소프트스플릿 ----
             frames = []
             for p in past:
