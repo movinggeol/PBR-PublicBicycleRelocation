@@ -72,10 +72,16 @@ def tick_of(stamp: datetime, start: clock, interval: int) -> datetime:
     return anchor + round((stamp - anchor) / step) * step
 
 
-def window_state(stamp: datetime, start: clock, end: clock,
-                 interval: int) -> Tuple[Optional[datetime], bool, str]:
-    """(틱, 수집해도 되는가, 건너뛰는 이유)."""
-    if is_holiday(stamp.date()):
+def window_state(stamp: datetime, start: clock, end: clock, interval: int,
+                 *, include_holidays: bool = False
+                 ) -> Tuple[Optional[datetime], bool, str]:
+    """(틱, 수집해도 되는가, 건너뛰는 이유).
+
+    `include_holidays`는 **휴일 가드만** 푼다 — 창 가드는 그대로다. 두 번째 PC가
+    휴일을 맡는 구성에서 쓴다(docs/구현/COLLECTOR.md 11장). `--force`처럼 둘 다
+    풀어 버리면 등록한 창이 무의미해져 아무 시각에나 틱이 들어온다.
+    """
+    if is_holiday(stamp.date()) and not include_holidays:
         return None, False, "휴일(주말·공휴일)"
     tick = tick_of(stamp, start, interval)
     lower = datetime.combine(tick.date(), start)
@@ -164,9 +170,11 @@ def collect_once(tick: datetime, *, dry_run: bool = False) -> int:
 
 
 def run_tick(stamp: datetime, start: clock, end: clock, interval: int,
-             *, force: bool = False, dry_run: bool = False) -> int:
+             *, force: bool = False, dry_run: bool = False,
+             include_holidays: bool = False) -> int:
     """창 가드 → 수집 → 로그. 종료 코드를 돌려준다(0 성공·건너뜀, 1 실패)."""
-    tick, allowed, reason = window_state(stamp, start, end, interval)
+    tick, allowed, reason = window_state(stamp, start, end, interval,
+                                         include_holidays=include_holidays)
     if not allowed and not force:
         print(f"[건너뜀] {reason} — {stamp:%Y-%m-%d %H:%M}")
         return 0
@@ -189,11 +197,12 @@ def run_tick(stamp: datetime, start: clock, end: clock, interval: int,
     return 0
 
 
-def run_loop(start: clock, end: clock, interval: int, *, dry_run: bool = False) -> int:
+def run_loop(start: clock, end: clock, interval: int, *, dry_run: bool = False,
+             include_holidays: bool = False) -> int:
     """창이 끝날 때까지 상주하며 틱마다 수집한다."""
     now = datetime.now()
     opening = datetime.combine(now.date(), start)
-    if not is_holiday(now.date()) and now < opening:
+    if (include_holidays or not is_holiday(now.date())) and now < opening:
         wait = (opening - now).total_seconds()
         if wait > 3600:
             print(f"[대기 안 함] 수집 창 시작까지 {wait / 3600:.1f}시간 남았습니다.")
@@ -203,11 +212,13 @@ def run_loop(start: clock, end: clock, interval: int, *, dry_run: bool = False) 
 
     while True:
         stamp = datetime.now()
-        tick, allowed, reason = window_state(stamp, start, end, interval)
+        tick, allowed, reason = window_state(stamp, start, end, interval,
+                                             include_holidays=include_holidays)
         if not allowed:
             print(f"[종료] {reason} — {stamp:%Y-%m-%d %H:%M}")
             return 0
-        run_tick(stamp, start, end, interval, dry_run=dry_run)
+        run_tick(stamp, start, end, interval, dry_run=dry_run,
+                 include_holidays=include_holidays)
         remaining = (tick + timedelta(minutes=interval) - datetime.now()).total_seconds()
         if remaining > 0:
             time.sleep(remaining)
@@ -296,6 +307,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="창이 끝날 때까지 상주하며 반복")
     parser.add_argument("--force", action="store_true",
                         help="창 밖·휴일에도 수집한다")
+    parser.add_argument("--include-holidays", action="store_true",
+                        help="휴일에도 수집한다(창은 그대로 지킨다). "
+                             "두 번째 PC가 휴일을 맡는 구성용")
     parser.add_argument("--dry-run", action="store_true",
                         help="호출만 하고 저장하지 않는다")
     parser.add_argument("--status", action="store_true",
@@ -312,9 +326,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.status:
         return print_status(start, end, args.interval)
     if args.loop:
-        return run_loop(start, end, args.interval, dry_run=args.dry_run)
+        return run_loop(start, end, args.interval, dry_run=args.dry_run,
+                        include_holidays=args.include_holidays)
     return run_tick(datetime.now(), start, end, args.interval,
-                    force=args.force, dry_run=args.dry_run)
+                    force=args.force, dry_run=args.dry_run,
+                    include_holidays=args.include_holidays)
 
 
 if __name__ == '__main__':

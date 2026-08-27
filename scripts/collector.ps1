@@ -30,6 +30,11 @@ param(
     [string]$Window = '09:00-17:00',
     [int]$Interval = 10,
 
+    # 주말·공휴일에도 수집한다. 두 번째 PC가 휴일을 맡는 구성용
+    # (docs/구현/COLLECTOR.md 11장). 트리거를 7일로 넓히고 스크립트의 휴일
+    # 가드도 함께 푼다 — 둘 중 하나만 풀면 깨워도 안 모으거나 그 반대가 된다.
+    [switch]$IncludeHolidays,
+
     # 로그오프 상태에서도 돌린다. 비밀번호를 저장해야 하므로 기본값이 아니다.
     [switch]$RunWhenLoggedOff
 )
@@ -130,11 +135,21 @@ function Invoke-Install {
     $span = Get-WindowSpan
 
     $arguments = '"{0}" --once --window {1} --interval {2}' -f $Script, $Window, $Interval
+    if ($IncludeHolidays) { $arguments += ' --include-holidays' }
     $action = New-ScheduledTaskAction -Execute $PythonW -Argument $arguments -WorkingDirectory $Root
 
+    # 스케줄러는 요일만 알고 공휴일을 모른다. 평일 수집이면 주말 트리거를 아예
+    # 만들지 않고, 공휴일은 스크립트 가드가 거른다.
+    $DayLabel = if ($IncludeHolidays) { '매일(휴일 포함)' } else { '평일' }
+    $days = if ($IncludeHolidays) {
+        [System.DayOfWeek[]]@('Monday', 'Tuesday', 'Wednesday', 'Thursday',
+                              'Friday', 'Saturday', 'Sunday')
+    } else {
+        [System.DayOfWeek[]]@('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday')
+    }
+
     # 주간 트리거에는 반복 설정이 노출되지 않는다. 일회성 트리거에서 Repetition만 떼어 옮긴다.
-    $trigger = New-ScheduledTaskTrigger -Weekly -At $span.Start `
-        -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday
+    $trigger = New-ScheduledTaskTrigger -Weekly -At $span.Start -DaysOfWeek $days
     $repeat = New-ScheduledTaskTrigger -Once -At $span.Start `
         -RepetitionInterval (New-TimeSpan -Minutes $Interval) `
         -RepetitionDuration $span.Duration
@@ -152,7 +167,7 @@ function Invoke-Install {
         Action      = $action
         Trigger     = $trigger
         Settings    = $settings
-        Description = "타슈 대여소 재고를 평일 $Window, ${Interval}분 간격으로 수집합니다 (docs/구현/COLLECTOR.md)."
+        Description = "타슈 대여소 재고를 $DayLabel $Window, ${Interval}분 간격으로 수집합니다 (docs/구현/COLLECTOR.md)."
         Force       = $true
     }
     if ($RunWhenLoggedOff) {
@@ -164,7 +179,7 @@ function Invoke-Install {
     }
 
     Register-ScheduledTask @register | Out-Null
-    Write-Host "[등록] $TaskName — 평일 $Window · ${Interval}분 간격" -ForegroundColor Green
+    Write-Host "[등록] $TaskName — $DayLabel $Window · ${Interval}분 간격" -ForegroundColor Green
     Test-PowerSettings
 
     $info = Get-ScheduledTaskInfo -TaskName $TaskName

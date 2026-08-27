@@ -138,6 +138,36 @@ def test_force는_휴일에도_수집한다(history_dir, fake_api):
     assert len(fake_api) == 1
 
 
+# ---- 휴일 수집 (두 번째 PC 구성, docs/구현/COLLECTOR.md 11장) ----
+
+def test_휴일_포함이면_휴일에도_수집한다(history_dir, fake_api):
+    for stamp in (SATURDAY.replace(hour=10), PUBLIC_HOLIDAY.replace(hour=10)):
+        code = collector.run_tick(stamp, *WINDOW, INTERVAL, include_holidays=True)
+        assert code == 0
+    assert len(fake_api) == 2
+
+
+def test_휴일_포함은_창_가드까지_풀지는_않는다(history_dir, fake_api):
+    """`--force`와의 차이가 여기다. 둘 다 풀리면 등록한 창이 무의미해져
+    아무 시각에나 틱이 들어오고, 격자 대조가 어긋난다."""
+    _, allowed, reason = collector.window_state(
+        SATURDAY.replace(hour=23), *WINDOW, INTERVAL, include_holidays=True)
+    assert not allowed
+    assert "창" in reason
+
+    code = collector.run_tick(SATURDAY.replace(hour=23), *WINDOW, INTERVAL,
+                              include_holidays=True)
+    assert code == 0            # 건너뛰기는 실패가 아니다
+    assert fake_api == []       # 창 밖이라 부르지 않는다
+
+
+def test_기본값은_여전히_휴일을_거른다(history_dir, fake_api):
+    """옵션을 안 주면 지금까지와 똑같아야 한다 — A PC 동작이 바뀌면 안 된다."""
+    assert collector.run_tick(PUBLIC_HOLIDAY.replace(hour=10),
+                              *WINDOW, INTERVAL) == 0
+    assert fake_api == []
+
+
 # ---- 수집 ----
 
 def test_한_틱을_수집하면_DB_CSV_로그에_남는다(history_dir, fake_api):
