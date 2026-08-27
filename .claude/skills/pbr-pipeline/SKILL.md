@@ -18,7 +18,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 382개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 398개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -96,6 +96,11 @@ step4                   : imbalance
    수집기(`tools/collect_stock.py`)는 `runs`·`station_stock`을 건드리지 않는다 —
    테스트가 지킨다. **휴일을 거르는 것은 스케줄러가 아니라 스크립트의 창 가드다**
    (작업 스케줄러는 요일만 안다). 자세한 것은 docs/구현/COLLECTOR.md.
+   ⚠️ **저장 규칙이 두 곳에서 정반대다.** 수집기 `save_stock_snapshot()`은
+   `INSERT OR REPLACE`(재실행 멱등 — 나중 값이 이긴다), 병합기
+   `tools/merge_stock.py`는 `INSERT OR IGNORE`(**먼저 수집한 것이 이긴다** —
+   다른 PC 값이 A PC 값을 덮으면 안 된다). 한쪽을 고치며 다른 쪽 규칙을 옮겨
+   붙이지 마라 — 회귀 테스트가 고정한다(COLLECTOR.md 11장).
 6. **depot·차량 상수는 project_config에 있다**(DEPOT_ID/LAT/LON/NAME, VEHICLE_CAPACITY,
    FLEET_SIZE, VEHICLES_PER_ROUND). step2·step3에서 별도 하드코딩하지 마라.
    **클러스터 1개 = 차량 1대**이므로 step1의 K는 `VEHICLES_PER_ROUND`를 넘을 수 없다.
@@ -143,6 +148,7 @@ python tools/rebuild_net_demand.py            # 전 기간 순수요 재계산(�
 python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8000)
 .\scripts\collector.ps1 install           # 재고 시계열 수집 시작 (평일 09~17시, 10분)
 python tools/collect_stock.py --status    # 수집 현황
+python tools/merge_stock.py <경로> --dry-run  # 다른 PC 수집분 합치기 (COLLECTOR.md 11장)
 ```
 
 ## 웹 대시보드 (webapp/)
@@ -252,7 +258,7 @@ python tools/collect_stock.py --status    # 수집 현황
 ## 테스트
 
 ```powershell
-python -m pytest                 # 382개, 약 50초 (tests/ 만 수집)
+python -m pytest                 # 398개, 약 50초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 
