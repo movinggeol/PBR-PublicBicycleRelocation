@@ -73,15 +73,32 @@ def tick_of(stamp: datetime, start: clock, interval: int) -> datetime:
 
 
 def window_state(stamp: datetime, start: clock, end: clock, interval: int,
-                 *, include_holidays: bool = False
+                 *, include_holidays: bool = False, holidays_only: bool = False
                  ) -> Tuple[Optional[datetime], bool, str]:
     """(틱, 수집해도 되는가, 건너뛰는 이유).
 
-    `include_holidays`는 **휴일 가드만** 푼다 — 창 가드는 그대로다. 두 번째 PC가
-    휴일을 맡는 구성에서 쓴다(docs/구현/COLLECTOR.md 11장). `--force`처럼 둘 다
-    풀어 버리면 등록한 창이 무의미해져 아무 시각에나 틱이 들어온다.
+    요일 가드는 **어느 날에 받아올지**만 정한다. 셋 다 창 가드는 그대로 지킨다 —
+    `--force`처럼 둘 다 풀어 버리면 등록한 창이 무의미해져 아무 시각에나 틱이
+    들어오고 격자 대조가 깨진다.
+
+    | 옵션 | 평일 | 휴일 | 쓰는 곳 |
+    | --- | --- | --- | --- |
+    | (없음) | ✅ | ❌ | A PC — 지금까지의 동작 |
+    | `include_holidays` | ✅ | ✅ | 한 대로 전부 |
+    | `holidays_only` | ❌ | ✅ | **B PC — 휴일만 맡는다** |
+
+    `holidays_only`가 이기므로 둘을 같이 줘도 모순되지 않는다(argparse가 애초에
+    막지만, 함수만 직접 부르는 경우를 위해 여기서도 정한다).
+
+    ⚠️ 이것은 **관측을 남기는 범위**지 분석의 `--day-type`이 아니다. 평일과 휴일을
+    섞어 통계를 내지 말라는 규약은 그대로다 — 거를 때는
+    `db.load_stock_history(day_type=...)`을 쓴다(3장).
     """
-    if is_holiday(stamp.date()) and not include_holidays:
+    holiday = is_holiday(stamp.date())
+    if holidays_only:
+        if not holiday:
+            return None, False, "평일(휴일만 수집)"
+    elif holiday and not include_holidays:
         return None, False, "휴일(주말·공휴일)"
     tick = tick_of(stamp, start, interval)
     lower = datetime.combine(tick.date(), start)

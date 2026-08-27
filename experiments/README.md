@@ -107,6 +107,7 @@ python experiments/structure/quantile_model_eval.py --holdout "25년 11월"   # 
 python experiments/structure/weather_impact.py    # 날씨 → 이용량 → 순수요 전달 측정
 python experiments/structure/outlier_impact.py    # 이상치 제거가 계획을 바꾸는가
 python experiments/structure/observed_stockout.py  # 관측 재고로 결품 실측
+python experiments/structure/park2024_compare.py   # 선행연구 모형 대 μ+zσ
 ```
 
 `rental_history`와 `net_demand`를 읽습니다. `weather_impact.py`는 여기에 더해
