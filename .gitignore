@@ -65,3 +65,10 @@ dist/
 *.swo
 .DS_Store
 Thumbs.db
+
+# 참고자료 원본 — 저작권·용량 때문에 커밋하지 않는다 (2026-08-27).
+# 읽고 정리한 내용은 docs/연구/LITERATURE.md와 references/README.md에 남는다.
+docs/연구/references/**/*.pdf
+docs/연구/references/**/*.jfif
+docs/연구/references/참고 자료/
+docs/연구/references/아이디어/

@@ -65,6 +65,7 @@ docs/
 | [THESIS.md](연구/THESIS.md) | 장별 재료 매핑, 대조군·반복 실험 설계, 체크리스트 |
 | [RELATED_WORK.md](연구/RELATED_WORK.md) | 문제의 갈래와 본 연구의 위치 |
 | [LITERATURE.md](연구/LITERATURE.md) | 문헌 분석·비교표·인용 지도 |
+| [references/README.md](연구/references/README.md) | **참고자료 폴더 안내** — 무엇을 어디까지 읽었나, 기사에서 나온 확인거리 |
 
 ## 기록/ — 작업 이력
 
