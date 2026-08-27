@@ -257,7 +257,11 @@ DROP_TIME_SEC = float(os.getenv("PBR_DROP_TIME_SEC", "30"))
 # (step1의 wanted_vehicles). 두 대수 모두 웹 실행 폼에서 바꿀 수 있다
 # (--fleet-size → PBR_FLEET_SIZE, --vehicles-per-round → PBR_VEHICLES_PER_ROUND).
 MAX_FLEET_SIZE = 99                # VEHICLE_ID_FORMAT이 두 자리 고정이라 V99가 상한
-DEFAULT_FLEET_SIZE = 21            # 보유 차량 총 대수 기본값 (웹 폼 기본값도 이 값)
+# 보유 차량 총 대수 기본값 (웹 폼 기본값도 이 값).
+# **현장 실측이 아니라 본 연구의 설계값이다** — 회차당 실제 소요가 12~16대이고,
+# 그 위에 로테이션 여유를 둔 것이다(근거·실측표는 docs/구현/FLEET.md).
+# 현장 대수가 확인되면 이 값만 바꾸면 된다. `--fleet-size`로도 바꾼다.
+DEFAULT_FLEET_SIZE = 21
 
 # 한 회차 투입 대수의 **상한**. 실제 대수가 아니다 — 작업량 추정이 이 아래에서
 # 정한다. 1.19.1에서 10 → 보유 대수로 열었다(사용자 결정, 2026-08-24).
