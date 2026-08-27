@@ -14,14 +14,13 @@
   · 같은 적재 용량(10대) — 대여소를 나눠 처리하는 것도 양쪽 모두 허용한다
     (자전거 1대 단위 노드. 안 쪼개면 실행 불가능한 인스턴스가 생긴다 — split_nodes 참고)
   · 같은 거리(Haversine)
-  · **양쪽 다 depot으로 돌아오지 않는다** — 현행 greedy가 그렇기 때문이다(아래 참고)
+  · **양쪽 다 depot으로 돌아온다** (2026-08-27 정정)
 
-**함께 재는 것 — 빠져 있는 depot 복귀**
-현행 `greedy_route()`는 작업이 끝나면 그 자리에서 멈춘다. 마지막 depot 복귀 구간이
-거리·시간에 **들어 있지 않다**. 복귀를 기록하는 분기는 '적재가 막혀 후보가 없을 때'
-하나뿐인데 ILP 입력에서는 실행될 수 없어(총 pick = 총 drop), vrp_plan의 'return' 행이
-**0건**이다. 즉 항상 빠진다. 그래서 시간 예산 120분 판정이 낙관적이다.
-그 누락분이 얼마인지 함께 낸다.
+⚠️ **한 번 어긋났던 자리다 — 고치면 반드시 함께 고쳐라.**
+1.19.1이 `greedy_route()`에 depot 복귀를 넣었는데 이 스크립트가 따라가지 않아,
+**복귀를 포함한 greedy와 복귀를 뺀 OR-Tools를 견주고 있었다.** 갭이 9.7% →
+51~59%로 뛰어 마치 경로가 크게 나빠진 것처럼 보였다. 경로는 그대로였고
+**재는 자가 어긋난 것이다.**
 
 사용법:
     python experiments/baseline/ortools_gap.py --period "25년 11월" --duration "_05_10"
@@ -82,22 +81,29 @@ def split_nodes(moves, coords, cluster, chunk=1):
 
 
 def solve_ortools(nodes, limit_sec):
-    """depot에서 출발해 모든 노드를 처리하는 최소 이동거리 경로 (복귀 없음).
+    """depot에서 출발해 모든 노드를 처리하고 **depot으로 돌아오는** 최소 이동거리 경로.
 
-    마지막에 비용 0짜리 가상 종점을 두어 '복귀하지 않는 경로'로 만든다 —
-    현행 greedy와 같은 조건으로 맞추기 위해서다.
+    ⚠️ **2026-08-27 정정 — 여기가 틀려서 갭이 5배로 부풀어 있었다.**
+
+    1.19.1 이전의 `greedy_route()`는 작업을 마치면 그 자리에서 멈췄고, 그래서 이
+    함수도 '비용 0짜리 가상 종점'을 두어 복귀 없는 경로를 풀었다. **양쪽을 맞춘
+    것이었다.**
+
+    그런데 1.19.1이 greedy에 depot 복귀를 넣었다. 이 함수는 따라가지 않았다.
+    그 결과 **복귀를 포함한 greedy와 복귀를 뺀 OR-Tools를 견주게 됐고**, 갭이
+    9.7% → 51~59%로 뛰었다. 경로가 나빠진 것이 아니라 **재는 자가 어긋난 것이다.**
+
+    지금은 종점을 depot(0번 노드)으로 두어 양쪽 모두 복귀를 포함한다.
     """
-    points = [(DEPOT_LAT, DEPOT_LON, 0)] + list(nodes) + [(DEPOT_LAT, DEPOT_LON, 0)]
+    points = [(DEPOT_LAT, DEPOT_LON, 0)] + list(nodes)
     size = len(points)
-    end = size - 1
 
     def meters(i, j):
-        if i == end or j == end:          # 가상 종점은 어디서든 비용 0
-            return 0
         return int(round(haversine_km(points[i][0], points[i][1],
                                       points[j][0], points[j][1]) * 1000))
 
-    manager = pywrapcp.RoutingIndexManager(size, 1, [0], [end])
+    # 출발도 도착도 depot(0번) — 복귀를 포함한 순환 경로다.
+    manager = pywrapcp.RoutingIndexManager(size, 1, 0)
     routing = pywrapcp.RoutingModel(manager)
 
     transit = routing.RegisterTransitCallback(
@@ -179,7 +185,7 @@ def main():
 
         print(f"\n{'=' * 88}\n[{duration}]  greedy vs OR-Tools (클러스터당 {args.limit_sec}초)\n{'=' * 88}")
         print(f"{'클러스터':>8}{'노드':>6}{'greedy km':>12}{'OR-Tools km':>13}"
-              f"{'갭':>9}{'복귀 누락 km':>13}{'greedy 분':>11}{'복귀 포함 분':>13}")
+              f"{'갭':>9}{'절감 km':>10}{'greedy 분':>11}{'예산':>7}")
 
         for cluster in sorted(moves["cluster"].unique()):
             nodes = split_nodes(moves, coords, cluster, args.chunk)
@@ -199,17 +205,17 @@ def main():
             greedy_km = float(route["distance_km"].sum())
             greedy_min = float(route["cum_sec"].max()) / 60
 
-            # 마지막 위치에서 depot까지 — 현행 계산에 빠져 있는 구간
-            last = route.iloc[-1]
-            back_km = haversine_km(last["to_lat"], last["to_lon"], DEPOT_LAT, DEPOT_LON)
-            back_min = back_km / VEHICLE_SPEED_KMPH * 60
+            # greedy_km·greedy_min은 **복귀를 포함한** 값이다(1.19.1).
+            # 그 전에는 여기서 복귀 누락분을 따로 셌다 — 이제 셀 것이 없다.
+            back_km = 0.0
+            back_min = 0.0
 
             best_km = solve_ortools(nodes, args.limit_sec)
             if best_km is None:
                 # 해를 못 찾은 클러스터는 갭을 뺀다 — 억지로 채우면 평균이 거짓말을 한다.
                 print(f"{cluster:>8d}{len(nodes):>6d}{greedy_km:>12.2f}"
-                      f"{'해 못 찾음':>13}{'':>9}{back_km:>13.2f}{greedy_min:>11.1f}"
-                      f"{greedy_min + back_min:>13.1f}")
+                      f"{'해 못 찾음':>13}{'':>9}{'':>10}{greedy_min:>11.1f}"
+                      f"{'':>7}")
                 rows.append({"duration": duration, "cluster": int(cluster),
                              "nodes": len(nodes), "greedy_km": greedy_km,
                              "ortools_km": None, "gap_pct": None,
@@ -223,9 +229,10 @@ def main():
                          "ortools_km": best_km, "gap_pct": gap,
                          "return_km": back_km, "greedy_min": greedy_min,
                          "with_return_min": greedy_min + back_min})
+            over = "초과" if greedy_min > TIME_BUDGET_MINUTES else ""
             print(f"{cluster:>8d}{len(nodes):>6d}{greedy_km:>12.2f}{best_km:>13.2f}"
-                  f"{gap:>8.1f}%{back_km:>13.2f}{greedy_min:>11.1f}"
-                  f"{greedy_min + back_min:>13.1f}")
+                  f"{gap:>8.1f}%{greedy_km - best_km:>10.2f}{greedy_min:>11.1f}"
+                  f"{over:>7}")
 
     if not rows:
         raise SystemExit("결과가 없습니다.")
@@ -244,15 +251,22 @@ def main():
               f" · 최대 {solved['gap_pct'].max():.1f}%"
               f" · 총거리 greedy {solved['greedy_km'].sum():.1f}km"
               f" vs OR-Tools {solved['ortools_km'].sum():.1f}km{note}")
-        print(f"          depot 복귀 누락 {part['return_km'].sum():.1f}km"
-              f" · 예산 초과 {over_now}건 → 복귀 포함 시 {over_with}건")
+        saved = solved['greedy_km'].sum() - solved['ortools_km'].sum()
+        big = (solved['gap_pct'] > 20).sum()
+        big_saved = (solved[solved['gap_pct'] > 20]['greedy_km'].sum()
+                     - solved[solved['gap_pct'] > 20]['ortools_km'].sum())
+        share = big_saved / saved * 100 if saved else 0.0
+        print(f"          절감 여지 {saved:.1f}km · 예산 초과 {over_now}건")
+        print(f"          갭 20%↑ 클러스터 {big}개가 절감분의 {share:.0f}%를 차지")
 
     print("\n읽는 법")
     print("  · 갭은 **이동거리** 기준이다. 작업시간(대당 30초)은 경로와 무관하게 같다.")
     print("  · OR-Tools 값도 시간 제한 안에서 찾은 해이지 증명된 최적해가 아니다 —")
     print("    갭은 '적어도 이만큼은 손해'라는 하한으로 읽어라.")
-    print("  · **복귀 누락은 갭과 별개의 문제다.** 현행 계산이 마지막 depot 복귀를")
-    print("    빼고 있어 시간 예산 판정이 낙관적이다.")
+    print("  · **양쪽 모두 depot 복귀를 포함한다** (2026-08-27 정정). 그 전에는")
+    print("    OR-Tools만 복귀를 빼고 풀어 갭이 5배로 부풀어 있었다.")
+    print("  · 마지막 줄이 선택적 재최적화의 근거다 — 갭이 큰 몇 개만 다시 풀면")
+    print("    절감분의 대부분을 훨씬 싸게 얻는다.")
 
     if args.out:
         frame.to_csv(args.out, index=False, encoding="utf-8")
