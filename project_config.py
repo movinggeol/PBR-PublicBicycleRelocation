@@ -347,6 +347,15 @@ ENFORCE_TIME_BUDGET = os.getenv("PBR_ENFORCE_TIME_BUDGET", "").strip().lower() i
 #                총 이동거리 870→854km. 대가는 처리 대수 756→748(-1%).
 # 주의: γ=2000은 γ=1000보다 나빴다(160.9분). 군집 조정이 탐욕적 국소 탐색이라
 # 목적함수 지형이 γ에 대해 매끄럽지 않다 — 중간값을 보간해 추정하면 안 된다.
+#
+# 2026-08-27 재실험(4개월 x 3회차 x 씨앗 2개 = 24개 조합)에서 **3000을 유지**하기로
+# 했다. γ는 재배치 물량과 시간 예산을 **동시에** 지배한다:
+#   γ=1000  : 결품 -24%(24/24 조합에서 최소)이나 **예산 초과 0건인 조합이 0개**
+#   γ=12000 : 예산 준수는 오르나 결품 +74%(후보의 47%를 손도 못 댄다)
+# 두 목표를 동시에 개선하는 γ는 없고, 맞교환(swap) 연산을 넣어도 γ>=1000에서는
+# 채택되지 않아 중간 지대를 알고리즘으로 만들 수 없다.
+# **γ 선택은 파라미터 조정이 아니라 운영 정책의 선택이다.**
+# 재현: python experiments/params/gamma_sweep.py
 # 근거: docs/분석/EXPERIMENTS.md 4장, docs/구현/steps/step1_clustering.md의 '거리 가중치' 절
 CLUSTER_ALPHA = float(os.getenv("PBR_CLUSTER_ALPHA", "1"))
 CLUSTER_BETA = float(os.getenv("PBR_CLUSTER_BETA", "100"))

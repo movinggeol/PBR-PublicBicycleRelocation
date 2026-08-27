@@ -31,11 +31,13 @@ experiments/
 | `travel_estimate.py` | 이동시간 추정에 '퍼짐'을 넣으면 나아지나 | **아니다.** 계수가 음수로 나온다 — 퍼짐은 대여소 수의 대리 변수일 뿐 |
 | `min_qty_sweep.py` | 작업 문턱(2)이 맞나 | **문턱이 작동하지 않는다.** TOP_STATION_LIMIT(50)이 먼저 자른다 |
 | `top_limit_sweep.py` | 후보 상한(50)이 맞나 | **맞다.** 넓힐수록 결품은 주지만 **필요 차량이 보유 21대를 넘어** 집행이 안 된다 |
+| `gamma_sweep.py` | 거리 가중치 `γ`(3000)를 바꿔 예산 초과를 줄일 수 있나 | **두 목표를 동시에 개선하는 γ가 없다.** γ↓는 결품 −24%이나 예산 초과 0건 조합이 0개, γ↑는 결품 +74% → **γ=3000 유지, 운영 결정으로 넘김** |
 
 ```powershell
 python experiments/params/z_sweep.py            # 커버리지 vs 작업량
 python experiments/params/predictor_compare.py  # 예측기 비교 + 무리별 진단
 python experiments/params/seasonal_window.py    # 학습 창 비교
+python experiments/params/gamma_sweep.py         # γ 다월·다씨앗 (120회, 약 90분)
 ```
 
 셋 다 DB의 `net_demand`를 읽으므로 **여러 달의 순수요가 적재돼 있어야** 합니다
