@@ -35,7 +35,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_weather.py](../../tests/test_weather.py) | 24 | **날씨 원천** — 빈칸의 뜻이 컬럼마다 다른지(강수는 0, 기온은 보간), 겨울 3시간 누적 강수를 펴는지, 창 접기(합·평균·최대)와 자정을 넘긴 창, 자료가 없어도 죽지 않는지, API 결측(-9)을 값으로 읽지 않는지 ([WEATHER.md](../분석/WEATHER.md)) |
 
 **API 키가 필요한 두 단계는 자동 테스트에서 제외**했습니다 —
-`step0/tashu_api.py`(TASHU)와 `step3/main.py`(TMAP). 검증 방법은 4장에 있습니다.
+`step0_collect/tashu_api.py`(TASHU)와 `step3_map/main.py`(TMAP). 검증 방법은 4장에 있습니다.
 다만 **엔드포인트 선택·폴백 규칙은 네트워크 없이 검증합니다**(`test_tmap.py`) —
 `requests.post`를 가로채 어느 URL로 보냈는지만 보면 되고, 검증 대상이 응답 내용이
 아니라 규칙이기 때문입니다. 쿼터는 한 건도 쓰지 않습니다.
@@ -142,8 +142,8 @@ python "step3_map/main.py" --now "<라벨>" --duration "_15_20"
 | --- | --- |
 | **계산 로직의 단위 테스트** | 현재는 대부분 스모크 수준이다. 목표 재고 공식, 군집 조정, VRP 적재 제약을 값 단위로 확인하는 테스트가 없다 |
 | **CI (GitHub Actions)** | 로컬 실행에만 의존한다 |
-| `step0/tashu_api.py` | API 키 필요 — 응답을 고정한 목(mock) 테스트로 대체 가능 |
-| `step3/main.py` | 위 4장 참고 (수동) |
+| `step0_collect/tashu_api.py` | API 키 필요 — 응답을 고정한 목(mock) 테스트로 대체 가능 |
+| `step3_map/main.py` | 위 4장 참고 (수동) |
 | `step0_eda` | 산출물이 분석용이라 파이프라인 의존이 없다 |
 
 → [TODO.md](../기록/TODO.md) 11번

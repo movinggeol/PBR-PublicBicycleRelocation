@@ -13,13 +13,13 @@
 
 | 구분 | 상태 | 판정 |
 | --- | --- | --- |
-| 동작하는 시스템 | step0~4 실데이터 완주, 웹 대시보드, 테스트 357개 | ✅ 졸업작품으로 충분 |
+| 동작하는 시스템 | step0~4 실데이터 완주, 웹 대시보드, 테스트 382개 | ✅ 졸업작품으로 충분 |
 | 설계 근거 | 설계 문서 18개, `z`·`γ`를 실측 실험으로 결정 | ✅ 학부 기준 이상 |
 | 실패·수정 기록 | [RETROSPECTIVE.md](../기록/RETROSPECTIVE.md) 4장 "측정이 뒤집은 가설 7가지" | ✅ **논문 고찰에 그대로 쓸 수 있는 자산** |
 | 비교 대조군 | 대조군 4종 비교 완료 ([EXPERIMENTS.md](../분석/EXPERIMENTS.md) 5장) | ✅ 1.18.0 |
 | 결과의 반복성 | 5개월 × 4씨앗 반복, Wilcoxon 검정 | ✅ 1.18.0 |
 | 문제 정형화 | [FORMULATION.md](../분석/FORMULATION.md) | ✅ 1.18.0 |
-| 선행연구 | [RELATED_WORK.md](RELATED_WORK.md) — 문헌 11편 서지 확인, **대전 타슈 선행연구 발견** | 🟡 **전문 읽기가 남음** |
+| 선행연구 | [LITERATURE.md](LITERATURE.md) — **문헌 20편**(본문 확인 3편·초록 12편) | 🟢 **주요 문헌은 읽었다** (1.24.0) |
 | 평가의 결함 3건 | 계획 기준 지표·요일 필터 → ✅ 수정(1.18.3~4) / depot 복귀 누락 → ✅ 수정(1.19.1) | 🟡 대조군 표 재측정 남음 |
 
 **핵심 진단:** 이 프로젝트의 문제는 "덜 만들었다"가 아니라 **"만든 것이 무엇보다 나은지를
@@ -32,7 +32,7 @@
 | 장 | 내용 | 쓸 재료 | 상태 |
 | --- | --- | --- | --- |
 | 1. 서론 | 공공자전거 수급 불균형 문제, 대전 타슈 현황 | [README](../../README.md) 개요, EDA, **[ORIGINS.md](../기록/ORIGINS.md)**(문제 인식의 출처·현장 확인) | 🟡 재작성 |
-| 2. 관련 연구 | BSS 재배치 문헌, 본 연구의 위치 | [RELATED_WORK.md](RELATED_WORK.md) | 🟡 문헌 11편 확정, **전문 읽기가 남음** |
+| 2. 관련 연구 | BSS 재배치 문헌, 본 연구의 위치 | [RELATED_WORK.md](RELATED_WORK.md) · [LITERATURE.md](LITERATURE.md) | 🟢 **문헌 20편**, 핵심 3편 본문 확인 |
 | 3. 문제 정형화 | 목표재고·ILP·VRP 수식, 운영 제약 | [FORMULATION.md](../분석/FORMULATION.md) | ✅ 완료 |
 | 3-보. 방법 선택의 근거 | **왜 ILP·VRP·K-Medoids인가**, 대안과 대가 | [DECISIONS.md](../분석/DECISIONS.md) | ✅ 완료 (1.20.4) |
 | 4. 시스템 설계 | 파이프라인 구조, 저장소, 웹 | [PROJECT_PIPELINE](../구현/PROJECT_PIPELINE.md), [DB_SCHEMA](../구현/DB_SCHEMA.md), [WEBAPP](../구현/WEBAPP.md) | ✅ 거의 그대로 |
@@ -117,7 +117,13 @@ README의 모든 수치는 **25년 11월 데이터로 2026-08-12에 한 번 돌�
 
 ### `RELATED_WORK.md` (논문 2장)
 
-**문헌 11편을 서지사항까지 확인해 정리했습니다**(1.18.0). 남은 것은 **직접 읽는 일**입니다.
+**문헌 20편을 정리했습니다**(1.18.0 서지 11편 + 1.24.0 사용자 제공 논문 9편 추가).
+
+**본문까지 읽은 것 셋** — 박정연 외(2024, 같은 도시·같은 시스템), 민지원 외(2017,
+타슈 초기 연구), Schuijbroek 외(2016, 본 연구와 같은 계열의 구조).
+나머지 12편은 초록 확인, 스캔본 4편은 미독입니다.
+자세한 것은 [LITERATURE.md](LITERATURE.md)와
+[references/README.md](references/README.md).
 
 **가장 중요한 발견: 같은 도시·같은 시스템을 다룬 선행연구가 있습니다.**
 
@@ -183,7 +189,7 @@ README의 모든 수치는 **25년 11월 데이터로 2026-08-12에 한 번 돌�
 
 | 항목 | 현재 | 할 일 |
 | --- | --- | --- |
-| CI | ✅ GitHub Actions (`.github/workflows/tests.yml`) | push·PR마다 테스트 357개 자동 실행 |
+| CI | ✅ GitHub Actions (`.github/workflows/tests.yml`) | push·PR마다 테스트 382개 자동 실행 |
 | LICENSE | ✅ 있음 (`LICENSE`) | — |
 | 재현 패키지 | ✅ README "5분 안에 직접 돌려보기" (`tools/make_sample_data.py`) | — |
 | 웹 인증 | 없음 (로컬 전용) | 고치지 말고 **한계로 명시** |
@@ -217,14 +223,14 @@ README의 모든 수치는 **25년 11월 데이터로 2026-08-12에 한 번 돌�
 | --- | --- | --- | --- |
 | 1 | **대조군 실험** (B1~B3) | `experiments/baseline/baseline_compare.py`, [EXPERIMENTS.md](../분석/EXPERIMENTS.md) 5장 | ✅ 완료 (1.18.0) |
 | 2 | **반복 실행·통계** | `experiments/baseline/repeat_eval.py` — 5개월·4씨앗, Wilcoxon | ✅ 완료 (1.18.0) |
-| 3 | **선행연구·정형화** | [FORMULATION.md](../분석/FORMULATION.md) ✅ / [RELATED_WORK.md](RELATED_WORK.md) 문헌 11편 확정 | 🟡 **전문 읽기가 남음** |
+| 3 | **선행연구·정형화** | [FORMULATION.md](../분석/FORMULATION.md) ✅ / [LITERATURE.md](LITERATURE.md) **문헌 20편** | 🟢 **완료 (1.24.0)** — 핵심 3편 본문 확인 |
 | 4 | 문서 정합성 수정 | RETROSPECTIVE·EXPERIMENTS·KPI·DB_PLAN 갱신 | ✅ 완료 (1.17.6) |
 | 5 | `γ = 3000` 다른 달 재확인 | `experiments/baseline/gamma_recheck.py` | ✅ 완료 (1.18.0) |
 | 6 | OR-Tools 대비 갭 측정 | `experiments/baseline/ortools_gap.py` | ✅ 완료 (1.18.0) |
 | 7 | 시간 예산을 실제 제약으로 | — | ⏸ **보류 (사용자 결정, 2026-08-21)** |
 | 8 | CI·LICENSE·재현 패키지 | GitHub Actions, MIT, README 5분 절차 | ✅ 완료 (1.18.0) |
 | 9 | **박정연 외(2024) 모형 대비 예측 비교** | 논문 5·6장 보조 표 | 🔴 **새로 생김 — 값어치 큼** |
-| 10 | 선행연구 11편 전문 읽기 | 논문 2장 서술 | 🔴 **직접 해야 함** |
+| 10 | ~~선행연구 전문 읽기~~ | 논문 2장 서술 | 🟢 **주요 3편 완료 (1.24.0).** 스캔본 4편은 미독 |
 
 **9번이 남은 실험 중 가장 값어치 있습니다.** 같은 도시·같은 시스템의 선행연구가 쓴
 모형(선형회귀·음이항회귀·선형혼합효과)과 본 연구의 `μ + zσ`를 **같은 자로** 비교하면
