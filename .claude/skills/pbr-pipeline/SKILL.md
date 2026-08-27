@@ -146,7 +146,7 @@ python run_pipeline.py --target-date 2026-09-25                # 그날로 자�
 python run_pipeline.py --warmup-period "26년 03월"             # 계절 보정 (기본 14일)
 python tools/rebuild_net_demand.py            # 전 기간 순수요 재계산(휴일 포함)
 python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8000)
-.\scripts\collector.ps1 install           # 재고 시계열 수집 시작 (평일 09~17시, 10분)
+.\scripts\collector.ps1 install           # 재고 시계열 수집 시작 (평일 07~22시, 10분)
 python tools/collect_stock.py --status    # 수집 현황
 python tools/merge_stock.py <경로> --dry-run  # 다른 PC 수집분 합치기 (COLLECTOR.md 11장)
 ```

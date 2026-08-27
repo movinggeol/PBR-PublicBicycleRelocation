@@ -24,7 +24,7 @@
 | **실행** | `run_label` | 파이프라인 실행 1건. CSV 파일명의 `{now}`가 컬럼이 된 것 | `station_stock`, `station_info`, `parking_lot` |
 | **실행 + 회차** | `run_label` + `duration` | 한 실행 안의 시간대(`_05_10` 등). 하루 3회차면 3행 세트 | `rebalance_plan`, `pick_drop`, `ilp_plan`, `vrp_plan`, `metrics`, `route_summary`, `vehicle_assignment`, `kpi_summary` |
 | **기간** | `period` | 원천 데이터 기간(`25년 11월`). **실행과 무관** | `net_demand`, `rental_history` |
-| **관측 시각** | `observed_at` | 실행과 무관한 **실측 시계열**. 평일 09~17시 10분마다 쌓인다 | `stock_history`, `stock_station_master`(일 단위) |
+| **관측 시각** | `observed_at` | 실행과 무관한 **실측 시계열**. 평일 07~22시 10분마다 쌓인다 | `stock_history`, `stock_station_master`(일 단위) |
 | **전역** | — | 실행에 딸리지 않는 마스터 | `vehicle` |
 
 **`net_demand`가 `period` 스코프인 것이 이 설계의 핵심 판단입니다.** 순수요는 과거
@@ -493,7 +493,7 @@ PK 선두가 `run_label`이라 차량으로 거는 조회는 PK 인덱스를 못
 
 ### 4-7. 재고 시계열 — 실측 관측 (1.20.0)
 
-`tools/collect_stock.py`가 평일 09~17시에 10분마다 쌓습니다. **파이프라인 실행과
+`tools/collect_stock.py`가 평일 07~22시에 10분마다 쌓습니다. **파이프라인 실행과
 무관한 관측 기록**이라 `run_label`이 없고, 축은 (시각, 대여소)입니다.
 배경과 운영은 [COLLECTOR.md](COLLECTOR.md)에 있습니다.
 

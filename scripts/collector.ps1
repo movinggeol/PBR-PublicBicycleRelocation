@@ -41,6 +41,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# 사용자가 -Window/-Interval을 **직접 줬는지** 여기서만 알 수 있다. 함수 안의
+# $PSBoundParameters는 그 함수의 것이라 스크립트 파라미터를 보지 못한다.
+$script:GivenWindow   = $PSBoundParameters.ContainsKey('Window')
+$script:GivenInterval = $PSBoundParameters.ContainsKey('Interval')
+
 $TaskName = 'PBR재고수집'
 $Root     = Split-Path -Parent $PSScriptRoot
 $PythonW  = Join-Path $Root '.venv\Scripts\pythonw.exe'
@@ -209,6 +214,31 @@ function Invoke-Uninstall {
     Write-Host "  이미 모은 데이터는 지우지 않았습니다. 다시 시작: .\scripts\collector.ps1 install"
 }
 
+function Get-RegisteredArgs {
+    <#
+        등록된 작업이 실제로 쓰는 창·간격을 되읽는다.
+
+        이게 없으면 status가 파라미터 **기본값**(09:00-17:00)으로 결측을 세서,
+        창을 넓혀 등록해 둔 뒤에도 옛 기준으로 보고한다 — 스케줄 줄과 현황 줄이
+        서로 다른 창을 말하게 된다. 사용자가 -Window를 직접 준 경우에는 그 값이
+        이긴다(옛 창으로 대조해 보는 용도).
+    #>
+    # $PSBoundParameters는 함수 자신의 것이라 스크립트 파라미터를 보지 못한다.
+    # 진입점에서 담아 둔 $script:GivenWindow/$script:GivenInterval을 본다.
+    $result = @{ Window = $Window; Interval = $Interval }
+    if ($script:GivenWindow -and $script:GivenInterval) { return $result }
+
+    $task = Get-Task
+    if (-not $task) { return $result }
+
+    $arguments = $task.Actions.Arguments
+    if (-not $script:GivenWindow -and
+        $arguments -match '--window\s+(\S+)') { $result.Window = $Matches[1] }
+    if (-not $script:GivenInterval -and
+        $arguments -match '--interval\s+(\d+)') { $result.Interval = [int]$Matches[1] }
+    return $result
+}
+
 function Invoke-Status {
     Assert-Paths
     $task = Get-Task
@@ -225,13 +255,15 @@ function Invoke-Status {
             Write-Host "  마지막   : $last · $(Format-Result $info.LastTaskResult)"
         }
     }
-    & $Python $Script --status --window $Window --interval $Interval
+    $live = Get-RegisteredArgs
+    & $Python $Script --status --window $live.Window --interval $live.Interval
 }
 
 function Invoke-Now {
     Assert-Paths
+    $live = Get-RegisteredArgs
     Write-Host "[즉시 수집] 창 밖이어도 한 틱 받아 옵니다." -ForegroundColor Cyan
-    & $Python $Script --once --force --window $Window --interval $Interval
+    & $Python $Script --once --force --window $live.Window --interval $live.Interval
 }
 
 
