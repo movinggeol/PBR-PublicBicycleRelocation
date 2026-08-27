@@ -1,11 +1,11 @@
 # 테스트
 
 이 프로젝트는 처음에 테스트가 하나도 없었고, **의존성이 전부 깨진 상태**로
-파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 398개 테스트입니다.
+파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 404개 테스트입니다.
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 398개 (약 50~80초)
+python -m pytest              # 전체 404개 (약 50~80초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -31,7 +31,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_fleet.py](../../tests/test_fleet.py) | 13 | 차량 로테이션·형평성과 보유 대수 변경 ([FLEET.md](FLEET.md)) |
 | [tests/test_tmap.py](../../tests/test_tmap.py) | 14 | TMAP 엔드포인트 선택·폴백, **경로 지도 팝업이 파이썬 자료구조를 새지 않는지** ([steps/step3_visualization.md](steps/step3_visualization.md)) |
 | [tests/test_day_type.py](../../tests/test_day_type.py) | 36 | 평일/휴일 분리·공휴일 판정·수요 모델 폴백·계절 보정, **평가도 같은 구분을 쓰는지** ([steps/step0_raw.md](steps/step0_raw.md)) |
-| [tests/test_stock_history.py](../../tests/test_stock_history.py) | 26 | **재고 시계열 수집** — 창 가드(휴일·창 밖에 API를 부르지 않는지), 틱 격자 반올림, 멱등 저장, 실패도 로그에 남는지, 파이프라인 이력을 건드리지 않는지, `--include-holidays`가 **휴일 가드만 풀고 창은 지키는지** ([COLLECTOR.md](COLLECTOR.md)) |
+| [tests/test_stock_history.py](../../tests/test_stock_history.py) | 32 | **재고 시계열 수집** — 창 가드(휴일·창 밖에 API를 부르지 않는지), 틱 격자 반올림, 멱등 저장, 실패도 로그에 남는지, 파이프라인 이력을 건드리지 않는지, 요일 옵션 세 갈래(평일만 / 평일+휴일 / **휴일만**)가 **창 가드는 지키는지**, `--holidays-only`가 **공휴일(평일인 날)까지 잡는지** ([COLLECTOR.md](COLLECTOR.md)) |
 | [tests/test_merge_stock.py](../../tests/test_merge_stock.py) | 14 | **두 PC 재고 병합** — 이미 있는 틱을 덮어쓰지 않는지(*먼저 수집한 것이 이긴다*, 수집기의 `INSERT OR REPLACE`와 정반대), 빈 틱은 채우는지, CSV·DB 두 원천을 읽는지, 옮겨온 DB를 읽기 전용으로 여는지, 마스터가 없는 날을 알리는지 ([COLLECTOR.md](COLLECTOR.md) 11장) |
 | [tests/test_weather.py](../../tests/test_weather.py) | 24 | **날씨 원천** — 빈칸의 뜻이 컬럼마다 다른지(강수는 0, 기온은 보간), 겨울 3시간 누적 강수를 펴는지, 창 접기(합·평균·최대)와 자정을 넘긴 창, 자료가 없어도 죽지 않는지, API 결측(-9)을 값으로 읽지 않는지 ([WEATHER.md](../분석/WEATHER.md)) |
 

@@ -188,10 +188,11 @@ def collect_once(tick: datetime, *, dry_run: bool = False) -> int:
 
 def run_tick(stamp: datetime, start: clock, end: clock, interval: int,
              *, force: bool = False, dry_run: bool = False,
-             include_holidays: bool = False) -> int:
+             include_holidays: bool = False, holidays_only: bool = False) -> int:
     """창 가드 → 수집 → 로그. 종료 코드를 돌려준다(0 성공·건너뜀, 1 실패)."""
     tick, allowed, reason = window_state(stamp, start, end, interval,
-                                         include_holidays=include_holidays)
+                                         include_holidays=include_holidays,
+                                         holidays_only=holidays_only)
     if not allowed and not force:
         print(f"[건너뜀] {reason} — {stamp:%Y-%m-%d %H:%M}")
         return 0
@@ -215,11 +216,14 @@ def run_tick(stamp: datetime, start: clock, end: clock, interval: int,
 
 
 def run_loop(start: clock, end: clock, interval: int, *, dry_run: bool = False,
-             include_holidays: bool = False) -> int:
+             include_holidays: bool = False, holidays_only: bool = False) -> int:
     """창이 끝날 때까지 상주하며 틱마다 수집한다."""
     now = datetime.now()
     opening = datetime.combine(now.date(), start)
-    if (include_holidays or not is_holiday(now.date())) and now < opening:
+    # 오늘 수집할 날이 아니면 기다릴 이유가 없다.
+    collects_today = (is_holiday(now.date()) if holidays_only
+                      else include_holidays or not is_holiday(now.date()))
+    if collects_today and now < opening:
         wait = (opening - now).total_seconds()
         if wait > 3600:
             print(f"[대기 안 함] 수집 창 시작까지 {wait / 3600:.1f}시간 남았습니다.")
@@ -230,12 +234,14 @@ def run_loop(start: clock, end: clock, interval: int, *, dry_run: bool = False,
     while True:
         stamp = datetime.now()
         tick, allowed, reason = window_state(stamp, start, end, interval,
-                                             include_holidays=include_holidays)
+                                             include_holidays=include_holidays,
+                                             holidays_only=holidays_only)
         if not allowed:
             print(f"[종료] {reason} — {stamp:%Y-%m-%d %H:%M}")
             return 0
         run_tick(stamp, start, end, interval, dry_run=dry_run,
-                 include_holidays=include_holidays)
+                 include_holidays=include_holidays,
+                 holidays_only=holidays_only)
         remaining = (tick + timedelta(minutes=interval) - datetime.now()).total_seconds()
         if remaining > 0:
             time.sleep(remaining)
@@ -324,9 +330,12 @@ def build_parser() -> argparse.ArgumentParser:
                         help="창이 끝날 때까지 상주하며 반복")
     parser.add_argument("--force", action="store_true",
                         help="창 밖·휴일에도 수집한다")
-    parser.add_argument("--include-holidays", action="store_true",
-                        help="휴일에도 수집한다(창은 그대로 지킨다). "
-                             "두 번째 PC가 휴일을 맡는 구성용")
+    days = parser.add_mutually_exclusive_group()
+    days.add_argument("--include-holidays", action="store_true",
+                      help="평일에 더해 휴일에도 수집한다(창은 그대로 지킨다)")
+    days.add_argument("--holidays-only", action="store_true",
+                      help="휴일에만 수집하고 평일은 건너뛴다. "
+                           "두 번째 PC가 휴일을 맡는 구성용(COLLECTOR.md 11장)")
     parser.add_argument("--dry-run", action="store_true",
                         help="호출만 하고 저장하지 않는다")
     parser.add_argument("--status", action="store_true",
@@ -344,10 +353,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return print_status(start, end, args.interval)
     if args.loop:
         return run_loop(start, end, args.interval, dry_run=args.dry_run,
-                        include_holidays=args.include_holidays)
+                        include_holidays=args.include_holidays,
+                        holidays_only=args.holidays_only)
     return run_tick(datetime.now(), start, end, args.interval,
                     force=args.force, dry_run=args.dry_run,
-                    include_holidays=args.include_holidays)
+                    include_holidays=args.include_holidays,
+                    holidays_only=args.holidays_only)
 
 
 if __name__ == '__main__':

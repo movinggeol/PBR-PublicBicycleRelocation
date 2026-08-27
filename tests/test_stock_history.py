@@ -168,6 +168,55 @@ def test_기본값은_여전히_휴일을_거른다(history_dir, fake_api):
     assert fake_api == []
 
 
+# ---- 휴일 전용 (B PC가 휴일만 맡는 구성) ----
+
+def test_휴일만_수집이면_평일을_거른다(history_dir, fake_api):
+    code = collector.run_tick(WEEKDAY.replace(hour=10), *WINDOW, INTERVAL,
+                              holidays_only=True)
+    assert code == 0            # 건너뛰기는 실패가 아니다
+    assert fake_api == []
+    assert not history_dir.exists()
+
+
+def test_휴일만_수집은_주말과_공휴일을_모두_잡는다(history_dir, fake_api):
+    """**공휴일이 핵심이다.** 어린이날은 화요일이라 토·일 트리거로는 못 잡는다 —
+    그래서 스케줄러를 7일로 깨우고 평일을 이 가드가 거른다."""
+    for stamp in (SATURDAY.replace(hour=10), PUBLIC_HOLIDAY.replace(hour=10)):
+        assert collector.run_tick(stamp, *WINDOW, INTERVAL,
+                                  holidays_only=True) == 0
+    assert len(fake_api) == 2
+
+
+def test_휴일만_수집도_창_가드는_지킨다(history_dir, fake_api):
+    _, allowed, reason = collector.window_state(
+        SATURDAY.replace(hour=23), *WINDOW, INTERVAL, holidays_only=True)
+    assert not allowed
+    assert "창" in reason
+    assert collector.run_tick(SATURDAY.replace(hour=23), *WINDOW, INTERVAL,
+                              holidays_only=True) == 0
+    assert fake_api == []
+
+
+def test_평일을_거를_때_이유를_알려준다():
+    _, allowed, reason = collector.window_state(
+        WEEKDAY.replace(hour=10), *WINDOW, INTERVAL, holidays_only=True)
+    assert not allowed
+    assert "평일" in reason      # '휴일'이라고 하면 정반대로 읽힌다
+
+
+def test_휴일만_수집이_휴일_포함보다_우선한다(history_dir, fake_api):
+    """CLI는 상호 배타로 막지만, 함수를 직접 부르는 쪽에서도 모순되면 안 된다."""
+    assert collector.run_tick(WEEKDAY.replace(hour=10), *WINDOW, INTERVAL,
+                              include_holidays=True, holidays_only=True) == 0
+    assert fake_api == []
+
+
+def test_CLI는_두_요일_옵션을_함께_받지_않는다():
+    with pytest.raises(SystemExit):
+        collector.build_parser().parse_args(
+            ["--include-holidays", "--holidays-only"])
+
+
 # ---- 수집 ----
 
 def test_한_틱을_수집하면_DB_CSV_로그에_남는다(history_dir, fake_api):

@@ -18,7 +18,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 398개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 404개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -96,6 +96,13 @@ step4                   : imbalance
    수집기(`tools/collect_stock.py`)는 `runs`·`station_stock`을 건드리지 않는다 —
    테스트가 지킨다. **휴일을 거르는 것은 스케줄러가 아니라 스크립트의 창 가드다**
    (작업 스케줄러는 요일만 안다). 자세한 것은 docs/구현/COLLECTOR.md.
+   **수집기의 요일 옵션은 세 갈래다** — 없음(평일만) / `--include-holidays`
+   (평일+휴일) / `--holidays-only`(휴일만, B PC용). 셋 다 **창 가드는 지킨다**
+   (`--force`만 창까지 푼다). 이것은 **관측 범위**지 분석의 `--day-type`이
+   아니다 — 평일·휴일을 섞어 통계 내지 말라는 규약은 그대로고, 거를 때는
+   `db.load_stock_history(day_type=...)`을 쓴다.
+   `--holidays-only`에서 **트리거가 7일인 것이 의도다**: 토·일만 걸면
+   공휴일(어린이날=화)을 놓친다. 7일을 깨우고 평일은 스크립트가 거른다.
    ⚠️ **저장 규칙이 두 곳에서 정반대다.** 수집기 `save_stock_snapshot()`은
    `INSERT OR REPLACE`(재실행 멱등 — 나중 값이 이긴다), 병합기
    `tools/merge_stock.py`는 `INSERT OR IGNORE`(**먼저 수집한 것이 이긴다** —
@@ -147,6 +154,7 @@ python run_pipeline.py --warmup-period "26년 03월"             # 계절 보정
 python tools/rebuild_net_demand.py            # 전 기간 순수요 재계산(휴일 포함)
 python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8000)
 .\scripts\collector.ps1 install           # 재고 시계열 수집 시작 (평일 07~22시, 10분)
+.\scripts\collector.ps1 install -HolidaysOnly  # 두 번째 PC — 휴일만 (COLLECTOR.md 11장)
 python tools/collect_stock.py --status    # 수집 현황
 python tools/merge_stock.py <경로> --dry-run  # 다른 PC 수집분 합치기 (COLLECTOR.md 11장)
 ```
@@ -258,7 +266,7 @@ python tools/merge_stock.py <경로> --dry-run  # 다른 PC 수집분 합치기 
 ## 테스트
 
 ```powershell
-python -m pytest                 # 398개, 약 50초 (tests/ 만 수집)
+python -m pytest                 # 404개, 약 50초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 
