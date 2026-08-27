@@ -1,11 +1,11 @@
 # 테스트
 
 이 프로젝트는 처음에 테스트가 하나도 없었고, **의존성이 전부 깨진 상태**로
-파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 378개 테스트입니다.
+파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 382개 테스트입니다.
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 378개 (약 50~80초)
+python -m pytest              # 전체 382개 (약 50~80초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행

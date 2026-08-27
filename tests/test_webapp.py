@@ -400,3 +400,63 @@ def test_only_explanation_labels_are_pinnable(client):
         "고정 대상을 .tip으로 좁히지 않으면 내비 링크가 죽는다")
     # 내비 링크가 여전히 data-tip을 달고 있는지 — 전제가 무너지면 이 테스트도 무의미하다
     assert 'href="/kpi"' in html and "data-tip=" in html
+
+
+# ───────── 수정안 30·31·32 (1.23.9) ─────────
+
+def test_대조_단추가_본문과_겹치지_않는다(client):
+    """`.actions`가 hero 밖에서도 flex여야 하고, 뒤따르는 설명글이 위로 겹치면 안 된다.
+
+    1.22.0에서 단추를 hero 밖에 두면서 생긴 문제다 — `.section-lead`의
+    `margin-top: -6px`이 글자를 단추 위로 끌어올렸다(수정안 30번).
+    """
+    html = client.get("/orders").text
+
+    assert ".actions { display: flex" in html, "hero 밖 .actions에 flex가 없다"
+    assert ".actions + .section-lead" in html, "단추 뒤 설명글의 여백 규칙이 없다"
+
+
+def test_표_팝업이_계단처럼_비껴_뜬다(client):
+    """여러 개를 열면 완전히 겹쳐 새 창이 떴는지 알 수 없었다 (수정안 31번)."""
+    html = client.get("/kpi").text
+
+    assert "function cascade(" in html
+    assert "function openCount(" in html
+    # 사용자가 끌어 옮긴 창은 그 자리를 지켜야 한다
+    assert "if (!moved) cascade(panel, depth)" in html
+
+
+def test_KPI_타일에_용어_설명이_붙는다():
+    """상단 타일에는 설명이 없어 무슨 지표인지 알 수 없었다 (수정안 32번).
+
+    아래 표 머리글과 **같은 문구**를 써야 한다 — 갈리면 같은 지표를 두 가지로
+    설명하게 된다. 그래서 **문구를 라우트에서 만든다**는 것을 직접 확인한다
+    (KPI 자료가 없는 DB에서는 타일 자체가 그려지지 않으므로 HTML로는 못 잰다).
+    """
+    import inspect
+
+    from webapp import app as webapp_app
+
+    source = inspect.getsource(webapp_app.kpi_page)
+    shared = "목표 재고까지 모자란 양을 계획이 몇 % 메웠는지입니다."
+    assert shared in source, "타일 설명이 표 머리글과 다른 문구다"
+    for label in ("한 번에 닿는 범위", "km당 개선", "시간 예산 준수"):
+        assert label in source
+
+
+def test_KPI_타일_설명이_표_머리글과_같은_문구다():
+    """두 곳이 갈리면 같은 지표를 다르게 설명하게 된다.
+
+    타일 쪽 문구는 라우트가, 표 머리글은 템플릿이 갖고 있다. **둘을 맞대어**
+    확인한다 — KPI 자료가 없는 DB에서는 화면에 아무것도 안 그려지므로
+    HTML만 봐서는 이 규칙을 지킬 수 없다.
+    """
+    import inspect
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    shared = "목표 재고까지 모자란 양을 계획이 몇 % 메웠는지입니다."
+    template = Path(webapp_app.__file__).parent / "templates" / "kpi.html"
+    assert shared in inspect.getsource(webapp_app.kpi_page)
+    assert shared in template.read_text(encoding="utf-8")

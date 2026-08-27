@@ -80,7 +80,7 @@
 
 {% if compared %}
 <h2>지금 재고와 대조 <span class="hint">{{ checked_at }} 조회</span></h2>
-<div class="actions no-print">
+<div class="actions no-print" style="margin-bottom:var(--sp-sm)">
   <a class="btn ghost" href="/orders/live?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}">
     다시 조회</a>
   <a class="btn ghost" href="/orders?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}">

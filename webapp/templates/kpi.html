@@ -28,7 +28,7 @@
 <div class="tiles">
   {% for c in cards %}
   <div class="tile">
-    <p class="label">{{ c.label }}</p>
+    <p class="label">{% if c.tip %}<span class="tip" data-tip="{{ c.tip }}">{{ c.label }}</span>{% else %}{{ c.label }}{% endif %}</p>
     <p class="value">{{ fmt(c.value, c.fmt) }}{% if c.delta is not none and c.delta | abs > 0.001 %}<span
         class="delta {{ 'good' if c.delta > 0 else 'bad' }}">{{ '▲' if c.delta > 0 else '▼' }} {{ fmt(c.delta | abs, c.fmt) }}</span>{% endif %}</p>
   </div>
@@ -36,7 +36,7 @@
 
   {% if stockout %}
   <div class="tile">
-    <p class="label">결품 시간</p>
+    <p class="label"><span class="tip" data-tip="대여소에 자전거가 한 대도 없어 빌리려던 사람이 그냥 돌아가는 시간입니다. 대여소·일 평균이며, 이 프로젝트가 실제로 줄이려는 값입니다.">결품 시간</span></p>
     <p class="value">{{ stockout.after | round(2) }}<span class="unit">시간</span><span
         class="delta good">▼ {{ stockout.cut | round(2) }}</span></p>
     <p class="sub">대여소·일 평균 · 재배치 전 {{ stockout.before | round(2) }}시간</p>
