@@ -91,11 +91,12 @@ function Assert-Paths {
 }
 
 function Get-WindowSpan {
-    $parts = $Window -split '-'
-    if ($parts.Count -ne 2) { throw "수집 창 형식이 잘못됐습니다: '$Window' (예: 09:00-17:00)" }
+    param([string]$Text = $Window)
+    $parts = $Text -split '-'
+    if ($parts.Count -ne 2) { throw "수집 창 형식이 잘못됐습니다: '$Text' (예: 09:00-17:00)" }
     $start = [datetime]::ParseExact($parts[0].Trim(), 'HH:mm', $null)
     $end   = [datetime]::ParseExact($parts[1].Trim(), 'HH:mm', $null)
-    if ($start -ge $end) { throw "수집 창의 끝이 시작보다 늦어야 합니다: '$Window'" }
+    if ($start -ge $end) { throw "수집 창의 끝이 시작보다 늦어야 합니다: '$Text'" }
     [pscustomobject]@{ Start = $start; Duration = $end - $start }
 }
 
@@ -104,7 +105,14 @@ function Test-PowerSettings {
         절전 설정을 점검해 경고만 한다 — 사용자 시스템 설정을 말없이 바꾸지 않는다.
         powercfg 출력은 지역화돼 있어 문구 대신 16진수 토큰의 **순서**로 읽는다
         (마지막 두 개가 AC, DC 설정값이다).
+
+        창·간격을 인자로 받는다: resume은 사용자가 인자를 주지 않으므로 파라미터
+        기본값이 아니라 **등록된 작업의 값**으로 판단해야 한다.
     #>
+    param(
+        [string]$WindowText = $Window,
+        [int]$IntervalMinutes = $Interval
+    )
     $onBattery = $false
     try {
         $battery = Get-CimInstance Win32_Battery -ErrorAction Stop
@@ -121,16 +129,21 @@ function Test-PowerSettings {
         }
     } catch { }
 
-    $span = (Get-WindowSpan).Duration.TotalSeconds
+    $span = (Get-WindowSpan -Text $WindowText).Duration.TotalSeconds
     if ($onBattery) {
         Write-Warning "지금 배터리로 돌고 있습니다. 배터리에서는 절전에 들어가 수집이 끊깁니다 — 전원 어댑터를 꽂아 두세요."
     }
     if ($null -ne $acSeconds) {
         if ($acSeconds -eq 0) {
             Write-Host "  전원 연결 시 절전: 안 함 — 수집 창 내내 깨어 있습니다." -ForegroundColor DarkGray
+        } elseif ($acSeconds -le ($IntervalMinutes * 60)) {
+            # 임계값이 틱 간격 이하면 유휴 리셋이 따라잡지 못한다 — 실제로 끊긴다.
+            Write-Warning ("전원 연결 시 {0}분 뒤 절전인데 틱 간격이 {1}분입니다. " -f ($acSeconds / 60), $IntervalMinutes +
+                           "유휴 리셋으로 막을 수 없어 수집이 끊깁니다 — 전원 옵션에서 절전 시간을 늘리거나 '안 함'으로 두세요.")
         } elseif ($acSeconds -lt $span) {
-            Write-Warning ("전원 연결 시 {0}분 뒤 절전으로 설정돼 있습니다(수집 창 {1}시간). " -f ($acSeconds / 60), ($span / 3600) +
-                           "절전 중에는 수집되지 않습니다 — 전원 옵션에서 절전을 '안 함'으로 두는 것을 권합니다.")
+            # 창보다 짧지만 간격보다는 길다. 매 틱이 타이머를 되돌리므로 수집 중에는
+            # 잠들지 않는다 — 겁주지 말고 사실만 알린다.
+            Write-Host ("  전원 연결 시 절전: {0}분 (수집 창 {1}시간) — 매 틱이 유휴 타이머를 되돌려 수집 중에는 잠들지 않습니다." -f ($acSeconds / 60), ($span / 3600)) -ForegroundColor DarkGray
         }
     }
 }
@@ -203,7 +216,8 @@ function Invoke-Resume {
     if (-not (Get-Task)) { Write-Warning "등록된 작업이 없습니다. install부터 하세요."; return }
     Enable-ScheduledTask -TaskName $TaskName | Out-Null
     Write-Host "[재개] $TaskName" -ForegroundColor Green
-    Test-PowerSettings
+    $live = Get-RegisteredArgs
+    Test-PowerSettings -WindowText $live.Window -IntervalMinutes $live.Interval
     Write-Host "  다음 실행: $(Format-Stamp (Get-ScheduledTaskInfo -TaskName $TaskName).NextRunTime)"
 }
 
