@@ -31,6 +31,57 @@ MAX_CALLS = int(os.getenv("PBR_TMAP_MAX_CALLS", "35"))
 
 BASE_URL = "https://apis.openapi.sk.com/tmap/routes/"
 
+# ── TMAP 요청 파라미터 (2026-08-28 재검토) ────────────────────────────
+#
+# ⚠️ **TMAP에는 '평균 속력'을 넣는 파라미터가 없다.** 도로별 제한속도와 그 시각의
+# 교통량으로 서버가 계산해 totalTime을 돌려준다. 그래서 실측 배율(1.53배)은
+# 우리 가정(25 km/h)에 오염되지 않은 값이다 — 그것이 이 실측의 값어치다.
+#
+# searchOption: 0 교통최적+추천 / 1 무료우선 / **2 교통최적+최단시간** / 3 초보
+#   재배치는 요금이 아니라 **시간**이 목적이므로 2를 쓴다.
+# carType: 1 승용차 / 2 중형버스 / 3 대형버스 / 4 대형화물 / 5 특수화물
+#   **통행료 계산용**이다. 타슈 재배치 차량은 소형 트럭·밴이므로 1이 실제에
+#   가깝다. 실제 화물차 경로 제한(높이·중량)을 받으려면 truckType 계열을
+#   따로 보내야 하는데, 그 규모의 차량이 아니다.
+#   (1.26.4까지 carType=4였다 — 근거 없이 대형화물차로 잡혀 있었다.)
+SEARCH_OPTION = os.getenv("PBR_TMAP_SEARCH_OPTION", "2")
+CAR_TYPE = os.getenv("PBR_TMAP_CAR_TYPE", "1")
+
+# startTime은 **그 시각의 교통량**을 정한다(searchOption이 교통최적이므로).
+# 1.26.4까지 "201709121938"(2017년 저녁 러시아워)로 **고정**돼 있어서,
+# 새벽 회차(_05_10)에도 퇴근길 교통량을 적용하고 있었다.
+# 이제 호출부가 회차의 출동 시각을 넘긴다.
+FALLBACK_START_TIME = "201709121938"
+
+
+def start_time_for(duration: str, when=None) -> str:
+    """회차의 **출동 시각**을 TMAP 형식(YYYYMMDDHHMM)으로 만든다.
+
+    `_05_10` → 05시, `_10_15` → 10시처럼 창의 **첫 시각**을 쓴다. 차량은 그때
+    차고지를 떠나기 때문이다.
+
+    날짜는 **다음 평일**을 쓴다 — 주말은 교통량이 다르고, 과거 날짜를 넣으면
+    TMAP이 그날의 실제 이력이 아니라 요일·시간대 패턴으로 답하기 때문이다.
+    """
+    from datetime import datetime, timedelta
+
+    hours = _duration_first_hour(duration)
+    if hours is None:
+        return FALLBACK_START_TIME
+    base = (when or datetime.now()) + timedelta(days=1)
+    while base.weekday() >= 5:            # 토·일이면 월요일로 민다
+        base += timedelta(days=1)
+    return base.replace(hour=hours, minute=0).strftime("%Y%m%d%H%M")
+
+
+def _duration_first_hour(duration):
+    """`_05_10` → 5. 형식이 다르면 None."""
+    import re
+
+    match = re.match(r"_(\d{2})_(\d{2})$", str(duration or ""))
+    return int(match.group(1)) if match else None
+
+
 
 @dataclass(frozen=True)
 class TmapEndpoint:
@@ -128,8 +179,8 @@ def seconds_to_hms(sec):
 
 # ---------------------- Tmap ----------------------
 
-def call_tmap_sequential(start, end, via_points, start_time="201709121938", headers=None, url=None,
-                         retries=2, timeout=30):
+def call_tmap_sequential(start, end, via_points, start_time=None, headers=None, url=None,
+                         retries=2, timeout=30, search_option=None, car_type=None):
     """TMAP 경유지 최적화 API 1회 호출 (엔드포인트 폴백 포함).
 
     `url`을 주지 않으면 `pick_endpoint()`가 고른다. 고른 엔드포인트가 일일 한도를
@@ -138,12 +189,14 @@ def call_tmap_sequential(start, end, via_points, start_time="201709121938", head
     """
     while True:
         if url is not None:
-            return _post_tmap(start, end, via_points, start_time, headers, url, retries, timeout)
+            return _post_tmap(start, end, via_points, start_time, headers, url,
+                              retries, timeout, search_option, car_type)
 
         endpoint = pick_endpoint(len(via_points))
         try:
             return _post_tmap(start, end, via_points, start_time, headers,
-                              endpoint.url, retries, timeout)
+                              endpoint.url, retries, timeout,
+                              search_option, car_type)
         except TmapQuotaExceeded as exc:
             _exhausted.add(endpoint.name)
             if not available_endpoints():
@@ -153,14 +206,17 @@ def call_tmap_sequential(start, end, via_points, start_time="201709121938", head
             # 루프를 돌아 남은 엔드포인트로 재시도한다.
 
 
-def _post_tmap(start, end, via_points, start_time, headers, url, retries, timeout):
+def _post_tmap(start, end, via_points, start_time, headers, url, retries, timeout,
+               search_option=None, car_type=None):
     """실제 HTTP 호출. 순간적인 429는 재시도, 4xx는 즉시 실패."""
     payload = {
         "reqCoordType": "WGS84GEO", "resCoordType": "WGS84GEO",
         "startName": start["name"], "startX": str(start["X"]), "startY": str(start["Y"]),
-        "startTime": start_time,
+        "startTime": start_time or FALLBACK_START_TIME,
         "endName": end["name"], "endX": str(end["X"]), "endY": str(end["Y"]),
-        "searchOption": "0", "carType": "4", "viaPoints": via_points,
+        "searchOption": search_option or SEARCH_OPTION,
+        "carType": car_type or CAR_TYPE,
+        "viaPoints": via_points,
     }
     global _call_count
 
@@ -194,7 +250,8 @@ def _post_tmap(start, end, via_points, start_time, headers, url, retries, timeou
     raise RuntimeError("Tmap API 호출 실패")
 
 
-def call_tmap_chunked(start, end, via_points, headers=None, url=None, max_via=None):
+def call_tmap_chunked(start, end, via_points, headers=None, url=None, max_via=None,
+                      start_time=None):
     """경유지가 max_via를 넘으면 구간을 나눠 여러 번 호출한다.
 
     각 구간의 마지막 경유지를 그 구간의 도착지로 삼고,
@@ -208,7 +265,8 @@ def call_tmap_chunked(start, end, via_points, headers=None, url=None, max_via=No
         max_via = MAX_VIA if url is not None else _max_via(pick_endpoint(len(via_points)))
 
     if len(via_points) <= max_via:
-        return [call_tmap_sequential(start, end, via_points, headers=headers, url=url)]
+        return [call_tmap_sequential(start, end, via_points, headers=headers, url=url,
+                                     start_time=start_time)]
 
     geo_list = []
     current_start = start
@@ -228,7 +286,8 @@ def call_tmap_chunked(start, end, via_points, headers=None, url=None, max_via=No
             leg_vias = chunk
 
         geo_list.append(
-            call_tmap_sequential(current_start, leg_end, leg_vias, headers=headers, url=url)
+            call_tmap_sequential(current_start, leg_end, leg_vias, headers=headers,
+                                 url=url, start_time=start_time)
         )
         current_start = leg_end
 

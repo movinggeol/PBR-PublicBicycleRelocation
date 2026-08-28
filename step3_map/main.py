@@ -17,6 +17,7 @@ from module import (
     seconds_to_hms,
     call_tmap_chunked,
     merge_tmap_results,
+    start_time_for,
 )
 
 from project_config import (
@@ -281,9 +282,13 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
         # 직선 경로로 낮춰 그리고 파이프라인은 계속 진행한다.
         merged = None
         try:
+            # 출동 시각을 넘긴다 — searchOption이 교통최적이므로 **그 시각의
+            # 교통량**으로 계산된다. 1.26.4까지 2017년 저녁으로 고정돼 있어
+            # 새벽 회차에도 퇴근길 교통량이 적용됐다.
             geo_list = call_tmap_chunked(start, end, via,
                                          headers=headers,
-                                         url=tmap_url)
+                                         url=tmap_url,
+                                         start_time=start_time_for(duration))
             merged = merge_tmap_results(geo_list)
         except (TmapQuotaExceeded, TmapBudgetExceeded) as exc:
             print(f"  ⚠ 클러스터 {c}: {exc}")

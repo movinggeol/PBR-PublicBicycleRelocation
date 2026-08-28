@@ -318,3 +318,95 @@ def test_road_leg가_DB_스키마에_있다():
     assert "road_leg" in db.SCHEMA
     for column in ("straight_km", "road_sec", "from_id", "to_id"):
         assert column in db.SCHEMA
+
+
+# ── 요청 파라미터 (1.26.5) ────────────────────────────────────────────
+#
+# 1.26.4까지 startTime이 "201709121938"(2017년 저녁)로 **고정**돼 있어서
+# 새벽 회차에도 퇴근 러시아워 교통량이 적용됐다. 배율이 1.53배로 과대추정됐고,
+# 고친 뒤 1.32배가 됐다. 같은 일이 다시 생기면 안 된다.
+
+def _capture_payload(module, monkeypatch):
+    """실제로 보낸 payload를 잡아 둔다."""
+    box = {}
+
+    def _post(url, json=None, **kwargs):
+        box["url"] = url
+        box["payload"] = json
+        return FakeResponse(200)
+
+    monkeypatch.setattr(module.requests, "post", _post)
+    return box
+
+
+def test_출동_시각이_회차마다_다르다(monkeypatch):
+    """`startTime`은 **그 시각의 교통량**을 정한다 — 회차마다 달라야 한다.
+
+    searchOption이 교통최적이므로 고정값을 쓰면 모든 회차가 같은 교통 상황으로
+    계산된다. 실측에서 새벽 회차가 20.5% 과대추정되고 있었다.
+    """
+    module = load_module()
+    box = _capture_payload(module, monkeypatch)
+    start, end, via = _args(3)
+
+    seen = {}
+    for duration in ("_05_10", "_10_15", "_15_20"):
+        module.call_tmap_sequential(start, end, via,
+                                    start_time=module.start_time_for(duration))
+        seen[duration] = box["payload"]["startTime"]
+
+    assert len(set(seen.values())) == 3, f"회차가 같은 시각을 쓴다: {seen}"
+    assert seen["_05_10"][8:10] == "05", "출동 시각이 창의 첫 시각이 아니다"
+    assert seen["_10_15"][8:10] == "10"
+    assert seen["_15_20"][8:10] == "15"
+
+
+def test_출동_날짜는_평일이다():
+    """주말은 교통량이 다르다 — 토·일이 나오면 안 된다."""
+    from datetime import datetime
+
+    module = load_module()
+    for day in range(1, 29):            # 2월 한 달을 훑는다
+        stamp = module.start_time_for("_10_15", datetime(2026, 2, day, 9, 0))
+        when = datetime.strptime(stamp, "%Y%m%d%H%M")
+        assert when.weekday() < 5, f"{stamp}는 주말이다"
+
+
+def test_모르는_회차는_예전_기본값으로_물러선다():
+    """형식이 다른 값이 와도 죽지 않는다 — 지도는 그려져야 한다."""
+    module = load_module()
+    assert module.start_time_for("이상한값") == module.FALLBACK_START_TIME
+    assert module.start_time_for(None) == module.FALLBACK_START_TIME
+
+
+def test_차종과_경로_옵션이_설정을_따른다(monkeypatch):
+    """`carType=4`(대형화물차)는 근거 없는 값이었다.
+
+    타슈 재배치 차량은 소형 트럭·밴이고, 재배치는 요금이 아니라 **시간**이
+    목적이므로 searchOption은 최단시간(2)이다.
+    """
+    module = load_module()
+    box = _capture_payload(module, monkeypatch)
+    start, end, via = _args(3)
+
+    module.call_tmap_sequential(start, end, via)
+
+    assert box["payload"]["carType"] == "1", "승용차가 아니다"
+    assert box["payload"]["searchOption"] == "2", "최단시간이 아니다"
+
+
+def test_속도는_보내지_않는다(monkeypatch):
+    """**TMAP에는 평균 속력 파라미터가 없다.**
+
+    실측 배율이 우리 가정(25 km/h)에 오염되지 않았다는 것이 이 측정의 값어치다.
+    누군가 속도를 넣으려 하면 그 성질이 깨지므로 여기서 막는다.
+    """
+    module = load_module()
+    box = _capture_payload(module, monkeypatch)
+    start, end, via = _args(3)
+
+    module.call_tmap_sequential(start, end, via)
+
+    keys = {k.lower() for k in box["payload"]}
+    assert not any("speed" in k for k in keys), \
+        f"속도를 보내고 있다: {box['payload'].keys()}"
