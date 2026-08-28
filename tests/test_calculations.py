@@ -1182,3 +1182,85 @@ def test_모형을_켜도_거리는_그대로다(monkeypatch):
     finally:
         monkeypatch.delenv("PBR_USE_ROAD_MODEL", raising=False)
         importlib.reload(pc)
+
+
+# ── 군집 조정 최적화 (1.26.8) ─────────────────────────────────────────
+
+def test_목적함수는_캐시_유무에_상관없이_같다():
+    """**결과가 달라지면 최적화가 아니라 다른 알고리즘이다.**
+
+    캐시는 손대지 않은 군집의 항을 재사용한다. 합산 순서를 `np.unique(labels)`로
+    고정해 부동소수 덧셈 순서가 바뀌지 않게 했다 — 마지막 자리가 흔들리면
+    이동 채택 여부가 달라질 수 있다. 그래서 `==`로(근사가 아니라) 검사한다.
+    """
+    import numpy as np
+
+    adjust = _load("step1_cluster/adjust_module.py", "adjust_cache")
+    rng = np.random.default_rng(7)
+
+    for _ in range(120):
+        n = int(rng.integers(8, 60))
+        K = int(rng.integers(2, min(8, n)))
+        labels = rng.integers(0, K, n)
+        coords = 36.3 + rng.random((n, 2)) * 0.2
+        qty = rng.integers(-30, 30, n).astype(float)
+
+        plain = adjust._objective_parts(labels, coords, qty, K, 1, 100, 3000)
+        cache = {}
+        first = adjust._objective_parts(labels, coords, qty, K, 1, 100, 3000,
+                                        cache=cache)
+        again = adjust._objective_parts(labels, coords, qty, K, 1, 100, 3000,
+                                        cache=cache)
+        assert plain == first == again, "캐시가 값을 바꿨다"
+
+
+def test_이동_시도가_원본을_건드리지_않는다():
+    """채택되지 않으면 입력 프레임이 **그대로** 돌아와야 한다.
+
+    후보를 시험하려고 라벨 배열을 제자리에서 바꾸므로, 되돌리는 것을 빠뜨리면
+    다음 후보가 오염된 상태에서 평가된다.
+    """
+    import numpy as np
+    import pandas as pd
+
+    adjust = _load("step1_cluster/adjust_module.py", "adjust_move")
+
+    frame = pd.DataFrame({
+        "cluster": [0, 0, 1, 1],
+        "lat": [36.30, 36.31, 36.40, 36.41],
+        "lon": [127.30, 127.31, 127.40, 127.41],
+        "rebal_qty": [5.0, -5.0, 7.0, -7.0],
+        "station_name": list("가나다라"),
+    })
+    before = frame.copy()
+
+    # 점수를 절대 못 내리는 문턱을 주면 아무것도 채택되지 않는다
+    out, moved = adjust.try_move_node(frame, frame.iloc[[0]], 1, -1e18,
+                                      2, 1, 100, 3000)
+
+    assert moved is False
+    pd.testing.assert_frame_equal(out, before)
+    pd.testing.assert_frame_equal(frame, before), "입력 프레임이 오염됐다"
+
+
+def test_채택되면_그_대여소만_옮겨진다():
+    """받아들인 이동은 **한 칸만** 바꾼다."""
+    import pandas as pd
+
+    adjust = _load("step1_cluster/adjust_module.py", "adjust_move2")
+
+    frame = pd.DataFrame({
+        "cluster": [0, 0, 1, 1],
+        "lat": [36.30, 36.31, 36.40, 36.41],
+        "lon": [127.30, 127.31, 127.40, 127.41],
+        "rebal_qty": [5.0, -5.0, 7.0, -7.0],
+        "station_name": list("가나다라"),
+    })
+
+    # 문턱을 아주 크게 주면 첫 후보가 곧바로 채택된다
+    out, moved = adjust.try_move_node(frame, frame.iloc[[0]], 1, 1e18,
+                                      2, 1, 100, 3000)
+
+    assert moved is True
+    assert out.loc[0, "cluster"] == 1
+    assert list(out["cluster"])[1:] == [0, 1, 1], "다른 행까지 바뀌었다"
