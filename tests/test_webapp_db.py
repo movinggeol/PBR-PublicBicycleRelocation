@@ -135,7 +135,7 @@ def test_pipeline_runs_lists_history(client):
 
 def test_index_shows_run_history(client):
     """실행 이력이 대시보드에 보인다."""
-    html = client.get("/").text
+    html = client.get("/run").text
 
     assert "저장된 실행" in html
     assert NEW in html

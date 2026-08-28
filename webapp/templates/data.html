@@ -11,14 +11,16 @@
 {# 한 분류에 파일이 15개까지 쌓인다. 분류마다 5건씩 끊어 보여준다 —
    여기서는 분류 이름이 표 밖(h2)에 있으므로 실행 화면과 달리 **행 단위**로
    끊어도 이름 없는 쪽이 생기지 않는다. 최신순 정렬이라 첫 쪽이 가장 최근이다. #}
+<div class="data-grid">
 {% for group in groups %}
+<section class="data-cell">
 <h2>{{ group.title }}</h2>
 <div class="card flush" data-pager="5" data-pager-label="{{ group.title }} 쪽 넘기기">
   {% if group.entries %}
   <div class="table-wrap">
   <table data-sortable>
-    <thead><tr><th class="grow">파일</th><th>수정 시각</th><th class="num">크기</th>
-        <th data-nosort>열기</th></tr></thead>
+    <thead><tr><th>파일</th><th>수정 시각</th><th class="num">크기</th>
+        <th class="grow" data-nosort>열기</th></tr></thead>
     <tbody>
     {% for e in group.entries %}
     <tr data-page-item="{{ loop.index0 }}">
@@ -35,8 +37,10 @@
   </table>
   </div>
   {% else %}
-  <p class="empty">아직 없습니다. <a href="/#run">계획을 실행</a>하면 만들어집니다.</p>
+  <p class="empty">아직 없습니다. <a href="/run#run">계획을 실행</a>하면 만들어집니다.</p>
   {% endif %}
 </div>
+</section>
 {% endfor %}
+</div>
 {% endblock %}

@@ -63,7 +63,7 @@ def test_guide_covers_every_run_form_field(client):
 
     폼에 칸을 새로 넣고 안내를 안 고치면 여기서 걸린다.
     """
-    form = client.get("/").text
+    form = client.get("/run").text
     guide = client.get("/guide").text
 
     for label in ["실행 이름", "순수요 기간", "시간대", "요일 구분",

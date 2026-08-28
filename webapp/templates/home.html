@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}PBR 대시보드{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <h1>대전 공공자전거 재배치</h1>
+  <p class="lead">대여소마다 자전거가 몇 대 있어야 하는지를 과거 순수요로 정하고,
+    거기까지 어떤 차량이 어떤 순서로 옮길지를 계산합니다.</p>
+  <div class="actions">
+    <a class="btn" href="/run">계획 실행</a>
+    <a class="btn ghost" href="/guide">사용 안내</a>
+  </div>
+</section>
+
+{% if running %}
+<div class="alert"><span><b>계획을 계산하고 있습니다</b> — {{ running.label }}
+  (보통 {{ typical_minutes or '5~10' }}분).
+  <a href="/runs/{{ running.id }}">진행 상황 보기</a></span></div>
+{% endif %}
+
+<h2>마지막 계획</h2>
+{% if last %}
+<div class="card">
+  <div class="card-head">
+    <h3>{{ last.run_label }}</h3>
+    <span class="muted">{{ last.computed_at }} · 회차 {{ last.durations }}개</span>
+  </div>
+  <div class="tiles">
+    <div class="tile">
+      <p class="label"><span class="tip" data-tip="대여소에 자전거가 한 대도 없어 빌리려던 사람이 그냥 돌아가는 시간입니다. 대여소·일 평균이며, 이 프로젝트가 실제로 줄이려는 값입니다.">결품 시간</span></p>
+      <p class="value">{{ last.stockout_after }}<span class="unit">h</span></p>
+      <p class="sub muted">재배치 전 {{ last.stockout_before }}h{% if last.cut_pct %} · <b>{{ last.cut_pct }}% 감소</b>{% endif %}</p>
+    </div>
+    <div class="tile">
+      <p class="label"><span class="tip" data-tip="계획이 옮기기로 한 자전거 총 대수입니다.">옮긴 대수</span></p>
+      <p class="value">{{ last.bikes }}<span class="unit">대</span></p>
+      <p class="sub muted">차량 {{ last.vehicles }}대 출동</p>
+    </div>
+    <div class="tile">
+      <p class="label"><span class="tip" data-tip="차고지 복귀까지 포함한 총 이동거리입니다.">총 이동</span></p>
+      <p class="value">{{ last.distance_km }}<span class="unit">km</span></p>
+    </div>
+    <div class="tile">
+      <p class="label"><span class="tip" data-tip="가장 오래 걸린 차량의 소요시간입니다. 시간 예산을 넘으면 그 회차는 계획대로 끝나지 않습니다.">최장 소요</span></p>
+      <p class="value {% if last.max_minutes > last.budget %}bad{% endif %}">{{ last.max_minutes }}<span class="unit">분</span></p>
+      <p class="sub muted">예산 {{ last.budget | round | int }}분{% if last.max_minutes > last.budget %} · <b>초과</b>{% endif %}</p>
+    </div>
+  </div>
+  <div class="card-foot">
+    <a href="/kpi">성과 지표</a> ·
+    <a href="/orders">작업지시서</a> ·
+    <a href="/maps">지도</a>
+    {# DB에는 실험용 실행(sweep-·g3000 등)도 함께 쌓인다. 가장 최근 것이
+       실험이면 여기 뜨는 값은 '운영 계획'이 아니다 — 라벨을 그대로 보여
+       주고, 사람이 알아볼 수 있게 한마디 붙인다. #}
+    {% if last.is_experiment %}
+    <span class="muted"> · ⚠️ 이 라벨은 <b>실험용 실행</b>입니다</span>
+    {% endif %}
+  </div>
+</div>
+{% else %}
+<div class="card"><p class="empty">아직 계획이 없습니다.
+  <a href="/run">계획을 실행</a>하면 여기에 요약이 뜹니다.</p></div>
+{% endif %}
+
+<h2>어디서 무엇을 하나</h2>
+<div class="split3">
+  <a class="card link" href="/run">
+    <h3><span class="step-no">1</span> 실행</h3>
+    <p class="muted">지금 재고와 과거 순수요로 계획을 계산합니다.
+      순수요는 <b>{{ period }}</b> 자료를 기본으로 씁니다.
+      {# 예상 소요는 사람이 적지 않는다 — **지난 실행이 실제로 걸린 시간**이다.
+         옛 안내의 '보통 5~10분'은 실측과 어긋났다(수정안 4). #}
+      {% if typical_minutes %}회차 하나에 보통 <b>{{ typical_minutes }}분</b> 걸립니다.{% endif %}</p>
+  </a>
+  <a class="card link" href="/kpi">
+    <h3><span class="step-no">2</span> 결과</h3>
+    <p class="muted">성과 지표·차량 운용·지도·작업지시서를 봅니다.
+      {% if runs_total %}지금까지 <b>{{ runs_total }}개</b>의 계획이 쌓였습니다.{% endif %}</p>
+  </a>
+  <a class="card link" href="/data">
+    <h3><span class="step-no">3</span> 데이터</h3>
+    <p class="muted">단계마다 만들어진 CSV 원본을 미리 보고 내려받습니다.</p>
+  </a>
+</div>
+
+{% endblock %}

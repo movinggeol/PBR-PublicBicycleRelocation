@@ -343,6 +343,26 @@
     .card > :first-child { margin-top: 0; }
     .card > :last-child { margin-bottom: 0; }
     .card.flush { padding: 0; overflow: hidden; }
+
+    /* 메인 화면(수정안 33) — 세 구역으로 보내는 카드와 요약 카드의 바닥 줄. */
+    .split3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-lg); }
+    @media (max-width: 860px) { .split3 { grid-template-columns: 1fr; } }
+    .card.link { display: block; color: inherit; text-decoration: none; transition: border-color .12s ease; }
+    .card.link:hover { border-color: var(--ink); text-decoration: none; }
+    .card.link h3 { margin: 0 0 var(--sp-sm); }
+    .card-foot { padding: var(--sp-md) var(--sp-lg); border-top: 1px solid var(--divider-soft);
+                 font-size: var(--fs-fine); }
+    a.flow-title { color: inherit; text-decoration: none; }
+    a.flow-title:hover { text-decoration: underline; }
+
+    /* 데이터 화면은 분류가 10개다. 한 줄에 하나씩 놓으면 세로로 4,000px 넘게
+       늘어지는데, '파일' 열이 802px을 차지하고 실제로는 206px만 쓴다(실측).
+       남는 596px을 없애고 **두 벌씩 가로로** 놓는다(수정안 40). */
+    .data-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--sp-lg); align-items: start; }
+    /* ⚠️ 제목과 표를 **한 칸에 묶어야** 한다. 따로 두면 각자 칸을 차지해
+       제목은 왼쪽, 표는 오른쪽으로 갈라진다(실제로 겪음). */
+    .data-cell > h2 { margin-top: var(--sp-xl); }
+    @media (max-width: 900px) { .data-grid { grid-template-columns: 1fr; } }
     .card.flush > .card-head { padding: var(--sp-md) var(--sp-lg); border-bottom: 1px solid var(--divider-soft); }
     .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-md); flex-wrap: wrap; }
     .card-head h2, .card-head h3 { margin: 0; }
@@ -697,7 +717,14 @@
     #tipbox[data-show] { opacity: 1; transform: translateY(0); }
     /* 고정 상태 — 커서를 떼도 남는다. 닫기 단추를 눌러야 하므로 이때만
        클릭을 받는다(평소 pointer-events:none이라야 풍선이 커서를 가리지 않는다). */
-    #tipbox[data-pinned] { pointer-events: auto; padding-right: 30px; }
+    /* ⚠️ 고정할 때 padding을 더하면 **글 상자가 좁아져 줄바꿈이 달라진다.**
+       예전에는 여기서 padding-right: 30px을 줬는데, 커서를 대다가 누르는 순간
+       같은 문장이 다른 자리에서 접혀 글이 움직이는 것처럼 보였다(수정안 35).
+       자리는 늘 비워 두고, 닫기 단추는 그 위에 얹는다 — 크기가 변하지 않는다. */
+    #tipbox { padding-right: 30px; }
+    #tipbox[data-pinned] { pointer-events: auto; }
+    #tipbox .tipclose { display: none; }
+    #tipbox[data-pinned] .tipclose { display: block; }
     #tipbox .tipclose {
       position: absolute; top: 4px; right: 5px;
       width: 20px; height: 20px; line-height: 19px; text-align: center;
@@ -727,7 +754,10 @@
     .card.flush .empty { padding: var(--sp-lg); }
     /* 긴 파일 이름은 줄바꿈을 허용한다. 최소 폭을 좁게 잡아야 좁은 카드 안에서도
        옆 열(수정 시각)이 잘리지 않는다. */
-    td.wrap, .wrap td { white-space: normal; word-break: break-all; min-width: 10rem; }
+    /* `break-all`은 글자 단위로 끊어 `(sweep-10).csv`가 `s` / `weep-10`처럼
+       쪼개진다. 파일명은 **먼저 낱말 경계에서** 접고, 한 낱말이 칸보다 길 때만
+       중간을 끊는다(수정안 40에서 2열로 좁아지며 드러났다). */
+    td.wrap, .wrap td { white-space: normal; overflow-wrap: anywhere; word-break: normal; min-width: 10rem; }
     .stack > * + * { margin-top: var(--sp-sm); }
     .row { display: flex; gap: var(--sp-sm); align-items: center; flex-wrap: wrap; }
     code {
@@ -802,6 +832,10 @@
 {% elif path.startswith('/guide') %}
   {# 안내는 작업 흐름 밖이다 — 어느 단계도 현재 위치로 켜지 않는다 #}
   {% set group = 'none' %}
+{% elif path == '/' %}
+  {# 메인(현황판)도 흐름 밖이다. 여기서 '1 실행'을 켜면 실행 화면에 있는 것처럼
+     보인다 — 실제로는 /run이 실행 화면이다 (수정안 33). #}
+  {% set group = 'home' %}
 {% else %}
   {% set group = 'run' %}
 {% endif %}
@@ -821,9 +855,10 @@
 
 <nav class="flow-nav" aria-label="작업 흐름">
   <div class="flow-nav-inner">
-    <span class="flow-title">재배치 계획</span>
+    <a class="flow-title" href="/"
+       data-tip="지금 상태와 마지막 계획 요약을 봅니다.">재배치 계획</a>
     <div class="flow-steps">
-      <a href="/" {% if group == 'run' %}aria-current="page"{% endif %}
+      <a href="/run" {% if group == 'run' %}aria-current="page"{% endif %}
          data-tip="재고와 과거 순수요로 재배치 계획을 계산합니다. 여기서 시작하세요.">
         <span class="step-no">1</span>실행</a>
       <a href="/kpi" {% if group == 'result' %}aria-current="page"{% endif %}
@@ -833,7 +868,7 @@
          data-tip="단계마다 만들어진 CSV 원본을 미리 보고 내려받습니다.">
         <span class="step-no">3</span>데이터</a>
     </div>
-    <a class="btn" href="/#run"
+    <a class="btn" href="/run#run"
        data-tip="새 재배치 계획을 계산합니다.">계획 실행</a>
   </div>
 </nav>
@@ -901,10 +936,12 @@
       var gap = 8;
       var left = r.left + r.width / 2 - b.width / 2;
       left = Math.max(gap, Math.min(left, window.innerWidth - b.width - gap));
-      var top = r.bottom + gap;
-      if (top + b.height > window.innerHeight - gap) top = r.top - b.height - gap;
+      /* **위쪽을 먼저 시도한다** — 아래에 두면 KPI 값을 가린다(수정안 35).
+         위가 모자랄 때만 아래로 내린다. */
+      var top = r.top - b.height - gap;
+      if (top < gap) top = r.bottom + gap;
       box.style.left = left + "px";
-      box.style.top = Math.max(gap, top) + "px";
+      box.style.top = Math.max(gap, Math.min(top, window.innerHeight - b.height - gap)) + "px";
     }
 
     function show(el) {

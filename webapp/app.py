@@ -201,7 +201,79 @@ def _index_context(error: Optional[str] = None) -> dict:
     }
 
 
+def _home_context() -> dict:
+    """메인 화면(현황판)이 쓸 값. **읽기만 한다** — 외부 API를 부르지 않는다.
+
+    처음 들어온 사람이 '지금 무슨 상태인가'를 먼저 보게 하려고 만들었다
+    (수정안 33). 실행 폼은 /run으로 옮겼다.
+    """
+    rows = store.kpi()
+    last = None
+    if not rows.empty:
+        # 가장 최근 실행 하나를 회차 합계로 접는다. 회차마다 한 줄씩 쌓이므로
+        # 마지막 run_label의 행을 모두 모아야 '그 실행'이 된다.
+        order = _runs_newest_first(rows)
+        if order:
+            part = rows[rows["run_label"] == order[0]]
+            stockout_after = _sum(part, "stockout_hours_after")
+            last = {
+                "run_label": order[0],
+                "computed_at": str(part["computed_at"].max()) if "computed_at" in part else "",
+                "durations": int(part["duration"].nunique()) if "duration" in part else 0,
+                "bikes": int(_sum(part, "bikes_moved")),
+                "vehicles": int(_sum(part, "vehicles_used")),
+                "distance_km": round(float(_sum(part, "total_distance_km")), 1),
+                "stockout_before": round(float(_sum(part, "stockout_hours_before")), 2),
+                "stockout_after": round(float(stockout_after), 2),
+                "max_minutes": round(float(_max(part, "max_cluster_minutes")), 1),
+                "budget": float(part["time_budget_minutes"].max())
+                          if "time_budget_minutes" in part else TIME_BUDGET_MINUTES,
+            }
+            # 실험용 실행(파라미터 스윕 등)은 운영 계획이 아니다. 라벨로 가른다 —
+            # DB에 함께 쌓이므로 가장 최근 것이 실험일 수 있다.
+            label = str(order[0]).lower()
+            last["is_experiment"] = any(
+                mark in label for mark in ("sweep", "test", "테스트", "g1000", "g2000",
+                                           "g3000", "g5000", "z165", "z199"))
+            if last["stockout_before"]:
+                last["cut_pct"] = round(
+                    (1 - last["stockout_after"] / last["stockout_before"]) * 100, 1)
+
+    return {
+        "last": last,
+        "period": latest_period(),
+        "runs_total": int(rows["run_label"].nunique()) if not rows.empty else 0,
+        "running": jobs.running_job(),
+        "typical_minutes": _minutes(jobs.typical_elapsed()),
+        "typical_vehicles": _typical_vehicles(),
+    }
+
+
+def _runs_newest_first(rows) -> list:
+    """실행 라벨을 최신순으로. computed_at이 있으면 그것으로, 없으면 라벨순."""
+    if "computed_at" in rows:
+        order = (rows.groupby("run_label")["computed_at"].max()
+                 .sort_values(ascending=False).index.tolist())
+    else:
+        order = sorted(rows["run_label"].unique(), reverse=True)
+    return order
+
+
+def _sum(frame, column: str) -> float:
+    return float(pd.to_numeric(frame[column], errors="coerce").sum()) if column in frame else 0.0
+
+
+def _max(frame, column: str) -> float:
+    return float(pd.to_numeric(frame[column], errors="coerce").max()) if column in frame else 0.0
+
+
 @app.get("/")
+def home(request: Request):
+    """현황판. '재배치 계획'을 눌러도 여기로 온다 (수정안 33)."""
+    return templates.TemplateResponse(request, "home.html", _home_context())
+
+
+@app.get("/run")
 def index(request: Request):
     return templates.TemplateResponse(request, "index.html", _index_context())
 

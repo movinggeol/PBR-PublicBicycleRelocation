@@ -307,7 +307,7 @@ def test_실행_화면은_외부_API를_부르지_않고_뜬다(monkeypatch):
     monkeypatch.setattr(weather_view.weather, "fetch_hour",
                         lambda *a, **k: called.append(1) or observation())
 
-    page = TestClient(app).get("/")
+    page = TestClient(app).get("/run")
     assert page.status_code == 200
     assert 'id="weather"' in page.text        # 자리는 있고
     assert not called                          # 부르지는 않았다

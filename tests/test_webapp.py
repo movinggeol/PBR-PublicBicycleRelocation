@@ -33,14 +33,14 @@ def test_pages_render(client, path):
 
 
 def test_index_has_run_form(client):
-    res = client.get("/")
+    res = client.get("/run")
     assert "계획 실행" in res.text
     assert 'action="/runs"' in res.text
 
 
 def test_index_has_vehicle_count_fields(client):
     """차량 대수를 웹에서 조정할 수 있어야 한다(기본 21대 / 회차당 10대)."""
-    res = client.get("/")
+    res = client.get("/run")
     assert 'name="fleet_size"' in res.text
     assert 'name="vehicles_per_round"' in res.text
     assert f'value="{FLEET_SIZE}"' in res.text
@@ -121,7 +121,7 @@ def test_grouped_output_table_is_not_sortable(client):
 
     행을 흩으면 분류 이름 없는 행만 남는다(쪽 넘기기에서 덩어리를 나눈 것과 같은 이유).
     """
-    html = client.get("/").text
+    html = client.get("/run").text
     latest = html[html.index("최신 산출물"):html.index("저장된 실행")]
 
     assert "data-page-item" in latest, "최신 산출물 표를 못 찾았다 — 테스트가 낡았다"
@@ -134,7 +134,7 @@ def test_index_offers_only_periods_we_have(client, monkeypatch, tmp_path):
         (tmp_path / f"st_net_daily ({label}).csv").write_text("x", encoding="utf-8")
     monkeypatch.setattr(project_config, "NET_DEMAND_DIR", tmp_path)
 
-    html = client.get("/").text
+    html = client.get("/run").text
     assert 'name="period"' in html and "<select" in html
     assert 'value="26년 03월"' in html, "가진 달이 목록에 없다"
     assert 'value="25년 12월"' not in html, "없는 달이 목록에 있다"
@@ -142,7 +142,7 @@ def test_index_offers_only_periods_we_have(client, monkeypatch, tmp_path):
 
 def test_index_has_duration_checkboxes(client):
     """시간대는 네 창 중에서 고른다(직접 적게 두면 오타가 step4까지 흘러간다)."""
-    html = client.get("/").text
+    html = client.get("/run").text
     for duration in DURATIONS:
         assert f'value="{duration}"' in html, f"{duration}이 폼에 없다"
     assert 'type="checkbox" name="duration"' in html
@@ -183,7 +183,7 @@ def test_missing_period_is_rejected(client, monkeypatch, tmp_path):
 
 def test_index_has_day_type_select(client):
     """평일/휴일을 웹에서 고를 수 있어야 한다(기본은 오늘로 자동 판정)."""
-    res = client.get("/")
+    res = client.get("/run")
     assert 'name="day_type"' in res.text
     assert "평일" in res.text and "휴일" in res.text
     assert 'value="auto"' in res.text
@@ -320,7 +320,7 @@ def test_latest_outputs_are_paged_by_category(client, monkeypatch):
     monkeypatch.setattr(app_module.catalog, "latest_outputs",
                         lambda *a, **k: _fake_groups(7))
 
-    html = client.get("/").text
+    html = client.get("/run").text
 
     assert 'data-pager="5"' in html, "쪽 넘김 컨테이너가 없다"
     keys = re.findall(r'<tr data-page-item="(\d+)">', html)
@@ -337,7 +337,7 @@ def test_paging_does_not_drop_rows_server_side(client, monkeypatch):
     monkeypatch.setattr(app_module.catalog, "latest_outputs",
                         lambda *a, **k: _fake_groups(13))
 
-    html = client.get("/").text
+    html = client.get("/run").text
 
     assert len(re.findall(r'<tr data-page-item="\d+">', html)) == 26
     assert "분류 12" in html, "마지막 쪽에 갈 분류가 응답에서 빠졌다"
@@ -395,7 +395,7 @@ def test_only_explanation_labels_are_pinnable(client):
     내비 링크와 화면 전환 단추에도 data-tip이 붙어 있다. 아무 data-tip에서나
     클릭을 가로채면 누르는 순간 고정만 되고 **페이지 이동이 막힌다**.
     """
-    html = client.get("/").text
+    html = client.get("/run").text
     assert 'classList.contains("tip")' in html, (
         "고정 대상을 .tip으로 좁히지 않으면 내비 링크가 죽는다")
     # 내비 링크가 여전히 data-tip을 달고 있는지 — 전제가 무너지면 이 테스트도 무의미하다
@@ -460,3 +460,92 @@ def test_KPI_타일_설명이_표_머리글과_같은_문구다():
     template = Path(webapp_app.__file__).parent / "templates" / "kpi.html"
     assert shared in inspect.getsource(webapp_app.kpi_page)
     assert shared in template.read_text(encoding="utf-8")
+
+
+# ── 메인 화면(현황판) — 수정안 33 ──────────────────────────────────────
+
+def test_home_is_not_the_run_form(client):
+    """'/'는 현황판이고 실행 폼은 '/run'이다.
+
+    폼을 '/'에 두면 처음 들어온 사람이 **아무 맥락 없이 입력칸부터** 만난다.
+    두 화면이 다시 합쳐지면 이 테스트가 잡는다.
+    """
+    home = client.get("/").text
+    run = client.get("/run").text
+
+    assert 'action="/runs"' not in home, "메인에 실행 폼이 있다 — /run으로 가야 한다"
+    assert 'action="/runs"' in run, "/run에 실행 폼이 없다"
+    assert "마지막 계획" in home, "메인에 요약이 없다"
+
+
+def test_home_does_not_light_up_a_flow_step(client):
+    """메인은 작업 흐름 밖이다 — '1 실행'을 켜면 실행 화면에 있는 것처럼 보인다."""
+    home = client.get("/").text
+    run = client.get("/run").text
+
+    assert 'href="/run" aria-current="page"' not in home, \
+        "메인에서 '1 실행'이 현재 위치로 켜져 있다"
+    assert 'aria-current="page"' in run, "/run에서 '1 실행'이 안 켜진다"
+
+
+def test_home_marks_experiment_runs(client, monkeypatch):
+    """실험용 실행(sweep- 등)이 '마지막 계획'으로 뜨면 **운영 계획으로 오해**한다.
+
+    DB에는 파라미터 스윕 결과가 함께 쌓이므로 가장 최근 것이 실험일 수 있다.
+    """
+    import pandas as pd
+    from webapp import store
+
+    fake = pd.DataFrame([{
+        "run_label": "sweep-21", "duration": "_05_10",
+        "computed_at": "2026-08-24 17:12:14", "bikes_moved": 100,
+        "vehicles_used": 5, "total_distance_km": 200.0,
+        "stockout_hours_before": 2.0, "stockout_hours_after": 1.0,
+        "max_cluster_minutes": 110.0, "time_budget_minutes": 120.0,
+    }])
+    monkeypatch.setattr(store, "kpi", lambda *a, **k: fake)
+
+    html = client.get("/").text
+    assert "실험용 실행" in html, "실험 라벨인데 표시가 없다"
+
+
+# ── 작업지시서 조치 제안 — 수정안 39 ──────────────────────────────────
+
+def test_blocked_rows_get_an_action():
+    """'불가'만 알려 주고 끝내면 현장에서 판단이 사람 몫으로 남는다.
+
+    같은 군집 안에서만 대안을 찾는다 — 차량 1대가 군집 1개를 맡으므로
+    군집을 벗어나면 그 회차에 갈 수 없는 곳이다(docs/구현/FLEET.md).
+    """
+    from webapp.orders import _suggest_actions
+
+    rows = [
+        {"station_name": "가", "cluster": 1, "action": "pick",
+         "need": 10, "possible": 0, "status": "불가"},
+        {"station_name": "나", "cluster": 1, "action": "pick",
+         "need": 5, "possible": 12, "status": "가능"},
+        {"station_name": "다", "cluster": 2, "action": "drop",
+         "need": 8, "possible": 2, "status": "넘침"},
+    ]
+    _suggest_actions(rows)
+
+    assert "나" in rows[0]["advice"], "같은 군집의 여유 대여소를 짚어야 한다"
+    assert rows[1]["advice"] == "", "'가능'한 행에는 조치가 붙지 않는다"
+    # 같은 군집에 대안이 없으면 대안 없이 무엇을 할지 알려 준다
+    assert rows[2]["advice"], "'넘침'인데 조치가 비어 있다"
+    assert "군집" in rows[2]["advice"] or "차고지" in rows[2]["advice"]
+
+
+def test_advice_does_not_cross_clusters():
+    """다른 군집의 대여소를 대안으로 내놓으면 **갈 수 없는 곳**을 시킨다."""
+    from webapp.orders import _suggest_actions
+
+    rows = [
+        {"station_name": "가", "cluster": 1, "action": "pick",
+         "need": 10, "possible": 0, "status": "불가"},
+        {"station_name": "먼곳", "cluster": 9, "action": "pick",
+         "need": 1, "possible": 50, "status": "가능"},
+    ]
+    _suggest_actions(rows)
+
+    assert "먼곳" not in rows[0]["advice"], "다른 군집을 대안으로 내놨다"

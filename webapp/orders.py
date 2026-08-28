@@ -153,7 +153,7 @@ def compare_stock(planned: pd.DataFrame, live: pd.DataFrame) -> pd.DataFrame:
     """
     columns = ["station_id", "station_name", "cluster", "seq", "parking_lot",
                "planned_stock", "live_stock", "delta", "need", "action",
-               "action_label", "possible", "status", "note"]
+               "action_label", "possible", "status", "note", "advice"]
     if planned.empty:
         return pd.DataFrame(columns=columns)
 
@@ -223,6 +223,8 @@ def compare_stock(planned: pd.DataFrame, live: pd.DataFrame) -> pd.DataFrame:
             "note": note,
         })
 
+    _suggest_actions(rows)
+
     frame = pd.DataFrame(rows, columns=columns)
     # '확인 불가' 행의 None 하나 때문에 열 전체가 실수가 되면 화면에 2.0대로 찍힌다.
     for column in ("live_stock", "delta", "possible", "cluster", "seq"):
@@ -231,6 +233,63 @@ def compare_stock(planned: pd.DataFrame, live: pd.DataFrame) -> pd.DataFrame:
     # 기사가 든 종이(군집 > 군집 내 순서)와 화면이 어긋나면 안 된다.
     frame = frame.sort_values(["cluster", "seq"], na_position="last")
     return frame.reset_index(drop=True)
+
+
+def _suggest_actions(rows: list) -> None:
+    """'불가'·'부족'·'넘침' 행에 **무엇을 하라**를 채운다 (수정안 39).
+
+    지금까지는 가능/불가만 알려 주고 끝이라, 현장에서 막히면 판단이 사람 몫이었다.
+    **계획을 다시 세우지는 않는다** — 그건 재실행이 할 일이고, 여기서는 기사가
+    그 자리에서 고를 수 있는 선택지만 짚는다.
+
+    같은 군집 안에서 찾는 이유: 차량 1대가 군집 1개를 맡으므로
+    (docs/구현/FLEET.md), 군집을 벗어나면 그 회차에 갈 수 없는 곳이다.
+    """
+    by_cluster = {}
+    for row in rows:
+        by_cluster.setdefault(row.get("cluster"), []).append(row)
+
+    for row in rows:
+        status = row["status"]
+        if status == "가능":
+            row["advice"] = ""
+            continue
+        if status == "확인 불가":
+            row["advice"] = "현장에서 직접 확인하세요"
+            continue
+
+        action = row["action"]
+        need = int(row["need"] or 0)
+        possible = int(row["possible"] or 0)
+        short = need - possible          # 못 채우는 양
+        mates = [r for r in by_cluster.get(row.get("cluster"), []) if r is not row]
+
+        if action == "pick":
+            # 실을 것이 모자란다 -> 같은 군집에서 **더 실을 수 있는 곳**
+            spare = [r for r in mates
+                     if r["action"] == "pick" and (r["possible"] or 0) > (r["need"] or 0)]
+            spare.sort(key=lambda r: (r["possible"] or 0) - (r["need"] or 0), reverse=True)
+            if spare:
+                best = spare[0]
+                extra = (best["possible"] or 0) - (best["need"] or 0)
+                row["advice"] = (f"{best['station_name']}에서 {min(short, extra)}대 더 실어 "
+                                 f"메우세요 (여유 {extra}대)")
+            else:
+                row["advice"] = (f"{short}대가 빕니다. 같은 군집에 여유가 없으니 "
+                                 f"내려놓을 곳에서 그만큼 덜 내리세요")
+        else:
+            # 내려놓을 자리가 없다 -> 같은 군집에서 **더 받을 수 있는 곳**
+            spare = [r for r in mates
+                     if r["action"] == "drop" and (r["possible"] or 0) > (r["need"] or 0)]
+            spare.sort(key=lambda r: (r["possible"] or 0) - (r["need"] or 0), reverse=True)
+            if spare:
+                best = spare[0]
+                extra = (best["possible"] or 0) - (best["need"] or 0)
+                row["advice"] = (f"{best['station_name']}에 {min(short, extra)}대 더 내려놓으세요 "
+                                 f"(여유 {extra}대)")
+            else:
+                row["advice"] = (f"{short}대가 남습니다. 같은 군집에 자리가 없으니 "
+                                 f"차고지로 가져가거나 실을 곳에서 그만큼 덜 실으세요")
 
 
 def summarize(compared: pd.DataFrame) -> dict:

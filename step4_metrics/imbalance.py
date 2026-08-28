@@ -499,16 +499,29 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
             radius = max(3, row['improvement'])
             opacity = (0.2 + 0.5*row['improvement_rate'])
 
+            # 커서를 대면 뜨는 요약. **목표 재고는 소수점 첫째 자리까지만** 쓴다
+            # (수정안 38) — mu + z*sigma라 자릿수가 길게 나온다.
             tooltip = f"""
             <b>{row['station_name']}</b><br>
-            Cluster : {row['cluster']}<br>
+            군집 : {row['cluster']}<br>
+            작업 유형 : {status}<br>
+            재배치 수량 : {row['rebal_qty']}<br>
+            작업 전 재고 : {row['stock']} → 작업 후 : {row['new_stock']}<br>
+            목표 재고 : {row['target_qty']:.1f}
+            """
+
+            # 눌러서 **고정**되는 창. 커서를 떼도 남으므로 값을 따져 볼 때 쓴다
+            # (수정안 38). 요약과 달리 불균형 지표까지 싣는다.
+            popup_html = f"""
+            <b>{row['station_name']}</b><br>
+            군집 : {row['cluster']}<br>
             작업 유형 : {status}<br>
             재배치 수량 : {row['rebal_qty']}<br>
             작업 전 재고 : {row['stock']}<br>
             작업 후 재고 : {row['new_stock']}<br>
-            목표 재고 : {row['target_qty']}<br>
-            Before imbalance : {row['bf_imbalance']:.2f}<br>
-            After imbalance : {row['af_imbalance']:.2f}<br>
+            목표 재고 : {row['target_qty']:.1f}<br>
+            작업 전 불균형 : {row['bf_imbalance']:.2f}<br>
+            작업 후 불균형 : {row['af_imbalance']:.2f}<br>
             개선량 : {row['improvement']:.2f}<br>
             개선률 : {row['improvement_rate']*100:.1f}%
             """
@@ -527,7 +540,8 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
 
                 # sticky: 풍선이 커서를 따라온다. 점이 촘촘한 곳에서
                 # 어느 점의 설명인지 헷갈리지 않는다 (세 지도가 같게).
-                tooltip=folium.Tooltip(tooltip, sticky=True)
+                tooltip=folium.Tooltip(tooltip, sticky=True),
+                popup=folium.Popup(popup_html, max_width=260)
             ).add_to(fg)
 
     legend_html = """
