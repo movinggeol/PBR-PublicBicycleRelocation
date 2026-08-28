@@ -68,6 +68,21 @@ def kpi(run_label: Optional[str] = None, duration: Optional[str] = None) -> pd.D
         return pd.DataFrame()
 
 
+def stockout_calibration(day_type: str = "weekday") -> list:
+    """관측으로 잰 결품 보정 계수. 표가 없으면 빈 목록 (수정안 37).
+
+    결품 시간은 순수요로 **복원**한 값이라 재고 0에서 잘려 실제보다 낮게 나온다.
+    그 격차를 관측과 맞대어 재 둔 것이 이 계수다. **수집이 멈춰도 표에 남는다.**
+    """
+    with db.session() as conn:
+        try:
+            frame = db.latest_stockout_calibration(conn)
+        except Exception:
+            # 표가 아직 없는 옛 DB. 화면은 떠야 하므로 조용히 비운다.
+            return []
+    return [] if frame.empty else frame.to_dict("records")
+
+
 def vehicle_workload() -> pd.DataFrame:
     """차량별 누적 작업량(로테이션 형평성 확인용)."""
     try:

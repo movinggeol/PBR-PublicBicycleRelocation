@@ -1046,3 +1046,59 @@ def test_한_대여소짜리_군집도_처리한다(adjust):
 
     assert medoids.loc[1, "lat"] == pytest.approx(37.0)
     assert medoids.loc[1, "lon"] == pytest.approx(128.0)
+
+
+# ── 결품 보정 계수 — 수정안 37 ────────────────────────────────────────
+
+def test_calibration_survives_when_collection_stops(tmp_path, monkeypatch):
+    """수집이 멈춰도 **보정 계수는 남아야 한다.**
+
+    이 표를 둔 이유가 그것이다 — 관측(stock_history)은 수집을 켜 둔 동안만
+    쌓이지만, 거기서 얻은 보정비는 나중에도 인용할 수 있어야 한다.
+    """
+    import db
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "t.db")
+    with db.session() as conn:
+        db.init_schema(conn)
+        db.save_stockout_calibration(conn, [{
+            "measured_at": "2026-08-28 09:39", "duration": "_10_15",
+            "day_type": "weekday", "ratio": 1.158, "observed": 2.01,
+            "simulated": 1.73, "days": 3, "stations": 681,
+            "note": "관측 창 08~18시",
+        }])
+        # 관측을 통째로 비워도 계수는 남는다
+        conn.execute("DELETE FROM stock_history")
+        conn.commit()
+
+        got = db.latest_stockout_calibration(conn)
+
+    assert len(got) == 1, "수집을 멈추자 계수까지 사라졌다"
+    assert got.iloc[0]["ratio"] == pytest.approx(1.158)
+    assert got.iloc[0]["days"] == 3, "근거가 며칠치인지가 함께 남아야 한다"
+
+
+def test_calibration_keeps_history_not_overwrite(tmp_path, monkeypatch):
+    """계수는 **덮어쓰지 않고 쌓는다.**
+
+    과거 값을 지우면 "그때는 무엇으로 재서 그 수치를 썼나"를 되짚을 수 없다 —
+    논문에 인용한 값이 조용히 바뀌면 안 된다.
+    """
+    import db
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "t.db")
+    base = {"duration": "_10_15", "day_type": "weekday", "observed": 2.0,
+            "simulated": 1.7, "stations": 681, "note": ""}
+    with db.session() as conn:
+        db.init_schema(conn)
+        db.save_stockout_calibration(conn, [
+            {**base, "measured_at": "2026-08-28 09:39", "ratio": 1.16, "days": 3},
+        ])
+        db.save_stockout_calibration(conn, [
+            {**base, "measured_at": "2026-09-30 09:00", "ratio": 1.22, "days": 30},
+        ])
+        total = conn.execute("SELECT COUNT(*) FROM stockout_calibration").fetchone()[0]
+        latest = db.latest_stockout_calibration(conn)
+
+    assert total == 2, "옛 계수가 덮여 사라졌다"
+    assert latest.iloc[0]["days"] == 30, "가장 최근 계수를 골라야 한다"

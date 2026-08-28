@@ -51,6 +51,21 @@
     재고가 0이 되는 순간을 순수요로 되짚어 재배치 전후를 비교했습니다.
     <b>지금까지의 지표 중 이용자가 실제로 겪는 불편에 가장 가깝지만</b>, 집행 후 관측이 아니라
     <b>시뮬레이션</b>이라는 점을 감안하세요.
+
+    {# 관측(10분 간격 재고)으로 잰 보정비. 수집이 멈춰도 마지막 계수는 남는다 —
+       그것이 이 표를 둔 이유다(수정안 37). #}
+    {% if calibration %}
+    <p style="margin-top:.6em">
+      <b>관측으로 맞대어 본 결과</b>:
+      {% for c in calibration %}
+      {{ c.duration }}에서 실측이 복원의 <b>{{ "%.2f"|format(c.ratio) }}배</b>{% if not loop.last %}, {% endif %}
+      {% endfor %}
+      였습니다. 복원은 재고가 0일 때 못 빌린 수요를 세지 않으므로
+      <b>실제 결품은 이 화면의 값보다 큽니다</b> — 이 지표는 <b>하한</b>으로 읽으세요.
+      <span class="muted">근거: {{ calibration[0].days }}일 관측 ·
+        {{ calibration[0].measured_at }} 측정 · {{ calibration[0].note }}</span>
+    </p>
+    {% endif %}
   </div>
   {% endif %}
   <div class="note">

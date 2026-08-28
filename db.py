@@ -421,6 +421,27 @@ CREATE TABLE IF NOT EXISTS stock_station_master (
     PRIMARY KEY (observed_on, station_id)
 );
 
+-- 결품 지표 보정 계수 (1.26.1, docs/분석/KPI.md).
+-- step4의 결품은 순수요로 **복원**한 값이라 재고 0에서 잘려 결품을 낮춰 잡는다.
+-- 관측(stock_history)과 맞대어 그 격차를 계수로 남긴다.
+--
+-- **이 표가 있는 이유가 곧 이 설계의 요지다.** 수집을 멈추면 관측은 사라지지만
+-- 계수는 남는다 — 언제 무엇으로 잰 보정인지를 함께 적어 두므로, 나중에도
+-- "며칠치 관측으로 얻은 계수인가"를 밝히며 인용할 수 있다.
+-- 관측이 없다고 지표가 무너지지 않게 하는 것이 목적이다.
+CREATE TABLE IF NOT EXISTS stockout_calibration (
+    measured_at TEXT NOT NULL,       -- 계수를 잰 시각
+    duration    TEXT NOT NULL,       -- 회차(_05_10 등)
+    day_type    TEXT NOT NULL,       -- weekday / holiday
+    ratio       REAL,                -- 실측 / 복원. 1보다 크면 복원이 낮춰 잡은 것
+    observed    REAL,                -- 관측 결품(h)
+    simulated   REAL,                -- 복원 결품(h)
+    days        INTEGER,             -- 근거가 된 온전한 날 수
+    stations    INTEGER,             -- 대여소 수
+    note        TEXT,                -- 관측 창 등 단서
+    PRIMARY KEY (measured_at, duration, day_type)
+);
+
 CREATE INDEX IF NOT EXISTS idx_rental_station ON rental_history(rent_station);
 CREATE INDEX IF NOT EXISTS idx_pick_drop_cluster ON pick_drop(run_label, duration, cluster);
 CREATE INDEX IF NOT EXISTS idx_metrics_run ON metrics(run_label, duration);
@@ -863,6 +884,42 @@ def load_stock_history(conn: sqlite3.Connection, start: Optional[str] = None,
         mask = holiday_mask(frame["observed_at"])
         frame = frame[mask if day_type == "holiday" else ~mask].reset_index(drop=True)
     return frame
+
+
+def save_stockout_calibration(conn: sqlite3.Connection, rows: list) -> int:
+    """결품 보정 계수를 남긴다 (1.26.1).
+
+    **덮어쓰지 않고 쌓는다.** 계수는 관측이 늘수록 달라지는데, 과거 값을 지우면
+    "그때는 무엇으로 재서 그 수치를 썼나"를 되짚을 수 없다. 논문에 인용한 값이
+    조용히 바뀌는 것을 막는다.
+    """
+    if not rows:
+        return 0
+    conn.executemany(
+        "INSERT OR REPLACE INTO stockout_calibration"
+        " (measured_at, duration, day_type, ratio, observed, simulated,"
+        "  days, stations, note)"
+        " VALUES (:measured_at, :duration, :day_type, :ratio, :observed,"
+        "         :simulated, :days, :stations, :note)", rows)
+    conn.commit()
+    return len(rows)
+
+
+def latest_stockout_calibration(conn: sqlite3.Connection,
+                                day_type: str = "weekday") -> pd.DataFrame:
+    """회차마다 **가장 최근** 보정 계수 한 줄씩.
+
+    수집이 멈춰도 마지막 계수가 남는다 — 그것이 이 표를 둔 이유다.
+    쓰는 쪽은 `days`(근거가 된 날 수)를 함께 보고 신뢰도를 판단해야 한다.
+    """
+    return pd.read_sql(
+        "SELECT c.* FROM stockout_calibration c"
+        " JOIN (SELECT duration, MAX(measured_at) AS m"
+        "         FROM stockout_calibration WHERE day_type = ?"
+        "        GROUP BY duration) t"
+        "   ON c.duration = t.duration AND c.measured_at = t.m"
+        " WHERE c.day_type = ?"
+        " ORDER BY c.duration", conn, params=(day_type, day_type))
 
 
 def stock_history_ticks(conn: sqlite3.Connection, start: Optional[str] = None,

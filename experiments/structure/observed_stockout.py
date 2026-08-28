@@ -23,6 +23,7 @@
     python experiments/structure/observed_stockout.py --duration _10_15
 """
 import argparse
+from datetime import datetime
 import sys
 from pathlib import Path
 
@@ -134,7 +135,7 @@ def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
 
     if not rows:
         print("\n(복원 대비 비교: 수집 창과 온전히 겹치는 시간대가 아직 없습니다)")
-        return
+        return []
 
     print(f"\n복원 vs 실측 — 작업 대상 대여소, 대여소·일 평균 결품 시간(h)")
     print(f"{'시간대':8} {'복원(step4)':>11} {'실측(수집)':>11} {'차이':>9} {'대여소':>7}")
@@ -143,12 +144,58 @@ def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
         print(f"{duration:8} {sim:11.2f} {obs:11.2f} {gap:+8.0f}% {count:7,d}")
     print("  → 실측이 크면 **복원이 결품을 낮춰 잡고 있었다**는 뜻입니다"
           "(0에서 잘라 못 빌린 수요가 사라지므로 예상된 방향입니다).")
+    return rows
+
+
+def _save_calibration(rows: list, day_type: str, days: int, window) -> None:
+    """보정 계수를 DB에 남긴다 (1.26.1, 수정안 37).
+
+    **왜 저장하는가 — 수집이 멈춰도 계수는 남기 위해서다.**
+    *"재고 조사를 멈추면 사라지는 설득력"* 이라는 지적에 대한 답이다. 관측 자체는
+    수집을 켜 둔 동안만 쌓이지만, 여기서 얻은 **복원 대비 보정비**는 표에 남아
+    나중에도 인용할 수 있다. 다만 `days`(근거가 된 온전한 날 수)를 함께 남겨
+    **얼마나 얇은 근거인지 숨기지 않는다.**
+
+    ⚠️ 계수를 파이프라인이 자동으로 곱하지는 않는다. 지금은 3일치라 그럴 근거가
+    없다 — 표에 쌓아 두고 추세를 보는 단계다.
+    """
+    if not rows:
+        print("\n보정 계수를 낼 수 있는 시간대가 없습니다 — 저장하지 않았습니다.")
+        return
+
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    hours = sorted(int(h) for h in window)
+    note = f"관측 창 {hours[0]:02d}~{hours[-1]:02d}시"
+    payload = []
+    for duration, simulated, observed, stations in rows:
+        payload.append({
+            "measured_at": stamp, "duration": duration, "day_type": day_type,
+            "ratio": (observed / simulated) if simulated else None,
+            "observed": observed, "simulated": simulated,
+            "days": days, "stations": stations, "note": note,
+        })
+
+    with db.session() as conn:
+        db.init_schema(conn)
+        db.save_stockout_calibration(conn, payload)
+
+    print(f"\n보정 계수 {len(payload)}건을 남겼습니다 (measured_at={stamp}).")
+    for row in payload:
+        ratio = row["ratio"]
+        print(f"  {row['duration']:8} 보정비 {ratio:.3f}"
+              f"  (실측 {row['observed']:.2f} / 복원 {row['simulated']:.2f},"
+              f" 온전한 날 {row['days']}일)")
+    if days < 14:
+        print(f"  ⚠️  근거가 {days}일뿐입니다. 논문에 인용할 때 이 사실을 함께 적으십시오.")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="관측 재고로 결품을 직접 센다")
     parser.add_argument("--duration", help="시간대 하나만 (예: _10_15)")
     parser.add_argument("--day-type", default="weekday", choices=("weekday", "holiday"))
+    parser.add_argument("--save", action="store_true",
+                        help="보정 계수를 stockout_calibration에 남긴다 "
+                             "(수집이 멈춰도 계수는 남는다)")
     args = parser.parse_args()
 
     frame = load(args.day_type)
@@ -199,7 +246,10 @@ def main() -> int:
         print("  수집 창(09~17시)과 겹치는 시간대가 없습니다.")
         return 1
 
-    compare_with_simulation(frame, durations, window, targets)
+    rows = compare_with_simulation(frame, durations, window, targets)
+
+    if args.save:
+        _save_calibration(rows, args.day_type, len(days), window)
 
     print("\n읽는 법")
     print(f"  · 한 틱 = {TICK_MINUTES}분. 수집 창(09~17시) 안에서만 셉니다.")

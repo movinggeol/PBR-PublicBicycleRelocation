@@ -570,6 +570,7 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
         "rows": store.records(rows),
         "cards": cards,
         "stockout": stockout,
+        "calibration": store.stockout_calibration(),
         "trends": trends,
         "cost": cost, "cost_svg": cost_svg,
         "heat": heat, "heat_svg": heat_svg, "heat_legend": heat_legend,
