@@ -22,6 +22,7 @@ from project_config import (
     ENFORCE_TIME_BUDGET, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY,
     VEHICLE_SPEED_KMPH,
     duration_list, ensure_output_dirs, get_runtime_config, require_columns,
+    travel_seconds,
 )
 
 # read_csv
@@ -43,7 +44,9 @@ now = config.now
 
 
 def _travel_sec(km: float) -> float:
-    return km / VEHICLE_SPEED_KMPH * 3600.0
+    """ILP와 **같은 함수**를 쓴다 — 두 단계가 갈리면 ILP의 최적해가 VRP에서
+    최소가 아니게 된다(1.13.2에서 겪음)."""
+    return travel_seconds(km)
 
 
 def _depot_return(cluster, from_id, from_lat, from_lon, cum_sec: float):

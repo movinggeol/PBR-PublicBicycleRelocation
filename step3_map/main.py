@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -168,6 +169,9 @@ def _road_legs(cluster: int, route_pts: list, elapsed_sec: list) -> list:
             "straight_km": round(_haversine_km(
                 a["lat"], a["lon"], b["lat"], b["lon"]), 4),
             "road_sec": round(gap, 1),
+            # 언제 잰 값인지 남긴다. 배율은 교통 상황에 따라 달라지므로
+            # **측정 시각 없이는 나중에 해석할 수 없다** (1.26.7).
+            "observed_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
         })
     return rows
 

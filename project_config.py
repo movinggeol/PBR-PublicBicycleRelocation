@@ -246,6 +246,46 @@ VEHICLE_CAPACITY = 10        # 차량 최대 적재 대수 (대전교통공사 �
 # 도심 주행·정차를 감안한 보수적 값이며, 현장 실측이 나오면 이 상수만 바꾸면 된다.
 VEHICLE_SPEED_KMPH = float(os.getenv("PBR_VEHICLE_SPEED_KMPH", "25"))
 
+# ── 실도로 이동시간 모형 (1.26.7, docs/분석/EXPERIMENTS.md 5-D·5-F장) ──
+#
+# 직선거리 ÷ 25 km/h는 **실도로의 76%밖에 안 된다**(TMAP 실측 1.32배).
+# 그런데 배율은 상수가 아니다 — 짧은 구간일수록 크다.
+#
+#   0~0.5km  유효 5.6 km/h        (신호·회전이 시간을 지배한다)
+#   5~10km   유효 22.0 km/h       (도로 속도가 지배한다)
+#
+# 그래서 **고정비 + 거리비례**로 잡는다. 물리적으로도 이 편이 맞다.
+#
+#   이동시간(초) = ROAD_FIXED_SEC + 직선km x 3600 / ROAD_SPEED_KMPH
+#
+# 실측(구간 239개, 5겹 교차검증): 표본 밖 MAE 237.9초 → **138.7초(-42%)**.
+# 계수는 겹마다 272~282초·27.0~28.1 km/h로 **매우 안정적**이다.
+#
+# ⚠️ **기본은 꺼져 있다(USE_ROAD_MODEL=False).** 켜면 문서의 모든 수치
+# (대조군 비교·z·γ 실험)가 그 위에서 나온 값과 달라진다. 재현성을 잃는 대가가
+# 크고, 근거가 아직 **하루치 한 번**이다. 여러 날 쌓인 뒤에 기본값을 정한다.
+# 켜려면 `PBR_USE_ROAD_MODEL=1`.
+USE_ROAD_MODEL = os.getenv("PBR_USE_ROAD_MODEL", "").strip().lower() in (
+    "1", "true", "yes", "on")
+ROAD_FIXED_SEC = float(os.getenv("PBR_ROAD_FIXED_SEC", "275"))
+ROAD_SPEED_KMPH = float(os.getenv("PBR_ROAD_SPEED_KMPH", "27.3"))
+
+
+def travel_seconds(km: float, speed_kmph: float = None) -> float:
+    """직선거리(km) → 이동시간(초). **모든 단계가 이 함수 하나를 쓴다.**
+
+    ILP와 VRP가 서로 다른 식을 쓰면 ILP가 고른 조합이 VRP에서는 최소가 아니게
+    된다 — 1.13.2 이전에 속도가 25/30으로 갈려 실제로 겪었다.
+
+    `USE_ROAD_MODEL`이 꺼져 있으면 예전 그대로 `km / speed * 3600`이다.
+    """
+    if speed_kmph is None:
+        speed_kmph = VEHICLE_SPEED_KMPH
+    if USE_ROAD_MODEL:
+        return ROAD_FIXED_SEC + km * 3600.0 / ROAD_SPEED_KMPH
+    return km / speed_kmph * 3600.0
+
+
 # 자전거 1대를 싣고/내리는 데 걸리는 시간(초). VRP의 작업시간 계산에 쓴다.
 # ⚠️ **현장 확인이 안 된 가정값이다** (docs/기록/TODO.md 2-1). 실측이 나오면 여기만 바꾼다.
 # 소요시간의 20~30%가 이 값에서 나오므로 시간 예산 판정에 직접 영향을 준다.

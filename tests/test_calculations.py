@@ -1102,3 +1102,83 @@ def test_calibration_keeps_history_not_overwrite(tmp_path, monkeypatch):
 
     assert total == 2, "옛 계수가 덮여 사라졌다"
     assert latest.iloc[0]["days"] == 30, "가장 최근 계수를 골라야 한다"
+
+
+# ── 실도로 이동시간 모형 (1.26.7) ─────────────────────────────────────
+
+def test_ilp와_vrp가_같은_이동시간_함수를_쓴다():
+    """두 단계가 갈리면 **ILP가 고른 조합이 VRP에서는 최소가 아니게 된다.**
+
+    1.13.2 이전에 속도가 ILP 25 / VRP 30으로 갈려 실제로 겪었다. 지금은
+    project_config.travel_seconds() 하나만 쓴다 — 그 규약을 여기서 지킨다.
+    """
+    import project_config as pc
+
+    ilp = _load("step2_optimize/ilp.py", "ilp_mod")
+    vrp = _load("step2_optimize/vrp.py", "vrp_mod")
+
+    for km in (0.0, 0.25, 1.0, 3.7, 12.0):
+        expected = pc.travel_seconds(km)
+        assert ilp.km_to_travel_seconds(km) == pytest.approx(expected)
+        assert vrp._travel_sec(km) == pytest.approx(expected)
+
+
+def test_기본값은_예전_그대로다():
+    """`USE_ROAD_MODEL`이 꺼져 있으면 **문서의 모든 수치가 그대로 나와야 한다.**
+
+    켜는 순간 대조군 비교·z·γ 실험이 전부 다른 값이 된다. 기본이 조용히
+    바뀌는 것을 막는다.
+    """
+    import project_config as pc
+
+    assert pc.USE_ROAD_MODEL is False, "기본이 켜져 있다 — 문서 수치가 무효가 된다"
+    for km in (0.5, 2.0, 10.0):
+        assert pc.travel_seconds(km) == pytest.approx(km / 25.0 * 3600.0)
+
+
+def test_실도로_모형은_짧은_구간에_고정비를_붙인다(monkeypatch):
+    """짧은 구간의 시간을 지배하는 것은 거리가 아니라 **신호·회전**이다.
+
+    실측: 0.5km 미만 유효속도 5.6 km/h, 10km 이상 23.1 km/h.
+    상수 속도로는 이 차이를 못 담는다.
+    """
+    import importlib
+
+    import project_config as pc
+
+    monkeypatch.setenv("PBR_USE_ROAD_MODEL", "1")
+    importlib.reload(pc)
+    try:
+        assert pc.USE_ROAD_MODEL is True
+        short = pc.travel_seconds(0.3)
+        long_leg = pc.travel_seconds(10.0)
+
+        # 짧은 구간: 고정비가 지배한다
+        assert short > pc.ROAD_FIXED_SEC
+        assert 0.3 / (short / 3600) < 10, "짧은 구간인데 유효속도가 너무 빠르다"
+        # 긴 구간: 도로 속도가 지배한다
+        assert 10.0 / (long_leg / 3600) > 20, "긴 구간인데 유효속도가 너무 느리다"
+    finally:
+        monkeypatch.delenv("PBR_USE_ROAD_MODEL", raising=False)
+        importlib.reload(pc)
+
+
+def test_모형을_켜도_거리는_그대로다(monkeypatch):
+    """이 모형은 **시간 추정만** 바꾼다 — 경로도 물량도 건드리지 않는다.
+
+    실측에서 총 이동거리·처리 대수·결품이 소수점까지 같았다. 드러나는 것은
+    '예산 초과 4건 → 21건'뿐이고, 그것은 새로 생긴 문제가 아니라 원래 있던 것이다.
+    """
+    import importlib
+
+    import project_config as pc
+
+    off = [pc.travel_seconds(k) for k in (1.0, 5.0)]
+    monkeypatch.setenv("PBR_USE_ROAD_MODEL", "1")
+    importlib.reload(pc)
+    try:
+        on = [pc.travel_seconds(k) for k in (1.0, 5.0)]
+        assert all(b > a for a, b in zip(off, on)), "켜면 시간이 늘어야 한다"
+    finally:
+        monkeypatch.delenv("PBR_USE_ROAD_MODEL", raising=False)
+        importlib.reload(pc)

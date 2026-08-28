@@ -10,7 +10,7 @@ import pulp
 import db
 from project_config import (
     PROJECT_ROOT, VEHICLE_SPEED_KMPH, duration_list, ensure_output_dirs, get_runtime_config,
-    require_columns,
+    require_columns, travel_seconds,
 )
 
 # read_csv
@@ -93,14 +93,14 @@ def haversine_km(lat1, lon1, lat2, lon2) -> float:
     return float(R*c)
 
 
-def km_to_travel_seconds(km: float, speed_kmph: float = VEHICLE_SPEED_KMPH) -> float:
+def km_to_travel_seconds(km: float, speed_kmph: float = None) -> float:
+    '''직선거리(km) -> 이동시간(초).
+
+    **계산은 project_config.travel_seconds() 하나가 한다** — ILP와 VRP가 서로
+    다른 식을 쓰면 ILP가 고른 조합이 VRP에서는 최소가 아니게 된다(1.13.2에서 겪음).
+    `PBR_USE_ROAD_MODEL=1`이면 실측 기반 '고정비 + 거리비례'로 바뀐다.
     '''
-    거리(km) -> 이동시간(초)
-    '대여소 간 거리'를 '차량이 몇 초 걸려서 이동'할 수 있을지 구할 때 사용
-    time(sec) = distance(km) / speed(km/h) * 3600
-    '''
-    # return float((km / max(speed_kmph, 1e-9)) * 3600.0)
-    return float((km / speed_kmph) * 3600.0)
+    return float(travel_seconds(km, speed_kmph))
 
 
 def solve_cluster_moves(cluster_df: pd.DataFrame, solver: pulp.LpSolver,
