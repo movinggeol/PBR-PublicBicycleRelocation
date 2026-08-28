@@ -32,12 +32,14 @@ experiments/
 | `min_qty_sweep.py` | 작업 문턱(2)이 맞나 | **문턱이 작동하지 않는다.** TOP_STATION_LIMIT(50)이 먼저 자른다 |
 | `top_limit_sweep.py` | 후보 상한(50)이 맞나 | **맞다.** 넓힐수록 결품은 주지만 **필요 차량이 보유 21대를 넘어** 집행이 안 된다 |
 | `gamma_sweep.py` | 거리 가중치 `γ`(3000)를 바꿔 예산 초과를 줄일 수 있나 | **두 목표를 동시에 개선하는 γ가 없다.** γ↓는 결품 −24%이나 예산 초과 0건 조합이 0개, γ↑는 결품 +74% → **γ=3000 유지, 운영 결정으로 넘김** |
+| `cluster_count_sweep.py` | 군집 수 `K`를 줄이면 물량 손실이 주나 | **준다 — 결품 −17%·물량 +8%(24개 중 18개 우세). 그런데 군집의 80%가 예산 초과** → 채택 못 함. `K` 산정식이 거리를 모르는 것이 진짜 문제 |
 
 ```powershell
 python experiments/params/z_sweep.py            # 커버리지 vs 작업량
 python experiments/params/predictor_compare.py  # 예측기 비교 + 무리별 진단
 python experiments/params/seasonal_window.py    # 학습 창 비교
 python experiments/params/gamma_sweep.py         # γ 다월·다씨앗 (120회, 약 90분)
+python experiments/params/cluster_count_sweep.py  # 군집 수 K (약 15분)
 ```
 
 셋 다 DB의 `net_demand`를 읽으므로 **여러 달의 순수요가 적재돼 있어야** 합니다
