@@ -64,6 +64,13 @@
             <b>한 달치만 보는 것이 아닙니다</b> — 이 달의 통계에 <b>계획 대상 달 첫
             14일</b>로 구한 계절 배율을 곱합니다. 과거를 더 넣으면 오히려 나빠지는 것을
             <b>12개월 자료로 확인</b>했습니다(<a href="/guide#period">자세히</a>).</span>
+          {% if year_ago_period %}
+          {# 계절을 맞추고 싶은 사람에게 선택지를 알린다. 기본값으로 삼지는
+             않는다 — 측정에서 현행을 넘지 못했다(수정안 34). #}
+          <span class="hint">계절을 맞추려면 <b>{{ year_ago_period }}</b>(1년 전 같은 달)도
+            있습니다. 다만 측정에서는 <b>가장 최근 달이 더 나았습니다</b> —
+            자료에 빠진 달이 있어 계절이 오히려 어긋나기 때문입니다.</span>
+          {% endif %}
           {% else %}
           <input id="f-period" type="text" name="period" value="{{ defaults.period }}">
           <span class="hint">아직 계산해 둔 순수요가 없습니다.

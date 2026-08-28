@@ -162,6 +162,24 @@ def _suggested_now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H")
 
 
+def _year_ago_period(periods) -> Optional[str]:
+    """가장 최근 달의 **1년 전 같은 달**이 자료에 있으면 그 라벨 (수정안 34).
+
+    ⚠️ **기본값으로 삼지 않는다.** 측정에서 현행(가장 최근 달)을 넘지 못했다 —
+    12개월 자료에 구멍이 있어 '1년 전 같은 달'이 실제로는 한 달 어긋난 달이
+    되는 경우가 3개 중 2개였다(docs/분석/DEMAND_DISTRIBUTION.md 6-C장).
+
+    그래도 **있으면 알려는 준다.** 계절을 맞추고 싶은 사람이 고를 수 있어야 한다.
+    """
+    latest = latest_period()
+    match = re.match(r"(\d+)년 (\d+)월", str(latest))
+    if not match:
+        return None
+    year, month = int(match.group(1)), int(match.group(2))
+    want = f"{year - 1:02d}년 {month:02d}월"
+    return want if want in set(periods) else None
+
+
 def _index_context(error: Optional[str] = None) -> dict:
     # 기간·시간대는 **요청마다 다시 읽는다.** 서버를 띄워 둔 채 새 달치 순수요를
     # 계산해도 곧바로 선택지에 나와야 하기 때문이다(project_config의 상수는
@@ -182,6 +200,7 @@ def _index_context(error: Optional[str] = None) -> dict:
         # 순수요를 계산해 둔 달만 고르게 한다 — 없는 달을 넣으면 step0가 멈춘다.
         # 최근 달이 위로 오게 뒤집는다(대개 가장 최근 달로 계획한다).
         "periods": list(reversed(periods)),
+        "year_ago_period": _year_ago_period(periods),
         # 시간대는 네 창이 전부다. 창마다 수요 방향이 반대라 섞지 않는다.
         "durations": [{"value": d, "label": DURATION_LABELS[d]} for d in DURATIONS],
         # 평일과 휴일은 수요 구조가 달라 한 실행에 섞지 않는다 (docs/구현/steps/step0_raw.md).

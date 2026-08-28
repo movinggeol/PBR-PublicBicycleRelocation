@@ -79,6 +79,47 @@ SEASON = {12: "겨울", 1: "겨울", 2: "겨울", 3: "봄", 4: "봄", 5: "봄",
           6: "여름", 7: "여름", 8: "여름", 9: "가을", 10: "가을", 11: "가을"}
 
 
+def year_ago_window(periods, test_period, spread=1):
+    """1년 전 같은 달 ±`spread`달에 해당하는 기간 라벨들 (수정안 34).
+
+    **왜 ±로 넓히는가**: 작년 같은 달 하나면 표본이 14~19일(평일)뿐이고,
+    12개월 자료에 구멍이 있어(25년 02·03·12월) 아예 없을 수도 있다.
+    앞뒤 달을 붙이면 계절은 거의 유지하면서 표본이 세 배가 된다.
+
+    ⚠️ **계획 대상 달보다 미래인 기간은 넣지 않는다.** 작년 기준으로는 과거라도
+    표본 밖 원칙이 깨지는 것은 아니지만, 운영 시점에 손에 없는 자료를 쓰면
+    안 되므로 `past` 안에서만 고른다(호출부가 걸러 넘긴다).
+    """
+    target = abs_month(test_period) - 12
+    return [p for p in periods if abs(abs_month(p) - target) <= spread]
+
+
+def level_ratio(stats, reference_frames):
+    """`stats`의 수준을 `reference_frames`(최근 자료)의 수준에 맞추는 배율.
+
+    **두 축을 나누는 장치다** (수정안 34).
+      · 계절의 **모양**(대여소별 상대 크기·분산)은 1년 전 같은 시기에서
+      · 시스템의 **수준**(대여소 신설·이용자 증가)은 최근 자료에서
+
+    warmup_scale과 같은 방식으로 도시 전체 하나의 배율만 쓰고 0.5~2.0으로 자른다 —
+    대여소별로 맞추면 최근 자료의 잡음까지 그대로 옮겨 온다.
+    """
+    if stats.empty or not reference_frames:
+        return stats
+    recent = pd.concat(reference_frames, ignore_index=True)
+    if recent.empty:
+        return stats
+    observed = recent.groupby("station_id")["demand"].mean()
+    joined = stats.join(observed.rename("recent"), how="inner").dropna()
+    baseline = joined["mu"].abs().sum()
+    if baseline <= 0:
+        return stats
+    ratio = float(np.clip(joined["recent"].abs().sum() / baseline, 0.5, 2.0))
+    scaled = stats.copy()
+    scaled[["mu", "sigma"]] *= ratio
+    return scaled
+
+
 def fit(frames):
     """여러 달을 합쳐 대여소별 mu/sigma. seasonal_window.py와 같은 계산이다."""
     frames = [f for f in frames if not f.empty]
@@ -282,6 +323,26 @@ def main():
             if pooled and ref:
                 cand["pooled_norm+warm"] = warmup_scale(fit(pooled) * ref, test)
 
+            # ---- 두 축 분리 (수정안 34, 사용자 제안) ----
+            # "계절 형태는 1년 전 같은 시기에서, 시스템 변화는 최근에서"
+            #
+            # 한 창에서 둘 다 가져오는 현행과 달리 **모양과 수준을 따로** 잡는다.
+            #   모양 = 1년 전 같은 달 ±1달  (계절이 맞다)
+            #   수준 = 직전 달              (대여소 신설·이용자 증가가 반영돼 있다)
+            for spread in (0, 1, 2):
+                window = year_ago_window(past, test_period, spread)
+                if not window:
+                    continue
+                shape = fit(build(window))
+                if shape.empty:
+                    continue
+                name = f"year±{spread}"
+                cand[name] = shape
+                # 수준만 직전 달에 맞춘다 — 두 축을 나눈 것이 이 줄이다
+                cand[f"{name}+lvl"] = level_ratio(shape, build([prev]))
+                # 거기에 계획 달 첫 14일 보정까지 (현행 베이스라인과 같은 장치)
+                cand[f"{name}+lvl+warm"] = warmup_scale(cand[f"{name}+lvl"], test)
+
             # ---- 소프트스플릿 ----
             frames = []
             for p in past:
@@ -389,6 +450,41 @@ def main():
             tagg["cov_fixed"] = ("cov_fixed", "mean")
         print(turn.groupby("method").agg(**tagg)
               .sort_values("mae").round(3).to_string())
+
+    # ── 같은 달끼리만 비교 (수정안 34) ────────────────────────────────
+    #
+    # ⚠️ **위 표들은 방법마다 검증 달 수가 다르다.** `year±1`은 1년 전 자료가
+    # 필요한데 12개월에 구멍이 있어(25년 02·03·12월) 9개 달 중 2개에서만
+    # 계산된다. 그 상태로 평균을 나란히 놓으면 **다른 자를 견주는 것**이다.
+    #
+    # 그래서 **모든 방법이 값을 낸 (달·회차)만** 골라 다시 잰다. 표본은 줄지만
+    # 비교는 공정해진다.
+    print("\n=== 같은 달끼리만 (모든 방법이 값을 낸 달) ===")
+    counts = frame.groupby("method")["period"].nunique()
+    if counts.nunique() == 1:
+        print("모든 방법이 같은 달에서 계산됐습니다 — 위 표를 그대로 읽으십시오.")
+    else:
+        common = None
+        for _, part in frame.groupby("method"):
+            cells = set(zip(part["period"], part["duration"]))
+            common = cells if common is None else (common & cells)
+        if not common:
+            print("모든 방법이 함께 값을 낸 (달·회차)가 없습니다.")
+            print(f"  방법별 달 수: {dict(counts)}")
+        else:
+            mask = frame.apply(
+                lambda r: (r["period"], r["duration"]) in common, axis=1)
+            fair = frame[mask]
+            fagg = dict(mae=("mae", "mean"), coverage=("coverage", "mean"),
+                        buffer=("buffer", "mean"))
+            if "cov_fixed" in fair:
+                fagg["cov_fixed"] = ("cov_fixed", "mean")
+            print(f"공통 (달·회차) {len(common)}개 — "
+                  f"{', '.join(sorted({p for p, _ in common}))}")
+            print(fair.groupby("method").agg(**fagg)
+                  .sort_values("mae").round(3).to_string())
+            print("\n  ⚠️ 표본이 작습니다. 이 표는 '어느 방법이 낫나'의 방향만"
+                  " 보고, 크기는 위 표에서 읽으십시오.")
 
     return 0
 

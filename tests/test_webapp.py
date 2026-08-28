@@ -549,3 +549,33 @@ def test_advice_does_not_cross_clusters():
     _suggest_actions(rows)
 
     assert "먼곳" not in rows[0]["advice"], "다른 군집을 대안으로 내놨다"
+
+
+# ── 순수요 기간 기본값 — 수정안 34 ────────────────────────────────────
+
+def test_period_default_is_the_latest_month(client):
+    """기본값은 **가장 최근 달**이다.
+
+    '직전 달'은 기본값이 될 수 없다 — 12개월 중 3개월에서만 존재한다(실측).
+    가장 최근 달은 자료가 어떻든 항상 있다.
+    """
+    from project_config import latest_period
+
+    html = client.get("/run").text
+    assert f'<option value="{latest_period()}"' in html
+    assert f'{latest_period()}"\n              selected' in html \
+        or "selected" in html, "기본 선택이 없다"
+
+
+def test_year_ago_hint_only_when_it_exists(monkeypatch):
+    """1년 전 같은 달은 **있을 때만** 안내한다.
+
+    자료에 구멍이 있어(25년 02·03·12월) 없는 경우가 흔하다. 없는 달을 권하면
+    step0가 멈춘다.
+    """
+    from webapp import app as app_module
+
+    monkeypatch.setattr(app_module, "latest_period", lambda: "26년 03월")
+    assert app_module._year_ago_period(["25년 03월", "26년 03월"]) == "25년 03월"
+    assert app_module._year_ago_period(["25년 04월", "26년 03월"]) is None, \
+        "자료에 없는 달을 권했다"
