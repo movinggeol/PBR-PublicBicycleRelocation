@@ -24,6 +24,7 @@
 """
 from __future__ import annotations
 
+import math
 import os
 import shlex
 from datetime import timedelta
@@ -53,6 +54,13 @@ FORECAST_REG_ID = "11C20401"
 
 # 강수유무코드(PREP). '0' 외에는 어떤 형태로든 강수가 예보됐다는 뜻이다.
 FORECAST_RAIN_CODES = {"1": "비", "2": "비/눈", "3": "눈", "4": "소나기"}
+
+# 단기예보 격자(수치예보). `fct_afs_dl.php`(문장 예보, 강수확률·유무만)와 달리
+# 강수량(mm)을 준다 — RAIN_MM과 같은 자리에 바로 쓸 수 있다. 관측과는 별개로
+# 활용신청해야 열린다(2026-08-29 추가). 전국을 5km 격자 149×253칸으로 덮는다.
+GRID_URL = "https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-dfs_shrt_grd"
+GRID_NX, GRID_NY = 149, 253
+GRID_MISSING = -99.0  # 격자 밖(바다·해외)
 
 COLUMNS = ("time", "temp", "rain", "wind", "humid", "snow")
 
@@ -389,3 +397,80 @@ def fetch_forecast(tmfc1=None, tmfc2=None, reg: str = FORECAST_REG_ID,
     frame["temp"] = pd.to_numeric(frame["temp"], errors="coerce")
     frame["rain_prob"] = pd.to_numeric(frame["rain_prob"], errors="coerce")
     return frame
+
+
+# --------------------------------------------------------- 격자예보(정량, apihub)
+
+def latlon_to_grid(lat: float, lon: float) -> tuple[int, int]:
+    """위경도를 단기예보 5km 격자 좌표(nx, ny)로 바꾼다.
+
+    기상청이 공개한 변환식(Lambert Conformal Conic)을 그대로 옮긴 것이다 — 대전
+    관제센터 좌표로 실측 기온·강수량과 대조해 확인했다(2026-08-29,
+    docs/분석/WEATHER.md). 격자 밖(바다·해외)인지는 `fetch_grid()`가 돌려주는
+    값(`np.nan`)으로 판단한다.
+    """
+    re_ = 6371.00877 / 5.0  # 지구 반경(km) / 격자 간격(km)
+    slat1, slat2 = math.radians(30.0), math.radians(60.0)
+    olon, olat = math.radians(126.0), math.radians(38.0)
+    xo, yo = 43, 136
+
+    sn = math.tan(math.pi * 0.25 + slat2 * 0.5) / math.tan(math.pi * 0.25 + slat1 * 0.5)
+    sn = math.log(math.cos(slat1) / math.cos(slat2)) / math.log(sn)
+    sf = math.tan(math.pi * 0.25 + slat1 * 0.5)
+    sf = math.pow(sf, sn) * math.cos(slat1) / sn
+    ro = re_ * sf / math.pow(math.tan(math.pi * 0.25 + olat * 0.5), sn)
+
+    ra = re_ * sf / math.pow(math.tan(math.pi * 0.25 + math.radians(lat) * 0.5), sn)
+    theta = math.radians(lon) - olon
+    if theta > math.pi:
+        theta -= 2.0 * math.pi
+    if theta < -math.pi:
+        theta += 2.0 * math.pi
+    theta *= sn
+
+    x = ra * math.sin(theta) + xo + 0.5
+    y = ro - ra * math.cos(theta) + yo + 0.5
+    return int(x), int(y)
+
+
+def fetch_grid(tmfc, tmef, var: str = "PCP", timeout: float = 30) -> np.ndarray:
+    """한 시각·한 변수의 전국 격자를 apihub에서 받는다.
+
+    `tmfc`(발표시각)·`tmef`(발효시각)는 `YYYYMMDDHH`(KST, 시 단위) 문자열이나
+    datetime. 반환은 `(GRID_NY, GRID_NX)` 배열이고 `[0]`행이 남쪽이다(대전 좌표로
+    확인). 격자 밖 칸은 `np.nan`. 좌표를 값으로 바로 꺼내려면 `grid_value()`를 써라.
+
+    ⚠️ **한 번에 시각 하나·변수 하나만 온다** — `fetch_forecast()`처럼 기간을
+    묶어 받을 수 없다(2026-08-29 확인, 과거 최소 19개월치는 그대로 조회된다).
+    """
+    def _stamp(value):
+        return value if isinstance(value, str) else value.strftime("%Y%m%d%H")
+
+    params = {"tmfc": _stamp(tmfc), "tmef": _stamp(tmef), "vars": var, "authKey": _api_key()}
+    try:
+        response = requests.get(GRID_URL, params=params, timeout=timeout)
+    except requests.RequestException as err:
+        raise WeatherError(f"기상청 API에 연결하지 못했습니다: {type(err).__name__}") from err
+
+    response.encoding = "euc-kr"
+    if response.status_code != 200:
+        raise WeatherError(f"기상청 API 호출 실패: {response.status_code} {response.text[:200]}")
+    if '"status"' in response.text[:200]:  # 활용신청 안 됨 등은 자료 대신 JSON 알림으로 온다
+        raise WeatherError(f"기상청 API가 자료 대신 알림을 보냈습니다: {response.text[:200]}")
+
+    values = [float(v) for line in response.text.splitlines() if line.strip()
+              for v in line.split(",") if v.strip()]
+    expected = GRID_NX * GRID_NY
+    if len(values) != expected:
+        raise WeatherError(f"격자 크기가 예상과 다릅니다: {len(values)} (기대 {expected})")
+
+    grid = np.array(values, dtype=float).reshape(GRID_NY, GRID_NX)
+    grid[grid <= GRID_MISSING] = np.nan
+    return grid
+
+
+def grid_value(grid: np.ndarray, lat: float, lon: float):
+    """격자에서 위경도 한 점의 값을 꺼낸다. 격자 밖(바다·해외)이면 None."""
+    nx, ny = latlon_to_grid(lat, lon)
+    value = grid[ny - 1, nx - 1]
+    return None if np.isnan(value) else float(value)

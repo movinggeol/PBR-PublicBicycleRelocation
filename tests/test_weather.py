@@ -16,6 +16,7 @@ docs/구현/TESTING.md 참고.
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -265,6 +266,57 @@ def test_예보_자료가_없으면_빈_표를_돌려준다(monkeypatch):
     assert forecast.empty
     assert list(forecast.columns) == [
         "issued_at", "valid_at", "temp", "rain_prob", "sky_code", "rain_type", "text"]
+
+
+def test_격자좌표는_대전_관제센터_실측과_맞는다():
+    """LCC 변환식 — 대전 관제센터 좌표로 실제 기온·강수량 격자와 대조해 확인했다
+    (2026-08-29, docs/분석/WEATHER.md). 값이 바뀌면 대전이 아닌 다른 칸을 읽는다."""
+    assert weather.latlon_to_grid(36.406607, 127.306457) == (66, 102)
+
+
+def test_격자_결측은_nan으로_바뀐다(monkeypatch):
+    monkeypatch.setenv(weather.API_KEY_ENV, "테스트키")
+    monkeypatch.setattr(weather, "GRID_NX", 2)
+    monkeypatch.setattr(weather, "GRID_NY", 2)
+    body = " -99.00,   0.00, \n   1.50,   2.00, \n"
+    monkeypatch.setattr(weather.requests, "get", lambda *a, **k: FakeResponse(body))
+
+    grid = weather.fetch_grid("2026082820", "2026082821")
+    assert grid.shape == (2, 2)
+    assert np.isnan(grid[0, 0])
+    assert grid[0, 1] == pytest.approx(0.0)
+    assert grid[1, 1] == pytest.approx(2.0)
+
+
+def test_격자_크기가_예상과_다르면_알린다(monkeypatch):
+    """줄바꿈 폭(20칸)이 격자 폭(149칸)을 나누어떨어뜨리지 않아 값 하나가
+    여러 줄에 걸쳐 온다 — 총 개수로만 모양을 확인할 수 있다."""
+    monkeypatch.setenv(weather.API_KEY_ENV, "테스트키")
+    monkeypatch.setattr(weather, "GRID_NX", 2)
+    monkeypatch.setattr(weather, "GRID_NY", 2)
+    monkeypatch.setattr(weather.requests, "get", lambda *a, **k: FakeResponse("1.0, 2.0,\n"))
+    with pytest.raises(weather.WeatherError, match="격자 크기"):
+        weather.fetch_grid("2026082820", "2026082821")
+
+
+def test_격자도_관측과_같은_방식으로_활용신청_안내를_구분한다(monkeypatch):
+    monkeypatch.setenv(weather.API_KEY_ENV, "테스트키")
+    body = '{ "result" : { "status" : 403, "message" : "활용신청이 필요한 API 입니다." } }'
+    monkeypatch.setattr(weather.requests, "get", lambda *a, **k: FakeResponse(body))
+    with pytest.raises(weather.WeatherError, match="알림"):
+        weather.fetch_grid("2026082820", "2026082821")
+
+
+def test_격자에서_점_값을_꺼낸다(monkeypatch):
+    monkeypatch.setattr(weather, "latlon_to_grid", lambda lat, lon: (2, 1))
+    grid = np.array([[10.0, 20.0], [30.0, np.nan]])
+    assert weather.grid_value(grid, 0, 0) == pytest.approx(20.0)
+
+
+def test_격자_밖_점은_None(monkeypatch):
+    monkeypatch.setattr(weather, "latlon_to_grid", lambda lat, lon: (2, 2))
+    grid = np.array([[10.0, 20.0], [30.0, np.nan]])
+    assert weather.grid_value(grid, 0, 0) is None
 
 
 # ---------------- 계획 화면의 '지금 날씨' (webapp/weather_view.py) ----------------
