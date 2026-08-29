@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 from datetime import timedelta
 from pathlib import Path
 
@@ -41,6 +42,17 @@ STATION_ID = 133
 
 API_URL = "https://apihub.kma.go.kr/api/typ01/url/kma_sfctm2.php"
 API_KEY_ENV = "APIHUN_KMA_TYPE01_KEY"
+
+# 단기예보(육상예보) 문. 관측(kma_sfctm2)과 별개로 활용신청해야 열린다(2026-08-29).
+FORECAST_URL = "https://apihub.kma.go.kr/api/typ01/url/fct_afs_dl.php"
+
+# 예보구역코드. `fct_shrt_reg.php`(예보구역코드 조회, 별도 API)로 확인했다 —
+# 대전(C급=구·군 단위), 1990-01-01부터 유효. 상위 구역인 `11C20400`
+# (대전·세종·충남중부내륙)보다 좁게 대전 하나만 잡은 것이다.
+FORECAST_REG_ID = "11C20401"
+
+# 강수유무코드(PREP). '0' 외에는 어떤 형태로든 강수가 예보됐다는 뜻이다.
+FORECAST_RAIN_CODES = {"1": "비", "2": "비/눈", "3": "눈", "4": "소나기"}
 
 COLUMNS = ("time", "temp", "rain", "wind", "humid", "snow")
 
@@ -320,3 +332,60 @@ def fetch_range(start, end, stn: int = STATION_ID, max_calls: int = 48) -> pd.Da
     rows = [fetch_hour(stamp, stn=stn) for stamp in stamps]
     frame = pd.DataFrame(rows)
     return frame.drop(columns=["stn", "rain_day"], errors="ignore")
+
+
+def fetch_forecast(tmfc1=None, tmfc2=None, reg: str = FORECAST_REG_ID,
+                   timeout: float = 30) -> pd.DataFrame:
+    """단기예보(육상예보) 문을 apihub에서 받아 표로 편다.
+
+    관측(`kma_sfctm2`)과 **별개로 활용신청해야** 열린다(2026-08-29 확인).
+    `tmfc1`·`tmfc2`(발표시각 범위, `YYYYMMDDHH`)를 생략하면 **가장 최근 발표**
+    하나만 돌려준다. 한 번 발표에 **12시간 간격으로 최대 7개**(NE 0~6, 오늘
+    남은 시간부터 최대 3.5일 앞)를 준다.
+
+    ⚠️ **관측과 다르다** — 강수량(mm)이 아니라 **강수확률(%)·강수유무코드**뿐이다.
+    `RAIN_MM`(관측 쪽 mm 문턱)과 같은 자리에 쓰려면 `rain_type != "0"`(어떤
+    형태로든 강수 예보)이나 `rain_prob` 문턱 중 하나를 새로 정해야 한다 —
+    아직 판정하지 않았다(계획에 자동 반영하기 전에 재는 것이 이 저장소의 규칙,
+    docs/분석/WEATHER.md 5장).
+
+    반환 컬럼: `issued_at`(발표시각) · `valid_at`(발효시각, 예보 대상 시각) ·
+    `temp` · `rain_prob`(%) · `sky_code` · `rain_type`(코드, `FORECAST_RAIN_CODES`
+    참고) · `text`(예보문)
+    """
+    params = {"reg": reg, "tmfc1": tmfc1 or "0", "tmfc2": tmfc2 or "0",
+             "disp": "0", "help": "0", "authKey": _api_key()}
+    try:
+        response = requests.get(FORECAST_URL, params=params, timeout=timeout)
+    except requests.RequestException as err:
+        raise WeatherError(f"기상청 API에 연결하지 못했습니다: {type(err).__name__}") from err
+
+    response.encoding = "euc-kr"
+    if response.status_code != 200:
+        raise WeatherError(f"기상청 API 호출 실패: {response.status_code} {response.text[:200]}")
+    if '"status"' in response.text:  # 활용신청 안 됨 등은 자료 대신 JSON 알림으로 온다
+        raise WeatherError(f"기상청 API가 자료 대신 알림을 보냈습니다: {response.text[:200]}")
+
+    lines = [line for line in response.text.splitlines()
+            if line.strip() and not line.startswith("#")]
+    if not lines:
+        return pd.DataFrame(columns=["issued_at", "valid_at", "temp", "rain_prob",
+                                     "sky_code", "rain_type", "text"])
+
+    rows = []
+    for line in lines:
+        # WF(예보문, 마지막 칸)는 따옴표로 감싼 구(句)라 공백으로 나누면 깨진다 —
+        # shlex가 따옴표 안 공백은 살리고 바깥은 그대로 나눠 준다.
+        fields = shlex.split(line)
+        rows.append({
+            "issued_at": fields[1], "valid_at": fields[2],
+            "temp": fields[12], "rain_prob": fields[13],
+            "sky_code": fields[14], "rain_type": fields[15], "text": fields[16],
+        })
+
+    frame = pd.DataFrame(rows)
+    frame["issued_at"] = pd.to_datetime(frame["issued_at"], format="%Y%m%d%H%M")
+    frame["valid_at"] = pd.to_datetime(frame["valid_at"], format="%Y%m%d%H%M")
+    frame["temp"] = pd.to_numeric(frame["temp"], errors="coerce")
+    frame["rain_prob"] = pd.to_numeric(frame["rain_prob"], errors="coerce")
+    return frame

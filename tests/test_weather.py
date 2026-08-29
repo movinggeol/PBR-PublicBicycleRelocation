@@ -219,6 +219,54 @@ def test_긴_기간을_시각별_호출로_받지_않는다(monkeypatch):
         weather.fetch_range("2025-01-01 00:00", "2025-01-31 23:00")
 
 
+FORECAST_BODY = (
+    "#START7777\n"
+    "# 헤더 설명\n"
+    '11C20401 202608291100 202608291200 A02  0 133 2 xel********* 장민준     SW 1 W   30  70 DB04    1 "흐리고 가끔 비"\n'
+    '11C20401 202608291100 202608300000 A02  1 133 2 xel********* 장민준     W  1 NW  23  80 DB04    0 "흐림"\n'
+    "#7777END\n"
+)
+
+
+def test_예보문의_따옴표_구는_공백으로_안_깨진다(monkeypatch):
+    """WF(예보문)가 `"흐리고 가끔 비"`처럼 따옴표 안에 공백을 품는다.
+
+    2026-08-29에 단기육상예보(`fct_afs_dl.php`)를 활용신청받아 실제로 확인한
+    형식이다 — 관측(`kma_sfctm2`)과 별개로 활용신청해야 한다.
+    """
+    monkeypatch.setenv(weather.API_KEY_ENV, "테스트키")
+    monkeypatch.setattr(weather.requests, "get",
+                        lambda *a, **k: FakeResponse(FORECAST_BODY))
+
+    forecast = weather.fetch_forecast()
+    assert len(forecast) == 2
+    assert forecast.iloc[0]["text"] == "흐리고 가끔 비"
+    assert forecast.iloc[0]["valid_at"] == pd.Timestamp("2026-08-29 12:00")
+    assert forecast.iloc[0]["temp"] == 30
+    assert forecast.iloc[0]["rain_prob"] == 70
+    assert forecast.iloc[0]["rain_type"] == "1"
+    # 강수유무코드 '0'(없음)도 그대로 남는다 — 판정은 부르는 쪽의 몫이다.
+    assert forecast.iloc[1]["rain_type"] == "0"
+
+
+def test_예보도_관측과_같은_방식으로_활용신청_안내를_구분한다(monkeypatch):
+    monkeypatch.setenv(weather.API_KEY_ENV, "테스트키")
+    body = '{ "result" : { "status" : 403, "message" : "활용신청이 필요한 API 입니다." } }'
+    monkeypatch.setattr(weather.requests, "get", lambda *a, **k: FakeResponse(body))
+    with pytest.raises(weather.WeatherError, match="알림"):
+        weather.fetch_forecast()
+
+
+def test_예보_자료가_없으면_빈_표를_돌려준다(monkeypatch):
+    monkeypatch.setenv(weather.API_KEY_ENV, "테스트키")
+    monkeypatch.setattr(weather.requests, "get",
+                        lambda *a, **k: FakeResponse("#START7777\n#7777END\n"))
+    forecast = weather.fetch_forecast()
+    assert forecast.empty
+    assert list(forecast.columns) == [
+        "issued_at", "valid_at", "temp", "rain_prob", "sky_code", "rain_type", "text"]
+
+
 # ---------------- 계획 화면의 '지금 날씨' (webapp/weather_view.py) ----------------
 #
 # 지키는 것:
