@@ -793,6 +793,59 @@ def test_geo_wanted_vehicles_follows_project_config_flag(step1, monkeypatch):
     assert step1.wanted_vehicles(df) == step1.wanted_vehicles(df, geo=True)
 
 
+def test_select_top_unbalanced_st_is_column_order_independent(step1, tmp_path):
+    """`select_top_unbalanced_st()`는 입력 CSV의 **컬럼 순서**가 바뀌어도 같은 값을 내야 한다.
+
+    예전 코드는 병합 결과를 위치(`iloc[:, [0,7,8,9,3,4,5,6,1,2]]`)로 골랐다
+    (docs/기록/TODO.md P3-0). step0가 항상 같은 순서로 써서 우연히 맞았을
+    뿐이라, 컬럼 순서가 바뀌면 **조용히 엉뚱한 값**을 쓰게 된다. 이제는
+    이름으로 고르므로 순서를 뒤섞어도 같은 결과가 나와야 한다.
+    """
+    # pick·drop 물량이 같아야 둘 다 살아남는다 — select_top_unbalanced_st()가
+    # cut_point(= min(pick 총량, drop 총량))로 큰 쪽을 깎기 때문이다.
+    rebal = pd.DataFrame({
+        "station_id": ["ST0001", "ST0002", "ST0003"],
+        "mu": [1.0, -2.0, 0.5],
+        "sigma": [0.5, 0.3, 0.2],
+        "parking_lot": [20, 15, 10],
+        "stock": [5, 12, 8],
+        "target_qty": [10.0, 3.0, 6.0],
+        "rebal_qty": [5.0, -5.0, -2.0],
+    })
+    st_info = pd.DataFrame({
+        "station_id": ["ST0001", "ST0002", "ST0003"],
+        "station_name": ["가", "나", "다"],
+        "lat": [36.1, 36.2, 36.3],
+        "lon": [127.1, 127.2, 127.3],
+        "parking_lot": [99, 99, 99],   # st_info 쪽 값 — rebal 쪽(20/15/10)이 이겨야 한다
+        "stock": [99, 99, 99],
+    })
+
+    def run(rebal_df, st_df, name):
+        path = tmp_path / f"rebal_{name}.csv"
+        rebal_df.to_csv(path, index=False, encoding="utf-8")
+        return step1.select_top_unbalanced_st(str(path), "_05_10", st_df)
+
+    normal = run(rebal, st_info, "normal")
+
+    shuffled_rebal = rebal[["sigma", "rebal_qty", "station_id", "target_qty",
+                            "parking_lot", "mu", "stock"]]
+    shuffled_st = st_info[["stock", "lon", "station_id", "parking_lot",
+                           "lat", "station_name"]]
+    shuffled = run(shuffled_rebal, shuffled_st, "shuffled")
+
+    assert list(normal.columns) == [
+        "station_id", "station_name", "lat", "lon", "parking_lot", "stock",
+        "target_qty", "rebal_qty", "mu", "sigma"]
+    assert normal.equals(shuffled), "입력 컬럼 순서를 뒤섞으면 결과가 달라진다"
+
+    # rebal_qty가 REBAL_MIN_QTY(기본 2) 이하인 ST0003은 걸러져야 한다
+    assert set(normal["station_id"]) == {"ST0001", "ST0002"}
+    # parking_lot·stock은 st_info가 아니라 rebal 쪽 값을 써야 한다
+    row = normal.set_index("station_id").loc["ST0001"]
+    assert row["parking_lot"] == 20 and row["stock"] == 5
+
+
 def test_step1_thresholds_come_from_project_config():
     """작업 대상 임계·상위 컷·조정 반복이 코드에 박혀 있으면 안 된다.
 

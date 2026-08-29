@@ -427,20 +427,19 @@ sigma를 키우면 커버리지는 저절로 오르므로, 이걸 걸러내지 �
 
 ## 🟢 P3. 품질·유지보수 개선
 
-0. 🟢 **`select_top_unbalanced_st()`의 위치 기반 컬럼 선택** (2026-08-27 점검에서 발견)
+0. ~~🟢 **`select_top_unbalanced_st()`의 위치 기반 컬럼 선택**~~ → **완료 (1.26.11, 2026-08-29)**
 
-   ```python
-   .iloc[:, [0, 7, 8, 9, 3, 4, 5, 6, 1, 2]]     # step1_cluster/top_st_clustering.py
-   ```
+   (2026-08-27 점검에서 발견, `.iloc[:, [0, 7, 8, 9, 3, 4, 5, 6, 1, 2]]`이던 것을
+   `merge(..., suffixes=('', '_info'))` + 이름 선택(`[['station_id', 'station_name', ...]]`)으로
+   바꿨다. `parking_lot`·`stock`은 두 프레임에 모두 있어 이름이 겹치는데,
+   `suffixes=('', '_info')`로 **재배치량 파일 쪽 값을 그대로 남기고** st_info
+   쪽만 `_info`가 붙게 했다 — 예전의 `_x`/`rename` 두 단계를 한 번에 대체한다.
 
-   **입력 CSV의 컬럼 순서가 바뀌면 조용히 엉뚱한 값을 쓴다.** 바로 위에서
-   `require_columns()`로 **존재**는 확인하지만 **순서**는 확인하지 않는다.
-   지금은 step0가 늘 같은 순서로 쓰므로 동작한다.
-
-   이름 기반 선택(`[['station_id', 'station_name', ...]]`)으로 바꾸는 것이 맞지만,
-   **동작하는 코드를 건드리는 위험**과 맞바꿔야 한다. 고치면 step1 산출물의 컬럼
-   순서가 바뀌지 않는지 반드시 확인할 것 — 뒤 단계가 이름으로 읽으므로 괜찮아야
-   하지만, 저장된 CSV를 비교하는 테스트가 있다.
+   산출물 컬럼 순서는 그대로다(`station_id, station_name, lat, lon, parking_lot,
+   stock, target_qty, rebal_qty, mu, sigma`) — 실데이터로 직접 대조해 확인했다.
+   재발 방지 테스트 추가(`tests/test_calculations.py`
+   `test_select_top_unbalanced_st_is_column_order_independent`) — 입력 컬럼
+   순서를 뒤섞어도 결과가 완전히 같은지 본다. 전체 429개(428 통과·1 skip).
 
 
 1. ~~**폴더명 정리**~~ → **완료(1.18.3).** 여섯 폴더를 ASCII로 바꿨다:

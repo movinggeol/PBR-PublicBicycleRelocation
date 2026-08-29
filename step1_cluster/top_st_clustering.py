@@ -84,16 +84,20 @@ def select_top_unbalanced_st(file_path:str, duration:str, st_info:pd.DataFrame) 
 
     # file_path는 호출부에서 이미 완전히 포맷된 경로
     st_rebal = pd.read_csv(file_path, encoding='utf-8', low_memory=False)
-    require_columns(st_rebal, ['station_id', 'rebal_qty', 'target_qty'],
-                    f'step0 재배치량 {duration}')
+    require_columns(st_rebal, ['station_id', 'mu', 'sigma', 'parking_lot', 'stock',
+                               'target_qty', 'rebal_qty'], f'step0 재배치량 {duration}')
     require_columns(st_info, ['station_id', 'station_name', 'lat', 'lon',
                               'parking_lot', 'stock'], 'step0 대여소 정보')
-    
+
+    # 이름으로 고른다 — 예전엔 위치(iloc)로 골라 입력 컬럼 순서가 바뀌면
+    # 조용히 엉뚱한 값을 썼다(docs/기록/TODO.md P3-0). parking_lot·stock은
+    # 두 프레임에 모두 있어 이름이 겹치므로, **재배치량 파일(st_rebal) 쪽 값을
+    # 그대로 쓴다** — st_info 쪽은 `_info` 접미사를 붙여 밀어낸다.
     st = (
         st_rebal[abs(st_rebal['rebal_qty']) > REBAL_MIN_QTY]
-        .merge(st_info, how='left', on='station_id')
-        .iloc[:,[0,7,8,9,3,4,5,6,1,2]]
-        .rename(columns={'parking_lot_x':'parking_lot', 'stock_x':'stock'})
+        .merge(st_info, how='left', on='station_id', suffixes=('', '_info'))
+        [['station_id', 'station_name', 'lat', 'lon', 'parking_lot', 'stock',
+          'target_qty', 'rebal_qty', 'mu', 'sigma']]
         )
     
     print(st.head(10))
