@@ -227,6 +227,18 @@
     a:hover { text-decoration: underline; }
     :focus-visible { outline: 2px solid var(--blue-focus); outline-offset: 2px; border-radius: 4px; }
 
+    /* 건너뛰기 링크 — 평소엔 화면 밖, 키보드로 첫 Tab을 누르면 나타난다.
+       내비가 3단(전역·흐름·그룹)이라 마우스 없이는 본문까지 매번 여러 번
+       Tab을 눌러야 했다. */
+    .skip-link {
+      position: absolute; top: -48px; left: var(--sp-sm); z-index: 300;
+      background: var(--ink); color: var(--canvas);
+      padding: 10px 18px; border-radius: var(--r-sm);
+      font-size: var(--fs-ui); text-decoration: none;
+      transition: top .12s ease;
+    }
+    .skip-link:focus { top: var(--sp-sm); text-decoration: none; }
+
     /* ════════ 1단: 글로벌 내비 (검정, 44px) ════════ */
     .global-nav {
       position: sticky; top: 0; z-index: 60;
@@ -703,6 +715,9 @@
       border-bottom: 1px dotted var(--ink-4); cursor: help;
       text-underline-offset: 3px;
     }
+    /* .tip은 <span>이라 기본으로는 키보드 초점을 못 받는다 — 스크립트가
+       tabIndex를 붙인다(아래). 밑줄과 겹치지 않게 자리를 살짝 띄운다. */
+    .tip:focus-visible { outline: 2px solid var(--blue-focus); outline-offset: 2px; border-radius: 2px; }
     th .tip { border-bottom-color: var(--ink-4); }
     #tipbox {
       position: fixed; z-index: 200; max-width: 300px;
@@ -821,6 +836,8 @@
 </head>
 <body>
 
+<a class="skip-link" href="#main-content">본문으로 건너뛰기</a>
+
 {# ── 현재 위치는 요청 경로로 판단한다 — 라우트마다 변수를 넘기지 않아도 된다 ── #}
 {% set path = request.url.path %}
 {% if path.startswith('/kpi') or path.startswith('/vehicles')
@@ -889,7 +906,7 @@
 </nav>
 {% endif %}
 
-<main>
+<main id="main-content" tabindex="-1">
 {% block content %}{% endblock %}
 </main>
 
@@ -918,6 +935,14 @@
     var box = document.getElementById("tipbox");
     var current = null;
     var pinned = false;   /* 고정되면 커서를 떼도 남는다 — 닫기 단추로만 사라진다 */
+
+    /* .tip은 <span>이라 기본으로는 Tab이 들르지 않는다 — 마우스 없이는
+       설명을 읽을 수 없었다. 고정은 .tip에서만 하므로(아래 클릭 처리) 여기도
+       .tip만 포커스 대상으로 넣는다 — 내비 링크 등 다른 data-tip은 원래도
+       자기 자신이 포커스 가능하다. */
+    document.querySelectorAll(".tip").forEach(function (el) {
+      if (el.tabIndex < 0) el.tabIndex = 0;
+    });
 
     /* 본문만 갈아 끼운다. 닫기 단추는 그대로 두어야 다시 만들 필요가 없다. */
     var body = document.createElement("span");
