@@ -8,6 +8,9 @@
   @media print {
     .global-nav, .flow-nav, .group-nav, footer.site, .no-print { display: none !important; }
     main { padding: 0 !important; }
+    /* 화면에서는 2열로 나란히 놓지만, 인쇄는 차량 한 대 = 종이 한 장이라
+       그리드를 도로 풀어야 break-after: page가 장마다 제대로 걸린다. */
+    .data-grid { display: block !important; }
     /* break-*는 최신 이름, page-break-*는 옛 이름이다. 브라우저마다 지원이 갈려
        둘 다 적는다 — 한쪽만 적으면 어떤 브라우저에서는 차량 두 대가 한 장에 겹친다. */
     .sheet {
@@ -35,6 +38,42 @@
   td.back { color: var(--ink-4); }
   tr.bad td { background: var(--critical-soft); }
   tr.warn td { background: var(--warning-soft); }
+
+  /* 2열 카드 안의 표. 기본 .wrap의 최소폭(10rem)은 한 줄짜리 넓은 표를
+     염두에 둔 값이라, 2열로 좁아지면 그 최소폭들이 카드 폭을 넘겨 가로
+     스크롤을 만든다. 여기서는 최소폭을 없애 표가 카드 폭 안에서 줄어들게
+     하고, 대여소명만 10자에서 접는다 — 나머지(비고)는
+     문장이라 접지 않고 남는 폭에 맞춰 자연히 줄바꿈된다. */
+  .sheet td.wrap { min-width: 0; }
+  /* 대조 표는 열이 13개라 "비고" 하나만 늘어나는 열(grow)로 두면 그
+     열이 나머지 열의 몫까지 다 가져간다. 표 폭을 카드에 맞춰 늘리지 않고
+     각 열에 직접 px를 줘서 남는 폭이 어느 한 열로 쏠리지 않게 한다.
+     table-layout: fixed라야 지정한 px가 그대로 지켜진다. width: auto는
+     표 요소가 여느 블록 요소처럼 부모 폭(카드 전체)까지 늘어나 버려서
+     — 나머지 표들처럼 min-content로 열 폭의 합만큼만 차지하게 한다. */
+  .sheet table.cmp-table { table-layout: fixed; width: min-content; }
+  .sheet table.cmp-table th:nth-child(1)  { width: 44px; }  /* 순번 */
+  .sheet table.cmp-table th:nth-child(2)  { width: 130px; } /* 대여소 */
+  .sheet table.cmp-table th:nth-child(3)  { width: 72px; }  /* 할 일 */
+  .sheet table.cmp-table th:nth-child(4)  { width: 56px; }  /* 수량 */
+  .sheet table.cmp-table th:nth-child(5)  { width: 76px; }  /* 싣고 남는 수 */
+  .sheet table.cmp-table th:nth-child(6)  { width: 72px; }  /* 이동 */
+  .sheet table.cmp-table th:nth-child(7)  { width: 60px; }  /* 누적 */
+  .sheet table.cmp-table th:nth-child(8)  { width: 60px; }  /* 계획 때 */
+  .sheet table.cmp-table th:nth-child(9)  { width: 56px; }  /* 지금 */
+  .sheet table.cmp-table th:nth-child(10) { width: 52px; }  /* 차이 */
+  .sheet table.cmp-table th:nth-child(11) { width: 52px; }  /* 가능 */
+  .sheet table.cmp-table th:nth-child(12) { width: 72px; }  /* 판정 */
+  .sheet table.cmp-table th:nth-child(13) { width: 220px; } /* 비고 */
+  /* max-width는 <td>에 직접 걸면 auto 표 레이아웃이 무시하고 남는 폭을
+     도로 채워 넣는다 — <td> 안의 블록 요소에 걸어야 실제로 먹힌다. */
+  .sheet td.station .station-name {
+    display: block; max-width: 10em; white-space: normal;
+    overflow-wrap: break-word; word-break: break-all;
+  }
+  /* 지시서 표는 이름 밑에 대여소 ID를 함께 적는다. break-all을 그대로
+     물려받으면 "ST1221"처럼 코드 중간이 잘린다 — 따로 줄을 주고 붙여 둔다. */
+  .sheet td.station .hint { display: block; white-space: nowrap; word-break: keep-all; }
 </style>
 {% endblock %}
 
@@ -48,8 +87,8 @@
     <button class="btn" type="button" onclick="window.print()">인쇄</button>
     {% if run_label %}
     <a class="btn ghost" href="/orders/live?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}">
-      {% if compared %}지금 재고 다시 조회{% else %}지금 재고와 대조하기{% endif %}</a>
-    {% if compared %}
+      {% if compared_sheets %}지금 재고 다시 조회{% else %}지금 재고와 대조하기{% endif %}</a>
+    {% if compared_sheets %}
     {# 대조를 끄려고 다른 계획을 눌렀다 돌아올 필요가 없게, 같은 계획으로 되돌아온다. #}
     <a class="btn ghost" href="/orders?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}">
       대조 끄기</a>
@@ -78,7 +117,7 @@
 <div class="alert bad"><span>{{ live_error }}</span></div>
 {% endif %}
 
-{% if compared %}
+{% if compared_sheets %}
 <h2>지금 재고와 대조 <span class="hint">{{ checked_at }} 조회</span></h2>
 <div class="actions no-print" style="margin-bottom:var(--sp-sm)">
   <a class="btn ghost" href="/orders/live?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}">
@@ -98,53 +137,90 @@
   {% if live_summary.unknown %}<div>확인 불가 <b>{{ live_summary.unknown }}</b></div>{% endif %}
 </div>
 
-<div class="card flush" style="margin-top:var(--sp-md)">
+{# 지시서 한 장에 대조 결과까지 다 있어야 이 화면만 들고 나갈 수 있다 —
+   따로 두면 지시서와 대조표를 오가며 맞춰 봐야 한다. build_live()가
+   지시서(순서·이동거리·누적시간·싣고 남는 수·차고지 복귀)에 대조 값을
+   얹어 주므로, 아래는 지시서 카드와 같은 모양에 열만 늘려 그린다.
+   열이 많아 2열로는 못 좁히므로 한 장씩 세로로 쌓는다. #}
+<div style="margin-top:var(--sp-md)">
+{% for cs in compared_sheets %}
+<div class="card sheet">
+  <div class="sheet-head">
+    <h3>{% if cs.vehicle_id %}{{ cs.vehicle_id }}{% else %}군집 {{ cs.cluster }}{% endif %}
+      <span class="hint">군집 {{ cs.cluster }} · {{ run_label }} · {{ duration }}</span></h3>
+    <div class="sheet-facts">
+      들를 곳 <b>{{ cs.stations }}</b>곳 ·
+      옮길 자전거 <b>{{ cs.bikes }}</b>대 ·
+      이동 <b>{{ cs.distance_km }}</b> km ·
+      예상 <b>{{ cs.minutes }}</b>분
+    </div>
+  </div>
+
+  {% if not cs.returns %}
+  <p class="hint">※ 이 계획에는 차고지 복귀 구간이 없습니다(1.19.1 이전 산출물).
+    실제 운행 시간은 복귀분만큼 더 걸립니다.</p>
+  {% endif %}
+
   <div class="table-wrap">
-  <table data-sortable>
+  <table class="cmp-table">
     <thead><tr>
-      <th class="grow">대여소</th>
-      <th class="num">군집</th>
-      <th class="num"><span class="tip" data-tip="군집 안에서 몇 번째로 들르는지입니다. 지시서와 같은 순서입니다.">순서</span></th>
+      <th class="num">순번</th>
+      <th>대여소</th>
       <th>할 일</th>
-      <th class="num"><span class="tip" data-tip="지시서에 적힌 수량입니다.">지시</span></th>
+      <th class="num">수량</th>
+      <th class="num"><span class="tip" data-tip="그 대여소에서 일을 마친 뒤 차에 남는 대수입니다. 적재 용량은 {{ capacity }}대입니다.">싣고 남는 수</span></th>
+      <th class="num">이동</th>
+      <th class="num">누적</th>
       <th class="num"><span class="tip" data-tip="계획을 세울 때 본 재고입니다.">계획 때</span></th>
       <th class="num"><span class="tip" data-tip="방금 타슈 API에서 받은 재고입니다.">지금</span></th>
       <th class="num">차이</th>
       <th class="num"><span class="tip" data-tip="지금 재고로 실제 처리할 수 있는 수량입니다.">가능</span></th>
       <th>판정</th>
-      <th class="grow">비고</th>
-      <th class="grow"><span class="tip" data-tip="막혔을 때 그 자리에서 고를 수 있는 선택지입니다. 같은 군집 안에서만 찾습니다 — 차량 한 대가 군집 하나를 맡기 때문입니다. 계획을 다시 세우지는 않습니다.">이렇게 하세요</span></th>
+      <th>비고</th>
     </tr></thead>
     <tbody>
-    {% for r in compared %}
-    <tr class="{% if r.status == '불가' %}bad{% elif r.status in ['부족', '넘침'] %}warn{% endif %}">
-      <td class="wrap">{{ r.station_name or r.station_id }}</td>
-      <td class="num muted">{{ r.cluster if r.cluster is not none else "—" }}</td>
-      <td class="num muted">{{ r.seq if r.seq is not none else "—" }}</td>
-      <td class="{{ r.action }}">{{ r.action_label }}</td>
-      <td class="num">{{ r.need }}</td>
-      <td class="num muted">{{ r.planned_stock }}</td>
-      <td class="num">{{ r.live_stock if r.live_stock is not none else "—" }}</td>
-      <td class="num muted">{% if r.delta is not none %}{{ "%+d" | format(r.delta) }}{% else %}—{% endif %}</td>
-      <td class="num">{{ r.possible if r.possible is not none else "—" }}</td>
-      <td>{{ r.status }}</td>
-      <td class="wrap muted">{{ r.note }}</td>
-      <td class="wrap">{% if r.advice %}<b>{{ r.advice }}</b>{% endif %}</td>
+    {% for stop in cs.stops %}
+    <tr class="{% if stop.status == '불가' %}bad{% elif stop.status in ['부족', '넘침'] %}warn{% endif %}">
+      <td class="num muted">{{ stop.no }}</td>
+      <td class="wrap station"><span class="station-name">{{ stop.station_name }}</span>
+        <span class="hint">{{ stop.station_id }}</span></td>
+      <td class="{% if stop.action == 'return' %}back{% else %}{{ stop.action }}{% endif %}">
+        {{ stop.action_label }}</td>
+      <td class="num">{% if stop.qty %}{{ stop.qty }}대{% else %}—{% endif %}</td>
+      <td class="num muted">{{ stop.load_after }}대</td>
+      <td class="num muted">{{ stop.distance_km }} km</td>
+      <td class="num muted">{{ stop.minutes }}분</td>
+      <td class="num muted">{{ stop.planned_stock if stop.planned_stock is not none else "—" }}</td>
+      <td class="num">{{ stop.live_stock if stop.live_stock is not none else "—" }}</td>
+      <td class="num muted">{% if stop.delta is not none %}{{ "%+d" | format(stop.delta) }}{% else %}—{% endif %}</td>
+      <td class="num">{{ stop.possible if stop.possible is not none else "—" }}</td>
+      <td>{{ stop.status or "—" }}</td>
+      <td class="wrap muted">{{ stop.note or "" }}</td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
 </div>
+{% endfor %}
+</div>
 
 <div class="note no-print">
+  <b>차고지는 {{ depot_name }}</b>이고, 적재 용량은 한 대에 {{ capacity }}대입니다.
+  "싣고 남는 수"가 0이면 그 시점에 차가 비어 있다는 뜻입니다.<br>
   판정 기준: <b>싣기</b>는 지금 재고만큼만 가능하고, <b>내리기</b>는 거치대 수의
   {{ upper_ratio }}배까지만 받습니다(계획이 목표 재고를 자른 것과 같은 기준).
   작업량이 {{ min_qty }}대 이하인 대여소는 애초에 계획에 들어오지 않습니다.
 </div>
 {% endif %}
 
-{# ───────────────────────── 차량별 지시서 ───────────────────────── #}
+{# ───────────────────────── 차량별 지시서 ─────────────────────────
+   표 하나가 1200px 전체를 차지하면 숫자 열은 좁은데 빈칸만 넓어진다.
+   /data와 같은 방식으로 두 장씩 나란히 놓는다.
+   지금 재고와 대조 중이면 위에서 이미 군집별로 이 내용을 보여주고
+   있으므로, 같은 것을 아래에 한 번 더 두지 않는다. #}
+{% if not compared_sheets %}
+<div class="data-grid">
 {% for sheet in sheets %}
 <div class="card sheet">
   <div class="sheet-head">
@@ -175,7 +251,7 @@
     {% for stop in sheet.stops %}
     <tr>
       <td class="num muted">{{ stop.no }}</td>
-      <td class="wrap">{{ stop.station_name }}
+      <td class="wrap station"><span class="station-name">{{ stop.station_name }}</span>
         <span class="hint">{{ stop.station_id }}</span></td>
       <td class="{% if stop.action == 'return' %}back{% else %}{{ stop.action }}{% endif %}">
         {{ stop.action_label }}</td>
@@ -190,11 +266,13 @@
   </div>
 </div>
 {% endfor %}
+</div>
 
 {% if sheets %}
 <div class="note no-print">
   <b>차고지는 {{ depot_name }}</b>이고, 적재 용량은 한 대에 {{ capacity }}대입니다.
   “싣고 남는 수”가 0이면 그 시점에 차가 비어 있다는 뜻입니다.
 </div>
+{% endif %}
 {% endif %}
 {% endblock %}

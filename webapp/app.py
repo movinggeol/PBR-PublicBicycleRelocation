@@ -474,7 +474,8 @@ def orders_live(request: Request, run_label: Optional[str] = None,
         return templates.TemplateResponse(request, "orders.html", context)
 
     compared = orders.compare_stock(planned, live)
-    context["compared"] = store.records(compared)
+    context["compared_sheets"] = orders.build_live(
+        context["run_label"], context["duration"], compared)
     context["live_summary"] = orders.summarize(compared)
     context["checked_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
     return templates.TemplateResponse(request, "orders.html", context)

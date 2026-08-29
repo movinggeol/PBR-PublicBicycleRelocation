@@ -292,6 +292,35 @@ def _suggest_actions(rows: list) -> None:
                                  f"차고지로 가져가거나 실을 곳에서 그만큼 덜 실으세요")
 
 
+_LIVE_FIELDS = ("planned_stock", "live_stock", "delta", "possible", "status", "note", "advice")
+
+
+def build_live(run_label: Optional[str], duration: Optional[str],
+               compared: pd.DataFrame) -> list:
+    """지금 재고와 대조한 결과만으로도 지시서 구실을 하게 만든다.
+
+    `build()`가 만드는 지시서(순서·이동거리·누적시간·싣고 남는 수·차고지
+    복귀)는 그대로 두고, 정거장마다 `compare_stock()`의 결과(계획 때·지금·
+    차이·가능·판정·비고)를 얹는다. 대조 표를 따로 만들어 지시서 옆에 두면
+    두 화면을 오가며 대조해야 한다 — 한 장에 다 있어야 기사가 그 한 장만
+    들고 나갈 수 있다.
+
+    차고지 복귀 구간은 대여소가 아니므로 대조 대상이 아니다(값이 없다).
+    """
+    sheets = build(run_label, duration)
+    if not sheets:
+        return sheets
+
+    by_key = {(r["station_id"], r["action"]): r for r in store.records(compared)}
+
+    for sheet in sheets:
+        for stop in sheet["stops"]:
+            match = by_key.get((stop["station_id"], stop["action"]))
+            for field in _LIVE_FIELDS:
+                stop[field] = match.get(field) if match else None
+    return sheets
+
+
 def summarize(compared: pd.DataFrame) -> dict:
     """대조 결과 한 줄 요약. 화면 맨 위에 쓴다."""
     if compared.empty:
