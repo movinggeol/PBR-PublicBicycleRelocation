@@ -239,7 +239,7 @@
       <td><span class="badge {{ job.status }}">{{ job_labels.get(job.status, job.status) }}</span></td>
       <td class="muted">{{ job.started_at }}</td>
       <td class="muted">{{ job.finished_at or "—" }}</td>
-      <td class="muted">{{ " ".join(job.args) or "(기본값)" }}</td>
+      <td class="wrap muted">{{ " ".join(job.args) or "(기본값)" }}</td>
     </tr>
     {% endfor %}
     </tbody>
