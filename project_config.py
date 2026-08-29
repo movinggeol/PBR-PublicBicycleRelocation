@@ -460,6 +460,21 @@ TARGET_QTY_UPPER_RATIO = float(os.getenv("PBR_TARGET_QTY_UPPER_RATIO", "1.5"))
 #   (총 소요 1252분@K=10 -> 1278분@K=12 -> 1426분@K=18).
 TRAVEL_MIN_PER_STATION = float(os.getenv("PBR_TRAVEL_MIN_PER_STATION", "12.5"))
 
+# ── 회차당 필요 차량 추정에 거리를 반영할지 (1.26.10, EXPERIMENTS.md 5-G장) ──
+#
+# 위 TRAVEL_MIN_PER_STATION은 **거리를 안 본다** — 대여소 수에만 비례한다.
+# 그런데 1.21.6에서 이미 소요시간을 지배하는 것은 대여소 수(r=0.80)가 아니라
+# **이동 거리(r=0.966)**라고 쟀다. 켜면 `wanted_vehicles()`가 후보 집합의
+# 기하(BHH 근사 + depot 왕복)로 이동 거리를 추정하고, `travel_seconds()`를
+# 거쳐 시간으로 바꾼다 — 그래서 `USE_ROAD_MODEL`을 켜면 이 추정도 자동으로
+# 같은 식(고정비+거리비례)을 쓰게 된다.
+#
+# ⚠️ **기본은 꺼져 있다.** 켜면 회차당 차량 수가 달라져 문서의 모든 수치
+# (K=8 실험 등)가 무효가 된다 — 재실험 없이 기본값을 바꾸지 마라.
+# 켜려면 `PBR_WANTED_VEHICLES_GEO=1`.
+WANTED_VEHICLES_GEO = os.getenv("PBR_WANTED_VEHICLES_GEO", "").strip().lower() in (
+    "1", "true", "yes", "on")
+
 # 시간 예산은 평균이 아니라 **가장 오래 걸린 차량**으로 판정한다. 같은 실측에서
 # 최장/평균이 1.28 ~ 1.51이었다. 평균만 맞추면 절반이 예산을 넘는다.
 CLUSTER_IMBALANCE_ALLOWANCE = float(os.getenv("PBR_CLUSTER_IMBALANCE", "1.4"))

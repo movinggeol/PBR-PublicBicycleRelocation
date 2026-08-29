@@ -12,14 +12,58 @@ from adjust_module import compute_medoids, compute_objective, select_cluster_can
                             make_cluster_pairs, get_movable_nodes, check_size_constraint, try_move_node
 
 import db
+import project_config
 from project_config import (
     ADJUST_BALANCE_LIMIT, ADJUST_BALANCE_OK, ADJUST_MAX_ITER,
     CLUSTER_ALPHA, CLUSTER_BETA, CLUSTER_GAMMA, PROJECT_ROOT, REBAL_MIN_QTY,
-    CLUSTER_IMBALANCE_ALLOWANCE, DROP_TIME_SEC, PICK_TIME_SEC,
-    TIME_BUDGET_MINUTES, TOP_STATION_LIMIT, TRAVEL_MIN_PER_STATION,
-    VEHICLES_PER_ROUND,
+    CLUSTER_IMBALANCE_ALLOWANCE, DEPOT_LAT, DEPOT_LON, DROP_TIME_SEC,
+    PICK_TIME_SEC, TIME_BUDGET_MINUTES, TOP_STATION_LIMIT,
+    TRAVEL_MIN_PER_STATION, VEHICLES_PER_ROUND,
     duration_list, ensure_output_dirs, get_runtime_config, require_columns,
+    travel_seconds,
 )
+
+# BHH(Beardwood-Halton-Hammersley) 상수 — 넓이 A에 무작위로 흩어진 점 n개를
+# 잇는 최단 순회 경로 길이가 대략 k*sqrt(n*A)로 수렴한다는 실험적 근거값이다
+# (평면 유클리드 TSP, k ≈ 0.7124). 정확한 최적해가 아니라 **자릿수 근사**로 쓴다 —
+# 실제 순회는 K-Medoids·greedy가 정하고, 여기서는 "군집 몇 개가 필요한가"만 가늠한다.
+_BHH_CONSTANT = 0.7124
+_KM_PER_LAT_DEG = 111.0
+
+
+def _estimate_travel_km_per_vehicle(pick_drop: pd.DataFrame, k: int) -> float:
+    """군집을 나누기 **전** 후보 집합의 기하만으로, 차량 1대가 감당할 이동거리(km)를 어림한다.
+
+    총 순회거리는 BHH 근사(0.7124·sqrt(n·면적))로 잡고, 이것을 K등분해
+    군집당 몫으로 삼는다 — 1.26.9 실측이 "군집을 쪼개도 이동 총합은 거의
+    안 변한다"고 확인했으므로 K에 따라 줄어들지 않는 편이 안전하다. 여기에
+    차량마다 발생하는 depot 왕복(편도 거리 × 2)을 더한다.
+
+    좌표계를 정확히 투영하지 않고 위경도 1도 ≈ 111km(경도는 위도의 cos배)로만
+    변환한다 — K를 정하기 위한 자릿수 어림이지, 실제 경로 계산(haversine 기반)을
+    대체하지 않는다.
+    """
+    n = len(pick_drop)
+    if n == 0:
+        return 0.0
+
+    lat = pick_drop["lat"].to_numpy(dtype=float)
+    lon = pick_drop["lon"].to_numpy(dtype=float)
+    lat_mid = np.radians(lat.mean())
+
+    width_km = (lon.max() - lon.min()) * _KM_PER_LAT_DEG * np.cos(lat_mid)
+    height_km = (lat.max() - lat.min()) * _KM_PER_LAT_DEG
+    area_km2 = max(abs(width_km) * abs(height_km), 0.01)  # 한 점만 있어도 0으로 안 떨어지게
+
+    total_tour_km = _BHH_CONSTANT * np.sqrt(n * area_km2)
+
+    dlat = np.radians(lat - DEPOT_LAT)
+    dlon = np.radians(lon - DEPOT_LON)
+    p1, p2 = np.radians(DEPOT_LAT), np.radians(lat)
+    a = np.sin(dlat / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(dlon / 2) ** 2
+    depot_km = float((2 * 6371.0 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))).mean())
+
+    return total_tour_km / k + 2 * depot_km
 
 # read_csv
 file_path = str(PROJECT_ROOT / "data/pp_data/재배치 정보/rebal_qty{duration} ({now}).csv")
@@ -102,7 +146,7 @@ def select_top_unbalanced_st(file_path:str, duration:str, st_info:pd.DataFrame) 
     return pick_drop
 
 
-def wanted_vehicles(pick_drop: pd.DataFrame) -> int:
+def wanted_vehicles(pick_drop: pd.DataFrame, geo: bool = None) -> int:
     """이번 회차의 작업량으로 **필요한 차량(=군집) 수**를 추정한다.
 
     한 대가 감당할 수 있는 양을 시간으로 따진다.
@@ -116,10 +160,19 @@ def wanted_vehicles(pick_drop: pd.DataFrame) -> int:
     군집을 쪼개면 depot 왕복이 늘지만 군집 안 이동이 그만큼 줄기 때문이다.
     근거와 계수는 project_config와 docs/분석/EXPERIMENTS.md에 있다.
 
+    ⚠️ **이 식은 거리를 안 본다** — `project_config.WANTED_VEHICLES_GEO`
+    (기본 꺼짐)를 켜거나 `geo=True`를 넘기면 `_wanted_vehicles_geo()`가
+    후보 집합의 기하로 이동거리를 어림해 대신 쓴다(EXPERIMENTS.md 5-G장).
+    `geo` 인자는 실험이 project_config를 건드리지 않고 바로 비교하기 위한 것이다.
+
     **저장하지 않는 순수 계산이다** — 실험이 계수를 바꿔 가며 직접 부른다.
     """
     if pick_drop.empty:
         return 1
+
+    use_geo = project_config.WANTED_VEHICLES_GEO if geo is None else geo
+    if use_geo:
+        return _wanted_vehicles_geo(pick_drop)
 
     # 처리 대수는 drop 합(= |pick 합|)이다. 앞의 cut_point가 두 쪽을 맞춰 뒀다.
     # pick·drop을 모두 더하면 한 대를 두 번 세어 2배가 된다.
@@ -129,6 +182,33 @@ def wanted_vehicles(pick_drop: pd.DataFrame) -> int:
     travel_min = len(pick_drop) * TRAVEL_MIN_PER_STATION
     needed = (work_min + travel_min) * CLUSTER_IMBALANCE_ALLOWANCE / TIME_BUDGET_MINUTES
     return max(1, int(np.ceil(needed)))
+
+
+def _wanted_vehicles_geo(pick_drop: pd.DataFrame) -> int:
+    """`wanted_vehicles()`의 거리 인지 버전 — 차량 1대의 시간을 직접 예산과 견준다.
+
+      차량 1대 시간 = [ 처리 대수 ÷ K × (싣기+내리기)
+                      + travel_seconds(순회거리 ÷ K + depot 왕복) ] × 불균형 여유
+
+    순회거리(`_estimate_travel_km_per_vehicle`)는 K가 늘어도 거의 안 변한다는
+    실측(1.26.9)을 따라 K로 나누지만, depot 왕복은 차량마다 **한 번씩 더** 드는
+    비용이라 나누지 않는다. K가 클수록 두 항 다 줄거나 그대로이므로 시간은
+    K에 대해 단조 감소한다 — 예산을 넘지 않는 가장 작은 K를 앞에서부터 찾는다.
+    `travel_seconds()`를 거치므로 `USE_ROAD_MODEL`을 켜면 이 추정도 같은
+    고정비+거리비례 식을 자동으로 쓴다.
+    """
+    bikes = float(pick_drop.loc[pick_drop['rebal_qty'] > 0, 'rebal_qty'].sum())
+    n = len(pick_drop)
+
+    for k in range(1, n + 1):
+        travel_km = _estimate_travel_km_per_vehicle(pick_drop, k)
+        vehicle_min = (
+            bikes / k * (PICK_TIME_SEC + DROP_TIME_SEC) / 60.0
+            + travel_seconds(travel_km) / 60.0
+        ) * CLUSTER_IMBALANCE_ALLOWANCE
+        if vehicle_min <= TIME_BUDGET_MINUTES:
+            return k
+    return n
 
 
 def make_clustering(pick_drop: pd.DataFrame, random_state: int = 42) -> pd.DataFrame:

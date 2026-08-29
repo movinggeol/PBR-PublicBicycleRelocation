@@ -726,6 +726,73 @@ def test_vehicle_count_follows_the_workload(step1):
         "대상이 없으면 1대로 떨어져야 한다(0으로 나누면 안 된다)"
 
 
+def test_geo_wanted_vehicles_reacts_to_spread(step1):
+    """`geo=True`는 대여소 수가 같아도 **흩어진 정도**로 필요 대수를 바꿔야 한다.
+
+    legacy(`geo=False`, 기본값)는 대여소 수에만 비례해 거리를 전혀 보지 않는다
+    (docs/기록/TODO.md 2-1, EXPERIMENTS.md 5-G ㉰). geo는 이 맹점을 고치는
+    다음 단계이므로, 같은 개수·같은 처리 대수라도 좌표가 넓게 퍼져 있으면
+    더 많은 차량을 요구해야 한다.
+    """
+    import project_config
+
+    def candidates(n, bikes, lat, lon):
+        half = n // 2
+        each = bikes / half
+        return pd.DataFrame({
+            "station_id": [f"ST{i:04d}" for i in range(n)],
+            "rebal_qty": [each] * half + [-each] * half,
+            "lat": lat, "lon": lon,
+        })
+
+    depot_lat, depot_lon = project_config.DEPOT_LAT, project_config.DEPOT_LON
+    tight_lat = [depot_lat + 0.001 * i for i in range(60)]
+    tight_lon = [depot_lon + 0.001 * i for i in range(60)]
+    spread_lat = [depot_lat + 0.05 * i for i in range(60)]
+    spread_lon = [depot_lon + 0.05 * i for i in range(60)]
+
+    tight = candidates(60, 200, tight_lat, tight_lon)
+    spread = candidates(60, 200, spread_lat, spread_lon)
+
+    legacy_tight = step1.wanted_vehicles(tight, geo=False)
+    legacy_spread = step1.wanted_vehicles(spread, geo=False)
+    assert legacy_tight == legacy_spread, \
+        "legacy는 거리를 안 보므로 뭉침·흩어짐이 같은 값을 내야 한다"
+
+    geo_tight = step1.wanted_vehicles(tight, geo=True)
+    geo_spread = step1.wanted_vehicles(spread, geo=True)
+    assert geo_spread > geo_tight, \
+        "흩어진 회차는 이동거리가 커지므로 더 많은 차량이 필요해야 한다"
+    assert geo_tight >= 1
+
+    assert step1.wanted_vehicles(
+        pd.DataFrame(columns=["rebal_qty", "lat", "lon"]), geo=True) == 1, \
+        "대상이 없으면 geo도 1대로 떨어져야 한다"
+
+
+def test_geo_wanted_vehicles_follows_project_config_flag(step1, monkeypatch):
+    """`geo` 인자를 생략하면 `project_config.WANTED_VEHICLES_GEO`를 따라야 한다.
+
+    이 플래그는 함수 안에서 **호출 시점에** `project_config.WANTED_VEHICLES_GEO`를
+    읽는다(모듈 상수를 그대로 import하면 몽키패치가 반영되지 않는다 — 같은
+    저장소의 `USE_ROAD_MODEL` + `travel_seconds()` 패턴을 따른 것이다).
+    """
+    import project_config
+
+    df = pd.DataFrame({
+        "station_id": ["ST0001", "ST0002"],
+        "rebal_qty": [5.0, -5.0],
+        "lat": [project_config.DEPOT_LAT, project_config.DEPOT_LAT + 0.1],
+        "lon": [project_config.DEPOT_LON, project_config.DEPOT_LON + 0.1],
+    })
+
+    monkeypatch.setattr(project_config, "WANTED_VEHICLES_GEO", False)
+    assert step1.wanted_vehicles(df) == step1.wanted_vehicles(df, geo=False)
+
+    monkeypatch.setattr(project_config, "WANTED_VEHICLES_GEO", True)
+    assert step1.wanted_vehicles(df) == step1.wanted_vehicles(df, geo=True)
+
+
 def test_step1_thresholds_come_from_project_config():
     """작업 대상 임계·상위 컷·조정 반복이 코드에 박혀 있으면 안 된다.
 
