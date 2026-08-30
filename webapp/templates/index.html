@@ -25,6 +25,9 @@
        **계획을 바꾸지는 않는다** — 작업지시서와 같이 사실만 알리고 판단은 사람이 한다.
        화면을 그리는 요청에서 외부 API를 부르면 폼 자체가 늦게 뜨므로, 띄운 뒤
        브라우저가 따로 물어본다(응답은 10분 캐시). 실패하면 조용히 접는다. #}
+    {# 계획 대상일 예보를 관측보다 **위에** 둔다 — 계획은 하루 앞서 세우므로
+       정작 맞아야 하는 것은 '지금'이 아니라 그날이다. #}
+    <div id="forecast" hidden></div>
     <div id="weather" hidden></div>
 
     {% if running %}
@@ -267,11 +270,16 @@
       return out.join(" · ");
     }
 
+    /* 관측이 경고로 설지, 한 줄로 조용히 설지.
+       **예보가 이미 말하고 있으면 관측은 맥락으로 물러난다** — 계획이 맞아야 하는
+       것은 내일이고, 같은 안내문을 두 상자가 반복하면 둘 다 안 읽힌다.
+       예보를 못 받았을 때만 관측이 그 자리를 대신한다. */
     function render(w) {
       if (!w || !w.available) { box.hidden = true; return; }
       var detail = bits(w);
       var when = w.observed_at ? w.observed_at + " 대전 관측" : "대전 관측";
-      if (w.raining) {
+      var leadIsForecast = window.__forecastSpoke === true;
+      if (w.raining && !leadIsForecast) {
         box.className = "alert";
         box.innerHTML = "<div><b>" + w.headline + "</b> — " + detail
           + "<br><span class=\"hint\">" + w.note + "</span>"
@@ -284,10 +292,78 @@
       box.hidden = false;
     }
 
+    /* 예보 쪽이 먼저 답하면 그 결과를 보고 고른다. 예보가 늦거나 죽으면
+       기다리지 않고 관측만으로 그린다 — 날씨는 없어도 되는 정보다. */
+    function draw(w) {
+      if (window.__forecastDone) { render(w); return; }
+      var waited = 0;
+      var timer = setInterval(function () {
+        waited += 100;
+        if (window.__forecastDone || waited >= 3000) { clearInterval(timer); render(w); }
+      }, 100);
+    }
+
     fetch("/api/weather")
       .then(function (r) { return r.json(); })
-      .then(render)
+      .then(draw)
       .catch(function () { box.hidden = true; });   /* 날씨는 있으면 좋고 없어도 되는 정보다 */
+  })();
+
+  /* 계획 대상일 예보 — 계획은 하루 앞서 세우므로 '지금'보다 이쪽이 정작 맞아야 한다.
+     실행 폼에는 대상일 입력이 없으므로(요일은 day_type이 정한다) 늘 내일을 묻는다.
+     다른 날이 필요하면 /api/forecast?target_date=YYYY-MM-DD로 직접 부른다. */
+  (function () {
+    var box = document.getElementById("forecast");
+    if (!box) return;
+
+    function bits(f) {
+      var out = [];
+      if (f.rain_mm !== null && f.rain_mm !== undefined) {
+        out.push("예보 강수량 " + f.rain_mm.toFixed(1) + "mm");
+        if (f.rain_mm_peak) out.push("최대 시간당 " + f.rain_mm_peak.toFixed(1) + "mm");
+      }
+      if (f.rain_prob !== null && f.rain_prob !== undefined) out.push("강수확률 " + Math.round(f.rain_prob) + "%");
+      if (f.rain_type) out.push(f.rain_type);
+      if (f.temp !== null && f.temp !== undefined) out.push(f.temp.toFixed(0) + "℃");
+      return out.join(" · ");
+    }
+
+    function render(f) {
+      /* 관측 쪽이 '내가 경고로 서야 하나'를 여기 보고 정한다. */
+      window.__forecastSpoke = !!(f && f.available && (f.raining || f.state === "drizzle_expected"));
+      window.__forecastDone = true;
+      if (!f || !f.available) { box.hidden = true; return; }
+      var detail = bits(f);
+      var when = f.target_date + " 예보";
+      if (f.grid_issued_at) when += " · " + f.grid_issued_at + " 발표";
+      else if (f.issued_at) when += " · " + f.issued_at + " 발표";
+      if (f.grid_hours) when += " · 격자 " + f.grid_hours + "시각";
+      if (f.raining || f.state === "drizzle_expected") {
+        box.className = f.state === "rain_expected" ? "alert" : "note";
+        box.innerHTML = "<div><b>" + f.headline + "</b>"
+          + (detail ? " — " + detail : "")
+          + "<br><span class=\"hint\">" + f.note + "</span>"
+          + "<br><span class=\"hint\">" + when + "</span></div>";
+      } else {
+        box.className = "note";
+        box.innerHTML = "<span class=\"hint\">" + f.headline
+          + (detail ? " · " + detail : "") + " · " + when + "</span>";
+      }
+      box.hidden = false;
+    }
+
+    function load(targetDate) {
+      var url = "/api/forecast" + (targetDate ? "?target_date=" + encodeURIComponent(targetDate) : "");
+      fetch(url)
+        .then(function (r) { return r.json(); })
+        .then(render)
+        .catch(function () {                          /* 예보도 없어도 되는 정보다 */
+          window.__forecastDone = true;               /* 관측이 계속 기다리지 않게 */
+          box.hidden = true;
+        });
+    }
+
+    load("");
   })();
 </script>
 {% endblock %}

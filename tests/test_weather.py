@@ -14,6 +14,7 @@ API는 부르지 않는다(응답 문자열을 직접 넣어 파싱만 본다). 
 docs/구현/TESTING.md 참고.
 """
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -428,3 +429,171 @@ def test_날씨_API는_실패해도_200으로_답한다(monkeypatch):
     assert response.status_code == 200
     assert response.json()["available"] is False
     weather_view.reset_cache()
+
+
+# ------------- 계획 대상일 예보 (webapp/weather_view.py, 1.26.25) -------------
+#
+# 지키는 것:
+#   - **계획은 하루 앞서 세운다** — 기본 대상일은 오늘이 아니라 내일이다.
+#   - **맑은 날에는 격자를 부르지 않는다** — 시각마다 한 번씩 부르는 API다.
+#   - **mm이 있으면 mm이 이긴다** — 확률은 '얼마나 올지'를 말하지 않는다(1.26.17).
+#   - 관측과 마찬가지로 **죽지 않는다**.
+
+def forecast_blocks(rain_prob=70, rain_type="1", temp=28.0) -> pd.DataFrame:
+    """대상일(내일) 하루를 덮는 12시간 구간 둘."""
+    target = pd.Timestamp(date.today() + timedelta(days=1))
+    return pd.DataFrame({
+        "issued_at": [pd.Timestamp(date.today()) + pd.Timedelta(hours=23)] * 2,
+        "valid_at": [target + pd.Timedelta(hours=12), target + pd.Timedelta(days=1)],
+        "temp": [temp, temp - 3], "rain_prob": [rain_prob, rain_prob - 10],
+        "sky_code": ["DB04", "DB04"], "rain_type": [rain_type, "0"],
+        "text": ["흐리고 가끔 비", "흐림"],
+    })
+
+
+def test_예보의_기본_대상일은_오늘이_아니라_내일이다(monkeypatch):
+    """계획을 하루 앞서 세우므로, 정작 맞아야 하는 것은 '지금'이 아니라 그날이다."""
+    weather_view.reset_cache()
+    monkeypatch.setattr(weather_view.weather, "fetch_forecast",
+                        lambda *a, **k: forecast_blocks(rain_prob=0, rain_type="0"))
+
+    described = weather_view.forecast()
+    assert described["target_date"] == (date.today() + timedelta(days=1)).strftime("%Y-%m-%d")
+    assert described["when"] == "내일"
+    weather_view.reset_cache()
+
+
+def test_맑은_날에는_격자를_부르지_않는다(monkeypatch):
+    """격자는 **시각마다 한 번씩** 부르는 API다. 전부 0인 값을 열 번 넘게 받을 이유가 없다."""
+    weather_view.reset_cache()
+    grid_calls = []
+    monkeypatch.setattr(weather_view.weather, "fetch_forecast",
+                        lambda *a, **k: forecast_blocks(rain_prob=10, rain_type="0"))
+    monkeypatch.setattr(weather_view.weather, "fetch_grid",
+                        lambda *a, **k: grid_calls.append(1) or np.zeros((2, 2)))
+
+    described = weather_view.forecast()
+    assert not grid_calls
+    assert described["state"] == "dry_expected"
+    assert described["raining"] is False
+    weather_view.reset_cache()
+
+
+def test_비가_예보되면_격자로_강수량까지_확인한다(monkeypatch):
+    """확률만으로는 수요를 못 맞힌다(1.26.17). 격자 mm이 있어야 한다(1.26.18)."""
+    weather_view.reset_cache()
+    monkeypatch.setattr(weather_view.weather, "fetch_forecast",
+                        lambda *a, **k: forecast_blocks(rain_prob=70, rain_type="1"))
+    monkeypatch.setattr(weather_view.weather, "fetch_grid",
+                        lambda *a, **k: np.full((2, 2), 2.0))
+    monkeypatch.setattr(weather_view.weather, "grid_value", lambda *a, **k: 2.0)
+
+    described = weather_view.forecast()
+    assert described["state"] == "rain_expected"
+    assert described["rain_mm"] == pytest.approx(2.0 * len(weather_view.FORECAST_HOURS))
+    assert described["rain_mm_peak"] == pytest.approx(2.0)
+    assert weather_view.RAINY_NEED_SHARE in described["note"]
+    weather_view.reset_cache()
+
+
+def test_예보된_양이_적으면_비_온_날로_치지_않는다(monkeypatch):
+    """`RAIN_MM` 문턱은 관측과 같은 것을 쓴다 — 약한 비는 이용에 거의 영향이 없다."""
+    weather_view.reset_cache()
+    monkeypatch.setattr(weather_view.weather, "fetch_forecast",
+                        lambda *a, **k: forecast_blocks(rain_prob=40, rain_type="1"))
+    monkeypatch.setattr(weather_view.weather, "fetch_grid",
+                        lambda *a, **k: np.zeros((2, 2)))
+    monkeypatch.setattr(weather_view.weather, "grid_value", lambda *a, **k: 0.0)
+
+    described = weather_view.forecast()
+    assert described["state"] == "drizzle_expected"
+    assert described["raining"] is False
+    weather_view.reset_cache()
+
+
+def test_격자가_죽어도_확률로_말은_한다(monkeypatch):
+    """한 원천이 죽었다고 화면이 아무 말도 못 하면 안 된다."""
+    weather_view.reset_cache()
+    monkeypatch.setattr(weather_view.weather, "fetch_forecast",
+                        lambda *a, **k: forecast_blocks(rain_prob=70, rain_type="1"))
+    monkeypatch.setattr(weather_view.weather, "fetch_grid",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            weather.WeatherError("격자 실패")))
+
+    described = weather_view.forecast()
+    assert described["available"] is True
+    assert described["rain_mm"] is None
+    # mm을 모르면 강수형태로 판단한다 — 확률만 있을 때보다 강하게 말한다.
+    assert described["state"] == "rain_expected"
+    weather_view.reset_cache()
+
+
+def test_예보_API가_죽어도_화면은_산다(monkeypatch):
+    weather_view.reset_cache()
+    monkeypatch.setattr(weather_view.weather, "fetch_forecast",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            weather.WeatherError("활용신청이 필요한 API")))
+
+    described = weather_view.forecast()
+    assert described["available"] is False
+    assert described["raining"] is False
+    weather_view.reset_cache()
+
+
+def test_예보도_같은_날짜면_API를_다시_부르지_않는다(monkeypatch):
+    weather_view.reset_cache()
+    calls = []
+    monkeypatch.setattr(weather_view.weather, "fetch_forecast",
+                        lambda *a, **k: calls.append(1) or forecast_blocks(
+                            rain_prob=0, rain_type="0"))
+
+    weather_view.forecast()
+    weather_view.forecast()
+    assert len(calls) == 1
+
+    weather_view.forecast(target=date.today() + timedelta(days=2))   # 날짜가 다르면 다시
+    assert len(calls) == 2
+    weather_view.reset_cache()
+
+
+def test_실행_화면은_예보도_부르지_않고_뜬다(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from webapp.app import app
+
+    called = []
+    monkeypatch.setattr(weather_view.weather, "fetch_forecast",
+                        lambda *a, **k: called.append(1) or forecast_blocks())
+
+    page = TestClient(app).get("/run")
+    assert page.status_code == 200
+    assert 'id="forecast"' in page.text        # 자리는 있고
+    assert not called                           # 부르지는 않았다
+
+
+def test_예보_API는_실패해도_200으로_답한다(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from webapp.app import app
+
+    weather_view.reset_cache()
+    monkeypatch.setattr(weather_view.weather, "fetch_forecast",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            weather.WeatherError("기상청 API 호출 실패: 500")))
+
+    response = TestClient(app).get("/api/forecast")
+    assert response.status_code == 200
+    assert response.json()["available"] is False
+    weather_view.reset_cache()
+
+
+def test_잘못된_대상일은_400이_아니라_안내로_답한다(monkeypatch):
+    """화면이 이걸로 죽으면 안 된다 — 형식 오류도 200에 available=false로 알린다."""
+    from fastapi.testclient import TestClient
+
+    from webapp.app import app
+
+    response = TestClient(app).get("/api/forecast?target_date=2026-13-45")
+    assert response.status_code == 200
+    assert response.json()["available"] is False
+    assert "YYYY-MM-DD" in response.json()["error"]

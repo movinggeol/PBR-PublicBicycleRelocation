@@ -34,7 +34,7 @@ uvicorn webapp.app:app --reload
 | 경로 | 내용 |
 | --- | --- |
 | `/` | **메인(현황판)** — 마지막 계획 요약과 세 구역 입구. 실험용 실행이면 표시한다 (1.26.0) |
-| `/run` | **실행 폼** + 지금 날씨(비 여부) + DB 실행 이력(run_label) + 작업 이력 + 최신 산출물 |
+| `/run` | **실행 폼** + 내일 예보(주 신호) + 지금 날씨(맥락) + DB 실행 이력(run_label) + 작업 이력 + 최신 산출물 |
 | `/runs/{id}` | 실행 상태·로그 (실행 중엔 3초마다 자동 갱신) + **실행 중단** 버튼 |
 | `/kpi` | 실행별 성과 지표와 직전 실행 대비 증감, 그래프 3종. 각 그래프의 `표로 보기`는 **끌어 옮길 수 있는 창**으로 뜬다(1.21.3) ([KPI.md](../분석/KPI.md)) |
 | `/vehicles` | 차량별 누적 작업량·작업량 편차·시간 예산 준수율·회차 배정 이력 ([FLEET.md](FLEET.md)) |
@@ -63,6 +63,7 @@ uvicorn webapp.app:app --reload
 | `GET /api/vehicles/assignments` | 회차별 차량 배정 이력 (`vehicle_id`·`run_label`로 필터) |
 | `GET /api/runs/{id}` | 웹에서 띄운 **작업**의 상태 폴링 (위와 다른 개념) |
 | `GET /api/weather` | **지금 날씨**(대전 관측). 실행 폼이 비 여부를 띄우는 데 쓴다. `?refresh=1`로 캐시 무시 |
+| `GET /api/forecast` | **계획 대상일 예보**(문장 + 격자 mm). `?target_date=YYYY-MM-DD`(생략하면 내일)·`?refresh=1`. 계획은 하루 앞서 세우므로 화면의 주 신호는 이쪽이다 |
 
 산출물 API는 `?run_label=...&duration=...` 쿼리를 받습니다. 생략하면 **최신 실행분**입니다.
 
@@ -95,7 +96,7 @@ GET /api/metrics?run_label=2026-05-21%2018    # 특정 실행
 webapp/
 ├── app.py        # FastAPI 라우트 (페이지 + JSON API)
 ├── orders.py     # 작업지시서 조립·실시간 재고 대조 판정 (저장 안 함)
-├── weather_view.py # 지금 날씨 → 화면 문구 (10분 캐시, 실패해도 화면은 산다)
+├── weather_view.py # 지금 날씨·내일 예보 → 화면 문구 (10·30분 캐시, 실패해도 화면은 산다)
 ├── charts.py     # 인라인 SVG 그래프 (꺾은선·산점도·히트맵)
 ├── kpi_view.py   # 성과 화면 데이터 조립 (추세·효과비용·예측정확도·수요구조)
 ├── jobs.py       # run_pipeline.py를 subprocess로 실행, 상태·로그 추적

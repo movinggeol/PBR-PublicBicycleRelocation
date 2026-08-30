@@ -308,6 +308,28 @@ def weather_now(refresh: int = 0):
     return JSONResponse(weather_view.current(force=bool(refresh)))
 
 
+@app.get("/api/forecast")
+def weather_forecast(target_date: str = "", refresh: int = 0):
+    """계획 대상일 예보. **계획은 하루 앞서 세우므로 정작 맞아야 하는 것은 그날이다.**
+
+    `target_date`(YYYY-MM-DD)를 생략하면 내일이다 — 실행 폼에는 대상일 입력이
+    없으므로(요일은 `day_type`이 정한다) 화면은 늘 내일을 묻는다. 다른 날이
+    필요하면 이 인자로 직접 부른다.
+
+    `/api/weather`와 같은 성향이다 — 화면을 그리는 요청 안에서 부르지 않고,
+    실패해도 200에 available=false로 답한다.
+    """
+    target = None
+    if target_date:
+        try:
+            target = datetime.strptime(target_date, "%Y-%m-%d").date()
+        except ValueError:
+            return JSONResponse(
+                {"available": False, "raining": False,
+                 "error": "target_date는 YYYY-MM-DD 형식이어야 합니다."})
+    return JSONResponse(weather_view.forecast(target=target, force=bool(refresh)))
+
+
 @app.post("/runs")
 def create_run(
     request: Request,
