@@ -10,8 +10,14 @@
   2. 비용 — z를 올리면 작업량이 얼마나 늘어나는가
            (실제 st_info로 rebal_qty를 다시 계산)
 
+**평일과 휴일은 절대 섞지 않는다**(프로젝트 규약). `--day-type`으로 한쪽만 골라
+잰다. 기본은 `weekday`인데, 이 스크립트가 처음 만들어질 때(1.11.x) 요일 옵션이
+없어 사실상 평일+휴일을 섞어 재고 있었기 때문이다 — 그때 나온 `z=1.99`는
+**평일 기준 값으로 다시 확인해야 하는 값**이었다(1.26.39).
+
 실행:
     python experiments/params/z_sweep.py
+    python experiments/params/z_sweep.py --day-type holiday
     python experiments/params/z_sweep.py --duration _05_10 --period "25년 11월"
 """
 from __future__ import annotations
@@ -29,9 +35,29 @@ import pandas as pd
 
 import db
 from backtest_demand import DURATIONS, consecutive_pairs, daily_window_demand
+from project_config import DAY_TYPES, normalize_day_type, select_day_type
 
 Z_GRID = [1.28, 1.65, 1.80, 1.99, 2.10, 2.33, 2.58]
 MAX_CAPACITY = 10
+
+
+def limit_days(net: dict, days: int, seed: int) -> dict:
+    """각 기간을 무작위 `days`일로 줄인다 — **표본 크기를 맞춘 대조군용**.
+
+    휴일은 달마다 8~13일뿐이고 평일은 17~23일이다. 휴일 커버리지가 낮게 나올 때
+    그것이 '휴일 수요가 유별나서'인지 '학습 표본이 작아 mu·sigma가 흔들려서'인지
+    구분하려면, **평일을 같은 일수로 줄여** 같은 조건에서 재야 한다(1.26.39).
+    """
+    rng = np.random.default_rng(seed)
+    out = {}
+    for period, frame in net.items():
+        unique = np.sort(frame["date"].unique())
+        if len(unique) <= days:
+            out[period] = frame
+            continue
+        keep = rng.choice(unique, size=days, replace=False)
+        out[period] = frame[frame["date"].isin(keep)]
+    return out
 
 
 # ---------- 1. 편익: z별 커버리지 ----------
@@ -87,17 +113,27 @@ def workload(frame: pd.DataFrame) -> dict:
     }
 
 
-def load_station_stats(conn, period: str, duration: str, run_label: str) -> pd.DataFrame:
+def load_station_stats(conn, period: str, duration: str, run_label: str,
+                       day_type: str) -> pd.DataFrame:
     """rebalance_plan과 동일한 입력(mu/sigma + parking_lot/stock)을 재구성한다."""
     from backtest_demand import window_hours
 
-    net = db.load_frame(conn, "net_demand", period=period)
+    net = select_day_type(db.load_frame(conn, "net_demand", period=period),
+                          "date", day_type)
     columns = [f"net_{h:02d}" for h in window_hours(duration) if f"net_{h:02d}" in net.columns]
     net["window"] = net[columns].sum(axis=1)
 
     stats = net.groupby("station_id")["window"].agg(mu="mean", sigma="std").fillna(0).reset_index()
 
     info = db.load_frame(conn, "station_info", run_label=run_label)
+    if info.empty:
+        # 예전에는 없는 라벨이어도 빈 병합이 통과해 **비용 표가 통째로 0**으로
+        # 나왔다(1.26.39에서 발견). 조용히 틀린 답을 내느니 멈춘다.
+        available = [r[0] for r in conn.execute(
+            "SELECT DISTINCT run_label FROM station_info ORDER BY 1")]
+        raise SystemExit(
+            f"station_info에 '{run_label}' 실행이 없습니다."
+            f" --run-label 로 고르십시오: {available}")
     stats = stats.merge(info[["station_id", "parking_lot", "stock"]], on="station_id", how="left")
     return stats[~stats["stock"].isna()]
 
@@ -106,23 +142,60 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="z 스윕 — 커버리지와 작업량의 맞바꿈")
     parser.add_argument("--duration", help="시간대 하나만")
     parser.add_argument("--period", default="25년 11월", help="비용 계산에 쓸 기간")
-    parser.add_argument("--run-label", default="2026-08-11 real", help="st_info 실행 라벨")
+    # 기본값을 박아 두면 DB가 바뀌었을 때 조용히 빈 표가 된다 — 최신 실행을 쓴다.
+    parser.add_argument("--run-label", default=None,
+                        help="st_info 실행 라벨 (기본: station_info의 최신 실행)")
+    parser.add_argument("--day-type", default="weekday", choices=list(DAY_TYPES),
+                        help="평일/휴일 (기본 weekday). 섞어서 재지 않는다")
+    parser.add_argument("--sample-days", type=int, default=None,
+                        help="각 기간을 이만큼의 날로 줄인다 (표본 크기 대조군)")
+    parser.add_argument("--repeats", type=int, default=5,
+                        help="--sample-days를 쓸 때 뽑기를 몇 번 반복해 평균 낼지")
     args, _ = parser.parse_known_args()
 
     durations = [args.duration] if args.duration else DURATIONS
+    day_type = normalize_day_type(args.day_type)
 
     with db.session() as conn:
+        run_label = args.run_label or conn.execute(
+            "SELECT MAX(run_label) FROM station_info").fetchone()[0]
         periods = [r[0] for r in conn.execute("SELECT DISTINCT period FROM net_demand").fetchall()]
-        net = {p: db.load_frame(conn, "net_demand", period=p) for p in periods}
-        cost_input = {d: load_station_stats(conn, args.period, d, args.run_label) for d in durations}
+        net = {p: select_day_type(db.load_frame(conn, "net_demand", period=p),
+                                  "date", day_type)
+               for p in periods}
+        cost_input = {d: load_station_stats(conn, args.period, d, run_label,
+                                            day_type) for d in durations}
+
+    # 휴일이 없는 기간이 섞이면 월쌍이 조용히 어긋난다 — 먼저 걸러 낸다.
+    if (empty := [p for p, frame in net.items() if frame.empty]):
+        print(f"'{day_type}' 자료가 없는 기간: {', '.join(sorted(empty))}")
+        print("  tools/rebuild_net_demand.py 로 순수요를 다시 만드십시오"
+              " (1.14.0 이전 산출물에는 휴일이 없습니다).\n")
+        net = {p: f for p, f in net.items() if not f.empty}
+        periods = sorted(net)
 
     pairs = consecutive_pairs(periods)
-    print(f"기간 {len(periods)}개 · 연속 월쌍 {len(pairs)}개\n")
+    print(f"요일 {day_type} · 기간 {len(periods)}개 · 연속 월쌍 {len(pairs)}개"
+          f" · st_info '{run_label}'")
+    sample = {p: int(net[p]['date'].nunique()) for p in sorted(net)}
+    print(f"기간별 표본 일수: {sample}")
+    if args.sample_days:
+        print(f"⚠ 표본 크기 대조군 — 각 기간을 {args.sample_days}일로 줄여"
+              f" {args.repeats}회 평균 냅니다. 비용 표는 줄이지 않은 자료입니다.")
+    print()
 
     benefit_rows, cost_rows = [], []
 
     for duration in durations:
-        frame = coverage_by_z(net, pairs, duration)
+        if args.sample_days:
+            draws = [coverage_by_z(limit_days(net, args.sample_days, seed),
+                                   pairs, duration)
+                     for seed in range(args.repeats)]
+            draws = [d for d in draws if not d.empty]
+            frame = (pd.concat(draws).groupby(["학습", "검증"], as_index=False).mean()
+                     if draws else pd.DataFrame())
+        else:
+            frame = coverage_by_z(net, pairs, duration)
         if frame.empty:
             continue
 
@@ -156,7 +229,7 @@ def main() -> int:
     benefit = pd.DataFrame(benefit_rows)
     cost = pd.DataFrame(cost_rows)
 
-    print("=== 비용: z별 작업량 (기준 " + args.period + ") ===")
+    print(f"=== 비용: z별 작업량 (기준 {args.period} · {day_type}) ===")
     for duration in durations:
         part = cost[cost["duration"] == duration].set_index("z")
         if part.empty:

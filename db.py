@@ -215,6 +215,10 @@ CREATE TABLE IF NOT EXISTS road_leg (
     straight_km  REAL,
     road_sec     REAL,
     observed_at  TEXT,
+    -- TMAP에 넘긴 `startTime`(YYYYMMDDHHMM). **이 값이 교통량을 정한다** —
+    -- 같은 구간도 시각이 다르면 다른 답이 온다(1.26.4에서 실제로 겪었다).
+    -- observed_at은 '언제 호출했나', start_time은 '언제의 교통량인가'로 서로 다르다.
+    start_time   TEXT,
     PRIMARY KEY (run_label, duration, cluster, leg)
 );
 

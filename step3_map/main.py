@@ -137,7 +137,8 @@ def _haversine_km(lat1, lon1, lat2, lon2) -> float:
     return 2 * r * math.asin(min(1.0, math.sqrt(h)))
 
 
-def _road_legs(cluster: int, route_pts: list, elapsed_sec: list) -> list:
+def _road_legs(cluster: int, route_pts: list, elapsed_sec: list,
+               start_time: str = None) -> list:
     """TMAP이 준 누적 소요를 **구간별 실측**으로 풀어 낸다 (1.23.2).
 
     `elapsed_sec`는 방문 지점마다의 누적 초이므로, 앞 값과 빼면 그 구간의
@@ -172,6 +173,8 @@ def _road_legs(cluster: int, route_pts: list, elapsed_sec: list) -> list:
             # 언제 잰 값인지 남긴다. 배율은 교통 상황에 따라 달라지므로
             # **측정 시각 없이는 나중에 해석할 수 없다** (1.26.7).
             "observed_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            # 어느 시각의 교통량으로 계산됐는지 — 호출 시각과 다른 값이다.
+            "start_time": start_time,
         })
     return rows
 
@@ -192,6 +195,9 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
 
     road_rows = []                  # TMAP 실측 구간 (정답표). 아래에서 DB에 남긴다
     unique_clusters = sorted(vrp_plan['cluster'].unique())
+    # 이 회차의 교통량 기준 시각. 클러스터마다 다시 구하면 자정을 넘길 때
+    # 앞뒤 클러스터가 다른 날을 보게 된다 — 한 번만 정하고 돌려 쓴다.
+    tmap_start_time = start_time_for(duration)
 
     palette = [
         'red','blue','green','purple','orange',
@@ -292,7 +298,7 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
             geo_list = call_tmap_chunked(start, end, via,
                                          headers=headers,
                                          url=tmap_url,
-                                         start_time=start_time_for(duration))
+                                         start_time=tmap_start_time)
             merged = merge_tmap_results(geo_list)
         except (TmapQuotaExceeded, TmapBudgetExceeded) as exc:
             print(f"  ⚠ 클러스터 {c}: {exc}")
@@ -306,7 +312,7 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
         # 지도를 그리려고 이미 받은 값이다. 저장하지 않으면 **VEHICLE_SPEED_KMPH가
         # 맞는지 검증할 방법이 없다** — 예전에는 vrp_plan.cum_sec을 실측으로 착각해
         # 틀린 결론을 냈다(1.23.1). 여기 들어가는 road_sec만이 도로 실측이다.
-        road_rows.extend(_road_legs(c, route_pts, elapsed_list))
+        road_rows.extend(_road_legs(c, route_pts, elapsed_list, tmap_start_time))
 
         def _arrival_txt(order: int) -> str:
             idx = order - 1

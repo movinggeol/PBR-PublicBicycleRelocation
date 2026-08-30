@@ -5,6 +5,11 @@
 > 넓혔습니다**(1.25.1) — 그 전에 모은 3일치는 09–17시 창으로 모은 것입니다(2-B장). [TODO.md](../기록/TODO.md) 1-4(요일 구분별
 > 재고 스냅샷)의 착수입니다.
 
+> ℹ️ **수집기는 둘입니다.** 이 문서는 **재고** 수집기(`scripts/collector.ps1` ·
+> `tools/collect_stock.py`)를 다룹니다. **TMAP 실도로 소요시간** 수집기는 별개이며
+> (`scripts/road_collector.ps1` · `tools/collect_road_time.py`), 창 가드도 요일
+> 옵션도 다릅니다 — 그쪽은 [EXPERIMENTS.md](../분석/EXPERIMENTS.md) 9장에 있습니다.
+
 ## 1. 왜 모으는가
 
 지금 파이프라인이 쓰는 초기 재고는 `tashu_api.py`가 **실행하는 순간 받아 온 스냅샷

@@ -1,11 +1,11 @@
 # 테스트
 
 이 프로젝트는 처음에 테스트가 하나도 없었고, **의존성이 전부 깨진 상태**로
-파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 424개 테스트입니다.
+파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 457개 테스트입니다.
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 424개 (약 50~80초)
+python -m pytest              # 전체 457개 (약 70~90초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -34,6 +34,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_stock_history.py](../../tests/test_stock_history.py) | 32 | **재고 시계열 수집** — 창 가드(휴일·창 밖에 API를 부르지 않는지), 틱 격자 반올림, 멱등 저장, 실패도 로그에 남는지, 파이프라인 이력을 건드리지 않는지, 요일 옵션 세 갈래(평일만 / 평일+휴일 / **휴일만**)가 **창 가드는 지키는지**, `--holidays-only`가 **공휴일(평일인 날)까지 잡는지** ([COLLECTOR.md](COLLECTOR.md)) |
 | [tests/test_merge_stock.py](../../tests/test_merge_stock.py) | 14 | **두 PC 재고 병합** — 이미 있는 틱을 덮어쓰지 않는지(*먼저 수집한 것이 이긴다*, 수집기의 `INSERT OR REPLACE`와 정반대), 빈 틱은 채우는지, CSV·DB 두 원천을 읽는지, 옮겨온 DB를 읽기 전용으로 여는지, 마스터가 없는 날을 알리는지 ([COLLECTOR.md](COLLECTOR.md) 11장) |
 | [tests/test_weather.py](../../tests/test_weather.py) | 24 | **날씨 원천** — 빈칸의 뜻이 컬럼마다 다른지(강수는 0, 기온은 보간), 겨울 3시간 누적 강수를 펴는지, 창 접기(합·평균·최대)와 자정을 넘긴 창, 자료가 없어도 죽지 않는지, API 결측(-9)을 값으로 읽지 않는지 ([WEATHER.md](../분석/WEATHER.md)) |
+| [tests/test_road_time.py](../../tests/test_road_time.py) | 10 | **TMAP 실도로 고정 패널** — 패널이 결정적인지(흔들리면 '매일 같은 구간'이 무너진다), 차고지 왕복을 포함하는지, 거리 구간이 고르게 차는지, 누적의 차분이 구간 실측이고 `start_time`이 함께 남는지 ([EXPERIMENTS.md](../분석/EXPERIMENTS.md) 9장) |
 
 **API 키가 필요한 두 단계는 자동 테스트에서 제외**했습니다 —
 `step0_collect/tashu_api.py`(TASHU)와 `step3_map/main.py`(TMAP). 검증 방법은 4장에 있습니다.

@@ -1,0 +1,374 @@
+"""TMAP 실도로 소요시간을 **매일 같은 구간으로** 반복 수집한다 (1.26.39).
+
+## 왜 파이프라인 실행분으로는 안 되는가
+
+`road_leg`에는 이미 파이프라인이 지도를 그리며 받은 실측이 쌓인다. 그런데 그것으로는
+**"이동시간 모형이 계절·요일에 안정적인가"를 물을 수 없다.** 계획이 매일 바뀌면
+구간도 매일 바뀌므로, 계수가 흔들렸을 때 그것이
+
+    ① 교통 상황이 달라져서인지        ← 알고 싶은 것
+    ② 잰 구간이 달라져서인지          ← 잡음
+
+를 구분할 방법이 없기 때문이다. 그래서 **고정 패널**을 쓴다 — 한 번 정한 구간
+목록을 매일 그대로 다시 잰다. 그러면 날짜 사이의 차이는 오직 교통 상황 차이다.
+
+## 패널 설계
+
+- **차고지에서 시작해 차고지로 돌아온다.** 실제 경로에서 차고지 왕복이 총
+  이동거리의 61~65%를 차지하므로(EXPERIMENTS.md 8장), 차고지 구간이 빠진 패널은
+  실제를 대표하지 못한다.
+- **거리 구간을 골고루 채운다.** 5-F장에서 확인했듯 배율은 거리에 크게 의존하므로
+  (0.5km 미만 유효 5.6km/h vs 10km 이상 23.1km/h), 짧은 구간만 모이면 고정비
+  계수가, 긴 구간만 모이면 속도 계수가 못 잡힌다. 목표 거리를 순환시키며
+  **그 거리에 가장 가까운 대여소**를 다음 지점으로 고른다.
+- **한 사슬 = TMAP 호출 1회.** 경유지 30개 상한 안에 들도록 사슬을 끊으면
+  routeSequential30(한도가 100과 따로 잡힌다)로 처리돼 쿼터를 아낀다.
+
+패널은 `data/road_panel.json`에 남고, **있으면 다시 만들지 않는다** —
+수집 도중에 패널이 바뀌면 그때까지 쌓은 것이 비교 불가능해진다.
+
+## 시각 처리
+
+`startTime`은 **그 시각의 교통량**을 정한다. 파이프라인과 똑같이
+`start_time_for(duration)`(다음 평일 + 회차 첫 시각)을 쓴다 — 우리가 검증하려는
+것이 파이프라인이 실제로 소비하는 값이기 때문이다. 따라서 이 수집기는
+**하루 중 아무 때나 돌려도 된다**(재고 수집기와 달리 창 가드가 없다).
+
+⚠️ 금·토·일에 돌리면 셋 다 '다음 월요일'을 가리켜 같은 값이 나온다. 요일을
+고르게 모으려면 **평일에 돌려라**(설치 스크립트가 월~금으로 잡는다).
+
+## 실행
+
+    python tools/collect_road_time.py --status          # 쌓인 현황
+    python tools/collect_road_time.py --dry-run         # 호출 계획만 확인
+    python tools/collect_road_time.py                   # 오늘치 수집
+    python tools/collect_road_time.py --durations _05_10,_10_15
+    python tools/collect_road_time.py --rebuild-panel   # ⚠️ 패널을 새로 만든다
+
+저장은 `road_leg`, `run_label`은 `roadprobe-YYYY-MM-DD`다. 같은 날 다시 돌리면
+그 날짜 행을 지우고 다시 넣는다(멱등).
+"""
+import argparse
+import json
+import math
+import random
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+import pandas as pd
+from dotenv import load_dotenv
+
+import db
+from project_config import (
+    DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, DURATIONS, PROJECT_ROOT,
+)
+
+sys.path.insert(0, str(ROOT / "step3_map"))
+import module as tmap_mod                                    # noqa: E402
+from module import (                                          # noqa: E402
+    TmapBudgetExceeded, TmapQuotaExceeded, call_tmap_sequential,
+    extract_cumulative_times, start_time_for,
+)
+
+PANEL_PATH = PROJECT_ROOT / "data" / "road_panel.json"
+
+# 이 수집기가 남기는 run_label의 앞머리. 파이프라인 실행분과 섞이지 않도록
+# 접두어로 가른다 — 분석 스크립트가 이 값으로 골라 낸다.
+PROBE_PREFIX = "roadprobe-"
+
+# 사슬 하나에 넣을 구간(hop) 수. 지점은 이보다 하나 많고, 경유지는 하나 적다.
+# 20이면 경유지 19개라 routeSequential30 상한(30) 안에 든다.
+HOPS_PER_CHAIN = 20
+
+# 사슬 수. 5개 × 20구간 = 회차당 100구간, 회차 4개면 하루 400구간·20호출이다.
+CHAIN_COUNT = 5
+
+# 목표 거리(km)를 순환시켜 거리 구간을 고르게 채운다. 5-F장의 거리 구간
+# (0~0.5 / 0.5~1 / 1~2 / 2~5 / 5~10 / 10~20)의 대표값이다.
+TARGET_KM_CYCLE = (0.3, 0.75, 1.5, 3.5, 7.5, 15.0)
+
+PANEL_SEED = 42
+
+
+def haversine_km(lat1, lon1, lat2, lon2) -> float:
+    """두 점 사이 거리(km). step2·step3과 같은 공식."""
+    radius = 6371.0
+    p1, p2 = math.radians(float(lat1)), math.radians(float(lat2))
+    dp = p2 - p1
+    dl = math.radians(float(lon2) - float(lon1))
+    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * radius * math.asin(min(1.0, math.sqrt(h)))
+
+
+# ---------------------------------------------------------------- 패널
+
+def load_stations() -> pd.DataFrame:
+    """대여소 좌표 목록. 같은 대여소가 여러 실행에 있으면 하나만 남긴다."""
+    with db.session() as conn:
+        frame = pd.read_sql(
+            "SELECT station_id, station_name, lat, lon FROM station_info", conn)
+    frame = frame.dropna(subset=["lat", "lon"])
+    frame = frame[frame["station_id"] != DEPOT_ID]
+    # station_id 순으로 정렬한 뒤 첫 행만 남긴다 — 실행 순서에 좌우되지 않게 한다.
+    frame = frame.sort_values("station_id").drop_duplicates("station_id")
+    return frame.reset_index(drop=True)
+
+
+def build_panel(stations: pd.DataFrame) -> list:
+    """차고지에서 시작해 차고지로 끝나는 사슬 CHAIN_COUNT개를 만든다.
+
+    각 걸음마다 목표 거리를 하나 꺼내 **그 거리에 가장 가까운 미사용 대여소**를
+    고른다. 그래서 사슬 안의 구간 거리가 목표 순환을 따라 고르게 퍼진다.
+    """
+    rng = random.Random(PANEL_SEED)
+    depot = {"id": DEPOT_ID, "name": DEPOT_NAME, "lat": DEPOT_LAT, "lon": DEPOT_LON}
+
+    pool = stations.to_dict("records")
+    used = set()
+    chains = []
+
+    for chain_idx in range(CHAIN_COUNT):
+        # 사슬마다 목표 순환의 시작 위치를 달리해 같은 패턴이 겹치지 않게 한다.
+        offset = rng.randrange(len(TARGET_KM_CYCLE))
+        points = [dict(depot)]
+        current = depot
+
+        for step in range(HOPS_PER_CHAIN - 1):
+            target = TARGET_KM_CYCLE[(offset + step) % len(TARGET_KM_CYCLE)]
+            best, best_gap = None, None
+            for row in pool:
+                if row["station_id"] in used:
+                    continue
+                gap = abs(haversine_km(current["lat"], current["lon"],
+                                       row["lat"], row["lon"]) - target)
+                if best_gap is None or gap < best_gap:
+                    best, best_gap = row, gap
+            if best is None:
+                break
+            used.add(best["station_id"])
+            current = {"id": best["station_id"], "name": best["station_name"],
+                       "lat": float(best["lat"]), "lon": float(best["lon"])}
+            points.append(current)
+
+        points.append(dict(depot))          # 차고지 복귀 구간을 반드시 포함한다
+        chains.append({"chain": chain_idx, "points": points})
+
+    return chains
+
+
+def save_panel(chains: list) -> None:
+    PANEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PANEL_PATH.write_text(json.dumps({
+        "built_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "seed": PANEL_SEED,
+        "chains": chains,
+    }, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def load_panel(rebuild: bool = False) -> list:
+    """패널을 읽는다. 없으면 만든다. `rebuild=True`면 다시 만든다."""
+    if PANEL_PATH.exists() and not rebuild:
+        return json.loads(PANEL_PATH.read_text(encoding="utf-8"))["chains"]
+
+    stations = load_stations()
+    if len(stations) < HOPS_PER_CHAIN * CHAIN_COUNT:
+        raise SystemExit(
+            f"대여소가 {len(stations)}곳뿐입니다. station_info를 먼저 채우세요"
+            f" (python run_pipeline.py 또는 tools/csv_to_db.py).")
+    chains = build_panel(stations)
+    save_panel(chains)
+    print(f"패널을 새로 만들었습니다 → {PANEL_PATH}")
+    return chains
+
+
+def panel_summary(chains: list) -> pd.DataFrame:
+    """패널 구간의 거리 분포. 거리 구간이 고르게 찼는지 눈으로 확인한다."""
+    rows = []
+    for chain in chains:
+        pts = chain["points"]
+        for i in range(len(pts) - 1):
+            rows.append(haversine_km(pts[i]["lat"], pts[i]["lon"],
+                                     pts[i + 1]["lat"], pts[i + 1]["lon"]))
+    frame = pd.DataFrame({"km": rows})
+    edges = [0, 0.5, 1, 2, 5, 10, 20, 999]
+    labels = ["0~0.5", "0.5~1", "1~2", "2~5", "5~10", "10~20", "20+"]
+    frame["구간"] = pd.cut(frame["km"], edges, labels=labels)
+    return frame.groupby("구간", observed=False).agg(
+        구간수=("km", "size"), 평균km=("km", "mean")).reset_index()
+
+
+# ---------------------------------------------------------------- 수집
+
+def measure_chain(chain: dict, duration: str, start_time: str, headers: dict) -> list:
+    """사슬 하나를 TMAP에 물어 구간별 실측 행을 만든다.
+
+    `routeSequential`은 **경유지를 준 순서대로** 지나므로, 돌아온 누적 시간의
+    차분이 곧 우리가 정의한 구간의 실도로 소요다(step3의 `_road_legs`와 같은 논리).
+    """
+    pts = chain["points"]
+    start = {"name": pts[0]["name"], "X": str(pts[0]["lon"]), "Y": str(pts[0]["lat"])}
+    end = {"name": pts[-1]["name"], "X": str(pts[-1]["lon"]), "Y": str(pts[-1]["lat"])}
+    via = [{"viaPointId": p["id"], "viaPointName": p["name"],
+            "viaX": str(p["lon"]), "viaY": str(p["lat"])} for p in pts[1:-1]]
+
+    geo = call_tmap_sequential(start, end, via, start_time=start_time, headers=headers)
+    elapsed = extract_cumulative_times(geo)["elapsed_sec"]
+    if not elapsed or any(e is None for e in elapsed):
+        print(f"  ⚠ 사슬 {chain['chain']}: 구간 시간이 비어 있어 버립니다.")
+        return []
+
+    observed_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+    rows = []
+    for i in range(min(len(pts), len(elapsed)) - 1):
+        gap = float(elapsed[i + 1]) - float(elapsed[i])
+        if gap <= 0:
+            continue
+        a, b = pts[i], pts[i + 1]
+        rows.append({
+            "cluster": int(chain["chain"]),      # 패널에서는 '사슬 번호'다
+            "leg": i,
+            "from_id": a["id"], "to_id": b["id"],
+            "from_lat": a["lat"], "from_lon": a["lon"],
+            "to_lat": b["lat"], "to_lon": b["lon"],
+            "straight_km": round(haversine_km(a["lat"], a["lon"],
+                                              b["lat"], b["lon"]), 4),
+            "road_sec": round(gap, 1),
+            "observed_at": observed_at,
+            "start_time": start_time,
+        })
+    return rows
+
+
+def collect(chains: list, durations: list, run_label: str, headers: dict,
+            dry_run: bool = False) -> int:
+    """회차 × 사슬을 돌며 수집한다. 저장한 구간 수를 돌려준다."""
+    saved = 0
+    for duration in durations:
+        start_time = start_time_for(duration)
+        print(f"\n[{duration}] 교통량 기준 시각 {start_time}"
+              f" · 사슬 {len(chains)}개")
+        if dry_run:
+            continue
+
+        rows = []
+        for chain in chains:
+            try:
+                got = measure_chain(chain, duration, start_time, headers)
+            except TmapQuotaExceeded as exc:
+                print(f"  ⚠ 일일 한도 소진 — 여기서 멈춥니다. ({exc})")
+                if rows:
+                    saved += db.save_output("road_leg", pd.DataFrame(rows),
+                                            run_label=run_label, duration=duration)
+                return saved
+            except TmapBudgetExceeded as exc:
+                print(f"  ⚠ 호출 예산 소진 — 여기서 멈춥니다. ({exc})")
+                if rows:
+                    saved += db.save_output("road_leg", pd.DataFrame(rows),
+                                            run_label=run_label, duration=duration)
+                return saved
+            except RuntimeError as exc:
+                print(f"  ⚠ 사슬 {chain['chain']}: 호출 실패 ({exc}) → 건너뜁니다.")
+                continue
+            print(f"  사슬 {chain['chain']}: {len(got)}구간")
+            rows.extend(got)
+            time.sleep(0.5)          # 순간적인 속도 제한을 피한다
+
+        if rows:
+            saved += db.save_output("road_leg", pd.DataFrame(rows),
+                                    run_label=run_label, duration=duration)
+    return saved
+
+
+# ---------------------------------------------------------------- 현황
+
+def status() -> int:
+    with db.session() as conn:
+        frame = pd.read_sql(
+            "SELECT run_label, duration, COUNT(*) AS 구간,"
+            " MIN(start_time) AS 기준시각,"
+            " ROUND(SUM(straight_km), 1) AS 직선km,"
+            " ROUND(SUM(road_sec) / 60.0, 1) AS 실도로분"
+            " FROM road_leg WHERE run_label LIKE ?"
+            " GROUP BY run_label, duration ORDER BY run_label, duration",
+            conn, params=(PROBE_PREFIX + "%",))
+        other = pd.read_sql(
+            "SELECT COUNT(*) AS n, COUNT(DISTINCT run_label) AS runs"
+            " FROM road_leg WHERE run_label NOT LIKE ?",
+            conn, params=(PROBE_PREFIX + "%",))
+
+    if frame.empty:
+        print("고정 패널 수집분이 아직 없습니다.")
+    else:
+        print(frame.to_string(index=False))
+        days = frame["run_label"].nunique()
+        print(f"\n수집 일수 {days}일 · 총 {int(frame['구간'].sum())}구간")
+        print("※ 요일·계절 안정성을 보려면 최소 10일(가급적 서로 다른 요일)이 필요합니다.")
+
+    print(f"\n파이프라인 실행분(패널 아님): {int(other['n'][0])}구간"
+          f" / 실행 {int(other['runs'][0])}건")
+    if PANEL_PATH.exists():
+        chains = load_panel()
+        print(f"\n패널 {PANEL_PATH}")
+        print(panel_summary(chains).to_string(index=False))
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="TMAP 실도로 소요시간 반복 수집")
+    parser.add_argument("--status", action="store_true", help="쌓인 현황만 보여준다")
+    parser.add_argument("--dry-run", action="store_true", help="호출 계획만 확인")
+    parser.add_argument("--rebuild-panel", action="store_true",
+                        help="⚠️ 패널을 새로 만든다 (기존 수집분과 비교 불가해진다)")
+    parser.add_argument("--durations", default=",".join(DURATIONS),
+                        help=f"수집할 회차. 기본 {','.join(DURATIONS)}")
+    parser.add_argument("--date", default=None,
+                        help="run_label에 쓸 날짜(YYYY-MM-DD). 기본 오늘")
+    parser.add_argument("--max-calls", type=int, default=None,
+                        help="이번 실행의 TMAP 호출 상한. 기본은 필요한 만큼")
+    args = parser.parse_args()
+
+    if args.status:
+        return status()
+
+    load_dotenv(PROJECT_ROOT / ".env")
+    import os
+    api_key = os.getenv("API_KEY")
+    if not api_key and not args.dry_run:
+        print("[중단] .env에 TMAP API_KEY가 없습니다.")
+        return 1
+    headers = {"appKey": api_key, "Content-Type": "application/json"}
+
+    durations = [d.strip() for d in args.durations.split(",") if d.strip()]
+    if (unknown := [d for d in durations if d not in DURATIONS]):
+        print(f"[중단] 모르는 회차 {unknown} — {DURATIONS} 중에서 고르세요.")
+        return 1
+
+    chains = load_panel(rebuild=args.rebuild_panel)
+    need = len(chains) * len(durations)
+    tmap_mod.MAX_CALLS = args.max_calls or need
+    tmap_mod.reset_call_count()
+
+    date = args.date or datetime.now().strftime("%Y-%m-%d")
+    run_label = PROBE_PREFIX + date
+
+    print(f"고정 패널 {len(chains)}사슬 × 회차 {len(durations)}개"
+          f" = TMAP 호출 {need}건 (상한 {tmap_mod.MAX_CALLS})")
+    print(f"저장 라벨: {run_label}")
+    print(panel_summary(chains).to_string(index=False))
+
+    saved = collect(chains, durations, run_label, headers, dry_run=args.dry_run)
+    if args.dry_run:
+        print("\n(모의 실행 — 호출하지 않았습니다)")
+        return 0
+
+    print(f"\n실제 호출 {tmap_mod.call_count()}건 · road_leg에 {saved}구간 저장")
+    return 0 if saved else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

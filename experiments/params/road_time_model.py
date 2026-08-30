@@ -1,0 +1,249 @@
+"""이동시간 모형을 **쌓인 실측으로 다시 추정한다** — 계절·요일 안정성 (1.26.39).
+
+5-F장(1.26.7)에서 `이동시간 = 275초 + 직선km × 3600/27.3`이 상수 속도(25km/h)보다
+표본 밖 오차를 42% 줄인다는 것을 쟀다. 그러나 그것은 **하루치 한 번**이었고,
+그래서 채택하지 않고 `USE_ROAD_MODEL`을 꺼 둔 채 남겨 두었다.
+
+이 스크립트는 `tools/collect_road_time.py`가 매일 쌓는 고정 패널로 그 계수를
+다시 추정하고, **날짜에 따라 흔들리는지**를 본다. 묻는 것은 셋이다.
+
+    ① 계수가 날마다 얼마나 흔들리나      ← 흔들리면 상수로 박을 수 없다
+    ② 회차(시간대)마다 다른가            ← 다르면 회차별 계수가 필요하다
+    ③ 다른 날로 넘어가도 맞히나          ← 날짜 하나를 빼고 학습해 그 날로 검증
+
+**판정 기준**(미리 정해 둔다 — 결과를 보고 정하면 안 된다):
+
+    · 채택: 표본 밖 MAE가 상수 속도 가정보다 뚜렷이(20% 이상) 낮고,
+            날짜별 계수의 변동계수가 15% 미만
+    · 회차별 분리: 회차별 계수의 폭이 날짜별 변동보다 뚜렷이 클 때만
+
+실행:
+    python experiments/params/road_time_model.py
+    python experiments/params/road_time_model.py --include-pipeline
+"""
+import argparse
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+import numpy as np
+import pandas as pd
+
+import db
+from project_config import ROAD_FIXED_SEC, ROAD_SPEED_KMPH, VEHICLE_SPEED_KMPH
+
+PROBE_PREFIX = "roadprobe-"
+
+# 5-F장과 같은 거리 구간을 쓴다 — 그때 값과 나란히 놓고 볼 수 있어야 한다.
+EDGES = [0, 0.5, 1, 2, 5, 10, 20, 999]
+LABELS = ["0~0.5", "0.5~1", "1~2", "2~5", "5~10", "10~20", "20+"]
+
+# 판정 기준 (위 문서 참고). 결과를 보고 고치지 말 것.
+MAE_GAIN_THRESHOLD = 0.20        # 상수 속도 대비 표본 밖 MAE 감소폭
+CV_THRESHOLD = 0.15              # 날짜별 계수의 변동계수 상한
+
+
+def load_legs(include_pipeline: bool) -> pd.DataFrame:
+    """road_leg에서 쓸 만한 구간을 읽는다."""
+    with db.session() as conn:
+        frame = pd.read_sql(
+            "SELECT run_label, duration, cluster, leg, from_id, to_id,"
+            " straight_km, road_sec, observed_at, start_time FROM road_leg", conn)
+
+    frame["패널"] = frame["run_label"].str.startswith(PROBE_PREFIX)
+    if not include_pipeline:
+        frame = frame[frame["패널"]]
+
+    # 날짜: 패널은 라벨에서, 파이프라인 실행분은 observed_at에서 뽑는다.
+    date = frame["run_label"].str.replace(PROBE_PREFIX, "", regex=False)
+    date = date.where(frame["패널"], frame["observed_at"].str.slice(0, 10))
+    frame["날짜"] = date
+
+    frame = frame.dropna(subset=["straight_km", "road_sec"])
+    # 0km 구간(같은 자리 재방문)과 음수는 모형이 배울 것이 없다.
+    frame = frame[(frame["straight_km"] > 0) & (frame["road_sec"] > 0)]
+    return frame.reset_index(drop=True)
+
+
+def fit_linear(km, sec):
+    """sec ≈ a + b·km. (고정비 초, 유효 속도 km/h)를 돌려준다."""
+    design = np.column_stack([np.ones(len(km)), km])
+    coef, *_ = np.linalg.lstsq(design, sec, rcond=None)
+    fixed, per_km = float(coef[0]), float(coef[1])
+    speed = 3600.0 / per_km if per_km > 0 else float("nan")
+    return fixed, speed
+
+
+def predict(km, fixed, speed):
+    return fixed + np.asarray(km) * 3600.0 / speed
+
+
+def mae(a, b):
+    return float(np.abs(np.asarray(a) - np.asarray(b)).mean())
+
+
+def section_distance(frame: pd.DataFrame) -> pd.DataFrame:
+    """거리 구간별 실측 배율·유효 속도. 5-F장 표와 같은 모양."""
+    part = frame.copy()
+    part["구간"] = pd.cut(part["straight_km"], EDGES, labels=LABELS)
+    part["추정초"] = part["straight_km"] * 3600.0 / VEHICLE_SPEED_KMPH
+    part["배율"] = part["road_sec"] / part["추정초"]
+    grouped = part.groupby("구간", observed=False).agg(
+        구간수=("road_sec", "size"),
+        직선km=("straight_km", "sum"),
+        실도로초=("road_sec", "sum"),
+        배율중앙=("배율", "median"),
+    ).reset_index()
+    grouped["유효kmh"] = grouped["직선km"] / (grouped["실도로초"] / 3600.0)
+    return grouped[["구간", "구간수", "유효kmh", "배율중앙"]]
+
+
+def per_group_coefficients(frame: pd.DataFrame, key: str) -> pd.DataFrame:
+    """묶음(날짜/회차)마다 계수를 따로 뽑는다. 흔들림을 보려는 것이다."""
+    rows = []
+    for value, group in frame.groupby(key):
+        if len(group) < 20:                 # 계수 둘을 뽑기엔 너무 적다
+            continue
+        fixed, speed = fit_linear(group["straight_km"].to_numpy(),
+                                  group["road_sec"].to_numpy())
+        total_km = group["straight_km"].sum()
+        rows.append({
+            key: value,
+            "구간수": len(group),
+            "고정비초": round(fixed, 1),
+            "속도kmh": round(speed, 2),
+            "전체배율": round(group["road_sec"].sum()
+                            / (total_km * 3600.0 / VEHICLE_SPEED_KMPH), 3),
+        })
+    return pd.DataFrame(rows)
+
+
+def leave_one_day_out(frame: pd.DataFrame) -> pd.DataFrame:
+    """날짜 하나를 빼고 학습해 그 날로 검증한다 — 표본 밖 성능."""
+    days = sorted(frame["날짜"].dropna().unique())
+    if len(days) < 2:
+        return pd.DataFrame()
+
+    rows = []
+    for day in days:
+        train = frame[frame["날짜"] != day]
+        test = frame[frame["날짜"] == day]
+        if len(train) < 20 or test.empty:
+            continue
+        fixed, speed = fit_linear(train["straight_km"].to_numpy(),
+                                  train["road_sec"].to_numpy())
+        km, sec = test["straight_km"].to_numpy(), test["road_sec"].to_numpy()
+        rows.append({
+            "검증일": day,
+            "구간수": len(test),
+            "상수속도MAE": round(mae(sec, km * 3600.0 / VEHICLE_SPEED_KMPH), 1),
+            "현행모형MAE": round(mae(sec, predict(km, ROAD_FIXED_SEC,
+                                                ROAD_SPEED_KMPH)), 1),
+            "재추정MAE": round(mae(sec, predict(km, fixed, speed)), 1),
+        })
+    return pd.DataFrame(rows)
+
+
+def verdict(frame: pd.DataFrame, by_day: pd.DataFrame, oos: pd.DataFrame) -> None:
+    print("\n" + "=" * 66)
+    print("판정")
+    print("=" * 66)
+
+    days = frame["날짜"].nunique()
+    if days < 2:
+        print(f"  수집 일수가 {days}일뿐이라 **안정성은 판정할 수 없습니다.**")
+        print("  최소 10일(가급적 서로 다른 요일)이 쌓인 뒤 다시 돌리십시오.")
+        print("  .\\scripts\\road_collector.ps1 install 로 매 평일 자동 수집됩니다.")
+        return
+
+    if by_day.empty or len(by_day) < 2:
+        print("  날짜별 계수를 뽑을 만큼 구간이 모이지 않았습니다.")
+        return
+
+    cv_fixed = by_day["고정비초"].std(ddof=0) / abs(by_day["고정비초"].mean())
+    cv_speed = by_day["속도kmh"].std(ddof=0) / abs(by_day["속도kmh"].mean())
+    print(f"  ① 날짜별 계수 변동계수 — 고정비 {cv_fixed:.1%} · 속도 {cv_speed:.1%}"
+          f"  (기준 {CV_THRESHOLD:.0%} 미만)")
+    stable = max(cv_fixed, cv_speed) < CV_THRESHOLD
+
+    if oos.empty:
+        print("  ③ 표본 밖 검증을 할 수 없습니다.")
+        return
+
+    base = oos["상수속도MAE"].mean()
+    refit = oos["재추정MAE"].mean()
+    gain = (base - refit) / base if base else 0.0
+    print(f"  ③ 표본 밖 MAE — 상수속도 {base:.1f}초 → 재추정 {refit:.1f}초"
+          f" ({gain:+.1%}, 기준 −{MAE_GAIN_THRESHOLD:.0%})")
+
+    if stable and gain >= MAE_GAIN_THRESHOLD:
+        fixed, speed = fit_linear(frame["straight_km"].to_numpy(),
+                                  frame["road_sec"].to_numpy())
+        print(f"\n  ✅ 두 기준을 모두 통과했습니다 — 계수를 갱신할 근거가 있습니다.")
+        print(f"     PBR_ROAD_FIXED_SEC={fixed:.0f}"
+              f" · PBR_ROAD_SPEED_KMPH={speed:.1f}")
+        print(f"     (현행 {ROAD_FIXED_SEC:.0f}초 / {ROAD_SPEED_KMPH}km/h)")
+        print("     ⚠️ 켜면 문서의 모든 소요시간 수치가 바뀝니다 — 대조군·γ·z"
+              " 실험을 함께 다시 돌려야 재현성이 유지됩니다.")
+    elif not stable:
+        print("\n  ❌ 계수가 날마다 흔들립니다 — 상수로 박을 수 없습니다."
+              " 현행(상수 속도)을 유지하고 한계로 서술하십시오.")
+    else:
+        print("\n  ❌ 표본 밖 이득이 기준에 못 미칩니다 — 바꿀 값어치가 없습니다.")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="이동시간 모형 재추정")
+    parser.add_argument("--include-pipeline", action="store_true",
+                        help="파이프라인 실행분도 함께 쓴다 (구간이 매번 다르다)")
+    args = parser.parse_args()
+
+    frame = load_legs(args.include_pipeline)
+    if frame.empty:
+        print("road_leg에 쓸 구간이 없습니다."
+              " python tools/collect_road_time.py 부터 돌리십시오.")
+        return 1
+
+    days = sorted(frame["날짜"].dropna().unique())
+    print(f"구간 {len(frame)}개 · 날짜 {len(days)}일 ({days[0]} ~ {days[-1]})")
+    if args.include_pipeline:
+        print(f"  고정 패널 {int(frame['패널'].sum())} /"
+              f" 파이프라인 {int((~frame['패널']).sum())}")
+
+    print("\n① 거리 구간별 실측")
+    print(section_distance(frame).to_string(index=False))
+
+    print("\n② 전체 적합")
+    fixed, speed = fit_linear(frame["straight_km"].to_numpy(),
+                              frame["road_sec"].to_numpy())
+    km, sec = frame["straight_km"].to_numpy(), frame["road_sec"].to_numpy()
+    total_ratio = sec.sum() / (km.sum() * 3600.0 / VEHICLE_SPEED_KMPH)
+    print(f"  전체 배율 {total_ratio:.3f}배"
+          f" · 유효 속도 {km.sum() / (sec.sum() / 3600.0):.1f} km/h")
+    print(f"  적합 계수  고정비 {fixed:.1f}초 + {speed:.2f} km/h"
+          f"   (현행 상수 {ROAD_FIXED_SEC:.0f}초 / {ROAD_SPEED_KMPH} km/h)")
+    print(f"  표본 안 MAE — 상수속도 {mae(sec, km * 3600.0 / VEHICLE_SPEED_KMPH):.1f}초"
+          f" · 현행모형 {mae(sec, predict(km, ROAD_FIXED_SEC, ROAD_SPEED_KMPH)):.1f}초"
+          f" · 재적합 {mae(sec, predict(km, fixed, speed)):.1f}초")
+
+    print("\n③ 날짜별 계수 (흔들림을 본다)")
+    by_day = per_group_coefficients(frame, "날짜")
+    print(by_day.to_string(index=False) if not by_day.empty else "  (표본 부족)")
+
+    print("\n④ 회차별 계수 (시간대가 다르면 계수도 다른가)")
+    by_duration = per_group_coefficients(frame, "duration")
+    print(by_duration.to_string(index=False) if not by_duration.empty else "  (표본 부족)")
+
+    print("\n⑤ 날짜 하나를 빼고 학습 → 그 날로 검증 (표본 밖)")
+    oos = leave_one_day_out(frame)
+    print(oos.to_string(index=False) if not oos.empty
+          else "  (날짜가 2일 이상 쌓여야 잴 수 있습니다)")
+
+    verdict(frame, by_day, oos)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

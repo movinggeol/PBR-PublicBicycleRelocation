@@ -18,7 +18,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 404개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 457개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -157,6 +157,9 @@ python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8
 .\scripts\collector.ps1 install -HolidaysOnly  # 두 번째 PC — 휴일만 (COLLECTOR.md 11장)
 python tools/collect_stock.py --status    # 수집 현황
 python tools/merge_stock.py <경로> --dry-run  # 다른 PC 수집분 합치기 (COLLECTOR.md 11장)
+.\scripts\road_collector.ps1 install      # TMAP 실도로 소요시간 수집 (매 평일 03:30)
+python tools/collect_road_time.py --status    # 고정 패널 수집 현황
+python experiments/params/road_time_model.py  # 이동시간 모형 재추정 (EXPERIMENTS.md 9장)
 ```
 
 ## 웹 대시보드 (webapp/)
@@ -266,7 +269,7 @@ python tools/merge_stock.py <경로> --dry-run  # 다른 PC 수집분 합치기 
 ## 테스트
 
 ```powershell
-python -m pytest                 # 404개, 약 50초 (tests/ 만 수집)
+python -m pytest                 # 457개, 약 80초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 
