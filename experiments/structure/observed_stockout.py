@@ -37,9 +37,17 @@ from project_config import DURATIONS, REBAL_MIN_QTY, duration_hours
 # 수집 간격(분). 한 틱이 대표하는 시간이 곧 결품 시간의 단위다.
 TICK_MINUTES = 10
 
-# 하루가 '온전하다'고 볼 최소 틱 수. 09~17시 10분 간격이면 49틱이 기대값이고,
-# 몇 틱쯤 빠져도 하루의 모양은 남는다.
-MIN_TICKS_PER_DAY = 40
+# 하루가 '온전하다'고 볼 기준 — **그날 실제로 관측된 시간 폭에서 구한다.**
+#
+# ⚠️ 예전에는 `MIN_TICKS_PER_DAY = 40`으로 박아 두었다. 09~17시(49틱) 기준의
+# 82%였는데, 1.25.1에서 수집 창이 07~22시(91틱)로 넓어지자 **44%가 됐다** —
+# 반나절만 모인 날이 '온전한 날'로 통과한다. 아래 `complete_days()`가 그러면
+# 안 된다고 적어 둔 바로 그 상황이다("반쪽짜리 날을 섞으면 시간이 과소 집계된다").
+# 창은 앞으로도 바뀔 수 있으므로 **상수 대신 비율로 판정한다.**
+COMPLETE_DAY_RATIO = 0.8
+
+# 창을 못 읽었을 때의 최소 안전선(틱). 하루에 이만큼도 없으면 어떤 비율이든 볼 것이 없다.
+MIN_TICKS_FLOOR = 12
 
 
 def load(day_type: str) -> pd.DataFrame:
@@ -56,10 +64,28 @@ def load(day_type: str) -> pd.DataFrame:
     return frame.merge(parking, on="station_id", how="left")
 
 
+def expected_ticks(frame: pd.DataFrame) -> int:
+    """관측된 자료에서 **하루에 기대되는 틱 수**를 되짚는다.
+
+    수집 창을 여기 박아 두지 않는 이유는 창이 실제로 바뀌었기 때문이다
+    (09~17 → 07~22, 1.25.1). 가장 많이 모인 날의 첫 틱~끝 틱 폭을 그날의 창으로
+    보고 계산한다 — 하루라도 온전히 돈 날이 있으면 그게 곧 창이다.
+    """
+    if frame.empty:
+        return 0
+    span = frame.groupby("날짜")["관측"].agg(["min", "max", "nunique"])
+    best = span.loc[span["nunique"].idxmax()]
+    minutes = (best["max"] - best["min"]).total_seconds() / 60
+    return int(minutes // TICK_MINUTES) + 1
+
+
 def complete_days(frame: pd.DataFrame) -> list:
     """틱이 충분히 모인 날만 고른다. **반쪽짜리 날을 섞으면 시간이 과소 집계된다.**"""
+    if frame.empty:
+        return []
+    threshold = max(int(expected_ticks(frame) * COMPLETE_DAY_RATIO), MIN_TICKS_FLOOR)
     ticks = frame.groupby("날짜")["관측"].nunique()
-    return sorted(ticks[ticks >= MIN_TICKS_PER_DAY].index)
+    return sorted(ticks[ticks >= threshold].index)
 
 
 def observed_hours(frame: pd.DataFrame, hours: list) -> pd.DataFrame:
@@ -109,9 +135,20 @@ def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
                             targets: set) -> None:
     """복원과 실측을 나란히 놓는다 — **시간대가 온전히 겹칠 때만.**
 
-    수집 창은 09~17시라 `_05_10`은 09시 한 시각만, `_15_20`은 15시 한 시각만 겹친다.
-    그 상태로 5시간 창의 복원값과 비교하면 실측이 5분의 1로 보인다. **겹치는 시각이
-    창 전체일 때만** 비교를 찍는 이유다.
+    좁은 창(09~17시)에서는 `_05_10`이 09시 한 시각만, `_15_20`이 15시 한 시각만
+    겹친다. 그 상태로 5시간 창의 복원값과 비교하면 실측이 5분의 1로 보인다.
+    **겹치는 시각이 창 전체일 때만** 비교를 찍는 이유다.
+
+    ⚠️ **두 값은 서로 다른 세상을 잰다.** 복원은 `stockout_hours_before`(재배치
+    **전**)이고, 실측에는 **대전교통공사가 실제로 돌린 재배치**가 이미 반영돼
+    있다(우리 계획이 아니다 — [ML_OPPORTUNITIES.md] ② 참고). 편향이 반대
+    방향으로 둘이라 차이를 '복원의 오차' 하나로 읽으면 안 된다.
+
+      · 복원은 재고를 0에서 자른다 → 못 빌린 수요가 사라져 **결품을 낮춰 잡는다**
+      · 실측은 공사 차량이 채워 준 만큼 **결품이 줄어 있다**
+
+    두 편향이 상쇄돼 우연히 비슷해 보일 수도 있다. **가른 뒤에야 정확한 비교가
+    된다**(TODO 17-B 3단계).
     """
     simulated = simulated_stockout()
     if simulated.empty:
@@ -144,6 +181,9 @@ def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
         print(f"{duration:8} {sim:11.2f} {obs:11.2f} {gap:+8.0f}% {count:7,d}")
     print("  → 실측이 크면 **복원이 결품을 낮춰 잡고 있었다**는 뜻입니다"
           "(0에서 잘라 못 빌린 수요가 사라지므로 예상된 방향입니다).")
+    print("  ⚠️ 다만 실측에는 **공사가 실제로 돌린 재배치**가 이미 반영돼 있어")
+    print("     그만큼 결품이 줄어 있습니다 — 두 편향이 반대 방향이라 차이를")
+    print("     '복원의 오차'로만 읽으면 안 됩니다(TODO 17-B 3단계에서 가릅니다).")
     return rows
 
 
@@ -207,14 +247,16 @@ def main() -> int:
     span = f"{frame['날짜'].min()} ~ {frame['날짜'].max()}"
     print(f"수집 {frame['관측'].nunique():,}틱 · 대여소 {frame['station_id'].nunique():,}곳"
           f" · {span} · 요일 {args.day_type}")
-    print(f"온전한 날({MIN_TICKS_PER_DAY}틱 이상): {len(days)}일"
-          f"{' — ' + ', '.join(days) if days else ''}\n")
+    expected = expected_ticks(frame)
+    threshold = max(int(expected * COMPLETE_DAY_RATIO), MIN_TICKS_FLOOR)
+    print(f"관측된 창: 하루 {expected}틱 기대 · 온전한 날 기준 {threshold}틱 이상")
+    print(f"온전한 날: {len(days)}일{' — ' + ', '.join(days) if days else ''}\n")
 
     if not days:
         print("⚠️  **아직 온전한 날이 없습니다.** 아래 숫자는 참고용이며, 하루가 다 모이기")
         print("    전까지는 결품 '시간'으로 인용하지 마십시오 — 관측한 시간만큼만 셉니다.\n")
 
-    # 수집 창(09~17시)과 겹치는 시간대만 뜻이 있다.
+    # 수집 창과 겹치는 시간대만 뜻이 있다. 창은 자료에서 읽는다(박아 두지 않는다).
     window = frame["시각"].unique()
     durations = [args.duration] if args.duration else list(DURATIONS)
     targets = target_stations()
@@ -243,7 +285,8 @@ def main() -> int:
                       f"{picked['결품시간'].mean():11.2f} {picked['만차시간'].mean():11.2f}")
 
     if not printed:
-        print("  수집 창(09~17시)과 겹치는 시간대가 없습니다.")
+        hours = sorted(int(h) for h in window)
+        print(f"  수집 창({hours[0]:02d}~{hours[-1]:02d}시)과 겹치는 시간대가 없습니다.")
         return 1
 
     rows = compare_with_simulation(frame, durations, window, targets)
@@ -251,11 +294,17 @@ def main() -> int:
     if args.save:
         _save_calibration(rows, args.day_type, len(days), window)
 
+    hours = sorted(int(h) for h in window)
     print("\n읽는 법")
-    print(f"  · 한 틱 = {TICK_MINUTES}분. 수집 창(09~17시) 안에서만 셉니다.")
+    print(f"  · 한 틱 = {TICK_MINUTES}분. 수집 창({hours[0]:02d}~{hours[-1]:02d}시) 안에서만 셉니다.")
     print("  · **결품 시간은 관측한 시간에 대한 값**입니다. 창 밖(야간·새벽)은 모릅니다.")
     print("  · step4의 결품은 순수요로 복원한 값이라 **직접 비교하려면 같은 시간대·같은")
     print("    대여소로 맞춰야** 합니다. 맞대어 보는 것이 이 스크립트의 목적입니다.")
+    print("  · ⚠️ **두 값은 서로 다른 세상을 잽니다.** 복원은 `stockout_hours_before`")
+    print("    (재배치 **전**)이고, 실측에는 **대전교통공사가 실제로 돌린 재배치**가")
+    print("    이미 반영돼 있습니다. 편향이 반대 방향으로 둘입니다 — 복원은 0에서")
+    print("    잘라 결품을 낮춰 잡고(실측↑), 실측은 공사 차량 덕에 낮아집니다(실측↓).")
+    print("    **차이를 '복원의 오차'로만 읽으면 안 됩니다.**")
     return 0
 
 
