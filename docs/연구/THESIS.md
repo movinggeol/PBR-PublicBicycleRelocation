@@ -36,7 +36,7 @@
 | 장 | 내용 | 쓸 재료 | 상태 |
 | --- | --- | --- | --- |
 | 1. 서론 | 공공자전거 수급 불균형 문제, 대전 타슈 현황 | [README](../../README.md) 개요, EDA, **[ORIGINS.md](../기록/ORIGINS.md)**(문제 인식의 출처·현장 확인) | 🟢 **초안 작성됨** — [초안/1장_서론.md](초안/1장_서론.md) (2026-08-30, 손질 필요) |
-| 2. 관련 연구 | BSS 재배치 문헌, 본 연구의 위치 | [RELATED_WORK.md](RELATED_WORK.md) · [LITERATURE.md](LITERATURE.md) | 🟢 **문헌 20편**, 핵심 3편 본문 확인 |
+| 2. 관련 연구 | BSS 재배치 문헌, 본 연구의 위치 | [RELATED_WORK.md](RELATED_WORK.md) · [LITERATURE.md](LITERATURE.md) | 🟢 **초안 작성됨** — [초안/2장_관련연구.md](초안/2장_관련연구.md) (2026-08-30, 미독 문헌 검증 필요) |
 | 3. 문제 정형화 | 목표재고·ILP·VRP 수식, 운영 제약 | [FORMULATION.md](../분석/FORMULATION.md) | ✅ 완료 |
 | 3-보. 방법 선택의 근거 | **왜 ILP·VRP·K-Medoids인가**, 대안과 대가 | [DECISIONS.md](../분석/DECISIONS.md) | ✅ 완료 (1.20.4) |
 | 4. 시스템 설계 | 파이프라인 구조, 저장소, 웹 | [PROJECT_PIPELINE](../구현/PROJECT_PIPELINE.md), [DB_SCHEMA](../구현/DB_SCHEMA.md), [WEBAPP](../구현/WEBAPP.md) | ✅ 거의 그대로 |
@@ -305,6 +305,9 @@ README의 모든 수치는 **25년 11월 데이터로 2026-08-12에 한 번 돌�
 | ⚠️ AI 배치 도입 언급 | 10-B장 — *"검토된 바 있으나 상용 운영에 적용되지는 않았다"* |
 
 ### 2장 관련 연구
+
+✅ **초안 작성됨 (2026-08-30)** → [초안/2장_관련연구.md](초안/2장_관련연구.md).
+아래 표는 그 초안이 근거로 쓴 자리다 — 손질하거나 다시 쓸 때 참고.
 
 | 쓸 것 | 근거 |
 | --- | --- |
