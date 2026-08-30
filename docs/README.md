@@ -67,6 +67,7 @@ docs/
 | [LITERATURE.md](연구/LITERATURE.md) | 문헌 20편의 **카드** — 한 편씩의 분석 |
 | [COMPARISON.md](연구/COMPARISON.md) | **축별 비교** — 본 연구가 선행연구 어디에 서 있나 (논문 2·5장 표) |
 | [references/README.md](연구/references/README.md) | **참고자료 폴더 안내** — 무엇을 어디까지 읽었나, 기사에서 나온 확인거리 |
+| [초안/](연구/초안/) | **논문 장별 초안** — THESIS.md 11장 집필 지도를 따라 문서를 문장으로 옮긴 것 |
 
 ## 기록/ — 작업 이력
 
