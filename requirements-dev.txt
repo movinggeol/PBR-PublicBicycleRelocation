@@ -4,4 +4,9 @@
 -r requirements.txt
 
 pytest>=9.1.1
-httpx>=0.28.1     # FastAPI TestClient가 사용
+
+# Starlette 1.x의 TestClient가 요구한다. **httpx(1세대)에서 옮겼다 (2026-08-30)** —
+# 구 httpx로도 돌지만 매 실행 StarletteDeprecationWarning이 뜨고, 없으면 webapp
+# 테스트가 **수집 단계에서** 죽어 5개 파일이 통째로 오류가 된다(실패가 아니라
+# 오류라 원인이 한눈에 안 보인다).
+httpx2>=2.12.0

@@ -106,7 +106,8 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 ├── weather.py                             # 날씨 원천 (포털 CSV + 기상청 API 허브)
 ├── db.py                                  # SQLite 저장소 (CSV와 이중 기록, DB_SCHEMA.md)
 ├── run_pipeline.py                        # 전체 단계 일괄 실행기
-└── requirements.txt                       # 런타임 의존성 (하한 `>=` 고정)
+├── requirements.txt                       # 런타임 의존성 (하한 `>=` 고정)
+└── requirements-dev.txt                   # 테스트 전용 (pytest·httpx2)
 ```
 
 ## 단계별 파일
@@ -131,6 +132,9 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+
+# 테스트까지 돌리려면 (pytest·httpx2 — 런타임 의존성도 함께 깔립니다)
+python -m pip install -r requirements-dev.txt
 ```
 
 ### 검증된 환경 (2026-08-10, 전체 파이프라인 E2E 확인)
