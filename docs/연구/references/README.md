@@ -180,6 +180,6 @@ Wilcoxon은 t-검정의 **비모수 대응**이고, 정규성 가정이 필요 �
 
 | 문서 | 내용 |
 | --- | --- |
-| [LITERATURE.md](../LITERATURE.md) | **문헌 23편의 카드와 본 연구와의 비교**(이상복 외·문현수 외 2편은 초록만, 21편이 정식 편입) |
+| [LITERATURE.md](../LITERATURE.md) | **문헌 23편의 카드**(정식 편입 22편 + 이상복 외 1편은 서지·초록만, 본문 미확보) |
 | [RELATED_WORK.md](../RELATED_WORK.md) | 논문 2장의 서술 뼈대 |
 | [THESIS.md](../THESIS.md) | 졸업작품 준비 상태와 권장 순서 |
