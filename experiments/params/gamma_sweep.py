@@ -42,6 +42,8 @@ def main():
     parser.add_argument("--seeds", default="42,7")
     parser.add_argument("--duration", default="_05_10,_10_15,_15_20")
     parser.add_argument("--day-type", default="weekday", choices=["weekday", "holiday"])
+    parser.add_argument("--run-label", default=None,
+                        help="재고 스냅샷을 고정할 실행 라벨 (기본: 최신)")
     parser.add_argument("--out", default="")
     args, _ = parser.parse_known_args()
 
@@ -55,6 +57,18 @@ def main():
     solver = bc.ilp_mod.build_solver()
     baseline_gamma = step1.CLUSTER_GAMMA
 
+    # 재고 스냅샷을 고정한다. 예전에는 ""를 넘겨 **말없이 최신 라벨**을 썼는데,
+    # 그러면 같은 명령이 다른 날 다른 값을 내고 다른 실험과 기준이 갈린다
+    # (DECISIONS.md 6-B: 백분율은 기준 스냅샷과 함께 인용한다).
+    with bc.db.session() as conn:
+        run_label = args.run_label or conn.execute(
+            "SELECT MAX(run_label) FROM station_info").fetchone()[0]
+        available = [r[0] for r in conn.execute(
+            "SELECT DISTINCT run_label FROM station_info ORDER BY 1")]
+    if run_label not in available:
+        raise SystemExit(f"station_info에 '{run_label}' 실행이 없습니다."
+                         f" --run-label 로 고르십시오: {available}")
+
     total_runs = len(periods) * len(gammas) * len(seeds) * len(durations)
     print(f"γ {len(gammas)}개 × 달 {len(periods)}개 × 씨앗 {len(seeds)}개"
           f" × 회차 {len(durations)}개 = {total_runs}회 실행")
@@ -62,7 +76,7 @@ def main():
 
     rows = []
     for period in periods:
-        net, st_info, warmup = bc.load_inputs(period, "", day_type, 0, "")
+        net, st_info, warmup = bc.load_inputs(period, run_label, day_type, 0, "")
         for duration in durations:
             base = bc.build_candidates(net, st_info, duration, None, warmup, 0, step1)
             if base.empty:
