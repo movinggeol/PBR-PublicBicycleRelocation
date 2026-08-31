@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     TMAP 실도로 소요시간 반복 수집기 운영 — 하루 한 번 (docs/분석/EXPERIMENTS.md 9장).
 
