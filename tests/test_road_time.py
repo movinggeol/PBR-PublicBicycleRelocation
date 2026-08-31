@@ -186,3 +186,91 @@ def test_probe_label_separates_from_pipeline_rows(collector):
     """분석이 패널과 파이프라인 실행분을 가를 수 있어야 한다 (구간 성격이 다르다)."""
     assert collector.PROBE_PREFIX.endswith("-")
     assert not collector.PROBE_PREFIX[0].isdigit()   # 파이프라인 라벨은 날짜로 시작한다
+
+
+# ---------------------------------------------------------------- 패널 이식성
+
+def test_panel_lives_where_git_carries_it(collector):
+    """`data/`에 두면 PC마다 다른 패널이 생겨 전제가 무너진다."""
+    assert collector.PANEL_PATH.parent.name == "tools"
+    assert collector.LEGACY_PANEL_PATH.parent.name == "data"
+
+
+def test_panel_changes_when_a_used_station_disappears(collector):
+    """대여소 구성이 다르면 패널이 통째로 바뀐다 — 그래서 커밋으로 날라야 한다."""
+    stations = fake_stations()
+    base = collector.build_panel(stations)
+    used = sorted({p["id"] for c in base for p in c["points"]
+                   if p["id"] != collector.DEPOT_ID})
+
+    shrunk = stations[stations["station_id"] != used[0]].reset_index(drop=True)
+    assert collector.panel_digest(collector.build_panel(shrunk)) \
+        != collector.panel_digest(base)
+
+
+def test_digest_ignores_coordinate_formatting(collector):
+    """지문은 '어느 지점을 어떤 순서로'만 본다 — 좌표 표기는 PC마다 다를 수 있다."""
+    import copy
+
+    chains = collector.build_panel(fake_stations())
+    tweaked = copy.deepcopy(chains)
+    for chain in tweaked:
+        for point in chain["points"]:
+            point["lat"] = round(point["lat"], 4)
+    assert collector.panel_digest(tweaked) == collector.panel_digest(chains)
+
+
+def test_legacy_panel_is_migrated_not_rebuilt(collector, tmp_path, monkeypatch):
+    """옛 자리에 있던 패널은 **그대로** 옮겨야 한다 — 다시 만들면 구간이 바뀐다."""
+    import json
+
+    chains = collector.build_panel(fake_stations())
+    legacy = tmp_path / "data" / "road_panel.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(json.dumps({"chains": chains}, ensure_ascii=False),
+                      encoding="utf-8")
+    monkeypatch.setattr(collector, "LEGACY_PANEL_PATH", legacy)
+    monkeypatch.setattr(collector, "PANEL_PATH", tmp_path / "tools" / "road_panel.json")
+
+    moved = collector.load_panel()
+    assert collector.panel_digest(moved) == collector.panel_digest(chains)
+    assert (tmp_path / "tools" / "road_panel.json").is_file()
+
+
+def test_saved_panel_carries_its_digest(collector, tmp_path, monkeypatch):
+    """파일만 보고도 두 PC를 대조할 수 있어야 한다."""
+    import json
+
+    chains = collector.build_panel(fake_stations())
+    target = tmp_path / "road_panel.json"
+    monkeypatch.setattr(collector, "PANEL_PATH", target)
+    collector.save_panel(chains)
+    assert json.loads(target.read_text(encoding="utf-8"))["digest"] \
+        == collector.panel_digest(chains)
+
+
+def test_drift_check_flags_legs_outside_the_panel(collector):
+    """패널이 도중에 바뀐 채 섞이는 것이 가장 나쁘다 — 눈에 보여야 한다."""
+    import copy
+
+    import db
+    import pandas as pd
+
+    chains = collector.build_panel(fake_stations())
+    points = chains[0]["points"]
+    rows = pd.DataFrame([{
+        "cluster": 0, "leg": i,
+        "from_id": points[i]["id"], "to_id": points[i + 1]["id"],
+        "from_lat": points[i]["lat"], "from_lon": points[i]["lon"],
+        "to_lat": points[i + 1]["lat"], "to_lon": points[i + 1]["lon"],
+        "straight_km": 1.0, "road_sec": 120.0,
+        "observed_at": "2026-08-31 03:30", "start_time": "202609010500",
+    } for i in range(3)])
+    db.save_output("road_leg", rows,
+                   run_label=collector.PROBE_PREFIX + "2026-08-31", duration="_05_10")
+
+    assert collector.warn_if_panel_drifted(chains) is False
+
+    changed = copy.deepcopy(chains)
+    changed[0]["points"][1]["id"] = "ST9999"
+    assert collector.warn_if_panel_drifted(changed) is True

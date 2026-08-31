@@ -49,6 +49,7 @@
 그 날짜 행을 지우고 다시 넣는다(멱등).
 """
 import argparse
+import hashlib
 import json
 import math
 import random
@@ -75,7 +76,14 @@ from module import (                                          # noqa: E402
     extract_cumulative_times, start_time_for,
 )
 
-PANEL_PATH = PROJECT_ROOT / "data" / "road_panel.json"
+# 패널은 **커밋으로 나른다.** `data/`는 .gitignore에 걸려 있어, 거기 두면 PC마다
+# 자기 DB로 패널을 새로 만든다 — 그러면 두 PC가 **다른 구간**을 재게 되어
+# "매일 같은 구간을 다시 잰다"는 이 수집기의 전제가 통째로 무너진다.
+# 실제로 패널에 쓰인 대여소 하나만 달라도 사슬 전체가 바뀌는 것을 확인했다(1.26.52).
+PANEL_PATH = PROJECT_ROOT / "tools" / "road_panel.json"
+
+# 1.26.52 이전에 쓰던 자리. 여기에 있으면 옮겨 준다.
+LEGACY_PANEL_PATH = PROJECT_ROOT / "data" / "road_panel.json"
 
 # 이 수집기가 남기는 run_label의 앞머리. 파이프라인 실행분과 섞이지 않도록
 # 접두어로 가른다 — 분석 스크립트가 이 값으로 골라 낸다.
@@ -161,19 +169,40 @@ def build_panel(stations: pd.DataFrame) -> list:
     return chains
 
 
+def panel_digest(chains: list) -> str:
+    """패널의 지문. **두 PC가 같은 구간을 재고 있는지 한 줄로 대조하는 수단이다.**
+
+    방문 순서대로 이어 붙인 대여소 ID만 해싱한다 — 좌표는 소수점 표기가 PC마다
+    다를 수 있고, 우리가 같아야 하는 것은 **어느 지점을 어떤 순서로 지나는가**다.
+    """
+    ids = "".join(point["id"] for chain in chains for point in chain["points"])
+    return hashlib.sha1(ids.encode("utf-8")).hexdigest()[:12]
+
+
 def save_panel(chains: list) -> None:
     PANEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     PANEL_PATH.write_text(json.dumps({
         "built_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "seed": PANEL_SEED,
+        "digest": panel_digest(chains),
         "chains": chains,
     }, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 def load_panel(rebuild: bool = False) -> list:
-    """패널을 읽는다. 없으면 만든다. `rebuild=True`면 다시 만든다."""
+    """패널을 읽는다. 없으면 만든다. `rebuild=True`면 다시 만든다.
+
+    **만드는 것은 최후의 수단이다.** 패널은 커밋으로 나르는 것이 정상이고,
+    새로 만들면 그 PC만의 패널이 생겨 다른 PC와 대조할 수 없게 된다.
+    """
     if PANEL_PATH.exists() and not rebuild:
         return json.loads(PANEL_PATH.read_text(encoding="utf-8"))["chains"]
+
+    if LEGACY_PANEL_PATH.exists() and not rebuild:
+        chains = json.loads(LEGACY_PANEL_PATH.read_text(encoding="utf-8"))["chains"]
+        save_panel(chains)
+        print(f"패널을 커밋되는 자리로 옮겼습니다 → {PANEL_PATH}")
+        return chains
 
     stations = load_stations()
     if len(stations) < HOPS_PER_CHAIN * CHAIN_COUNT:
@@ -182,7 +211,10 @@ def load_panel(rebuild: bool = False) -> list:
             f" (python run_pipeline.py 또는 tools/csv_to_db.py).")
     chains = build_panel(stations)
     save_panel(chains)
-    print(f"패널을 새로 만들었습니다 → {PANEL_PATH}")
+    print(f"⚠️ 패널을 **새로** 만들었습니다 → {PANEL_PATH}")
+    print(f"   지문 {panel_digest(chains)} · 이 파일을 커밋해 다른 PC와 맞추십시오.")
+    print("   (다른 PC가 이미 수집 중이라면 그쪽 패널을 가져와야 합니다 —")
+    print("    패널이 다르면 구간이 달라져 함께 분석할 수 없습니다.)")
     return chains
 
 
@@ -311,11 +343,52 @@ def status() -> int:
 
     print(f"\n파이프라인 실행분(패널 아님): {int(other['n'][0])}구간"
           f" / 실행 {int(other['runs'][0])}건")
-    if PANEL_PATH.exists():
-        chains = load_panel()
-        print(f"\n패널 {PANEL_PATH}")
-        print(panel_summary(chains).to_string(index=False))
+    # 옛 자리(data/)에 있으면 load_panel이 커밋되는 자리로 옮겨 준다.
+    if not (PANEL_PATH.exists() or LEGACY_PANEL_PATH.exists()):
+        print(f"\n[경고] 패널 파일이 없습니다: {PANEL_PATH}")
+        print("      수집을 한 번 돌리면 만들어집니다. 다른 PC가 이미 수집 중이라면")
+        print("      그쪽 파일을 가져오십시오 - 패널이 다르면 함께 분석할 수 없습니다.")
+        return 0
+
+    chains = load_panel()
+    print(f"\n패널 {PANEL_PATH}")
+    print(f"지문 {panel_digest(chains)}"
+          f"  <- 다른 PC와 이 값이 같아야 함께 분석할 수 있습니다")
+    print(panel_summary(chains).to_string(index=False))
+    warn_if_panel_drifted(chains)
     return 0
+
+
+def warn_if_panel_drifted(chains: list) -> bool:
+    """쌓인 자료가 **지금 패널과 다른 구간**인지 본다. 어긋나면 True.
+
+    패널이 바뀌면 그 전후 자료를 함께 회귀에 넣을 수 없다 - 계수의 변동이
+    교통 때문인지 구간이 바뀌어서인지 다시 알 수 없게 되기 때문이다.
+    조용히 섞이는 것이 가장 나쁘므로 눈에 보이게 알린다.
+    """
+    expected = {(int(chain["chain"]), leg,
+                 chain["points"][leg]["id"], chain["points"][leg + 1]["id"])
+                for chain in chains
+                for leg in range(len(chain["points"]) - 1)}
+
+    with db.session() as conn:
+        stored = pd.read_sql(
+            "SELECT DISTINCT run_label, cluster, leg, from_id, to_id FROM road_leg"
+            " WHERE run_label LIKE ?", conn, params=(PROBE_PREFIX + "%",))
+    if stored.empty:
+        return False
+
+    drifted = sorted({
+        row.run_label for row in stored.itertuples()
+        if (int(row.cluster), int(row.leg), row.from_id, row.to_id) not in expected})
+    if not drifted:
+        print("쌓인 수집분이 모두 이 패널과 일치합니다.")
+        return False
+
+    print(f"\n[!] 지금 패널과 다른 구간으로 모은 날이 있습니다: {', '.join(drifted)}")
+    print("    패널이 도중에 바뀌었다는 뜻입니다. 그 전후를 한 회귀에 넣지 마십시오 -")
+    print("    계수가 흔들려도 교통 때문인지 구간이 바뀌어서인지 가릴 수 없습니다.")
+    return True
 
 
 def main() -> int:
@@ -358,6 +431,7 @@ def main() -> int:
 
     print(f"고정 패널 {len(chains)}사슬 × 회차 {len(durations)}개"
           f" = TMAP 호출 {need}건 (상한 {tmap_mod.MAX_CALLS})")
+    print(f"패널 지문 {panel_digest(chains)}")
     print(f"저장 라벨: {run_label}")
     print(panel_summary(chains).to_string(index=False))
 
