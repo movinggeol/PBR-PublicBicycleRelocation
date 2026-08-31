@@ -374,7 +374,11 @@
     /* ⚠️ 제목과 표를 **한 칸에 묶어야** 한다. 따로 두면 각자 칸을 차지해
        제목은 왼쪽, 표는 오른쪽으로 갈라진다(실제로 겪음). */
     .data-cell > h2 { margin-top: var(--sp-xl); }
-    @media (max-width: 900px) { .data-grid { grid-template-columns: 1fr; } }
+    /* ⚠️ 1열로 접을 때도 `minmax(0, 1fr)`이어야 한다. 그냥 `1fr`은 최소 크기가
+       auto(=min-content)라, 표의 min-content 폭이 트랙을 컨테이너 밖으로 밀어낸다
+       — .table-wrap의 overflow-x가 있어도 소용없다(자기 폭이 확정돼야 스크롤한다).
+       390px에서 /orders가 553px, /data가 542px로 새 나갔다(실측). */
+    @media (max-width: 900px) { .data-grid { grid-template-columns: minmax(0, 1fr); } }
     .card.flush > .card-head { padding: var(--sp-md) var(--sp-lg); border-bottom: 1px solid var(--divider-soft); }
     .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-md); flex-wrap: wrap; }
     .card-head h2, .card-head h3 { margin: 0; }

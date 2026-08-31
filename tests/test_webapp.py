@@ -579,3 +579,27 @@ def test_year_ago_hint_only_when_it_exists(monkeypatch):
     assert app_module._year_ago_period(["25년 03월", "26년 03월"]) == "25년 03월"
     assert app_module._year_ago_period(["25년 04월", "26년 03월"]) is None, \
         "자료에 없는 달을 권했다"
+
+
+def test_1열_그리드도_minmax_0으로_접는다():
+    """`.data-grid`를 1열로 접을 때 `1fr`만 쓰면 좁은 화면에서 페이지가 밀린다.
+
+    `1fr`은 최소 크기가 auto(=min-content)라, 표의 min-content 폭이 트랙을
+    컨테이너 밖으로 밀어낸다. `.table-wrap`의 overflow-x가 있어도 소용없다 —
+    자기 폭이 먼저 확정돼야 스크롤하기 때문이다.
+
+    실측: 390px에서 /orders가 553px, /data가 542px로 새 나가 **페이지 전체**가
+    가로로 스크롤됐다(2열 규칙에는 `minmax(0, 1fr)`이 이미 들어 있었다).
+    """
+    import re
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    css = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    narrow = re.search(r"@media \(max-width: 900px\) \{ \.data-grid \{([^}]*)\}", css)
+    assert narrow, ".data-grid의 1열 규칙을 찾지 못했다"
+    assert "minmax(0" in narrow.group(1), (
+        f"1열 규칙이 minmax(0, 1fr)이 아니다: {narrow.group(1).strip()}")

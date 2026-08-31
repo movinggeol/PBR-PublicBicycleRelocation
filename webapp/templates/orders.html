@@ -220,6 +220,11 @@
    지금 재고와 대조 중이면 위에서 이미 군집별로 이 내용을 보여주고
    있으므로, 같은 것을 아래에 한 번 더 두지 않는다. #}
 {% if not compared_sheets %}
+{# 차량 카드는 h3다. 위의 '지금 재고와 대조'(h2)는 대조를 켰을 때만 있으므로,
+   평소에는 h1 다음이 h3가 되어 제목 계층이 한 단 건너뛴다 — 화면 낭독기가
+   중간 단계를 잃는다. 목록의 제목을 항상 두어 h1 → h2 → h3로 잇는다.
+   종이에는 차량 한 대가 한 장이라 이 제목이 필요 없다(no-print). #}
+{% if sheets %}<h2 class="no-print">차량별 지시서</h2>{% endif %}
 <div class="data-grid">
 {% for sheet in sheets %}
 <div class="card sheet">
