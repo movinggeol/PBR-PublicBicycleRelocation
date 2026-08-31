@@ -120,3 +120,58 @@ def test_skip_map_drops_only_step3():
     assert "main.py" not in without_map
     assert "imbalance.py" in without_map, "지표 단계까지 사라지면 안 된다"
     assert set(full) - set(without_map) == {"main.py"}
+
+
+def _env(*flags):
+    """주어진 옵션으로 run_pipeline이 하위 단계에 물려줄 환경변수."""
+    import run_pipeline
+
+    argv = sys.argv
+    try:
+        sys.argv = ["run_pipeline.py", *flags]
+        args = run_pipeline.parse_args()
+    finally:
+        sys.argv = argv
+    return run_pipeline.build_env(args)
+
+
+def test_seed_reaches_step1_through_the_environment():
+    """--seed는 PBR_CLUSTER_SEED로 하위 단계에 전달돼야 한다.
+
+    project_config는 import 시점에 상수를 굳히므로 명령행으로는 닿지 않는다.
+    차량 대수와 같은 이유로 환경변수를 쓴다.
+    """
+    assert _env("--seed", "7")["PBR_CLUSTER_SEED"] == "7"
+
+
+def test_seed_is_absent_unless_asked():
+    """씨앗을 주지 않으면 환경변수를 넣지 않는다 — 기본값 42가 그대로 쓰인다.
+
+    빈 문자열이나 'None'을 넣으면 int() 변환에서 죽는다.
+    """
+    assert "PBR_CLUSTER_SEED" not in _env("--skip-api")
+
+
+def test_pipeline_clustering_follows_cluster_seed():
+    """step1의 군집화 기본 씨앗이 CLUSTER_SEED를 따라야 한다.
+
+    1.26.56 이전에는 `make_clustering(pick_drop)`에 42가 박혀 있어, 전체 실행으로
+    만든 문서의 표를 **다른 씨앗으로 다시 잴 방법이 아예 없었다**. 11장이
+    "씨앗 1회로 표를 싣지 마라"는 교훈을 남겨 놓고 정작 파이프라인 경로에는
+    그 교훈을 지킬 손잡이가 없었던 것이다. 기본값을 도로 박으면 이 테스트가 막는다.
+    """
+    import importlib.util
+    import inspect
+
+    import project_config
+
+    step1 = Path(__file__).resolve().parents[1] / "step1_cluster"
+    sys.path.insert(0, str(step1))   # adjust_module을 형제로 찾는다
+    spec = importlib.util.spec_from_file_location(
+        "_top_st_clustering", step1 / "top_st_clustering.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    default = inspect.signature(module.make_clustering).parameters["random_state"].default
+    assert default == project_config.CLUSTER_SEED
+    assert project_config.CLUSTER_SEED == 42, "기본값은 42 그대로여야 한다"

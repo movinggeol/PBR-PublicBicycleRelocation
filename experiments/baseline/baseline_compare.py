@@ -219,10 +219,21 @@ def plan_greedy(candidates):
 executed_delta = kpi_mod.executed_delta
 
 
-def stockout(net, candidates, delta, duration):
-    """결품 시간(대여소·일 평균)을 재배치 전후로 잰다. step4와 같은 함수를 쓴다."""
+def stockout(net, population, delta, duration):
+    """결품 시간(대여소·일 평균)을 재배치 전후로 잰다. step4와 같은 함수를 쓴다.
+
+    ⚠️ **`population`은 방법마다 달라지면 안 된다.** 여기서 나오는 값은 이 집합
+    위의 *평균*이므로, 집합이 다르면 분모가 달라져 **서로 다른 자로 잰 값**이 된다.
+
+    1.26.56 이전에는 각 방법의 **자기 후보 집합**을 그대로 넘겼다. B0·B1·B3·P는
+    후보가 모두 같아 문제가 없었지만 **B2(z=0)만 후보가 다른 집합**이라(실측:
+    5~47곳 대 83~99곳) 혼자 다른 모집단에서 평균을 냈다. 그래서 **재배치 전** 값부터
+    2.63 대 2.00으로 어긋났고, 논문 6.3의 *"B2가 무재배치보다 나쁘다"* 는 서술이
+    거기서 나왔다. 같은 모집단에서 다시 재면 B2는 **한 번도 무재배치보다 나쁘지
+    않다**(2.00→1.84 등). 근거: docs/분석/EXPERIMENTS.md 14장.
+    """
     hours = kpi_mod.duration_hours(duration)
-    stations = candidates[["station_id", "stock", "parking_lot"]].copy()
+    stations = population[["station_id", "stock", "parking_lot"]].copy()
     stations["delta"] = stations["station_id"].map(delta).fillna(0)
 
     merged = net.merge(stations, on="station_id", how="inner")
@@ -270,6 +281,20 @@ def run_duration(net, st_info, warmup, duration, args, step1, solver):
     print(f"작업 대상 {len(base)}곳 "
           f"(Pick {(base['rebal_qty'] < 0).sum()} / Drop {(base['rebal_qty'] > 0).sum()})")
 
+    # B2만 후보 집합이 다르므로, **점수를 매길 모집단은 미리 합쳐 둔다.**
+    # 방법마다 자기 후보 위에서 평균을 내면 분모가 달라져 비교가 성립하지 않는다
+    # (stockout()의 주석 참고). B2를 안 돌리면 모집단은 base 그대로다.
+    population = base
+    if "B2" in args.methods:
+        zero_all = build_candidates(net, st_info, duration, 0.0, warmup,
+                                    args.warmup_days, step1)
+        if not zero_all.empty:
+            population = (pd.concat([base, zero_all], ignore_index=True)
+                          .drop_duplicates(subset="station_id", keep="first"))
+            if len(population) > len(base):
+                print(f"  · 공통 모집단 {len(population)}곳"
+                      f" (base {len(base)} ∪ z=0 후보 {len(zero_all)})")
+
     results = []
     for name in args.methods:
         if name == "B0":
@@ -292,7 +317,7 @@ def run_duration(net, st_info, warmup, duration, args, step1, solver):
                                                     adjust=True, seed=args.seed)
 
         delta = executed_delta(routes)
-        before, after = stockout(net, candidates, delta, duration)
+        before, after = stockout(net, population, delta, duration)
         row = {"duration": duration, "method": name, "seed": args.seed,
                "period": args.period, "day_type": args.day_type,
                "stations": int(len(candidates)),
@@ -301,7 +326,7 @@ def run_duration(net, st_info, warmup, duration, args, step1, solver):
 
         if args.plan_basis:
             plan_delta = candidates.set_index("station_id")["rebal_qty"]
-            _b, plan_after = stockout(net, candidates, plan_delta, duration)
+            _b, plan_after = stockout(net, population, plan_delta, duration)
             row["plan_after"] = plan_after
 
         results.append(row)

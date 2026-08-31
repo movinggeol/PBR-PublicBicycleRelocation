@@ -91,3 +91,62 @@ def test_load_inputs_accepts_an_existing_label(bc):
 
     _, info, _ = bc.load_inputs("25년 11월", "있는라벨", "weekday", 0, "")
     assert list(info["station_id"]) == ["ST0001"]
+
+
+# ---------------------------------------------------------------- 공통 모집단
+
+def _net(station_ids, days=2):
+    """결품 계산에 필요한 최소 순수요 표.
+
+    `_stockout_hours`는 `net_05`~`net_09` 같은 시간별 컬럼을 본다. A만 수요가
+    커서 결품이 나고 나머지는 나지 않도록 만든다 — 그래야 모집단을 넓혔을 때
+    평균이 내려가는 것을 확인할 수 있다.
+    """
+    rows = []
+    for day in range(days):
+        for sid in station_ids:
+            row = {"station_id": sid, "날짜": f"2025-11-0{day + 1}"}
+            for hour in range(5, 10):
+                row[f"net_{hour:02d}"] = 5 if sid == "A" else -1
+            rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _stations(station_ids, stock=3, parking_lot=20):
+    return pd.DataFrame({"station_id": list(station_ids),
+                         "stock": stock, "parking_lot": parking_lot})
+
+
+def test_stockout_denominator_follows_the_population_not_the_plan(bc):
+    """같은 계획이라도 **모집단이 다르면 다른 값**이 나온다는 것을 고정한다.
+
+    이것이 1.26.56에서 고친 결함의 본질이다. `stockout()`은 주어진 집합 위의
+    *평균*이므로, 방법마다 자기 후보를 넘기면 분모가 방법마다 달라진다.
+    B2(z=0)만 후보가 다른 집합이었고, 그래서 논문 6.3의 B2 행은 다른 자로
+    잰 값이었다 — **재배치 전 값부터** 2.63 대 2.00으로 어긋났다.
+    """
+    net = _net(["A", "B", "C", "D"])
+    좁은_집합 = _stations(["A"])
+    넓은_집합 = _stations(["A", "B", "C", "D"])
+
+    좁게 = bc.stockout(net, 좁은_집합, {}, "_05_10")
+    넓게 = bc.stockout(net, 넓은_집합, {}, "_05_10")
+
+    assert 좁게[0] is not None and 넓게[0] is not None
+    assert 좁게 != 넓게, (
+        "모집단이 달라도 같은 값이 나온다면 이 테스트가 지키려는 성질이 사라진 것이다")
+
+
+def test_all_methods_are_scored_on_one_population(bc):
+    """run_duration이 방법마다 다른 모집단으로 점수를 매기지 않는지 본다.
+
+    `stockout()` 호출부가 `candidates`(방법마다 다름)가 아니라 `population`
+    (회차마다 하나)을 넘겨야 한다. 되돌리면 B2가 다시 혼자 다른 자로 잰다.
+    """
+    import inspect
+
+    source = inspect.getsource(bc.run_duration)
+    assert "stockout(net, population," in source, (
+        "결품 점수는 공통 모집단 위에서 매겨야 한다")
+    assert "stockout(net, candidates," not in source, (
+        "방법의 자기 후보 집합으로 점수를 매기면 분모가 방법마다 달라진다")

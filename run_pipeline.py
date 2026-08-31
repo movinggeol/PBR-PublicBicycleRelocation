@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Iterable
 
 from project_config import (
-    DAY_TYPE_AUTO, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_FLEET_SIZE,
+    CLUSTER_SEED, DAY_TYPE_AUTO, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_FLEET_SIZE,
     DEFAULT_VEHICLES_PER_ROUND, DEFAULT_WARMUP_DAYS, ensure_output_dirs,
     get_runtime_config, normalize_fleet_size, normalize_per_round,
     snapshot_labels, snapshot_paths,
@@ -41,8 +41,12 @@ ROOT = Path(__file__).resolve().parent
 # 데이터 의존성이 있는 순서대로 단계 파일을 그룹화합니다.
 # 앞 단계의 산출물이 다음 단계의 입력이 되므로 순서를 바꾸면 안 됩니다.
 STAGES = {
-    "api": [
+    # 라이브 타슈 API를 부르는 **유일한** 단계. 나머지 둘은 그 결과 CSV만 읽으므로
+    # 키 없이도 돈다 — 그래서 따로 뗐다(`--skip-fetch`, 1.26.56).
+    "fetch": [
         Path("step0_collect") / "tashu_api.py",
+    ],
+    "api": [
         Path("step0_collect") / "extract_parking_lot.py",
         Path("step0_collect") / "api_to_info.py",
     ],
@@ -112,6 +116,13 @@ def parse_args() -> argparse.Namespace:
              " depot으로 돌아온다(남은 작업은 미집행). 기본은 사후 점검만",
     )
     parser.add_argument(
+        "--seed",
+        type=int,
+        help=f"K-Medoids 초기화 씨앗 (기본 {CLUSTER_SEED})."
+             " 같은 입력을 여러 씨앗으로 돌려 결과의 흔들림을 재는 용도이고,"
+             " 표를 실을 때 씨앗 1회로 판단하지 않기 위한 손잡이다",
+    )
+    parser.add_argument(
         "--vehicles-per-round",
         type=int,
         help=f"한 회차 투입 대수 상한 (기본 {DEFAULT_VEHICLES_PER_ROUND})."
@@ -120,6 +131,13 @@ def parse_args() -> argparse.Namespace:
 
     # API와 EDA는 이미 산출물이 있는 경우 선택적으로 생략할 수 있습니다.
     parser.add_argument("--skip-api", action="store_true", help="API 수집 생략")
+    parser.add_argument(
+        "--skip-fetch",
+        action="store_true",
+        help="라이브 타슈 API 호출(tashu_api.py)만 생략하고, 이미 있는 재고 CSV로"
+             " 나머지 수집 단계를 돌린다. 합성 데이터 재현에 쓴다"
+             " (--skip-api와 달리 직전 실행 스냅샷을 물려받지 않는다)",
+    )
     parser.add_argument("--skip-eda", action="store_true", help="EDA 생략")
     parser.add_argument("--skip-map", action="store_true",
                         help="step3 TMAP 지도 생략 (TMAP 키가 없을 때)")
@@ -188,6 +206,8 @@ def build_env(args: argparse.Namespace) -> dict:
         env["PBR_VEHICLES_PER_ROUND"] = str(normalize_per_round(args.vehicles_per_round))
     if getattr(args, "enforce_time_budget", False):
         env["PBR_ENFORCE_TIME_BUDGET"] = "1"
+    if getattr(args, "seed", None) is not None:
+        env["PBR_CLUSTER_SEED"] = str(args.seed)
     return env
 
 
@@ -197,6 +217,12 @@ def selected_scripts(args: argparse.Namespace) -> Iterable[Path]:
     groups: list[str] = []
 
     if not args.skip_api:
+        # --skip-fetch는 **라이브 API 호출만** 건너뛴다. 뒤의 두 단계는 재고 CSV를
+        # 읽을 뿐이라, 합성 데이터로 만든 CSV를 그대로 물려 돌릴 수 있다.
+        # --skip-api(전부 건너뛰기)와 달리 **직전 실행의 스냅샷을 물려받지 않는다** —
+        # 그래서 합성 데이터로 돌린다고 해 놓고 실데이터가 섞여 드는 일이 없다.
+        if not args.skip_fetch:
+            groups.append("fetch")
         groups.append("api")
     if not args.skip_eda:
         groups.append("eda")

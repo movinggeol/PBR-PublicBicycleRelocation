@@ -15,7 +15,8 @@ import db
 import project_config
 from project_config import (
     ADJUST_BALANCE_LIMIT, ADJUST_BALANCE_OK, ADJUST_MAX_ITER,
-    CLUSTER_ALPHA, CLUSTER_BETA, CLUSTER_GAMMA, PROJECT_ROOT, REBAL_MIN_QTY,
+    CLUSTER_ALPHA, CLUSTER_BETA, CLUSTER_GAMMA, CLUSTER_SEED,
+    PROJECT_ROOT, REBAL_MIN_QTY,
     CLUSTER_IMBALANCE_ALLOWANCE, DEPOT_LAT, DEPOT_LON, DROP_TIME_SEC,
     PICK_TIME_SEC, TIME_BUDGET_MINUTES, TOP_STATION_LIMIT,
     TRAVEL_MIN_PER_STATION, VEHICLES_PER_ROUND,
@@ -291,7 +292,8 @@ def _wanted_vehicles_geo(pick_drop: pd.DataFrame) -> int:
     return n
 
 
-def make_clustering(pick_drop: pd.DataFrame, random_state: int = 42) -> pd.DataFrame:
+def make_clustering(pick_drop: pd.DataFrame,
+                    random_state: int = CLUSTER_SEED) -> pd.DataFrame:
     '''
     # 2차 : 클러스터링(K-Medoids)
 
@@ -299,8 +301,11 @@ def make_clustering(pick_drop: pd.DataFrame, random_state: int = 42) -> pd.DataF
     차량 수를 넘을 수 없다. 상한에 걸리면 군집이 커지고 차량당 작업량이 늘어난다.
     (docs/구현/FLEET.md)
 
-    random_state는 파이프라인에서 늘 42다. 실험이 씨앗을 바꿔 가며 돌려
-    greedy 탐색의 변동성을 재려고 열어 둔 인자다(experiments/baseline/baseline_compare.py).
+    random_state의 기본값은 `CLUSTER_SEED`(기본 42)다. 실험이 씨앗을 바꿔 가며
+    돌려 greedy 탐색의 변동성을 재려고 열어 둔 인자이고(experiments/baseline/
+    baseline_compare.py), **파이프라인 경로에서는 `--seed`/`PBR_CLUSTER_SEED`가
+    이 기본값을 움직인다**(1.26.56). 예전에는 여기 42가 박혀 있어 전체 실행으로
+    얻은 표를 다른 씨앗으로 재볼 방법이 아예 없었다.
     '''
 
     wanted = wanted_vehicles(pick_drop)

@@ -178,10 +178,14 @@ def main() -> None:
     print(" 원천 CSV :", info["raw_path"])
     print()
     print("이어서 실행하려면:")
-    print(f'  python run_pipeline.py --skip-api --skip-eda --now "{info["now"]}" '
+    print(f'  python run_pipeline.py --skip-fetch --skip-eda --skip-map --now "{info["now"]}" '
           f'--period "{info["period"]}" --raw-file "{info["raw_path"]}"')
-    print("  (단, --skip-api는 extract_parking_lot·api_to_info도 건너뛰므로")
-    print("   개별 단계 실행이 필요하다. tests/test_pipeline.py 참고)")
+    print()
+    print("  ⚠️ --skip-api를 쓰지 마십시오. 그것은 직전 실행의 재고 스냅샷을")
+    print("     물려받아 방금 만든 합성 데이터를 조용히 무시합니다 (2026-08-31 확인).")
+    print("     --skip-fetch는 라이브 타슈 API 호출만 건너뜁니다.")
+    print()
+    print("  더 쉬운 길: python tools/reproduce.py  (생성·실행·검증·정리를 한 번에)")
 
 
 if __name__ == "__main__":

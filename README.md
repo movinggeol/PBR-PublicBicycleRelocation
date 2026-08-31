@@ -279,11 +279,27 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 
-python -m pytest                                   # 357개 통과 확인 (약 50~80초)
-python tools/make_sample_data.py --now "데모"       # 합성 대여소·순수요 생성
-python run_pipeline.py --skip-api --skip-eda --skip-map --now "데모"   # step0~2·4 실행
-python -m webapp                                   # http://127.0.0.1:8000 에서 결과 확인
+python -m pytest              # 501개 통과 확인 (약 70~90초)
+python tools/reproduce.py     # 합성 데이터 생성 → step0~step4 → 결과 표 (약 20초)
 ```
+
+`tools/reproduce.py`는 **명령 하나**로 합성 대여소·대여이력을 만들고 파이프라인
+전체를 돌린 뒤 회차별 결품 시간을 찍는다. 실 DB를 건드리지 않도록 별도 DB
+(`data/재현.db`)를 쓰고, 끝나면 만든 파일을 지운다(`--keep`으로 남긴다).
+웹 화면까지 보려면:
+
+```powershell
+python tools/reproduce.py --keep
+$env:PBR_DB_PATH = "data/재현.db"; python -m webapp   # http://127.0.0.1:8000
+```
+
+> 🔴 **예전 안내(`make_sample_data.py` + `run_pipeline.py --skip-api`)는 쓰지 마십시오.**
+> 그 절차는 합성 대여소 90곳을 만들어 놓고 **실데이터 1,361곳을 돌렸습니다** —
+> `--skip-api`가 직전 실행의 재고 스냅샷을 물려받기 때문입니다. 오류가 나지 않아
+> 실데이터가 있는 PC에서는 드러나지 않았고, 깨끗이 복제한 PC에서는 저장소에 없는
+> 원천 CSV를 찾다가 죽었습니다(2026-08-31 확인). `tools/reproduce.py`는
+> `--skip-fetch`(라이브 API 호출만 생략)를 쓰고, **파이프라인이 정말 합성
+> 대여소를 봤는지 수를 대조해 확인합니다.**
 
 `data/`와 `*.csv`는 저장소에 포함되지 않습니다(.gitignore). 실데이터로 돌리려면
 `.env`에 API 키를 넣고 `data/raw_data/`에 타슈 대여 이력을 두어야 합니다 — 아래 '환경변수'와
@@ -295,7 +311,7 @@ python -m webapp                                   # http://127.0.0.1:8000 에�
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest                 # 357개, 약 50~80초 (tests/ 만 수집)
+python -m pytest                 # 501개, 약 70~90초 (tests/ 만 수집)
 ```
 
 - `tests/test_pipeline.py` (32) — 합성 데이터로 step0→step1→step2→step4를

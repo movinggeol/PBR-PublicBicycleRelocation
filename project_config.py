@@ -401,6 +401,18 @@ CLUSTER_ALPHA = float(os.getenv("PBR_CLUSTER_ALPHA", "1"))
 CLUSTER_BETA = float(os.getenv("PBR_CLUSTER_BETA", "100"))
 CLUSTER_GAMMA = float(os.getenv("PBR_CLUSTER_GAMMA", "3000"))
 
+# K-Medoids 초기화 씨앗. **결과를 바꾸는 값이 아니라 결과를 검증 가능하게 하는 값이다.**
+#
+# 1.26.56 이전에는 step1의 `make_clustering(pick_drop)` 호출이 기본값 42를 그대로
+# 썼고 바깥에서 바꿀 방법이 없었다. 그래서 **전체 실행으로 얻은 문서의 표들**
+# (EXPERIMENTS 4·4-후속·5-D·7장)은 씨앗 1회일 뿐 아니라 **다시 잴 수단조차 없었다** —
+# 11장이 "씨앗 1회로 표를 싣지 마라"는 교훈을 남겼는데 정작 파이프라인 경로에는
+# 그 교훈을 지킬 손잡이가 없었던 것이다.
+#
+# 기본값은 42 그대로다. 이 상수를 넣는 것으로 바뀌는 결과는 없다.
+# 재현: python run_pipeline.py --seed 7
+CLUSTER_SEED = int(os.getenv("PBR_CLUSTER_SEED", "42"))
+
 # ---- step1 작업 대상 선정·군집 조정 ----
 # 1.18.8까지 step1 코드에 숫자로 박혀 있던 값들이다. 다른 운영 상수와 달리
 # 환경변수로 바꿀 수 없었고, 논문 3장의 기호표에도 근거 없이 등장했다.
