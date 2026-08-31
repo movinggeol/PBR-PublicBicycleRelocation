@@ -287,8 +287,12 @@ def travel_seconds(km: float, speed_kmph: float = None) -> float:
 
 
 # 자전거 1대를 싣고/내리는 데 걸리는 시간(초). VRP의 작업시간 계산에 쓴다.
-# ⚠️ **현장 확인이 안 된 가정값이다** (docs/기록/TODO.md 2-1). 실측이 나오면 여기만 바꾼다.
+# ⚠️ **현장 실측이 아니라 가정값이다** (docs/기록/TODO.md 2-1). 실측이 나오면 여기만 바꾼다.
 # 소요시간의 20~30%가 이 값에서 나오므로 시간 예산 판정에 직접 영향을 준다.
+# 선행연구(이은탁·손봉수, 2019, 서울 마포구 사례)도 같은 30초/대·25km/h를 쓴다
+# (docs/연구/references/참고 자료/논문/1.이용수요 기반의 서울시 공공자전거 재배치전략
+# 도출.pdf, Constraint 3·4). 다만 그 논문도 실측이 아니라 "가정하였다"고 밝힌
+# 값이라 — 이것은 **관행값의 수렴**이지 두 값 다 **실측 검증**은 아니다.
 PICK_TIME_SEC = float(os.getenv("PBR_PICK_TIME_SEC", "30"))
 DROP_TIME_SEC = float(os.getenv("PBR_DROP_TIME_SEC", "30"))
 
