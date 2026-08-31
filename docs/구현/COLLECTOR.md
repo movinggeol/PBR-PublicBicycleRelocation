@@ -688,6 +688,7 @@ python tools\merge_stock.py D:\B_PCike_system.db
 | 문서 | 내용 |
 | --- | --- |
 | [DB_SCHEMA.md](DB_SCHEMA.md) | `stock_history`·`stock_station_master` 컬럼 표 |
+| [두_PC_작업.md](두_PC_작업.md) | 두 PC로 **개발**을 번갈아 할 때 — `.gitignore` 항목별로 옮길 것과 다시 만들 것 |
 | [TODO.md](../기록/TODO.md) | 1-4 — 이 수집이 해소하려는 한계 |
 | [THESIS.md](../연구/THESIS.md) | 4장 한계 — 결품이 실측이 아니라는 문제 |
 | [TESTING.md](TESTING.md) | 외부 API를 부르지 않고 검증하는 방법 |

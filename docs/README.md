@@ -27,6 +27,7 @@ docs/
 | **모델·파라미터를 바꾸려 한다** | [분석/EXPERIMENTS.md](분석/EXPERIMENTS.md) — 값의 실측 근거 (**필독**) |
 | **논문을 쓰려 한다** | [연구/THESIS.md](연구/THESIS.md) — 장별 재료 매핑 |
 | **무엇이 남았는지 보고 싶다** | [기록/TODO.md](기록/TODO.md) — 우선순위별 과제 |
+| **다른 PC에서 이어서 하려 한다** | [구현/두_PC_작업.md](구현/두_PC_작업.md) — 옮길 것과 다시 만들 것 |
 
 ---
 
@@ -57,6 +58,7 @@ docs/
 | [DB_SCHEMA.md](구현/DB_SCHEMA.md) | ERD·테이블 컬럼 레퍼런스·스코프 규칙 | DB를 건드리기 전 |
 | [DB_PLAN.md](구현/DB_PLAN.md) | SQLite 도입 결정·이관 단계·성능 측정 | CSV→DB 작업 시 |
 | [TESTING.md](구현/TESTING.md) | 테스트가 무엇을 지키는지, 격리 장치, 외부 API 수동 검증 | 테스트를 추가하기 전 |
+| [두_PC_작업.md](구현/두_PC_작업.md) | **두 PC로 번갈아 작업** — `.gitignore` 항목별로 무엇을 옮기고 무엇을 다시 만드나 | 다른 PC에 환경을 새로 꾸릴 때 |
 
 ## 연구/ — 졸업작품·논문
 
@@ -96,6 +98,7 @@ docs/
 | 남은 과제 | [기록/TODO.md](기록/TODO.md) | RETROSPECTIVE 7장은 우선순위 요약만 |
 | 논문용 과제 | [연구/THESIS.md](연구/THESIS.md) | TODO는 **시스템 과제만** 다룹니다 |
 | 용어 | [GLOSSARY.md](GLOSSARY.md) | 웹 `/guide`는 **현장용 여덟 낱말**만 |
+| 두 PC 구성 | 상황에 따라 나뉩니다 | **개발**을 번갈아 = [구현/두_PC_작업.md](구현/두_PC_작업.md) · **수집** 분담 = [구현/COLLECTOR.md](구현/COLLECTOR.md) 11장 |
 
 ---
 
