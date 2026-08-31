@@ -87,6 +87,28 @@ def quiet(func, *args, **kwargs):
 
 # ---------------------------------------------------------------- 입력
 
+def missing_run_message(run_label: str, available: list) -> str:
+    """station_info가 비었을 때의 안내. **두 상황의 처방이 정반대다.**
+
+    라벨을 지정했는데 없는 경우에 *"파이프라인을 한 번 돌리세요"* 라고 안내하면
+    **틀린 길로 보낸다** — `station_info.stock`은 `tashu.py`가 실행 순간 라이브
+    API에서 받은 재고라, 다시 돌리면 **오늘 재고**가 들어온다. 그날 값은 복원되지
+    않고, 라벨만 하나 더 생겨 정본으로 잰 다른 결과와 비교가 깨진다.
+    (DECISIONS.md 6-B가 실험의 정본 스냅샷을 특정 라벨로 못박고 있다.)
+    """
+    if not run_label:
+        return "대여소 정보가 없습니다. 파이프라인을 한 번 돌려 station_info를 채우세요."
+    return "\n".join([
+        f"'{run_label}' 실행이 이 DB에 없습니다.",
+        f"  이 DB에 있는 실행: {available if available else '(없음)'}",
+        "  [주의] 파이프라인을 새로 돌려 채우지 마십시오 - station_info.stock은",
+        "         실행 순간의 라이브 재고라 그날 값이 복원되지 않습니다.",
+        "  라벨을 가진 PC에서 떼어 옮기십시오 (docs/구현/두_PC_작업.md 4-2장):",
+        f'     python tools/transfer_run.py --export "{run_label}" --out run.db',
+        "     python tools/transfer_run.py --import run.db",
+    ])
+
+
 def load_inputs(period, run_label, day_type, warmup_days, warmup_period):
     """순수요·대여소 정보를 DB에서 읽는다."""
     with db.session() as conn:
@@ -96,11 +118,13 @@ def load_inputs(period, run_label, day_type, warmup_days, warmup_period):
         warmup = pd.DataFrame()
         if warmup_days > 0 and warmup_period and warmup_period != period:
             warmup = db.load_frame(conn, "net_demand", period=warmup_period)
+        available = [r[0] for r in conn.execute(
+            "SELECT DISTINCT run_label FROM station_info ORDER BY 1")]
 
     if net.empty:
         raise SystemExit(f"순수요가 없습니다 (기간 {period}). tools/load_rentals.py로 적재하세요.")
     if info.empty:
-        raise SystemExit("대여소 정보가 없습니다. 파이프라인을 한 번 돌려 station_info를 채우세요.")
+        raise SystemExit(missing_run_message(run_label, available))
 
     net = select_day_type(net.rename(columns={"date": "날짜"}), "날짜", day_type)
     if not warmup.empty:
