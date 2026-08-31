@@ -30,8 +30,89 @@ from project_config import (
 _BHH_CONSTANT = 0.7124
 _KM_PER_LAT_DEG = 111.0
 
+# 순회거리를 어림하는 방법. BHH는 **면적**만 보고, 나머지 둘은 **실제 좌표쌍**을 본다.
+#   bhh : 0.7124·sqrt(n·면적)  — 균일분포 가정. 실제 후보는 도로·생활권을 따라
+#         뭉치므로 같은 면적이라도 실제 순회가 더 길다 → **낙관적으로 어림한다**
+#         (1.26.10에서 K를 너무 작게 뽑아 예산 초과가 2.2배가 된 원인).
+#   nn  : 최근접 이웃 순회 길이 — 실제 배치 그대로. TSP 상계에 가깝다.
+#   mst : 최소 신장 트리 길이 — TSP 최적해의 **하계**(최적 ≤ 2·MST, 실제로는
+#         MST의 1.1~1.3배 근처). 뭉친 분포에서 nn보다 덜 부풀린다.
+GEO_METHODS = ("bhh", "nn", "mst")
 
-def _estimate_travel_km_per_vehicle(pick_drop: pd.DataFrame, k: int) -> float:
+
+def _pairwise_km(lat, lon):
+    """좌표 배열의 모든 쌍 거리(km) 행렬. 후보 90여 곳 규모라 비용이 문제 안 된다."""
+    lat_r, lon_r = np.radians(lat), np.radians(lon)
+    dlat = lat_r[:, None] - lat_r[None, :]
+    dlon = lon_r[:, None] - lon_r[None, :]
+    a = (np.sin(dlat / 2) ** 2
+         + np.cos(lat_r)[:, None] * np.cos(lat_r)[None, :] * np.sin(dlon / 2) ** 2)
+    return 2 * 6371.0 * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))
+
+
+def _nn_tour_km(dist) -> float:
+    """최근접 이웃 순회 길이. 첫 점으로 돌아오는 것까지 센다.
+
+    **BHH와 달리 분포 가정이 없다** — 뭉쳐 있으면 짧고 흩어져 있으면 길다는 것을
+    실제 좌표가 말해 준다. 시작점은 0번으로 고정한다(결정적이어야 한다).
+    """
+    n = len(dist)
+    if n < 2:
+        return 0.0
+    unvisited = set(range(1, n))
+    total, here = 0.0, 0
+    while unvisited:
+        nxt = min(unvisited, key=lambda j: dist[here][j])
+        total += float(dist[here][nxt])
+        unvisited.discard(nxt)
+        here = nxt
+    return total + float(dist[here][0])
+
+
+def _mst_km(dist) -> float:
+    """최소 신장 트리 길이 (Prim). TSP 최적해의 하계다."""
+    n = len(dist)
+    if n < 2:
+        return 0.0
+    reached = np.zeros(n, dtype=bool)
+    reached[0] = True
+    best = dist[0].copy()
+    best[0] = np.inf
+    total = 0.0
+    for _ in range(n - 1):
+        j = int(np.argmin(np.where(reached, np.inf, best)))
+        total += float(best[j])
+        reached[j] = True
+        best = np.minimum(best, dist[j])
+    return total
+
+
+def total_tour_km(pick_drop: pd.DataFrame, method: str = "bhh") -> float:
+    """후보 집합 전체를 한 번 도는 데 드는 거리(km) 어림. depot 왕복은 뺀 값이다."""
+    n = len(pick_drop)
+    if n < 2:
+        return 0.0
+
+    lat = pick_drop["lat"].to_numpy(dtype=float)
+    lon = pick_drop["lon"].to_numpy(dtype=float)
+
+    if method == "bhh":
+        lat_mid = np.radians(lat.mean())
+        width_km = (lon.max() - lon.min()) * _KM_PER_LAT_DEG * np.cos(lat_mid)
+        height_km = (lat.max() - lat.min()) * _KM_PER_LAT_DEG
+        area_km2 = max(abs(width_km) * abs(height_km), 0.01)
+        return float(_BHH_CONSTANT * np.sqrt(n * area_km2))
+
+    dist = _pairwise_km(lat, lon)
+    if method == "nn":
+        return _nn_tour_km(dist)
+    if method == "mst":
+        return _mst_km(dist)
+    raise ValueError(f"모르는 어림 방법: {method!r} ({', '.join(GEO_METHODS)} 중에서)")
+
+
+def _estimate_travel_km_per_vehicle(pick_drop: pd.DataFrame, k: int,
+                                    method: str = "bhh") -> float:
     """군집을 나누기 **전** 후보 집합의 기하만으로, 차량 1대가 감당할 이동거리(km)를 어림한다.
 
     총 순회거리는 BHH 근사(0.7124·sqrt(n·면적))로 잡고, 이것을 K등분해
@@ -49,13 +130,8 @@ def _estimate_travel_km_per_vehicle(pick_drop: pd.DataFrame, k: int) -> float:
 
     lat = pick_drop["lat"].to_numpy(dtype=float)
     lon = pick_drop["lon"].to_numpy(dtype=float)
-    lat_mid = np.radians(lat.mean())
 
-    width_km = (lon.max() - lon.min()) * _KM_PER_LAT_DEG * np.cos(lat_mid)
-    height_km = (lat.max() - lat.min()) * _KM_PER_LAT_DEG
-    area_km2 = max(abs(width_km) * abs(height_km), 0.01)  # 한 점만 있어도 0으로 안 떨어지게
-
-    total_tour_km = _BHH_CONSTANT * np.sqrt(n * area_km2)
+    tour_km = total_tour_km(pick_drop, method)
 
     dlat = np.radians(lat - DEPOT_LAT)
     dlon = np.radians(lon - DEPOT_LON)
@@ -63,7 +139,7 @@ def _estimate_travel_km_per_vehicle(pick_drop: pd.DataFrame, k: int) -> float:
     a = np.sin(dlat / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(dlon / 2) ** 2
     depot_km = float((2 * 6371.0 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))).mean())
 
-    return total_tour_km / k + 2 * depot_km
+    return tour_km / k + 2 * depot_km
 
 # read_csv
 file_path = str(PROJECT_ROOT / "data/pp_data/재배치 정보/rebal_qty{duration} ({now}).csv")

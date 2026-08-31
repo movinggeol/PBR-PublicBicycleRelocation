@@ -1384,3 +1384,81 @@ def test_채택되면_그_대여소만_옮겨진다():
     assert moved is True
     assert out.loc[0, "cluster"] == 1
     assert list(out["cluster"])[1:] == [0, 1, 1], "다른 행까지 바뀌었다"
+
+
+# ---------------------------------------------------------------- 순회거리 어림
+
+def _grid(n, span=0.02, lat0=36.30, lon0=127.30):
+    """정사각 격자 위의 좌표 n개. 뭉침·흩어짐을 span으로 조절한다."""
+    import math
+
+    side = math.ceil(math.sqrt(n))
+    rows = [{"station_id": f"ST{i:04d}",
+             "lat": lat0 + span * (i % side),
+             "lon": lon0 + span * (i // side),
+             "rebal_qty": 5 if i % 2 else -5}
+            for i in range(n)]
+    return pd.DataFrame(rows)
+
+
+def test_tour_estimates_grow_with_spread(step1):
+    """어떤 어림이든 흩어지면 길어져야 한다 — 아니면 K를 정하는 데 쓸 수 없다."""
+    tight, spread = _grid(36, span=0.002), _grid(36, span=0.02)
+    for method in step1.GEO_METHODS:
+        assert step1.total_tour_km(spread, method) \
+            > step1.total_tour_km(tight, method), f"{method}가 흩어짐에 반응하지 않는다"
+
+
+def test_mst_is_shorter_than_nn_tour(step1):
+    """MST는 TSP의 하계, NN 순회는 상계 쪽이다 — 뒤집히면 구현이 틀린 것이다."""
+    frame = _grid(40)
+    assert step1.total_tour_km(frame, "mst") < step1.total_tour_km(frame, "nn")
+
+
+def test_nn_tour_closes_the_loop(step1):
+    """돌아오는 구간을 빠뜨리면 실제보다 짧게 어림한다."""
+    # 한 변 1도인 정사각형 네 점: 최근접 순회는 네 변을 모두 지나야 한다.
+    square = pd.DataFrame({
+        "station_id": list("ABCD"),
+        "lat": [36.30, 36.30, 36.31, 36.31],
+        "lon": [127.30, 127.31, 127.31, 127.30],
+        "rebal_qty": [5, -5, 5, -5],
+    })
+    side = step1._pairwise_km(square["lat"].to_numpy(), square["lon"].to_numpy())[0][3]
+    tour = step1.total_tour_km(square, "nn")
+    assert tour > 3 * side, "닫는 구간이 빠지면 세 변 길이에 그친다"
+
+
+def test_tour_estimates_are_deterministic(step1):
+    """같은 입력이면 같은 값 — K가 실행마다 흔들리면 계획이 재현되지 않는다."""
+    frame = _grid(50)
+    for method in step1.GEO_METHODS:
+        assert step1.total_tour_km(frame, method) \
+            == step1.total_tour_km(frame, method)
+
+
+def test_tour_estimate_rejects_unknown_method(step1):
+    """오타가 조용히 BHH로 떨어지면 어느 어림으로 쟀는지 알 수 없게 된다."""
+    with pytest.raises(ValueError, match="모르는"):
+        step1.total_tour_km(_grid(10), "nearest")
+
+
+def test_tiny_inputs_do_not_blow_up(step1):
+    """대여소가 0~1곳인 회차가 실제로 있다 — 건너뛰기 가드가 여기 기댄다."""
+    for method in step1.GEO_METHODS:
+        assert step1.total_tour_km(_grid(1), method) == 0.0
+        assert step1.total_tour_km(pd.DataFrame(columns=["lat", "lon"]), method) == 0.0
+
+
+def test_bhh_path_is_unchanged_by_the_refactor(step1):
+    """1.26.53 리팩터링이 기존 BHH 값을 바꾸면 5-H장 수치가 통째로 무효가 된다."""
+    import numpy as np
+
+    frame = _grid(40)
+    lat = frame["lat"].to_numpy()
+    lon = frame["lon"].to_numpy()
+    mid = np.radians(lat.mean())
+    width = (lon.max() - lon.min()) * 111.0 * np.cos(mid)
+    height = (lat.max() - lat.min()) * 111.0
+    expected = 0.7124 * np.sqrt(len(frame) * max(abs(width) * abs(height), 0.01))
+    assert step1.total_tour_km(frame, "bhh") == pytest.approx(expected)
