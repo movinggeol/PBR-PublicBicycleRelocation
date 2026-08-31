@@ -47,6 +47,49 @@ ES_SYSTEM_REQUIRED = 0x00000001
 
 # ---- 창·격자 ----
 
+TASK_NAME = "PBR재고수집"
+
+
+def registered_args() -> Optional[dict]:
+    """작업 스케줄러에 **실제로 등록된** 창·간격을 되읽는다. 없으면 None.
+
+    이게 없으면 `--status`가 파라미터 **기본값**(09:00-17:00)으로 결측을 세서,
+    창을 넓혀 등록해 둔 뒤에도 옛 기준으로 보고한다 — 07~22시로 등록했는데
+    "하루 49틱 기대"라고 말하는 식이다. 실제로 그랬다(1.26.55).
+
+    `scripts/collector.ps1`의 `Get-RegisteredArgs`가 하는 일과 **같은 것**이다.
+    두 경로가 다른 답을 내면 어느 쪽을 믿어야 할지 알 수 없으므로 여기도 둔다.
+    """
+    import re
+    import subprocess
+
+    try:
+        done = subprocess.run(
+            ["schtasks", "/query", "/tn", TASK_NAME, "/xml", "ONE"],
+            capture_output=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if done.returncode != 0:
+        return None
+
+    text = ""
+    for encoding in ("utf-16", "utf-8", "cp949"):
+        try:
+            text = done.stdout.decode(encoding)
+            break
+        except (UnicodeDecodeError, LookupError):
+            continue
+    if "--window" not in text:
+        return None
+
+    found = {}
+    if (m := re.search(r"--window\s+(\S+)", text)):
+        found["window"] = m.group(1)
+    if (m := re.search(r"--interval\s+(\d+)", text)):
+        found["interval"] = int(m.group(1))
+    return found or None
+
+
 def parse_window(text: str) -> Tuple[clock, clock]:
     """'09:00-17:00' → (09:00, 17:00)."""
     try:
@@ -281,11 +324,15 @@ def coverage(start: clock, end: clock, interval: int) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def print_status(start: clock, end: clock, interval: int) -> int:
+def print_status(start: clock, end: clock, interval: int,
+                 source: str = "") -> int:
     """사람이 읽는 수집 현황. API를 부르지 않는다."""
     target = expected_ticks(start, end, interval)
     print(f"PBR 재고 수집 현황 (창 {start:%H:%M}~{end:%H:%M} · 간격 {interval}분"
           f" · 하루 {target}틱)")
+    if source:
+        # 어느 기준으로 결측을 셌는지 밝힌다. 창이 틀리면 아래 표가 통째로 틀린다.
+        print(f"  기준     : {source}")
 
     table = coverage(start, end, interval)
     log_path = HISTORY_DIR / LOG_NAME
@@ -343,14 +390,42 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def resolve_window(args, argv: Optional[Sequence[str]]) -> Tuple[str, int, str]:
+    """`--status`가 쓸 창·간격을 정한다. (창, 간격, 출처) 를 돌려준다.
+
+    우선순위는 **사용자가 직접 준 값 → 등록된 작업 → 기본값**이다. 기본값으로
+    떨어졌으면 그 사실을 말해야 한다 — 틀린 기준으로 센 결측을 맞는 것처럼
+    보여 주는 것이 가장 나쁘다.
+    """
+    given = set(argv if argv is not None else sys.argv[1:])
+    gave_window = "--window" in given
+    gave_interval = "--interval" in given
+    if gave_window and gave_interval:
+        return args.window, args.interval, "직접 지정"
+
+    if (found := registered_args()):
+        window = args.window if gave_window else found.get("window", args.window)
+        interval = args.interval if gave_interval else found.get("interval", args.interval)
+        return window, interval, f"등록된 작업 '{TASK_NAME}'"
+
+    return args.window, args.interval, "기본값(등록된 작업을 찾지 못했습니다)"
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.status:
+        # 수집 창은 등록할 때 정해진다. 기본값으로 세면 결측이 통째로 어긋난다.
+        window, interval, source = resolve_window(args, argv)
+        if interval <= 0:
+            raise SystemExit(f"틱 간격은 1분 이상이어야 합니다: {interval}")
+        start, end = parse_window(window)
+        return print_status(start, end, interval, source)
+
     start, end = parse_window(args.window)
     if args.interval <= 0:
         raise SystemExit(f"틱 간격은 1분 이상이어야 합니다: {args.interval}")
 
-    if args.status:
-        return print_status(start, end, args.interval)
     if args.loop:
         return run_loop(start, end, args.interval, dry_run=args.dry_run,
                         include_holidays=args.include_holidays,

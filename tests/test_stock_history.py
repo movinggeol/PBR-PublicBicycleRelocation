@@ -360,3 +360,54 @@ def test_현황은_기대_격자와_대조해_결측을_센다(history_dir):
     assert row["틱"] == 3
     assert row["기대"] == 49
     assert row["결측"] == 46     # 로그가 아니라 격자와 대조한다(절전은 로그도 안 남긴다)
+
+
+# ---------------------------------------------------------------- 창 기준 해석
+
+def test_status_uses_the_registered_window_not_the_default(monkeypatch):
+    """등록된 창이 07~22시인데 기본값(09~17시)으로 결측을 세면 **표가 통째로 틀린다.**
+
+    실제로 그랬다 — 창을 넓혀 등록해 둔 뒤에도 `--status`가 "하루 49틱 기대"라고
+    보고했다(1.26.55). `scripts/collector.ps1`은 등록된 인자를 되읽어 옳게
+    보고하는데 파이썬 경로에만 그 보정이 없었다. **두 경로가 다른 답을 내면
+    어느 쪽을 믿어야 할지 알 수 없다.**
+    """
+    monkeypatch.setattr(collector, "registered_args",
+                        lambda: {"window": "07:00-22:00", "interval": 10})
+    args = collector.build_parser().parse_args(["--status"])
+    window, interval, source = collector.resolve_window(args, ["--status"])
+    assert window == "07:00-22:00"
+    assert interval == 10
+    assert "등록된 작업" in source
+
+    start, end = collector.parse_window(window)
+    assert collector.expected_ticks(start, end, interval) == 91
+
+
+def test_explicit_arguments_beat_the_registered_task(monkeypatch):
+    """손으로 준 값이 이겨야 한다 — 옛 창으로 대조해 보는 용도가 있다."""
+    monkeypatch.setattr(collector, "registered_args",
+                        lambda: {"window": "07:00-22:00", "interval": 10})
+    argv = ["--status", "--window", "09:00-17:00", "--interval", "10"]
+    args = collector.build_parser().parse_args(argv)
+    window, interval, source = collector.resolve_window(args, argv)
+    assert window == "09:00-17:00"
+    assert source == "직접 지정"
+
+
+def test_missing_task_says_it_fell_back_to_defaults(monkeypatch):
+    """기본값으로 떨어졌으면 **그 사실을 말해야 한다** — 조용히 틀린 기준으로 세면 안 된다."""
+    monkeypatch.setattr(collector, "registered_args", lambda: None)
+    args = collector.build_parser().parse_args(["--status"])
+    window, interval, source = collector.resolve_window(args, ["--status"])
+    assert window == collector.DEFAULT_WINDOW
+    assert "기본값" in source
+
+
+def test_registered_args_survives_a_missing_scheduler(monkeypatch):
+    """스케줄러가 없는 환경(다른 OS·CI)에서 죽으면 --status 자체가 막힌다."""
+    def boom(*a, **k):
+        raise OSError("schtasks 없음")
+
+    monkeypatch.setattr("subprocess.run", boom)
+    assert collector.registered_args() is None
