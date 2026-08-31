@@ -49,7 +49,11 @@ def load(table: str, run_label: Optional[str] = None,
 
     # 특정 실행을 콕 집어 요청한 경우에는 폴백하지 않는다
     # (CSV에는 어느 실행분인지 구분할 정보가 파일명 말고 없다).
-    if run_label is None and table in CSV_FALLBACK:
+    # duration도 마찬가지다 — 폴백은 시간대를 거를 수 없어서, 없는 시간대를
+    # 물었는데 **전 시간대가 섞인 표**를 200으로 돌려주고 있었다(실측:
+    # /api/metrics?duration=bogus가 29KB를 반환). 시간대가 다르면 수요 구조가
+    # 반대라 섞인 값은 틀린 답이다.
+    if run_label is None and duration is None and table in CSV_FALLBACK:
         subdir, pattern = CSV_FALLBACK[table]
         path = catalog.latest_file(subdir, pattern)
         if path is not None:

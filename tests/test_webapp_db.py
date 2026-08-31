@@ -212,3 +212,33 @@ def test_time_budget_flags_overrun(fleet_client):
     # 3건 중 2건만 예산 내 → 67%
     assert "67%" in html
     assert "1건이 시간 예산을 넘었습니다" in html
+
+
+def test_unknown_duration_does_not_fall_back_to_csv(tmp_path, monkeypatch):
+    """없는 시간대를 물으면 404다 — CSV 폴백으로 **전 시간대**를 돌려주면 안 된다.
+
+    폴백은 파일 하나를 통째로 읽어서 시간대를 거를 수 없다. 그런데 duration만
+    지정한 요청은 `run_label is None`이라 폴백 조건을 통과해 버렸고, 없는
+    시간대를 물었는데 전 시간대가 섞인 표가 200으로 돌아왔다(실측: 29KB).
+    시간대가 다르면 수요 구조가 반대라 섞인 값은 틀린 답이다.
+    """
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "dur.db"))
+
+    # 폴백이 실제로 읽을 수 있는 CSV를 깔아 둔다 — 폴백이 살아 있으면 200이 난다.
+    from webapp import catalog
+
+    pp = tmp_path / "pp"
+    (pp / "성능 지표").mkdir(parents=True)
+    _metrics(4, 0.60).to_csv(pp / "성능 지표" / "verification_05_10 (라벨).csv",
+                             index=False, encoding="utf-8")
+    monkeypatch.setattr(catalog, "PP_ROOT", pp)
+
+    with TestClient(app) as c:
+        # 시간대를 지정하지 않으면 폴백이 동작한다 (기존 동작 유지)
+        whole = c.get("/api/metrics")
+        assert whole.status_code == 200
+        assert whole.json()["source"] == "csv"
+
+        # 시간대를 지정하면 폴백하지 않는다
+        assert c.get("/api/metrics", params={"duration": "없는시간대"}).status_code == 404
+        assert c.get("/api/plans/vrp", params={"duration": "_10_15"}).status_code == 404
