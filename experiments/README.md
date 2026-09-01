@@ -133,6 +133,8 @@ python experiments/structure/park2024_compare.py   # 선행연구 모형 대 μ+
 | --- | --- | --- |
 | `step0_rebal_qty_check.py` | 재배치량 진단 — 작업 대상 수와 **Pick·Drop 수급 격차** (1.18.8에서 되살림) | `step0_collect/test.py` |
 | `step1_cluster_memo.py` | 클러스터링 실행 결과 메모 | `step1 (...)/test.py` |
+| `mapviz_shared.py` | folium 지도 세 종(군집·경로·재고 현황)이 각자 갖고 있던 범례·팔레트를 통일한 시안 — 색맹 안전 8색(Okabe–Ito), 공용 범례 HTML | 새로 작성 |
+| `mapviz_compare.py` | 실제 산출물 CSV를 다시 그려 `mapviz_shared.py` 적용 전/후를 `data/mapviz_compare/`에 나란히 낸다(TMAP 미호출). 프로덕션 코드는 건드리지 않는다 | 새로 작성 |
 
 ## learning/ — 학습용 예제
 
