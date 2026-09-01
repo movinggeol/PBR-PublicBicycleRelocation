@@ -88,6 +88,30 @@ def complete_days(frame: pd.DataFrame) -> list:
     return sorted(ticks[ticks >= threshold].index)
 
 
+def duration_complete_days(frame: pd.DataFrame, hours: list) -> list:
+    """**그 회차를 온전히 덮은 날**만 고른다 (2026-09-01).
+
+    `complete_days()`는 하루 전체로 판정하는데, 수집 창이 날마다 다르면 그것이
+    통하지 않는다. 실제로 8/25~9/01에는 두 종류의 창이 섞여 있었다 —
+    8/31만 07~22시(77틱)이고 나머지는 09~18시대(34~61틱)다. 가장 넓은 날이
+    기준(91틱의 80% = 72틱)을 정하는 바람에 **좁은 창 날이 전부 탈락해
+    온전한 날이 1일**이 됐다. 그런데 그 날들은 반쪽짜리가 아니다 —
+    **자기 창 안에서는 결측 0으로 촘촘하다**(실측 100%).
+
+    회차 비교에 필요한 것은 '하루가 온전한가'가 아니라 **'이 회차의 시간대가
+    다 덮였는가'** 이므로, 여기서는 회차 단위로 판정한다.
+    """
+    if frame.empty or not hours:
+        return []
+    part = frame[frame["시각"].isin(hours)]
+    if part.empty:
+        return []
+    per_hour = 60 // TICK_MINUTES
+    need = max(int(len(hours) * per_hour * COMPLETE_DAY_RATIO), 1)
+    ticks = part.groupby("날짜")["관측"].nunique()
+    return sorted(ticks[ticks >= need].index)
+
+
 def observed_hours(frame: pd.DataFrame, hours: list) -> pd.DataFrame:
     """대여소·날짜별로 **빌릴 수 없던 시간**과 **반납할 수 없던 시간**을 센다.
 
@@ -111,12 +135,25 @@ def observed_hours(frame: pd.DataFrame, hours: list) -> pd.DataFrame:
     return result
 
 
-def target_stations() -> set:
-    """가장 최근 계획이 실제로 손대는 대여소. 전체 평균은 결론을 흐린다."""
+def target_stations(duration: str = None) -> set:
+    """계획이 실제로 손대는 대여소. 전체 평균은 결론을 흐린다.
+
+    **회차마다 대상이 다르다**(2026-09-01 발견). 예전에는 `MAX(run_label)`
+    하나로 모든 회차를 재서, **`_10_15`의 결품을 `_15_20`의 대상으로** 재는
+    일이 생겼다 — 실측 245 / 304 / 260곳으로 세 회차가 모두 다르다.
+    `duration`을 주면 **그 회차를 다룬 가장 최근 실행**의 대상을 돌려준다.
+    """
     with db.session() as conn:
-        plan = pd.read_sql(
-            "SELECT station_id, rebal_qty FROM rebalance_plan"
-            " WHERE run_label = (SELECT MAX(run_label) FROM rebalance_plan)", conn)
+        if duration:
+            plan = pd.read_sql(
+                "SELECT station_id, rebal_qty FROM rebalance_plan"
+                " WHERE duration = ? AND run_label = ("
+                "   SELECT MAX(run_label) FROM rebalance_plan WHERE duration = ?)",
+                conn, params=[duration, duration])
+        else:
+            plan = pd.read_sql(
+                "SELECT station_id, rebal_qty FROM rebalance_plan"
+                " WHERE run_label = (SELECT MAX(run_label) FROM rebalance_plan)", conn)
     if plan.empty:
         return set()
     return set(plan.loc[plan["rebal_qty"].abs() > REBAL_MIN_QTY, "station_id"])
@@ -159,26 +196,34 @@ def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
         overlap = [h for h in hours if h in window]
         if len(overlap) != len(hours):          # 창이 통째로 겹칠 때만
             continue
-        daily = observed_hours(frame, overlap)
+        # **그 회차를 온전히 덮은 날만 쓴다**(2026-09-01). 창이 날마다 다르면
+        # 하루 전체 판정으로는 반쪽짜리 회차가 섞여 결품이 과소 집계된다.
+        ok_days = duration_complete_days(frame, overlap)
+        if not ok_days:
+            continue
+        daily = observed_hours(frame[frame["날짜"].isin(ok_days)], overlap)
         if daily.empty:
             continue
         per_day = daily.groupby("station_id")["결품시간"].mean()
-        if targets:
-            per_day = per_day.loc[per_day.index.isin(targets)]
+        # 대상도 **그 회차의 것**을 쓴다 — 회차마다 집합이 다르다.
+        dur_targets = target_stations(duration) or targets
+        if dur_targets:
+            per_day = per_day.loc[per_day.index.isin(dur_targets)]
         match = simulated.loc[simulated["duration"] == duration, "복원"]
         if per_day.empty or match.empty:
             continue
-        rows.append((duration, float(match.iloc[0]), float(per_day.mean()), len(per_day)))
+        rows.append((duration, float(match.iloc[0]), float(per_day.mean()),
+                     len(per_day), len(ok_days)))
 
     if not rows:
         print("\n(복원 대비 비교: 수집 창과 온전히 겹치는 시간대가 아직 없습니다)")
         return []
 
     print(f"\n복원 vs 실측 — 작업 대상 대여소, 대여소·일 평균 결품 시간(h)")
-    print(f"{'시간대':8} {'복원(step4)':>11} {'실측(수집)':>11} {'차이':>9} {'대여소':>7}")
-    for duration, sim, obs, count in rows:
+    print(f"{'시간대':8} {'복원(step4)':>11} {'실측(수집)':>11} {'차이':>9} {'대여소':>7} {'날':>4}")
+    for duration, sim, obs, count, ndays in rows:
         gap = (obs / sim - 1) * 100 if sim else float("nan")
-        print(f"{duration:8} {sim:11.2f} {obs:11.2f} {gap:+8.0f}% {count:7,d}")
+        print(f"{duration:8} {sim:11.2f} {obs:11.2f} {gap:+8.0f}% {count:7,d} {ndays:4d}")
     print("  → 실측이 크면 **복원이 결품을 낮춰 잡고 있었다**는 뜻입니다"
           "(0에서 잘라 못 빌린 수요가 사라지므로 예상된 방향입니다).")
     print("  ⚠️ 다만 실측에는 **공사가 실제로 돌린 재배치**가 이미 반영돼 있어")
@@ -207,12 +252,14 @@ def _save_calibration(rows: list, day_type: str, days: int, window) -> None:
     hours = sorted(int(h) for h in window)
     note = f"관측 창 {hours[0]:02d}~{hours[-1]:02d}시"
     payload = []
-    for duration, simulated, observed, stations in rows:
+    for duration, simulated, observed, stations, ndays in rows:
         payload.append({
             "measured_at": stamp, "duration": duration, "day_type": day_type,
             "ratio": (observed / simulated) if simulated else None,
             "observed": observed, "simulated": simulated,
-            "days": days, "stations": stations, "note": note,
+            # **회차별 날 수**를 쓴다(2026-09-01) — 하루 전체 판정의 값 하나를
+            # 모든 회차에 붙이면 얼마나 얇은 근거인지 가려진다.
+            "days": ndays, "stations": stations, "note": note,
         })
 
     with db.session() as conn:
@@ -278,8 +325,9 @@ def main() -> int:
               f"{share * 100:8.1f}%")
         printed += 1
 
-        if targets:
-            picked = per_day.loc[per_day.index.isin(targets)]
+        dur_targets = target_stations(duration) or targets
+        if dur_targets:
+            picked = per_day.loc[per_day.index.isin(dur_targets)]
             if not picked.empty:
                 print(f"{'  └ 작업 대상만':22} {len(picked):7,d} "
                       f"{picked['결품시간'].mean():11.2f} {picked['만차시간'].mean():11.2f}")
