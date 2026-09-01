@@ -16,6 +16,11 @@
 
 값을 정본으로 정해 놓고 그것을 나를 수단이 없는 상태 — 그 구멍을 메우는 도구다.
 
+**git으로 나르지 않는 것은 실측에 근거한 결정이다**(2026-09-01). DB를 커밋하면
+커밋 1회당 약 404MB(압축률 31%)로 현재 `.git` 6.6MB가 60배가 되고, GitHub
+100MB 상한에 걸리며, SQLite는 3바이트만 바뀌어도 블롭을 통째로 새로 저장한다.
+근거와 표는 docs/구현/두_PC_작업.md 4-2장.
+
 ## 무엇을 나르나
 
 `run_label`로 묶이는 **모든 테이블**을 담는다(`runs`부터 `kpi_summary`까지 14개).
@@ -32,12 +37,12 @@
 
 ## 실행
 
-    # 내보내는 PC에서
+    # 내보내는 PC에서 — 산출물은 data/transfer/ 에 둔다(data/가 이미 gitignore).
     python tools/transfer_run.py --list
-    python tools/transfer_run.py --export "2026-08-11 real" --out run_20260811.db
+    python tools/transfer_run.py --export "2026-08-11 real" --out data/transfer/run_20260811_real.db
 
-    # 받는 PC에서
-    python tools/transfer_run.py --import run_20260811.db --dry-run
+    # 받는 PC에서 (USB·클라우드로 파일을 옮긴 뒤)
+    python tools/transfer_run.py --import data/transfer/run_20260811_real.db --dry-run
     python tools/transfer_run.py --import run_20260811.db
 """
 from __future__ import annotations
