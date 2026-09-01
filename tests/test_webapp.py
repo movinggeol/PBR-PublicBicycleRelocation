@@ -798,3 +798,29 @@ def test_vehicles_화면에_막대그래프_자리가_있다():
         encoding="utf-8")
 
     assert "workload_svg" in html, "막대그래프를 넣을 자리가 템플릿에 없다"
+
+
+# ── /view 지도 iframe 실패 안내 ──────────────────────────────────────
+
+def test_지도_iframe이_안_뜨면_안내문으로_바뀐다():
+    """folium 지도는 CDN에서 Leaflet을 받는다 — 인터넷이 끊기면 iframe 안이
+    빈 채로 남는데, 로컬 HTML 자체는 200으로 열려서 서버는 실패를 모른다.
+    그래서 판정은 스크립트가 브라우저에서 한다: base.html에 그 로직이
+    실제로 있는지, view.html에 판정 대상(iframe)과 안내문이 짝으로 있는지 본다."""
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    templates = Path(webapp_app.__file__).parent / "templates"
+    view_html = (templates / "view.html").read_text(encoding="utf-8")
+    base_js = (templates / "base.html").read_text(encoding="utf-8")
+
+    assert "data-map-frame" in view_html
+    assert "data-map-fallback" in view_html
+    assert "hidden" in view_html[view_html.index("data-map-fallback"):
+                                  view_html.index("data-map-fallback") + 60], (
+        "안내문이 처음부터 보이면 안 된다 — 지도가 뜨는 보통 경우에도 뜬다")
+
+    assert "contentWindow" in base_js and ".L)" in base_js, (
+        "Leaflet 전역(window.L) 존재로 성패를 판정하는 로직이 없다")
+    assert "frame.hidden = true" in base_js and "fallback.hidden = false" in base_js

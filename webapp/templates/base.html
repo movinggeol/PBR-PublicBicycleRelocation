@@ -1424,6 +1424,30 @@
     });
   })();
 
+  /* 지도 iframe이 안 뜰 때 안내.
+     folium 지도는 CDN에서 Leaflet을 받아 그린다 — HTML 파일 자체는 로컬(같은
+     출처)이라 열리지만, 인터넷이 끊기면 지도만 빈 채로 남는다. iframe이 다
+     실린 뒤 안의 전역(window.L)이 있는지 들여다보고, 없으면 iframe 대신
+     안내 문구를 보여준다. 같은 출처라 contentWindow 접근이 막히지 않는다. */
+  document.querySelectorAll("iframe[data-map-frame]").forEach(function (frame) {
+    var fallback = frame.nextElementSibling;
+    if (!fallback || !fallback.hasAttribute("data-map-fallback")) return;
+
+    frame.addEventListener("load", function () {
+      // 외부 <script>가 iframe의 load 시점까지는 성패가 갈리지만, 여유를
+      // 조금 둔다 — 너무 이르면 방금 성공한 것도 실패로 오판한다.
+      setTimeout(function () {
+        var ok;
+        try { ok = !!(frame.contentWindow && frame.contentWindow.L); }
+        catch (e) { ok = true; }   /* 접근이 막히면 판단하지 않는다(오탐 방지) */
+        if (!ok) {
+          frame.hidden = true;
+          fallback.hidden = false;
+        }
+      }, 300);
+    });
+  });
+
   /* 표 정렬.
      table[data-sortable]의 머리글을 누르면 그 열로 오름/내림을 오간다.
      - 열 종류는 값에서 판단한다. 결측(빈칸·—)을 뺀 모든 칸이 숫자로 읽히면

@@ -9,6 +9,14 @@
   </div>
 </section>
 
-<iframe class="map-frame" src="/files/{{ relpath | urlencode }}" title="{{ name }}"></iframe>
+<iframe class="map-frame" data-map-frame src="/files/{{ relpath | urlencode }}" title="{{ name }}"></iframe>
+{# 지도는 folium이 CDN에서 Leaflet을 받아 그린다 — 인터넷이 끊기면 이 파일
+   자체(로컬)는 열리지만 지도만 빈 채로 남는다. data-map-frame을 단 iframe을
+   base.html의 스크립트가 로드 후 들여다보고, Leaflet 전역이 없으면 이 문구를
+   대신 보여준다(초기에는 숨김). #}
+<p class="empty no-print" data-map-fallback hidden>
+  지도를 불러오지 못했습니다 — 인터넷 연결이 필요합니다(지도 배경은 외부
+  지도 서비스에서 받아 옵니다). 연결을 확인한 뒤 새로고침해 보세요.
+</p>
 <a class="back" href="/maps">← 지도 목록으로</a>
 {% endblock %}
