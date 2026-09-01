@@ -250,6 +250,32 @@ def stockout(net, population, delta, duration):
     return float(before.sum() / denominator), float(after.sum() / denominator)
 
 
+def stockout_population(net, population, duration) -> int:
+    """`stockout()`이 **분모로 쓰는 대여소 수**를 돌려준다 (1.26.72).
+
+    **왜 필요한가 — 평균만 보면 분모가 흔들려도 티가 나지 않는다.**
+    "파라미터가 후보 집합을 바꾸면 자기 후보에서 잰 결품은 비교가 안 된다"는
+    결함이 **세 번** 나왔다(1.26.56 대조군 B2 · 1.26.64 상한 격자 ·
+    1.26.65 `z` 격자). 세 번 다 **결과를 한참 쓰고 나서야** 발견했는데,
+    `stockout()`이 평균 하나만 돌려주어 분모를 볼 방법이 없었기 때문이다.
+
+    격자를 도는 실험은 파라미터마다 이 값을 함께 찍어라. **값이 파라미터를
+    따라 움직이면 그 표는 서로 다른 자로 잰 것이다** — 재배치 *전* 결품이
+    파라미터에 따라 달라지는 것과 같은 신호이고, 이쪽이 더 일찍 보인다.
+
+        for limit in limits:
+            pop = build_candidates(...)
+            print(limit, stockout_population(net, pop, duration))   # 같아야 한다
+
+    ⚠️ `stockout()`과 **같은 방식으로 세야** 뜻이 있다 — 그래서 여기서도
+    `net`과 inner join한 뒤 센다. 후보에 있어도 순수요가 없는 대여소는
+    분모에 들어가지 않기 때문이다.
+    """
+    stations = population[["station_id"]].drop_duplicates()
+    merged = net.merge(stations, on="station_id", how="inner")
+    return int(merged["station_id"].nunique())
+
+
 def route_stats(routes):
     """이동거리·최장 소요시간·예산 초과 건수·처리 대수(pick 기준)."""
     if routes.empty:

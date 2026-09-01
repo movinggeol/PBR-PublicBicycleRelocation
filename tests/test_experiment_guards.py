@@ -150,3 +150,39 @@ def test_all_methods_are_scored_on_one_population(bc):
         "결품 점수는 공통 모집단 위에서 매겨야 한다")
     assert "stockout(net, candidates," not in source, (
         "방법의 자기 후보 집합으로 점수를 매기면 분모가 방법마다 달라진다")
+
+
+def test_stockout_population_exposes_the_denominator(bc):
+    """분모를 **볼 수 있어야** 한다 — 평균만 보면 흔들려도 티가 안 난다.
+
+    같은 결함이 세 번 나왔다(1.26.56 B2 · 1.26.64 상한 · 1.26.65 z). 세 번 다
+    늦게 찾았는데, `stockout()`이 평균 하나만 돌려주어 **분모를 볼 방법이
+    없었기** 때문이다. 격자 실험이 파라미터마다 이 값을 찍으면 그 자리에서
+    알아챈다.
+    """
+    net = _net(["A", "B", "C", "D"])
+
+    assert bc.stockout_population(net, _stations(["A"]), "_05_10") == 1
+    assert bc.stockout_population(net, _stations(["A", "B", "C", "D"]), "_05_10") == 4
+
+    # 순수요에 없는 대여소는 분모에 들어가지 않는다 — stockout()과 같은 셈법이다.
+    assert bc.stockout_population(net, _stations(["A", "없는곳"]), "_05_10") == 1
+
+
+def test_stockout_population_moves_with_the_population_like_the_average_does(bc):
+    """분모가 달라지면 `stockout()` 값도 달라진다 — 둘이 같은 것을 가리킨다.
+
+    이 테스트가 지키는 것은 *"분모 지표가 평균과 따로 놀지 않는다"* 는 성질이다.
+    따로 놀면 분모를 찍어 봐도 결함을 못 잡는다.
+    """
+    net = _net(["A", "B", "C", "D"])
+    좁은_집합 = _stations(["A"])
+    넓은_집합 = _stations(["A", "B", "C", "D"])
+
+    좁은_분모 = bc.stockout_population(net, 좁은_집합, "_05_10")
+    넓은_분모 = bc.stockout_population(net, 넓은_집합, "_05_10")
+    assert 좁은_분모 != 넓은_분모
+
+    assert bc.stockout(net, 좁은_집합, {}, "_05_10") != bc.stockout(
+        net, 넓은_집합, {}, "_05_10"), (
+        "분모는 달라졌는데 결품 평균이 같다면, 분모를 찍어 봐야 결함을 못 잡는다")
