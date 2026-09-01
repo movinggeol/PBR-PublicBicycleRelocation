@@ -431,6 +431,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/구현/DB_PLAN.md](docs/구현/DB_PLAN.md) | SQLite 도입 결정·이관 계획·성능 측정 |
 | [docs/구현/COLLECTOR.md](docs/구현/COLLECTOR.md) | **재고 시계열 수집** — 평일 07–22시 10분 간격 수집기·운영(시작/일시정지/중지), 두 번째 PC로 휴일 맡기기 |
 | [docs/구현/두_PC_작업.md](docs/구현/두_PC_작업.md) | **두 PC로 번갈아 작업** — `.gitignore` 항목별 판단(옮길 것·다시 만들 것), 새 PC 세팅 순서 |
+| [docs/구현/DB_이관.md](docs/구현/DB_이관.md) | **DB 이관 절차서** — 실행 스냅샷을 하나만/기간별/전부 내보내고 받는 방법 |
 | [docs/분석/WEATHER.md](docs/분석/WEATHER.md) | **날씨** — 어떤 기상청 API를 받는지, 결측·겨울 3시간 누적 처리, 순수요 설명력 측정 |
 | [docs/분석/DECISIONS.md](docs/분석/DECISIONS.md) | **기술 선택의 근거** — 왜 ILP·VRP·K-Medoids인지, 이상치·결측·정합성을 왜 그렇게 다뤘는지, 얻음과 잃음 |
 | [docs/GLOSSARY.md](docs/GLOSSARY.md) | **용어집** — 한국어 용어 ↔ 코드 이름, 헷갈리기 쉬운 짝 |

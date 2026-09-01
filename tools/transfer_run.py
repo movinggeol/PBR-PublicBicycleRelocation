@@ -142,6 +142,56 @@ def export_run(conn, label: str, out_path: Path) -> dict:
     return counts
 
 
+def export_runs(conn, labels: list, out_path: Path) -> dict:
+    """**라벨 여럿**을 한 파일에 담는다. {테이블: 행 수}.
+
+    `export_run()`이 하나만 담는 것과 달리, 전체 이관·기간 단위 이관에 쓴다.
+    파일 하나로 묶는 이유는 받는 쪽이 `--import` 한 번으로 끝내게 하기 위해서다
+    (라벨마다 파일을 만들면 옮길 것이 늘고 하나 빠뜨리기 쉽다).
+    """
+    if not labels:
+        raise SystemExit("내보낼 라벨이 없습니다.")
+    if out_path.exists():
+        raise SystemExit(f"{out_path}가 이미 있습니다. 지우거나 다른 이름을 주십시오.")
+
+    counts: dict = {}
+    with sqlite3.connect(out_path) as target:
+        db.init_schema(target)
+        for table in RUN_TABLES:
+            for label in labels:
+                try:
+                    frame = pd.read_sql(
+                        f"SELECT * FROM {table} WHERE run_label = ?",
+                        conn, params=(label,))
+                except (sqlite3.OperationalError, pd.errors.DatabaseError):
+                    break               # 이 표는 이 DB에 없다 — 라벨을 더 볼 것 없다
+                if frame.empty:
+                    continue
+                frame.to_sql(table, target, if_exists="append", index=False)
+                counts[table] = counts.get(table, 0) + len(frame)
+        target.commit()
+    return counts
+
+
+def pick_labels(conn, period: str = None) -> list:
+    """내보낼 라벨을 고른다 — `period`를 주면 그 기간의 실행만."""
+    if period:
+        rows = conn.execute(
+            "SELECT run_label FROM runs WHERE period = ? ORDER BY run_label",
+            (period,)).fetchall()
+        if not rows:
+            periods = [r[0] for r in conn.execute(
+                "SELECT DISTINCT period FROM runs WHERE period IS NOT NULL"
+                " ORDER BY 1")]
+            raise SystemExit(f"period='{period}'인 실행이 없습니다."
+                             f" 있는 기간: {periods}")
+    else:
+        rows = conn.execute("SELECT run_label FROM runs ORDER BY run_label").fetchall()
+        if not rows:
+            raise SystemExit("적재된 실행이 없습니다.")
+    return [r[0] for r in rows]
+
+
 def import_run(conn, source_path: Path, overwrite: bool, dry_run: bool) -> dict:
     """내보낸 파일을 이 DB에 넣는다. {테이블: 행 수}."""
     if not source_path.is_file():
@@ -187,6 +237,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="파이프라인 실행 라벨을 PC 간에 옮긴다")
     parser.add_argument("--list", action="store_true", help="이 DB의 실행 라벨을 보여준다")
     parser.add_argument("--export", metavar="라벨", help="내보낼 실행 라벨")
+    parser.add_argument("--export-all", action="store_true",
+                        help="이 DB의 실행을 **전부** 한 파일에 담는다")
+    parser.add_argument("--period", metavar="기간",
+                        help='그 기간의 실행만 담는다 (예: "25년 11월"). --export-all과 함께 쓴다')
     parser.add_argument("--out", metavar="경로", help="내보낼 파일 (기본: run_<라벨>.db)")
     parser.add_argument("--import", dest="import_path", metavar="경로",
                         help="받아들일 파일")
@@ -196,11 +250,24 @@ def main() -> int:
     args, _ = parser.parse_known_args()
 
     with db.session() as conn:
-        if args.list or not (args.export or args.import_path):
+        if args.list or not (args.export or args.export_all or args.import_path):
             frame = available_labels(conn)
             print(f"DB: {active_db_path()}")
             print(frame.to_string(index=False) if not frame.empty
                   else "적재된 실행이 없습니다.")
+            return 0
+
+        if args.export_all:
+            labels = pick_labels(conn, args.period)
+            safe = (args.period or "all").replace(" ", "_")
+            out = Path(args.out) if args.out else Path(f"runs_{safe}.db")
+            counts = export_runs(conn, labels, out)
+            print(f"실행 {len(labels)}건 → {out}")
+            for name, rows in counts.items():
+                print(f"  {name:22s} {rows:>8,} 행")
+            print("\n담긴 라벨: " + ", ".join(labels))
+            print(f"합계 {sum(counts.values()):,}행."
+                  f" 받는 PC에서: python tools/transfer_run.py --import {out.name}")
             return 0
 
         if args.export:
