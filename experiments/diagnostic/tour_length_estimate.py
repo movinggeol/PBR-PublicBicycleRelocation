@@ -42,6 +42,29 @@ import pandas as pd
 import baseline_compare as bc
 from project_config import VEHICLE_SPEED_KMPH
 
+def resolve_run_label(label=None):
+    """재고 스냅샷 라벨을 정한다 — **못 찾으면 멈춘다.**
+
+    `db.load_frame()`은 라벨이 비면 `latest_label()`로 **말없이 최신**을 쓴다.
+    그러면 같은 명령이 다른 날 다른 재고로 돌고 결과에 그 사실이 남지 않는다
+    (1.26.58에서 `gamma_sweep.py`가, 그 전에 `z_sweep.py`가 이 결함으로 걸렸다).
+    판정 기준은 "인자가 있는가"가 아니라 **"못 찾았을 때 멈추는가"** 다.
+    """
+    import db
+    with db.session() as conn:
+        available = [r[0] for r in conn.execute(
+            "SELECT DISTINCT run_label FROM station_info ORDER BY 1")]
+    if not available:
+        raise SystemExit("station_info가 비어 있습니다. 파이프라인을 한 번 돌리십시오.")
+    chosen = label or available[-1]
+    if chosen not in available:
+        raise SystemExit(f"station_info에 '{chosen}' 실행이 없습니다."
+                         f" --run-label 로 고르십시오: {available}")
+    print(f"[스냅샷] station_info run_label = '{chosen}'"
+          f"{' (기본: 최신)' if not label else ''}")
+    return chosen
+
+
 PERIODS = ("25년 09월", "25년 11월", "26년 01월", "26년 03월")
 DURATIONS = ("_05_10", "_10_15", "_15_20")
 # "현행"은 대조군이다 - 지금 wanted_vehicles()가 쓰는 `대여소 수 x 12.5분`을
@@ -75,17 +98,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="순회거리 어림 셋을 실제와 견준다")
     parser.add_argument("--periods", default=",".join(PERIODS))
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--run-label", default=None,
+                        help="재고 스냅샷을 고정할 실행 라벨 (기본: 최신)")
     parser.add_argument("--out", default=None,
                         help="회차별 표를 CSV로 남긴다 (오래 걸리므로 결과를 잃지 않게)")
     args = parser.parse_args()
 
     periods = [p.strip() for p in args.periods.split(",") if p.strip()]
+    run_label = resolve_run_label(args.run_label)
     step1 = bc.load_step1()
     solver = bc.ilp_mod.build_solver()
 
     rows = []
     for period in periods:
-        net, st_info, warm = bc.load_inputs(period, "", "weekday", 0, "")
+        net, st_info, warm = bc.load_inputs(period, run_label, "weekday", 0, "")
         for duration in DURATIONS:
             base = bc.build_candidates(net, st_info, duration, None, warm, 0, step1)
             if base.empty:
