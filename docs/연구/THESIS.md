@@ -387,7 +387,7 @@ DBpia 로그인이 필요합니다.** 2·3은 학생 본인이 해야 하는 저
 | `z` | 1.99 | [EXPERIMENTS.md](../분석/EXPERIMENTS.md) 1·4장 |
 | `γ` | 3000 | EXPERIMENTS **5-C장** — *"두 목표를 동시에 개선하는 γ는 없다"* |
 | 학습 창 | 직전 1달 + warmup14 | [DEMAND_DISTRIBUTION.md](../분석/DEMAND_DISTRIBUTION.md) 6·**6-C**장 |
-| `TOP_STATION_LIMIT` | 50 | TODO 2-1 — 보유 차량 21대와 맞물린 값 |
+| `TOP_STATION_LIMIT` | 50 | EXPERIMENTS **17장** — 최적값이 아니라 **결품↔예산 준수 맞바꿈** 위의 값(상한 100이면 12대 중 11대 초과) |
 
 ### 6장 실험 — 성능 평가 ⭐ **논문의 핵심**
 
