@@ -130,7 +130,9 @@
 
 <h2>실행·회차별 지표</h2>
 <p class="section-lead">표의 각 열 제목에 커서를 대면 그 숫자가 무엇을 뜻하는지 나옵니다.
-  <b>열 제목을 누르면</b> 그 열로 오름차순·내림차순 정렬됩니다.</p>
+  <b>열 제목을 누르면</b> 그 열로 오름차순·내림차순 정렬됩니다.
+  기본은 <b>개선률·이동거리·최장 작업</b> 같은 핵심 열만 보이고, 나머지는 표 위
+  <b>모든 열 보기</b>로 펼칩니다.</p>
 
 {% if runs %}
 <div class="filterbar">
@@ -145,48 +147,51 @@
 
 <div class="card flush">
   {% if rows %}
+  <div class="col-toggle-wrap">
+    <button type="button" class="chip" data-col-toggle aria-pressed="false" aria-controls="kpi-runs-table">모든 열 보기</button>
+  </div>
   <div class="table-wrap">
-  <table data-sortable class="m-cards">
+  <table data-sortable class="m-cards" id="kpi-runs-table">
     <thead><tr>
       <th>실행</th>
       <th><span class="tip" data-tip="계획한 시간대입니다. 예: _10_15 는 10시~15시.">회차</span></th>
-      <th class="num"><span class="tip" data-tip="이번 계획에서 손을 댄 대여소 수입니다.">대여소</span></th>
-      <th class="num"><span class="tip" data-tip="대여소를 가까운 것끼리 묶은 덩어리 수입니다. 차량 한 대가 한 덩어리를 맡습니다.">군집</span></th>
-      <th class="num"><span class="tip" data-tip="실제로 출동한 차량 수입니다.">차량</span></th>
-      <th class="num"><span class="tip" data-tip="옮긴 자전거 총 대수입니다.">옮긴 대수</span></th>
+      <th class="num col-more"><span class="tip" data-tip="이번 계획에서 손을 댄 대여소 수입니다.">대여소</span></th>
+      <th class="num col-more"><span class="tip" data-tip="대여소를 가까운 것끼리 묶은 덩어리 수입니다. 차량 한 대가 한 덩어리를 맡습니다.">군집</span></th>
+      <th class="num col-more"><span class="tip" data-tip="실제로 출동한 차량 수입니다.">차량</span></th>
+      <th class="num col-more"><span class="tip" data-tip="옮긴 자전거 총 대수입니다.">옮긴 대수</span></th>
       <th class="num"><span class="tip" data-tip="목표 재고까지 모자란 양을 계획이 몇 % 메웠는지입니다. 수요를 맞췄다는 뜻이 아니라 계획을 지켰다는 뜻입니다.">개선률</span></th>
-      <th class="num"><span class="tip" data-tip="목표 재고를 완전히 채운 대여소의 비율입니다. 계획량이 적재 용량 근처에서 눌리므로 격차가 8대만 넘어도 도달이 구조적으로 불가능합니다 — 실행 품질을 재는 값이 아닙니다.">목표 도달</span></th>
-      <th class="num"><span class="tip" data-tip="목표까지 벌어진 양이 트럭 적재 용량 안이라 한 번 방문으로 해결할 수 있었던 대여소의 비율입니다. 낮으면 애초에 한 회차로는 못 푸는 일감이 많다는 뜻입니다.">한 번에 닿는 범위</span></th>
-      <th class="num"><span class="tip" data-tip="목표까지 벌어진 양의 중앙값과 최댓값입니다. 적재 용량과 견줘 보세요.">격차 (중앙/최대)</span></th>
+      <th class="num col-more"><span class="tip" data-tip="목표 재고를 완전히 채운 대여소의 비율입니다. 계획량이 적재 용량 근처에서 눌리므로 격차가 8대만 넘어도 도달이 구조적으로 불가능합니다 — 실행 품질을 재는 값이 아닙니다.">목표 도달</span></th>
+      <th class="num col-more"><span class="tip" data-tip="목표까지 벌어진 양이 트럭 적재 용량 안이라 한 번 방문으로 해결할 수 있었던 대여소의 비율입니다. 낮으면 애초에 한 회차로는 못 푸는 일감이 많다는 뜻입니다.">한 번에 닿는 범위</span></th>
+      <th class="num col-more"><span class="tip" data-tip="목표까지 벌어진 양의 중앙값과 최댓값입니다. 적재 용량과 견줘 보세요.">격차 (중앙/최대)</span></th>
       <th class="num"><span class="tip" data-tip="모든 차량이 움직인 거리의 합입니다.">이동거리</span></th>
       <th class="num"><span class="tip" data-tip="가장 오래 걸린 차량 한 대의 작업 시간입니다. 시간 예산을 넘으면 붉게 표시됩니다.">최장 작업</span></th>
-      <th class="num"><span class="tip" data-tip="정해진 시간 안에 끝난 회차의 비율입니다. 작업이 늦어지면 예측한 시간대가 지나가 계획의 효과가 줄어듭니다.">예산 준수</span></th>
-      <th class="num"><span class="tip" data-tip="1km 움직일 때마다 개선률이 얼마나 올랐는지입니다. 연료 대비 효율로 볼 수 있습니다.">km당 개선</span></th>
+      <th class="num col-more"><span class="tip" data-tip="정해진 시간 안에 끝난 회차의 비율입니다. 작업이 늦어지면 예측한 시간대가 지나가 계획의 효과가 줄어듭니다.">예산 준수</span></th>
+      <th class="num col-more"><span class="tip" data-tip="1km 움직일 때마다 개선률이 얼마나 올랐는지입니다. 연료 대비 효율로 볼 수 있습니다.">km당 개선</span></th>
       {# '12.5 → 8.3시간'처럼 숫자가 둘이라 한 열로는 정렬할 수 없다. #}
-      <th data-nosort><span class="tip" data-tip="자전거가 없어 빌리지 못하는 시간이 재배치로 얼마나 줄었는지입니다(시뮬레이션).">결품 (전→후)</span></th>
+      <th data-nosort class="col-more"><span class="tip" data-tip="자전거가 없어 빌리지 못하는 시간이 재배치로 얼마나 줄었는지입니다(시뮬레이션).">결품 (전→후)</span></th>
     </tr></thead>
     <tbody>
     {% for r in rows %}
     <tr>
       <td class="muted" data-label="">{{ r.run_label }}</td>
       <td data-label="회차"><b>{{ r.duration }}</b></td>
-      <td class="num muted" data-label="대여소">{{ whole(r.stations, "") }}</td>
-      <td class="num muted" data-label="군집">{{ whole(r.clusters, "") }}</td>
-      <td class="num muted" data-label="차량">{{ whole(r.vehicles_used, "") }}</td>
-      <td class="num" data-label="옮긴 대수">{{ whole(r.bikes_moved, "") }}</td>
+      <td class="num muted col-more" data-label="대여소">{{ whole(r.stations, "") }}</td>
+      <td class="num muted col-more" data-label="군집">{{ whole(r.clusters, "") }}</td>
+      <td class="num muted col-more" data-label="차량">{{ whole(r.vehicles_used, "") }}</td>
+      <td class="num col-more" data-label="옮긴 대수">{{ whole(r.bikes_moved, "") }}</td>
       <td class="num" data-label="개선률"><b>{{ fmt(r.avg_improvement_rate, "pct") }}</b></td>
-      <td class="num" data-label="목표 도달">{{ fmt(r.target_met_ratio, "pct") }}</td>
-      <td class="num" data-label="한 번에 닿는 범위">{{ fmt(r.reachable_ratio, "pct") }}</td>
-      <td class="num muted" data-label="격차 (중앙/최대)">{% if r.gap_median is not none %}{{ r.gap_median | round | int }} / {{ r.gap_max | round | int }}대{% else %}—{% endif %}</td>
+      <td class="num col-more" data-label="목표 도달">{{ fmt(r.target_met_ratio, "pct") }}</td>
+      <td class="num col-more" data-label="한 번에 닿는 범위">{{ fmt(r.reachable_ratio, "pct") }}</td>
+      <td class="num muted col-more" data-label="격차 (중앙/최대)">{% if r.gap_median is not none %}{{ r.gap_median | round | int }} / {{ r.gap_max | round | int }}대{% else %}—{% endif %}</td>
       <td class="num muted" data-label="이동거리">{{ whole(r.total_distance_km, " km") }}</td>
       {% set over = r.time_budget_minutes and r.max_cluster_minutes
                     and r.max_cluster_minutes > r.time_budget_minutes %}
       <td class="num{% if over %} over-budget{% endif %}" data-label="최장 작업">
         {{ whole(r.max_cluster_minutes, "분") }}{% if over %} ⚠{% endif %}
       </td>
-      <td class="num" data-label="예산 준수">{{ fmt(r.time_budget_met, "pct") }}</td>
-      <td class="num" data-label="km당 개선">{{ fmt(r.improvement_per_km, "num") }}</td>
-      <td class="muted" data-label="결품 (전→후)">
+      <td class="num col-more" data-label="예산 준수">{{ fmt(r.time_budget_met, "pct") }}</td>
+      <td class="num col-more" data-label="km당 개선">{{ fmt(r.improvement_per_km, "num") }}</td>
+      <td class="muted col-more" data-label="결품 (전→후)">
         {% if r.stockout_hours_before is not none %}
           {{ r.stockout_hours_before | round(2) }} → {{ r.stockout_hours_after | round(2) }}시간
         {% else %}—{% endif %}

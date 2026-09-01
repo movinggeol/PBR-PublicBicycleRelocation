@@ -797,6 +797,17 @@
     }
     .filterbar .label { font-size: var(--fs-fine); color: var(--ink-4); font-weight: 600; }
 
+    /* ── 표 열 접기 ──
+       열이 많은 표에서 핵심 열만 기본으로 보여준다. 스크립트가 없으면
+       부가 열도 그대로 보인다(쪽 넘기기·정렬과 같은 원칙 — 내용이 사라지지 않는다). */
+    .col-toggle-wrap { display: flex; justify-content: flex-end; margin-bottom: var(--sp-xs); }
+    .col-toggle-wrap .chip { font-family: inherit; cursor: pointer; }
+    table.cols-collapsed .col-more { display: none; }
+    /* 카드 모드의 [data-narrow] table.m-cards td 규칙이 더 구체적이라(가중치
+       0,2,2 대 위 규칙의 0,2,1) 좁은 화면에서는 이 규칙을 따로 못 이긴다.
+       카드 칸에 한해 가중치를 올려 다시 이긴다. */
+    [data-narrow] table.m-cards.cols-collapsed td.col-more { display: none; }
+
     /* ── 쪽 넘기기 ──
        목록이 세로로 길어질 때 쓴다. 조작부는 스크립트가 만들므로, 스크립트가
        없으면 전부 보이는 예전 동작 그대로다(내용이 사라지지 않는다). */
@@ -1386,6 +1397,29 @@
          정렬한 사람은 맨 위를 보고 싶어 한다. */
       box.__pbrPagerRefresh = function () { collect(); page = 0; render(); };
       render();
+    });
+  })();
+
+  /* 표 열 접기.
+     .col-toggle-wrap 안의 단추가 형제 표의 .col-more 칸(th·td)을 한꺼번에
+     접었다 편다. 부가 열이 많은 표에서 핵심 열만 먼저 보여주려는 것이다 —
+     정렬·모바일 카드는 손대지 않는다(숨긴 셀도 DOM에는 그대로 있다). */
+  (function () {
+    document.querySelectorAll("[data-col-toggle]").forEach(function (btn) {
+      var wrap = btn.closest(".col-toggle-wrap");
+      var table = wrap && wrap.parentElement.querySelector("table");
+      if (!table || !table.querySelector(".col-more")) return;
+
+      function apply(collapsed) {
+        table.classList.toggle("cols-collapsed", collapsed);
+        btn.setAttribute("aria-pressed", (!collapsed).toString());
+        btn.textContent = collapsed ? "모든 열 보기" : "핵심 열만 보기";
+      }
+
+      btn.addEventListener("click", function () {
+        apply(!table.classList.contains("cols-collapsed"));
+      });
+      apply(true);   /* 기본은 핵심 열만 — 스크립트가 켜졌을 때만 접는다 */
     });
   })();
 
