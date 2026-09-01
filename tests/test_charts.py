@@ -63,6 +63,8 @@ def test_chart_coordinates_stay_inside_the_box():
                         {"x": 9, "y": 9, "label": "b", "tip": "b"}],
                        x_key="x", y_key="y", x_label="가로", y_label="세로"),
         charts.heatmap(["월", "화"], ["00", "01", "02"], [[1, -1, 0], [2, 0, None]]),
+        charts.hbar(["v01", "v02", "v03"], [123.4, 45.0, 0.0],
+                    title="테스트", unit="분"),
     ):
         width, height, coords = _bounds(svg)
         outside = [(x, y) for x, y in coords
@@ -77,10 +79,48 @@ def test_colors_come_from_css_variables_not_hex():
     """
     svg = (charts.line(["A", "B"], [1.0, 2.0], title="T")
            + charts.heatmap(["월"], ["00", "01"], [[5, -5]])
-           + charts.scale_legend(5.0, "대"))
+           + charts.scale_legend(5.0, "대")
+           + charts.hbar(["A", "B"], [1.0, 2.0], title="T"))
 
     assert not re.search(r'#[0-9a-fA-F]{3,6}', svg), "hex 색이 SVG에 박혀 있다"
     assert "var(--viz-pos-" in svg and "var(--viz-neg-" in svg
+
+
+# ---------------------------------------------------------------- 가로 막대
+
+def test_hbar_draws_one_bar_per_label_in_the_given_order():
+    """정렬은 부르는 쪽이 한다 — 여기서는 받은 순서 그대로 그려야 한다."""
+    svg = charts.hbar(["v03", "v01", "v02"], [30.0, 10.0, 20.0],
+                      title="테스트", unit="분")
+
+    assert svg.count('class="viz-bar"') == 3
+    assert svg.count("data-tip=") == 3, "막대마다 커서 설명이 있어야 한다"
+    assert 'tabindex="0"' in svg, "키보드 초점으로도 값을 읽을 수 있어야 한다"
+    # 받은 순서(v03, v01, v02) 그대로 — 정렬해 버리면 안 된다. data-tip에도
+    # 같은 라벨이 나오므로 y축 눈금(viz-tick) 글자만 짚는다.
+    ticks = re.findall(r'class="viz-tick"[^>]*>(v0[123])<', svg)
+    assert ticks == ["v03", "v01", "v02"]
+
+
+def test_hbar_labels_every_bar_since_bars_are_few_and_categorical():
+    """선 그래프의 '값은 골라서'는 점이 많은 꺾은선 얘기다.
+
+    막대는 항목 하나하나가 뜻이 달라(차량 ID) 다 적어야 읽힌다 — 점 몇 개만
+    골라 적으면 나머지 차량이 몇 분 일했는지 알 수 없다.
+    """
+    svg = charts.hbar(["a", "b", "c"], [1.0, 2.0, 3.0], title="T", unit="분")
+
+    assert svg.count('class="viz-value"') == 3
+
+
+def test_hbar_needs_no_points_message_when_empty():
+    assert "그릴 자료" in charts.hbar([], [], title="테스트")
+
+
+def test_hbar_handles_all_zero_without_dividing_by_zero():
+    svg = charts.hbar(["a", "b"], [0.0, 0.0], title="테스트")
+
+    assert svg.count('class="viz-bar"') == 2
 
 
 # ---------------------------------------------------------------- 발산 척도

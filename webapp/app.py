@@ -670,11 +670,23 @@ def vehicles_page(request: Request, run_label: Optional[str] = None):
     # 아니라 DB의 운용 가능 차량 수를 보여준다.
     fleet_size = len(workload) if not workload.empty else FLEET_SIZE
 
+    # 표만으로는 어느 차량에 일이 몰렸는지 행을 다 읽어야 보인다 — 누적 시간
+    # 기준 내림차순 막대로 형평성을 한눈에 보여준다(가장 몰린 차량이 위).
+    # balance와 같은 조건이다 — 아직 한 번도 안 나간 새 설치라면 21대가 전부
+    # 0분짜리 막대가 되어 아무 뜻이 없다.
+    workload_svg = None
+    if balance:
+        sorted_wl = workload.sort_values("minutes", ascending=False)
+        workload_svg = charts.hbar(
+            sorted_wl["vehicle_id"].tolist(), sorted_wl["minutes"].tolist(),
+            title="차량별 누적 작업 시간", unit="분")
+
     return templates.TemplateResponse(request, "vehicles.html", {
         "fleet_size": fleet_size,
         "per_round": min(VEHICLES_PER_ROUND, fleet_size),
         "time_budget": TIME_BUDGET_MINUTES,
         "workload": store.records(workload),
+        "workload_svg": workload_svg,
         "assignments": store.records(assignments.head(60)),
         "balance": balance,
         "budget": budget,

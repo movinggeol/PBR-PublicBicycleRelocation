@@ -115,6 +115,52 @@ def line(labels: Sequence[str], values: Sequence[Optional[float]], *,
     return "".join(parts)
 
 
+def hbar(labels: Sequence[str], values: Sequence[float], *,
+         title: str, unit: str = "", width: int = 640,
+         bar_h: int = 20, gap: int = 8) -> str:
+    """가로 막대. 항목별 누적값을 위아래로 늘어놓고 한눈에 견준다.
+
+    표는 이미 있는데 행이 많아 형평성(누가 몰렸는지)이 한눈에 안 들어올 때
+    쓴다 — 정렬은 부르는 쪽이 하고, 여기서는 받은 순서 그대로 그린다.
+    labels/values 길이가 같아야 한다.
+    """
+    n = len(labels)
+    if n == 0:
+        return '<p class="empty">그릴 자료가 없습니다.</p>'
+
+    pad_l, pad_r, pad_t, pad_b = 60, 56, 4, 4
+    row_h = bar_h + gap
+    plot_w = width - pad_l - pad_r
+    height = pad_t + row_h * n + pad_b
+
+    _, high = _nice_bounds(0, max(values, default=0) or 1)
+    span = high or 1
+
+    parts = [f'<svg viewBox="0 0 {width} {height}" class="viz" role="img" '
+             f'aria-label="{html.escape(title)}">']
+
+    # 세로 격자 두 줄(중간·끝) — 값이 얼마나 찼는지 눈대중할 기준선.
+    for k in (1, 2):
+        x = pad_l + plot_w * k / 2
+        parts.append(f'<line x1="{x:.1f}" y1="{pad_t}" x2="{x:.1f}" '
+                     f'y2="{height - pad_b}" class="viz-grid"/>')
+
+    for i, (label, v) in enumerate(zip(labels, values)):
+        y = pad_t + row_h * i
+        cy = y + bar_h / 2
+        w = max(1.5, plot_w * v / span)
+        parts.append(_text(pad_l - 8, cy + 4, label, "viz-tick", "end"))
+        parts.append(
+            f'<rect x="{pad_l}" y="{y:.1f}" width="{w:.1f}" height="{bar_h}" '
+            f'rx="4" class="viz-bar" tabindex="0" '
+            f'data-tip="{html.escape(str(label))}: {_fmt(v, 1)}{unit}"/>')
+        parts.append(_text(pad_l + w + 6, cy + 4, f"{_fmt(v, 1)}{unit}",
+                           "viz-value", "start"))
+
+    parts.append("</svg>")
+    return "".join(parts)
+
+
 def scatter(points: Sequence[dict], *, x_key: str, y_key: str,
             x_label: str, y_label: str, width: int = 640,
             height: int = 300) -> str:

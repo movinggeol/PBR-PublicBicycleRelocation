@@ -51,6 +51,14 @@
 <h2>차량별 누적 <span class="hint">전체 실행 합계</span></h2>
 <p class="section-lead">한 대에 일이 몰리지 않았는지 봅니다. 누적 시간이 고를수록 로테이션이 잘 도는 것입니다.
   <b>실행을 골라도 이 표는 좁혀지지 않습니다</b> — 형평성은 누적으로만 보이기 때문입니다.</p>
+
+{% if workload_svg %}
+<div class="card viz-card">
+  <h3>누적 작업 시간 <span class="hint">많이 일한 차량이 위</span></h3>
+  {{ workload_svg | safe }}
+</div>
+{% endif %}
+
 <div class="card flush">
   {% if workload %}
   <div class="table-wrap">

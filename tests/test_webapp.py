@@ -764,3 +764,37 @@ def test_열_접기_스크립트가_없으면_전부_보인다():
     for selector in rules:
         assert "cols-collapsed" in selector, (
             f".col-more를 늘 숨기는 규칙이 있다(cols-collapsed 밖): {selector.strip()}")
+
+
+# ── /vehicles 누적 작업 시간 막대그래프 ─────────────────────────────
+
+def test_차량별_누적_막대그래프가_작업량_많은_순으로_정렬된다():
+    """표는 이미 있지만 행이 21개라 누가 몰렸는지 한눈에 안 보였다.
+
+    hbar()는 받은 순서 그대로 그린다(정렬은 부르는 쪽 책임, test_charts.py에서
+    확인) — 그러니 vehicles_page가 실제로 minutes 내림차순으로 정렬해 넘기는지는
+    여기서 소스를 봐야 한다. 이 정렬을 빠뜨리면 vehicle_id 순서(표의 기본
+    정렬)로 그려져 '몰린 차량이 위'가 거짓말이 된다.
+    """
+    import inspect
+
+    from webapp import app as webapp_app
+
+    source = inspect.getsource(webapp_app.vehicles_page)
+    assert 'sort_values("minutes", ascending=False)' in source, (
+        "차량별 누적을 minutes 내림차순으로 정렬하지 않고 그래프에 넘긴다")
+
+
+def test_vehicles_화면에_막대그래프_자리가_있다():
+    """/vehicles를 직접 호출하지 않는다 — ensure_fleet()이 빈 DB에도 차량
+    21대를 채워 두어 workload 자체는 늘 비지 않으므로(회차 0건이면 balance만
+    None), 이 테스트 모듈의 '데이터 유무와 무관히 통과' 전제와 맞지 않는다.
+    템플릿에 그래프 카드 자리가 실제로 있는지만 정적으로 본다."""
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    html = (Path(webapp_app.__file__).parent / "templates" / "vehicles.html").read_text(
+        encoding="utf-8")
+
+    assert "workload_svg" in html, "막대그래프를 넣을 자리가 템플릿에 없다"
