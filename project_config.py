@@ -22,10 +22,26 @@ def _force_utf8_output() -> None:
 
     **모든 step·tool이 project_config를 거치므로 여기서 한 번에 막는다.**
     웹(webapp/jobs.py)과 run_pipeline은 환경변수로도 같은 방어를 한다.
+
+    ⚠️ **`sys.__stdout__`도 함께 고쳐야 한다** (2026-09-01에 실측으로 드러났다).
+    실험 하네스 여럿이 파이프라인의 수다를 삼키려고
+    `contextlib.redirect_stdout(io.StringIO())` 안에서 이 모듈을 import한다.
+    그러면 `sys.stdout`은 **StringIO**라 여기서 고쳐 봐야 소용이 없고, 블록을
+    빠져나오는 순간 **원래 cp949 스트림이 그대로 돌아온다.** 실제로
+    `limit_fixedpop_grid.py`가 계산을 다 마친 뒤 요약을 찍다가 '—' 한 글자에
+    죽었다(CSV는 남는데 종료 코드는 1이라 실패로 보인다).
+
+    그래서 **원본 스트림(`__stdout__`/`__stderr__`)까지 함께** 고친다. 같은
+    객체면 아래 루프가 중복 처리해도 두 번째는 이미 utf-8이라 그냥 지나간다.
     """
-    for stream in (sys.stdout, sys.stderr):
+    streams = (sys.stdout, sys.stderr, sys.__stdout__, sys.__stderr__)
+    seen = set()
+    for stream in streams:
+        if stream is None or id(stream) in seen:
+            continue
+        seen.add(id(stream))
         try:
-            if stream and getattr(stream, "encoding", "").lower() not in ("utf-8", "utf8"):
+            if getattr(stream, "encoding", "").lower() not in ("utf-8", "utf8"):
                 stream.reconfigure(encoding="utf-8", errors="replace")
         except Exception:      # 리다이렉트된 특수 스트림 등 — 막지 못해도 죽지는 않는다
             pass

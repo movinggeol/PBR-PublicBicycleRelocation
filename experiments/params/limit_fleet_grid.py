@@ -67,6 +67,16 @@ from project_config import (                    # noqa: E402
     TOP_STATION_LIMIT, VEHICLES_PER_ROUND, normalize_day_type,
 )
 
+# 셀 하나에 허용할 시간(초). **넘기면 그 셀만 버리고 넘어간다.**
+#
+# ⚠️ 2026-09-01 실측 — 격자를 돌리면 CBC가 **생성만 되고 시작하지 못한 채**
+# 멈추는 일이 있다(`cbc.exe`가 CPU 0.0초·스레드 1·핸들 4로 12시간 대기).
+# 같은 인스턴스를 손으로 돌리면 0.01초에 풀리므로 모델 문제가 아니다.
+# 타임아웃이 없던 때는 **한 셀이 막히면 격자 전체가 섰고**, 그런데도 종료
+# 코드는 0이라 완료로 착각하기 쉬웠다. 막힌 셀은 버리는 편이 낫다 —
+# 평균이 거짓말을 하지 않도록 **결과에서 빼고 몇 개를 뺐는지 알린다.**
+CELL_TIMEOUT_SEC = int(os.getenv("PBR_GRID_CELL_TIMEOUT", "900"))
+
 LIMITS = [30, 40, 50, 70, 100]
 
 # ⚠️ **보유 차량 21대가 상한이다** — 그보다 크게 잡지 마라(사용자 확인, 2026-08-31).
@@ -130,8 +140,16 @@ def run_cell(limit: int, fleet: int, args) -> list:
         "day_type": args.day_type, "warmup_days": args.warmup_days,
         "durations": args.durations, "seeds": args.seeds,
     })
-    proc = subprocess.run([sys.executable, "-c", WORKER, str(ROOT), payload],
-                          capture_output=True, text=True, encoding="utf-8", env=env)
+    try:
+        proc = subprocess.run([sys.executable, "-c", WORKER, str(ROOT), payload],
+                              capture_output=True, text=True, encoding="utf-8",
+                              env=env, timeout=CELL_TIMEOUT_SEC)
+    except subprocess.TimeoutExpired:
+        # 멈춘 자식(과 그 CBC)은 여기서 이미 죽는다. 격자는 계속 간다.
+        print(f"  [시간초과] 상한 {limit} · 차량 {fleet}:"
+              f" {CELL_TIMEOUT_SEC}초를 넘겨 이 셀을 건너뛴다"
+              f" (PBR_GRID_CELL_TIMEOUT으로 조정)")
+        return []
     if proc.returncode != 0:
         print(f"  [실패] 상한 {limit} · 차량 {fleet}: {proc.stderr.strip()[-300:]}")
         return []
