@@ -32,6 +32,9 @@ experiments/
 | `min_qty_sweep.py` | 작업 문턱(2)이 맞나 | **문턱이 작동하지 않는다.** TOP_STATION_LIMIT(50)이 먼저 자른다 |
 | `top_limit_sweep.py` | 후보 상한(50)이 맞나 | **맞다.** 넓힐수록 결품은 주지만 **필요 차량이 보유 21대를 넘어** 집행이 안 된다 |
 | `gamma_sweep.py` | 거리 가중치 `γ`(3000)를 바꿔 예산 초과를 줄일 수 있나 | **두 목표를 동시에 개선하는 γ가 없다.** γ↓는 결품 −24%이나 예산 초과 0건 조합이 0개, γ↑는 결품 +74% → **γ=3000 유지, 운영 결정으로 넘김** |
+| `z_stockout_grid.py` | `z`를 **판정 지표(결품 시간)** 로 재면 1.99인가 | 1.65·1.80보다는 낫다. 2.10·2.33과는 못 가린다 ⚠️ **자기 후보를 모집단으로 써서 결함이 있다 — 판정에 쓰지 말 것**(18장) |
+| `z_fixedpop_grid.py` | 모집단을 바꿔도 같은 `z`가 이기나 | **각 모집단은 자기를 정의한 z를 뽑는다.** 중립(전체 대여소)으로 보면 전체 폭 5~23초 → `z=1.99` 유지. **z 판정은 이 스크립트로 한다** |
+| `z_fixedpop_grid.py --z-grid wide` | 🔴 **미실행(TODO 대기-7).** 0.0~2.81 **16개 값**으로 넓혀도 회차별 `z`가 필요한가 | — |
 | `cluster_count_sweep.py` | 군집 수 `K`를 줄이면 물량 손실이 주나 | **준다 — 결품 −17%·물량 +8%(24개 중 18개 우세). 그런데 군집의 80%가 예산 초과** → 채택 못 함. `K` 산정식이 거리를 모르는 것이 진짜 문제 |
 
 ```powershell
@@ -40,6 +43,10 @@ python experiments/params/predictor_compare.py  # 예측기 비교 + 무리별 �
 python experiments/params/seasonal_window.py    # 학습 창 비교
 python experiments/params/gamma_sweep.py         # γ 다월·다씨앗 (120회, 약 90분)
 python experiments/params/cluster_count_sweep.py  # 군집 수 K (약 15분)
+
+# z 넓은 격자 — 16개 값 x 씨앗 5 x 3회차 = 240회. 오래 걸리니 --out을 꼭 줄 것
+python experiments/params/z_fixedpop_grid.py --z-grid wide `
+  --seeds "42,7,13,21,99" --out experiments/params/z_wide_2511.csv
 ```
 
 셋 다 DB의 `net_demand`를 읽으므로 **여러 달의 순수요가 적재돼 있어야** 합니다

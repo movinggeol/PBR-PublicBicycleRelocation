@@ -45,6 +45,32 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 
+# 좁은 격자 — 11·18장이 쓴 값. 인자 없이 돌리면 이쪽이다(과거 결과 재현용).
+Z_GRID = [1.65, 1.80, 1.99, 2.10, 2.33]
+
+# 넓은 격자 — `--z-grid wide` (TODO 대기-7, 1.26.76)
+#
+# 정규분포 커버리지를 사다리로 깐 16개 값이다. 왼쪽 끝 0.0은 **5장 B2 대조군과
+# 같은 값**(평균 목표재고)이라, 파라미터 격자와 대조군 실험이 한 축에서 만난다.
+#
+# 🔴 **0점대·1.0점대를 넣은 이유** — 지금까지 결품 시간으로 잰 z는 1.65 이상뿐이다.
+# 18장이 *"편익은 5~23초 안에서 흔들리는데 비용은 z에 단조롭게 는다 → 낮은 쪽이
+# 안전하다"* 는 판단을 내렸는데, **그 '낮은 쪽'을 실제로 잰 적이 없다.** 격자의
+# 왼쪽이 비어 있었기 때문이다. 0까지 내려가야 그 판단을 검증할 수 있고, z를 0으로
+# 내렸을 때의 악화폭이 곧 **추정 오차의 크기**가 된다(18장: z가 덮는 것은 분포의
+# 꼬리가 아니라 추정 오차다).
+#
+# ⚠️ **1.96과 1.99는 둘 다 넣되, 사전 기대는 "차이 없음"이다.** 1.96은 통계 관행값
+# (양측 95% 신뢰구간), 1.99는 이 프로젝트가 백테스트로 구한 값이다. 0.03 차이라
+# 결품 시간으로는 못 가릴 것이고 **그것이 결론이다** — *"관행값과 실측값의 차이는
+# 측정 한계 아래"*. 만약 씨앗 잡음을 넘는 차이가 나오면 **자를 의심할 것.**
+#
+# ⚠️ 낮은 z에서는 후보가 비어 계획이 서지 않을 수 있다. 건너뛴 칸을 **결품 0으로
+# 읽지 마라** — "대상이 없었다"와 "결품이 없었다"는 다른 말이다.
+Z_GRID_WIDE = [0.0, 0.25, 0.52, 0.67, 0.84, 1.04, 1.28, 1.44,
+               1.65, 1.80, 1.96, 1.99, 2.10, 2.33, 2.58, 2.81]
+
+
 def load_baseline():
     path = ROOT / "experiments" / "baseline" / "baseline_compare.py"
     spec = importlib.util.spec_from_file_location("baseline_compare", path)
@@ -140,7 +166,8 @@ def main() -> int:
         description="z 격자를 모집단을 바꿔 가며 잰다 (TODO 대기-10)")
     parser.add_argument("--period", default="25년 11월")
     parser.add_argument("--run-label", default="2026-08-11 real")
-    parser.add_argument("--z-grid", default="1.65,1.80,1.99,2.10,2.33")
+    parser.add_argument("--z-grid", default=",".join(str(z) for z in Z_GRID),
+                        help="쉼표로 구분한 z 목록. 'wide'를 주면 Z_GRID_WIDE(16개)")
     parser.add_argument("--duration", default="_05_10,_10_15,_15_20")
     parser.add_argument("--day-type", default="weekday")
     parser.add_argument("--warmup-days", type=int, default=14)
@@ -150,7 +177,10 @@ def main() -> int:
 
     args.durations = [d.strip() for d in args.duration.split(",") if d.strip()]
     args.seeds = [int(s) for s in args.seeds.split(",") if s.strip()]
-    args.z_grid = [float(z) for z in args.z_grid.split(",") if z.strip()]
+    if args.z_grid.strip().lower() == "wide":
+        args.z_grid = list(Z_GRID_WIDE)
+    else:
+        args.z_grid = [float(z) for z in args.z_grid.split(",") if z.strip()]
 
     print(f"z {args.z_grid} · 회차 {len(args.durations)} · 씨앗 {len(args.seeds)}"
           f"  ({args.period})")
