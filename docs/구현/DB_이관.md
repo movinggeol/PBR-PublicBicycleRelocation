@@ -118,8 +118,7 @@ python tools/transfer_run.py --export-all --period "25년 11월" --out data/tran
 ```
 
 ```
-실행 7건 → data	ransfer
-uns_2511.db
+실행 7건 → data\transfer\runs_2511.db
   runs                          7 행
   station_info              4,104 행
   ...
@@ -150,8 +149,29 @@ python tools/transfer_run.py --export-all --out data/transfer/runs_all.db
 
 ## 3. 파일 옮기기
 
-**USB·클라우드 드라이브·메신저** 등 편한 방법으로 옮기면 됩니다. 1.4MB라
-어디든 들어갑니다.
+**USB·클라우드 드라이브·메신저** 등 편한 방법으로 옮기면 됩니다.
+
+파일 크기는 무엇을 담았느냐에 따라 다릅니다 — 정본 하나면 **1.4MB**라 어디든
+들어가지만, 수집기 자료를 전부 담으면 **50MB를 넘길 수 있습니다**(3-B장).
+
+### 크면 zip으로 묶으십시오
+
+```powershell
+Compress-Archive data\transfer\collected.db data\transfer\collected.zip   # 보내는 쪽
+Expand-Archive data\transfer\collected.zip -DestinationPath data\transfer\  # 받는 쪽
+```
+
+**5배 넘게 줄어듭니다** — 실측으로 **51MB → 9.2MB(18%, 0.6초)**. SQLite 파일은
+빈 페이지와 반복되는 값이 많아 압축이 잘 듣습니다. 압축은 무손실이라 해제하면
+**바이트 단위로 같은 파일**이 나옵니다(SHA256으로 확인했고, 해제한 파일을 그대로
+`merge_stock.py`에 넣어 41만 행이 정상 적재되는 것까지 봤습니다).
+
+> ⚠️ **`data/bike_system.db`를 직접 압축하지 마십시오.** 수집기가 10분마다 쓰고
+> 있어, 압축 도중 파일이 바뀌면 **깨진 사본**이 나올 수 있습니다. 위 방법은
+> `export_collected.py`가 **별도 파일로 떠낸 것**을 압축하므로 그 위험이 없습니다.
+
+> 💡 **기간을 잘라 작게 만드는 방법도 있습니다.** 이미 옮긴 날짜가 있으면 그
+> 이후만 떠내십시오: `--from 2026-08-29`. 겹쳐도 받는 쪽이 건너뛰므로 안전합니다.
 
 > ❌ **git으로는 옮겨지지 않습니다.** `data/`가 `.gitignore`에 있기 때문이고,
 > 이는 **의도된 것**입니다 — DB를 커밋하면 커밋 1회당 약 404MB로 저장소가
@@ -182,7 +202,7 @@ python tools/export_collected.py --list
 ```
 
 ```
-  stock_history : 413,005행  2026-08-25 ~ 2026-09-01
+  stock_history : 414,377행  2026-08-25 ~ 2026-09-01
   road_leg      : 고정 패널 300행 · 파이프라인 부산물 478행
 
 날짜별 수집 틱:
@@ -203,12 +223,12 @@ python tools/export_collected.py --from 2026-08-25 --to 2026-08-31 --out data/tr
 ```
 
 ```
-수집 자료(처음 ~ 끝) → data	ransfer\collected.db
-  stock_history        413,005 행
+수집 자료(처음 ~ 끝) → data\transfer\collected.db
+  stock_history        414,377 행
   stock_station_master   8,233 행
   road_leg                 300 행
 
-합계 421,538행.
+합계 422,910행.  (파일 약 51MB — 크면 3장의 zip 방법을 쓰십시오)
 ```
 
 > 📌 **`stock_station_master`(그날의 대여소 이름·좌표)가 함께 담깁니다.**
@@ -229,7 +249,7 @@ python tools/merge_stock.py data/transfer/collected.db
 ```
 
 ```
-  새로 채움 : 413,005행
+  새로 채움 : 414,377행
   이미 있음 : 0행 (먼저 수집한 값을 남겼습니다)
   마스터    : 8,233행
   TMAP 실측 : 300행 (고정 패널)
