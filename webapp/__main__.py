@@ -1,4 +1,5 @@
 """`python -m webapp` 실행 진입점."""
+import socket
 import sys
 
 import uvicorn
@@ -27,6 +28,24 @@ def check_dependencies() -> None:
         raise SystemExit(1)
 
 
+def _lan_ip() -> str | None:
+    """같은 와이파이에서 이 PC로 접속할 주소를 알려준다.
+
+    실제로 패킷을 보내지는 않는다 — UDP 소켓을 그 목적지로 "연결"만 해 두면
+    OS가 라우팅에 쓸 로컬 인터페이스의 IP를 알려준다(8.8.8.8은 도달하지 않아도 된다).
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except OSError:
+        return None
+
+
 if __name__ == "__main__":
     check_dependencies()
-    uvicorn.run("webapp.app:app", host="127.0.0.1", port=8000)
+    lan_ip = _lan_ip()
+    if lan_ip:
+        print(f"같은 와이파이 기기에서: http://{lan_ip}:8000"
+              "  (인증이 없습니다. 신뢰하는 네트워크에서만 쓰세요)")
+    uvicorn.run("webapp.app:app", host="0.0.0.0", port=8000)
