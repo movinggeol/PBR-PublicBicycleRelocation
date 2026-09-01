@@ -888,7 +888,7 @@
       overflow-x: auto; -webkit-overflow-scrolling: touch;
     }
     [data-narrow] .group-nav a { padding: 12px; }
-    [data-narrow] .global-nav .util { padding: 12px 0; }
+    [data-narrow] .global-nav .util { padding: 13px 0; display: inline-flex; align-items: center; min-height: 44px; }
     [data-narrow] .theme-toggle, [data-narrow] .view-toggle { padding: 12px 8px; }
     [data-narrow] main { padding-left: var(--sp-md); padding-right: var(--sp-md); }
     /* 버튼으로 켠 경우에만 본문을 폰 폭으로 묶는다. 실제로 좁은 화면에서는
@@ -903,6 +903,25 @@
     [data-narrow] { --fs-hero: 30px; --fs-lead: 18px; }
     [data-narrow] .card { padding: var(--sp-md); }
     [data-narrow] .btn { padding: 13px 20px; }        /* 44px 이상 */
+    /* 손가락으로 누르는 것은 전부 44px을 넘겨야 한다. 표 안의 링크가 16~21px
+       이라 이웃한 링크를 잘못 누르기 쉬웠다(실측: /data 100개, /maps 30개).
+       inline-block + 세로 여백으로 **글자는 그대로 두고 누를 면만** 키운다 —
+       글자를 키우면 표가 길어진다.
+       ⚠️ `.station-name`·`.hint`처럼 표시용으로 쓰는 것은 제외한다. */
+    [data-narrow] td a, [data-narrow] th a {
+      display: inline-block; padding: 12px 4px; margin: -12px 0;
+    }
+    [data-narrow] .chip { padding: 12px 14px; min-height: 44px; }
+    [data-narrow] .pager button, [data-narrow] .pager a { padding: 12px 14px; }
+    [data-narrow] .table-open { padding: 13px 4px; }
+    /* 폼·카드 안의 평범한 <button>(실행 등)도 44px을 채운다. */
+    [data-narrow] button:not(.btn):not(.theme-toggle):not(.m-sortbar button):not(.tipclose) { min-height: 44px; }
+    /* 내비의 유틸 링크(사용 안내·API)와 브랜드는 줄 높이가 18~25px이었다. */
+    [data-narrow] .brand { padding: 13px 0; min-height: 44px; }
+    [data-narrow] .flow-title { padding: 13px 0; display: inline-flex; align-items: center; min-height: 44px; }
+    [data-narrow] .skip-link { padding: 13px 16px; }
+    /* 아이콘 단추 두 개(모바일·테마)는 글자가 짧아 세로만으로는 안 찬다. */
+    [data-narrow] .theme-toggle { padding: 14px 10px; min-height: 44px; }
     /* 2단 배치는 전부 1단으로. 폭 기준 규칙과 같은 값이지만, 버튼으로 켠
        데스크톱(넓은 화면)에서도 접혀야 하므로 여기에도 적는다. */
     [data-narrow] .data-grid,
@@ -943,6 +962,28 @@
        잘린다. */
     [data-narrow] .table-wrap:has(table.m-cards) { overflow-x: visible; }
 
+    /* 카드 모드 정렬 줄 — 머리글이 숨겨져 누를 곳이 없으므로 대신 세운다.
+       넓은 화면에서는 머리글이 제자리에 있으므로 감춘다. */
+    .m-sortbar { display: none; }
+    [data-narrow] .m-sortbar {
+      display: flex; gap: 6px; align-items: center; flex-wrap: nowrap;
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+      margin-bottom: var(--sp-sm); padding-bottom: 2px;
+    }
+    .m-sortbar-label { color: var(--ink-4); font-size: var(--fs-fine); flex: none; }
+    [data-narrow] .m-sortbar button {
+      flex: none; background: var(--surface); color: var(--ink-2);
+      border: 1px solid var(--hairline); border-radius: var(--r-pill);
+      padding: 12px 14px; min-height: 44px; font-size: var(--fs-fine);
+      font-family: inherit; cursor: pointer; white-space: nowrap;
+    }
+    [data-narrow] .m-sortbar button[aria-pressed="true"] {
+      background: var(--blue); color: var(--on-blue); border-color: var(--blue);
+      font-weight: 600;
+    }
+    /* 방향은 색만으로 말하지 않는다 — 화살표를 붙인다(DESIGN.md 규칙 5). */
+    [data-narrow] .m-sortbar button[aria-pressed="true"]::after { content: " " attr(data-dir); }
+
     /* ③ 접을 수 있는 묶음 — /orders의 계획 선택 칩이 39개·1029px이라 첫
        지시서가 1546px 아래로 밀려 있었다(실측). 폰 화면 두 번을 넘겨야 본론이
        나온다. 좁은 화면에서는 접어 두고 필요할 때만 편다.
@@ -973,13 +1014,21 @@
       [data-narrow] table.m-cards tr {
         display: table-row; border: 0; padding: 0; margin: 0;
       }
-      [data-narrow] table.m-cards td {
+      /* ⚠️ 빈 라벨 칸까지 되돌려야 한다. 화면 규칙
+         `[data-narrow] table.m-cards td[data-label=""]`는 가중치가 (0,3,3)이라
+         여기 `td`(0,2,3)보다 구체적이어서, 이 줄만 적으면 **첫 칸만 block으로
+         남는다**(실측: 인쇄에서 순번·대여소가 표 밖으로 떨어졌다). */
+      [data-narrow] table.m-cards td,
+      [data-narrow] table.m-cards td[data-label=""] {
         display: table-cell; padding: 9px 12px;
         border-bottom: 1px solid var(--divider-soft); white-space: nowrap;
       }
       [data-narrow] table.m-cards td::before { content: none; }
       [data-narrow] .data-grid { display: block; }
       .m-fold > summary { display: none !important; }
+      /* 화면 전용 조작부는 종이에 필요 없다. orders.html에만 있던 규칙이라
+         다른 화면(/vehicles·/kpi의 정렬 줄)에서는 인쇄에 그대로 나왔다. */
+      .no-print { display: none !important; }
     }
   </style>
 </head>
@@ -1383,7 +1432,64 @@
         th.addEventListener("keydown", function (e) {
           if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sort(); }
         });
+        /* 모바일 모드는 머리글을 숨기므로(표가 카드로 눕는다) 누를 곳이
+           없어진다. 아래 정렬 줄이 이 함수를 그대로 다시 쓴다 — 정렬 규칙을
+           두 벌 만들지 않으려는 것이다. */
+        th.__pbrSort = sort;
       });
+      table.__pbrSortable = true;
+    });
+  })();
+
+  /* 카드 모드 정렬 줄 (TODO 20).
+
+     표가 카드로 누우면 머리글이 사라져 정렬할 곳이 없다. 머리글을 대신할
+     단추 줄을 표 앞에 만들되, **정렬 자체는 위 스크립트의 th.__pbrSort를
+     그대로 부른다** — 규칙을 두 벌 만들면 데스크톱과 모바일의 정렬 결과가
+     달라진다.
+
+     좁을 때만 보인다(CSS). 넓은 화면에서는 머리글이 원래 자리에 있다. */
+  (function () {
+    document.querySelectorAll("table[data-sortable].m-cards").forEach(function (table) {
+      if (!table.__pbrSortable) return;      /* 정렬이 안 걸린 표는 줄도 없다 */
+      var head = table.tHead;
+      var headRow = head.rows[head.rows.length - 1];
+      var sortable = Array.prototype.filter.call(headRow.cells, function (th) {
+        return typeof th.__pbrSort === "function";
+      });
+      if (!sortable.length) return;
+
+      var bar = document.createElement("div");
+      bar.className = "m-sortbar no-print";
+      bar.setAttribute("role", "group");
+      bar.setAttribute("aria-label", "정렬");
+      var label = document.createElement("span");
+      label.className = "m-sortbar-label";
+      label.textContent = "정렬";
+      bar.appendChild(label);
+
+      sortable.forEach(function (th) {
+        var btn = document.createElement("button");
+        btn.type = "button";
+        /* 머리글에 도움말 풍선(.tip)이 들어 있으면 그 글자만 가져온다 —
+           th.textContent를 그대로 쓰면 풍선 설명까지 딸려 온다. */
+        btn.textContent = (th.querySelector(".tip") || th).textContent.trim();
+        btn.addEventListener("click", function () {
+          th.__pbrSort();
+          /* 어느 기준으로 어느 방향인지 보여 준다. 머리글의 aria-sort를
+             그대로 읽으므로 상태가 갈릴 일이 없다. */
+          bar.querySelectorAll("button").forEach(function (b) {
+            b.removeAttribute("aria-pressed");
+            b.dataset.dir = "";
+          });
+          btn.setAttribute("aria-pressed", "true");
+          btn.dataset.dir = th.getAttribute("aria-sort") === "descending" ? "▼" : "▲";
+        });
+        bar.appendChild(btn);
+      });
+
+      var wrap = table.closest(".table-wrap") || table;
+      wrap.parentNode.insertBefore(bar, wrap);
     });
   })();
 

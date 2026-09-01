@@ -686,3 +686,35 @@ def test_인쇄는_모바일_모드를_무시한다():
     assert "table.m-cards td" in print_block
     assert "display: table-cell" in print_block, "인쇄에서 칸이 표로 돌아오지 않는다"
     assert "table-header-group" in print_block, "인쇄에서 머리글이 돌아오지 않는다"
+
+    # 빈 라벨 칸은 화면 규칙의 가중치가 (0,3,3)으로 더 높다. 인쇄에서 함께
+    # 되돌리지 않으면 **첫 칸만** block으로 남아 표 밖으로 떨어진다(실측).
+    assert 'td[data-label=""]' in print_block, (
+        "빈 라벨 칸이 인쇄에서 되돌려지지 않는다 — 순번·대여소가 표 밖으로 떨어진다")
+
+    # 화면 전용 조작부(정렬 줄 등)를 감추는 규칙은 base.html에 있어야 한다.
+    # orders.html에만 두면 다른 화면에서는 인쇄에 그대로 나온다(실측).
+    assert ".no-print" in print_block, "no-print 규칙이 공용 인쇄 블록에 없다"
+
+
+def test_카드_모드_정렬은_데스크톱과_같은_함수를_쓴다():
+    """모바일 정렬 줄은 머리글의 정렬 함수를 그대로 부른다.
+
+    카드로 누우면 머리글이 숨겨져 누를 곳이 없어진다. 정렬 줄을 따로 만들되
+    **정렬 규칙까지 따로 만들면** 같은 열을 같은 방향으로 정렬했는데 데스크톱과
+    모바일의 결과가 달라진다. `th.__pbrSort`를 노출해 재사용한다.
+    """
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    js = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    assert "th.__pbrSort = sort;" in js, "정렬 함수가 노출되지 않았다"
+    assert "th.__pbrSort()" in js, "정렬 줄이 그 함수를 부르지 않는다"
+    # 정렬 줄이 자기만의 비교 로직을 갖고 있으면 두 벌이 된다.
+    bar = js[js.index("카드 모드 정렬 줄"):]
+    bar = bar[:bar.index("})();")]
+    assert "localeCompare" not in bar, "정렬 줄이 자체 비교 로직을 갖고 있다"
+    assert "sort(function" not in bar, "정렬 줄이 자체 정렬을 하고 있다"
