@@ -718,3 +718,49 @@ def test_카드_모드_정렬은_데스크톱과_같은_함수를_쓴다():
     bar = bar[:bar.index("})();")]
     assert "localeCompare" not in bar, "정렬 줄이 자체 비교 로직을 갖고 있다"
     assert "sort(function" not in bar, "정렬 줄이 자체 정렬을 하고 있다"
+
+
+# ── /kpi 표 열 접기 ─────────────────────────────────────────────────
+
+def test_kpi_표는_핵심_열만_기본이고_단추로_전체_열을_편다():
+    """15열 표가 한눈에 안 들어와 실행·회차·개선률·이동거리·최장 작업만 남기고
+    나머지는 .col-more로 접었다 — 단추와 대상 표가 실제로 템플릿에 같이 있어야
+    접었다 펴는 스크립트가 붙을 자리가 있다.
+
+    /kpi를 직접 호출하지 않는다 — 이 표는 rows가 있을 때만 렌더링되는데,
+    이 테스트 모듈은 data/ 유무와 무관하게 통과해야 한다(파일 맨 위 설명).
+    """
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    kpi_html = (Path(webapp_app.__file__).parent / "templates" / "kpi.html").read_text(
+        encoding="utf-8")
+
+    assert "data-col-toggle" in kpi_html, "열 접기 단추가 없다"
+    assert 'id="kpi-runs-table"' in kpi_html
+    assert "col-more" in kpi_html, "접을 부가 열이 표시돼 있지 않다"
+    # 핵심 열(개선률·이동거리·최장 작업)의 <th>에는 col-more가 없어야 한다
+    for core in ("개선률", "이동거리", "최장 작업"):
+        th = re.search(rf'<th[^>]*>[^<]*<span[^>]*>{core}<', kpi_html)
+        assert th, f"{core} 열 머리글을 찾지 못했다"
+        assert "col-more" not in th.group(0), f"핵심 열({core})이 접히게 돼 있다"
+
+
+def test_열_접기_스크립트가_없으면_전부_보인다():
+    """쪽 넘기기·정렬과 같은 원칙 — 스크립트가 꺼져 있으면 부가 열도 그대로
+    보여야 한다. .col-more를 감추는 CSS 규칙마다 선택자에 .cols-collapsed가
+    걸려 있는지 본다 — 없으면 스크립트 없이도(즉 늘) 숨는 규칙이라는 뜻이다."""
+    import re
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    css = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    rules = re.findall(r"([^\n{]*\.col-more[^\n{]*)\{\s*display:\s*none", css)
+    assert rules, ".col-more를 감추는 규칙을 찾지 못했다"
+    for selector in rules:
+        assert "cols-collapsed" in selector, (
+            f".col-more를 늘 숨기는 규칙이 있다(cols-collapsed 밖): {selector.strip()}")
