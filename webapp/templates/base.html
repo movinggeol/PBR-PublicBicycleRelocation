@@ -962,6 +962,31 @@
        잘린다. */
     [data-narrow] .table-wrap:has(table.m-cards) { overflow-x: visible; }
 
+    /* ════════ 눌러서 복사 (TODO 20) ════════
+       기사가 좌표·이름을 지도 앱에 붙여넣을 수 있게 한다. 좁은 화면 전용이
+       아니다 — 사무실에서 데스크톱으로도 쓴다. 종이에는 필요 없다(no-print). */
+    .copy-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: transparent; color: var(--blue);
+      border: 1px solid var(--hairline); border-radius: var(--r-sm);
+      padding: 3px 8px; font-size: var(--fs-fine); font-family: inherit;
+      line-height: 1.4; cursor: pointer; white-space: nowrap;
+      /* 글자가 "좌표"(2자) → "복사됨"(3자)으로 바뀐다. 폭을 안 잡으면 누를
+         때마다 단추가 늘어나 옆 단추를 아래로 밀어낸다(실측: 첫 행만 세로로
+         쌓였다). 지시서의 대여소 칸이 114px이라 두 단추가 나란히 서려면
+         하나가 3.4em을 넘으면 안 된다 — 실패 메시지도 3자로 맞춰 뒀다. */
+      min-width: 50px;
+    }
+    .copy-btn:hover { background: var(--parchment); }
+    .copy-btn:active { transform: scale(.95); }
+    /* 됐는지 안 됐는지를 **색만으로 말하지 않는다** — 글자가 바뀐다
+       ("복사됨"/"길게 눌러 복사"). 색은 거들 뿐이다(DESIGN.md 규칙 5). */
+    .copy-btn[data-copied="ok"] { color: var(--good-ink); border-color: var(--good-ink); }
+    .copy-btn[data-copied="fail"] { color: var(--critical-ink); border-color: var(--critical-ink); }
+    .copy-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+    /* 좁은 화면에서는 손가락으로 누르므로 44px을 채운다. */
+    [data-narrow] .copy-btn { padding: 12px 12px; }
+
     /* 카드 모드 정렬 줄 — 머리글이 숨겨져 누를 곳이 없으므로 대신 세운다.
        넓은 화면에서는 머리글이 제자리에 있으므로 감춘다. */
     .m-sortbar { display: none; }
@@ -1438,6 +1463,65 @@
         th.__pbrSort = sort;
       });
       table.__pbrSortable = true;
+    });
+  })();
+
+  /* 눌러서 복사 (TODO 20).
+
+     기사는 다음 대여소로 가야 하는데 화면에는 이름과 ID뿐이라 내비게이션에
+     넣을 것이 없었다. `data-copy`를 단 것을 누르면 그 값이 클립보드로 간다.
+
+     ⚠️ `navigator.clipboard`는 **HTTPS나 localhost에서만** 동작한다. 기사가
+     다른 PC의 IP(http://192.168.…)로 접속하면 조용히 실패하므로, 옛 방식
+     (execCommand)을 폴백으로 둔다. 그것마저 막히면 값을 선택 상태로 만들어
+     **적어도 길게 눌러 복사**할 수 있게 한다 — 아무 일도 안 일어나는 것이
+     제일 나쁘다. */
+  (function () {
+    function legacy(text) {
+      var area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      /* 화면 밖에 두되 display:none은 안 된다 — 선택이 안 걸린다. */
+      area.style.cssText = "position:fixed;top:-1000px;opacity:0";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      document.body.removeChild(area);
+      return ok;
+    }
+
+    function tell(btn, message, bad) {
+      var was = btn.dataset.label || btn.textContent;
+      btn.dataset.label = was;
+      btn.textContent = message;
+      btn.dataset.copied = bad ? "fail" : "ok";
+      setTimeout(function () {
+        btn.textContent = btn.dataset.label;
+        delete btn.dataset.copied;
+      }, 1600);
+    }
+
+    document.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-copy]");
+      if (!btn) return;
+      var text = btn.getAttribute("data-copy");
+      if (!text) return;
+      e.preventDefault();
+
+      function fallback() {
+        /* legacy()를 두 번 부르면 안 된다 — 클립보드에 두 번 쓴다. */
+        var ok = legacy(text);
+        tell(btn, ok ? "복사됨" : "안 됨", !ok);
+      }
+
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(function () {
+          tell(btn, "복사됨");
+        }, fallback);
+        return;
+      }
+      fallback();
     });
   })();
 

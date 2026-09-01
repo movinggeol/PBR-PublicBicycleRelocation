@@ -256,3 +256,85 @@ def test_order_survives_plans_without_seq(monkeypatch):
 
     work = orders.planned_work("R", "_05_10")
     assert list(work["cluster"]) == [0, 0, 1, 1], "seq가 없어도 군집은 묶인다"
+
+
+# ── 좌표 복사 (TODO 20) ────────────────────────────────────────────────
+
+COORD_CANDIDATES = pd.DataFrame([
+    ("ST0010", "가나 대여소", 10, 20, -6, 0, 36.350000, 127.380000),
+    ("ST0020", "다라 대여소", 10, 1, 6, 0, 36.360000, 127.390000),
+    ("ST0030", "마바 대여소", 8, 15, -4, 1, 36.370000, 127.400000),
+], columns=["station_id", "station_name", "parking_lot", "stock", "rebal_qty",
+            "cluster", "lat", "lon"])
+
+
+@pytest.fixture
+def planned_with_coords(monkeypatch):
+    """좌표가 든 후보 목록. 실제 pick_drop에는 lat/lon이 있다."""
+    def fake_load(table, run_label=None, duration=None):
+        if table == "vrp_plan":
+            return VRP.copy(), "db"
+        if table == "pick_drop":
+            return COORD_CANDIDATES.copy(), "db"
+        return pd.DataFrame(), "none"
+
+    monkeypatch.setattr(orders.store, "load", fake_load)
+
+
+def test_지시서에_대여소_좌표가_실린다(planned_with_coords):
+    """기사가 지도 앱에 넣을 좌표다. 이름과 같은 표(pick_drop)에서 가져온다."""
+    from project_config import DEPOT_ID, DEPOT_LAT, DEPOT_LON
+
+    sheets = orders.build("R", "_05_10")
+    stops = sheets[0]["stops"]
+
+    assert (stops[0]["lat"], stops[0]["lon"]) == (36.35, 127.38)
+
+    # 차고지는 pick_drop에 없다(작업 대상이 아니므로). 이름을 DEPOT_NAME으로
+    # 채우는 것과 같은 이유로 좌표도 상수에서 채워야 한다 — 안 그러면 복귀
+    # 구간만 좌표가 비어 기사가 차고지로 갈 방법이 없다.
+    back = [s for s in stops if s["station_id"] == DEPOT_ID]
+    assert back, "복귀 구간이 없다(이 표본이 바뀌었나?)"
+    assert (back[0]["lat"], back[0]["lon"]) == (DEPOT_LAT, DEPOT_LON)
+
+
+def test_좌표가_없으면_None으로_둔다(planned):
+    """구버전 산출물에는 lat/lon이 없다. 빈 값을 0으로 채우면 안 된다 —
+    화면이 단추를 만들어 기사를 적도 앞바다로 보낸다."""
+    from project_config import DEPOT_ID
+
+    sheets = orders.build("R", "_05_10")
+    for sheet in sheets:
+        for stop in sheet["stops"]:
+            if stop["station_id"] == DEPOT_ID:
+                continue        # 차고지는 상수에서 오므로 늘 있다
+            assert stop["lat"] is None and stop["lon"] is None
+
+
+def test_실시간_대조에도_좌표가_남는다(planned_with_coords):
+    """대조 화면만 열어 둔 기사도 좌표를 복사할 수 있어야 한다."""
+    live = pd.DataFrame([
+        ("ST0010", "pick", 6, 20), ("ST0020", "drop", 6, 1),
+    ], columns=["station_id", "action", "need", "live_stock"])
+    sheets = orders.build_live("R", "_05_10", live)
+
+    assert sheets[0]["stops"][0]["lat"] == 36.35
+
+
+def test_복사_단추가_모든_방문지에_있다(client, planned_with_coords, monkeypatch):
+    """좌표·이름 둘 다. 인쇄에는 나오지 않는다(no-print).
+
+    화면이 실제로 단추를 그리는지 본다 — orders.build()가 좌표를 실어도
+    템플릿이 안 쓰면 기사에게는 아무것도 안 보인다.
+    """
+    # 라우트는 '어느 계획을 보여줄까'를 DB에서 고른다. 조립은 planned_with_coords가
+    # 가로채므로, 목록만 한 건 있는 것처럼 만들어 준다.
+    monkeypatch.setattr("webapp.app.catalog.order_targets",
+                        lambda: [{"run_label": "R", "duration": "_05_10"}],
+                        raising=False)
+    html = client.get("/orders?run_label=R&duration=_05_10").text
+
+    assert 'class="copy-btn"' in html
+    assert "좌표 복사" in html and "이름 복사" in html
+    assert 'class="copy-row no-print"' in html, "복사 단추가 종이에 나온다"
+    assert "36.350000, 127.380000" in html, "좌표가 복사할 값으로 들어가지 않았다"

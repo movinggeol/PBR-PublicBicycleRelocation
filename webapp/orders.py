@@ -17,7 +17,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd
 
-from project_config import DEPOT_ID, DEPOT_NAME, TARGET_QTY_UPPER_RATIO
+from project_config import (
+    DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, TARGET_QTY_UPPER_RATIO,
+)
 from webapp import store
 
 # 화면에 그대로 쓰는 말. pick/drop은 현장 용어가 아니다.
@@ -32,6 +34,26 @@ def _station_names(run_label: Optional[str], duration: Optional[str]) -> dict:
     return dict(zip(frame["station_id"], frame["station_name"]))
 
 
+def _station_coords(run_label: Optional[str], duration: Optional[str]) -> dict:
+    """station_id → (위도, 경도). 기사가 지도 앱에 넣을 좌표다 (TODO 20).
+
+    이름과 같은 표(`pick_drop`)에서 가져온다 — 좌표는 이미 거기 있고, 따로
+    수집하거나 역지오코딩할 것이 없다.
+
+    **차고지(depot)만 이 표에 없다.** 후보는 '작업이 필요한 대여소'라서
+    차고지가 낄 이유가 없는데, 지시서에는 복귀 구간으로 등장한다. 이름을
+    `DEPOT_NAME`으로 채우는 것과 같은 이유로 좌표도 상수에서 채운다.
+    """
+    frame, _ = store.load("pick_drop", run_label=run_label, duration=duration)
+    coords = {DEPOT_ID: (DEPOT_LAT, DEPOT_LON)}
+    if frame.empty or not {"lat", "lon"} <= set(frame.columns):
+        return coords
+    for station_id, lat, lon in zip(frame["station_id"], frame["lat"], frame["lon"]):
+        if pd.notna(lat) and pd.notna(lon):
+            coords[station_id] = (float(lat), float(lon))
+    return coords
+
+
 def build(run_label: Optional[str] = None, duration: Optional[str] = None) -> list:
     """차량별 작업지시서를 만든다.
 
@@ -44,6 +66,7 @@ def build(run_label: Optional[str] = None, duration: Optional[str] = None) -> li
 
     names = _station_names(run_label, duration)
     names[DEPOT_ID] = DEPOT_NAME
+    coords = _station_coords(run_label, duration)
 
     # 방문 순서는 seq다. 없으면(구버전) 저장된 순서를 그대로 믿는다.
     if "seq" in plan:
@@ -60,10 +83,16 @@ def build(run_label: Optional[str] = None, duration: Optional[str] = None) -> li
                 load += qty
             elif action == "drop":
                 load -= qty
+            # 좌표는 기사가 지도 앱에 넣는 값이다. 없으면(구버전 산출물 등)
+            # None으로 두고 화면이 단추를 만들지 않는다 — 빈 좌표를 복사하면
+            # 엉뚱한 곳으로 안내된다.
+            point = coords.get(row["to_id"])
             stops.append({
                 "no": len(stops) + 1,
                 "station_id": row["to_id"],
                 "station_name": names.get(row["to_id"], row["to_id"]),
+                "lat": point[0] if point else None,
+                "lon": point[1] if point else None,
                 "action": action,
                 "action_label": ACTION_LABELS.get(action, action),
                 "qty": qty,

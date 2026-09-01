@@ -1,6 +1,27 @@
 {% extends "base.html" %}
 {% block title %}작업지시서 — PBR 대시보드{% endblock %}
 
+{# 좌표·이름 복사 단추 (TODO 20). 지시서와 대조표가 **같은 것**을 쓰도록
+   매크로로 둔다 — 따로 적으면 한쪽만 고치게 된다.
+
+   좌표는 지도 앱에 붙이면 그 지점이고, 이름은 사람이 읽고 확인하는 값이다.
+   대여소 이름이 "둔산동 둥지아파트(107동)"처럼 행정동을 달고 있어서
+   검색창에 넣어도 찾아진다(180곳 중 사실상 전부 — docs/구현/WEBAPP.md).
+
+   좌표가 없으면(구버전 산출물) 단추를 만들지 않는다. 빈 값을 복사하면
+   기사가 엉뚱한 곳으로 간다. #}
+{% macro copy_buttons(stop) -%}
+<span class="copy-row no-print">
+  {%- if stop.lat is not none and stop.lon is not none %}
+  <button type="button" class="copy-btn"
+          data-copy="{{ "%.6f, %.6f" | format(stop.lat, stop.lon) }}"
+          aria-label="{{ stop.station_name }} 좌표 복사">좌표</button>
+  {%- endif %}
+  <button type="button" class="copy-btn" data-copy="{{ stop.station_name }}"
+          aria-label="{{ stop.station_name }} 이름 복사">이름</button>
+</span>
+{%- endmacro %}
+
 {% block head_extra %}
 <style>
   /* 인쇄용. 화면에서 쓰는 내비·필터·버튼은 종이에 필요 없다.
@@ -94,6 +115,12 @@
   /* 지시서 표는 이름 밑에 대여소 ID를 함께 적는다. break-all을 그대로
      물려받으면 "ST1221"처럼 코드 중간이 잘린다 — 따로 줄을 주고 붙여 둔다. */
   .sheet td.station .hint { display: block; white-space: nowrap; word-break: keep-all; }
+
+  /* 복사 단추 둘("좌표"·"이름")이 한 줄에 서야 한다. 이름 칸은 .station-name의
+     max-width: 10em에 묶여 110px까지 좁아지는데, 단추 둘이 50px+50px+간격이라
+     그 안에서는 아래로 접힌다(실측). 칸에 최소폭을 줘 나란히 세운다 —
+     대조 표(13열)는 열 폭이 px로 고정돼 있으므로 거기서는 접히게 둔다. */
+  .sheet td.station { min-width: 130px; }
 
   /* 좁은 화면에서 대조 표가 카드로 누울 때는 위의 고정 폭을 전부 푼다.
      table-layout: fixed와 열별 px는 13열을 한 줄에 욱여넣기 위한 값이라,
@@ -216,7 +243,8 @@
     <tr class="{% if stop.status == '불가' %}bad{% elif stop.status in ['부족', '넘침'] %}warn{% endif %}">
       <td class="num muted seq" data-label="">{{ stop.no }}</td>
       <td class="wrap station" data-label=""><span class="station-name">{{ stop.station_name }}</span>
-        <span class="hint">{{ stop.station_id }}</span></td>
+        <span class="hint">{{ stop.station_id }}</span>
+        {{ copy_buttons(stop) }}</td>
       <td data-label="할 일" class="{% if stop.action == 'return' %}back{% else %}{{ stop.action }}{% endif %}">
         {{ stop.action_label }}</td>
       <td class="num" data-label="수량">{% if stop.qty %}{{ stop.qty }}대{% else %}—{% endif %}</td>
@@ -293,7 +321,8 @@
     <tr>
       <td class="num muted seq" data-label="">{{ stop.no }}</td>
       <td class="wrap station" data-label=""><span class="station-name">{{ stop.station_name }}</span>
-        <span class="hint">{{ stop.station_id }}</span></td>
+        <span class="hint">{{ stop.station_id }}</span>
+        {{ copy_buttons(stop) }}</td>
       <td data-label="할 일" class="{% if stop.action == 'return' %}back{% else %}{{ stop.action }}{% endif %}">
         {{ stop.action_label }}</td>
       <td class="num" data-label="수량">{% if stop.qty %}{{ stop.qty }}대{% else %}—{% endif %}</td>
