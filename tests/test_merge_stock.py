@@ -88,7 +88,7 @@ def test_이미_있는_틱은_덮어쓰지_않는다(tmp_path):
 
     source = tmp_path / "b_pc"
     write_csv(source, WEEKDAY, {"09:00": (99, 99, 99)})
-    history, _, _ = merge.load_source(source)
+    history, _, _, _ = merge.load_source(source)
     with db.session() as conn:
         added = merge.merge_history(conn, merge.normalize(history))
 
@@ -103,7 +103,7 @@ def test_비어_있는_틱은_채운다(tmp_path):
 
     source = tmp_path / "b_pc"
     write_csv(source, WEEKDAY, {"08:00": (7, 7, 7), "09:00": (99, 99, 99)})
-    history, _, _ = merge.load_source(source)
+    history, _, _, _ = merge.load_source(source)
     with db.session() as conn:
         added = merge.merge_history(conn, merge.normalize(history))
 
@@ -119,7 +119,7 @@ def test_휴일_데이터도_그대로_들어온다(tmp_path):
     """
     source = tmp_path / "b_pc"
     write_csv(source, SUNDAY, {"22:00": (5, 5, 5)})
-    history, _, _ = merge.load_source(source)
+    history, _, _, _ = merge.load_source(source)
     with db.session() as conn:
         added = merge.merge_history(conn, merge.normalize(history))
 
@@ -131,7 +131,7 @@ def test_휴일_데이터도_그대로_들어온다(tmp_path):
 
 def test_DB_파일이면_마스터까지_들여온다(tmp_path):
     source = make_source_db(tmp_path / "b.db", SUNDAY, {"22:00": (5, 5, 5)})
-    history, master, label = merge.load_source(source)
+    history, master, _, label = merge.load_source(source)
 
     assert "DB 파일" in label
     assert not master.empty
@@ -141,13 +141,38 @@ def test_DB_파일이면_마스터까지_들여온다(tmp_path):
         assert db.has_stock_master(conn, SUNDAY)
 
 
+def test_DB_파일의_TMAP_고정패널도_합쳐진다(tmp_path):
+    """road_leg도 재고와 같은 규칙으로 옮겨진다 — 먼저 수집한 것이 이긴다.
+
+    양쪽 PC가 각자 쌓는 관측이라 성격이 같다(1.26.62). 파이프라인 부산물은
+    담지 않고 `roadprobe%` 라벨만 합친다.
+    """
+    import sqlite3
+    source = make_source_db(tmp_path / "c.db", SUNDAY, {"22:00": (5, 5, 5)})
+    with sqlite3.connect(source) as conn:
+        db.init_schema(conn)
+        conn.executemany(
+            "INSERT INTO road_leg (run_label, duration, cluster, leg,"
+            " from_id, to_id, road_sec) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [("roadprobe-2026-09-01", "_05_10", 1, 0, "ST1", "ST2", 300),
+             ("2026-08-28 파이프라인", "_05_10", 1, 0, "ST1", "ST2", 300)])
+        conn.commit()
+
+    _history, _master, road, _label = merge.load_source(source)
+    assert len(road) == 1                      # 파이프라인 부산물은 빠진다
+
+    with db.session() as conn:
+        assert merge.merge_road(conn, road) == 1
+        assert merge.merge_road(conn, road) == 0   # 다시 넣어도 안 늘어난다
+
+
 def test_CSV_묶음은_폴더째_읽는다(tmp_path):
     source = tmp_path / "b_pc"
     write_csv(source, WEEKDAY, {"08:00": (1, 1, 1)})
     write_csv(source, SUNDAY, {"22:00": (2, 2, 2)})
     (source / "collect_log.csv").write_text("logged_at,observed_at\n", encoding="utf-8")
 
-    history, master, label = merge.load_source(source)
+    history, master, _, label = merge.load_source(source)
 
     assert "CSV 2개" in label                    # collect_log.csv는 섞이지 않는다
     assert master.empty                          # CSV에는 마스터가 없다
@@ -186,7 +211,7 @@ def test_원천_안의_중복은_첫_줄을_남긴다(tmp_path):
     with path.open("a", encoding="utf-8") as handle:
         handle.write(f"{WEEKDAY} 08:00,ST0001,99\n")
 
-    history, _, _ = merge.load_source(source)
+    history, _, _, _ = merge.load_source(source)
     cleaned = merge.normalize(history)
 
     assert len(cleaned) == 3

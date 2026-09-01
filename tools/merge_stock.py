@@ -91,21 +91,26 @@ def read_db_file(source: Path) -> Tuple[pd.DataFrame, pd.DataFrame]:
             "SELECT observed_on, station_id, station_name, parking_info,"
             " lat, lon FROM stock_station_master", conn)
             if "stock_station_master" in tables else pd.DataFrame())
+        # TMAP 고정 패널도 각자 쌓는 관측이라 같은 규칙으로 합친다(1.26.62).
+        road = (pd.read_sql_query(
+            "SELECT * FROM road_leg WHERE run_label LIKE 'roadprobe%'", conn)
+            if "road_leg" in tables else pd.DataFrame())
     finally:
         conn.close()
-    return history, master
+    return history, master, road
 
 
-def load_source(source: Path) -> Tuple[pd.DataFrame, pd.DataFrame, str]:
-    """원천 종류를 판단해 (재고, 마스터, 사람이 읽을 설명)을 돌려준다."""
+def load_source(source: Path):
+    """원천 종류를 판단해 (재고, 마스터, TMAP 실측, 설명)을 돌려준다."""
     if not source.exists():
         raise MergeError(f"원천이 없습니다: {source}")
     if source.is_file() and source.suffix.lower() in DB_SUFFIXES:
-        history, master = read_db_file(source)
-        return history, master, f"DB 파일 {source.name}"
+        history, master, road = read_db_file(source)
+        return history, master, road, f"DB 파일 {source.name}"
     history, paths = read_csv_dir(source)
     label = f"CSV {len(paths)}개" if len(paths) > 1 else f"CSV {paths[0].name}"
-    return history, pd.DataFrame(), label
+    # CSV 백업에는 재고만 있다 — 마스터도 TMAP도 없다.
+    return history, pd.DataFrame(), pd.DataFrame(), label
 
 
 # ---- 정리 ----
@@ -144,6 +149,28 @@ def merge_history(conn: sqlite3.Connection, history: pd.DataFrame) -> int:
     conn.executemany(
         "INSERT OR IGNORE INTO stock_history (observed_at, station_id, stock)"
         " VALUES (?, ?, ?)", rows)
+    conn.commit()
+    return conn.total_changes - before
+
+
+def merge_road(conn: sqlite3.Connection, road: pd.DataFrame) -> int:
+    """TMAP 고정 패널도 같은 규칙 — **먼저 수집한 것이 이긴다.**
+
+    `road_leg`는 양쪽 PC가 각자 쌓는 관측이라 재고 시계열과 성격이 같다.
+    `INSERT OR IGNORE`이므로 이미 있는 (라벨, 시간대, 군집, 구간)은 건드리지
+    않는다. 파이프라인 부산물은 담기지 않는다(`roadprobe%`만 합친다).
+    """
+    if road.empty:
+        return 0
+    columns = [row[1] for row in conn.execute("PRAGMA table_info(road_leg)")]
+    usable = [c for c in columns if c in road.columns]
+    placeholders = ", ".join("?" for _ in usable)
+    rows = [tuple(record.get(c) for c in usable)
+            for record in road.to_dict("records")]
+    before = conn.total_changes
+    conn.executemany(
+        f"INSERT OR IGNORE INTO road_leg ({', '.join(usable)})"
+        f" VALUES ({placeholders})", rows)
     conn.commit()
     return conn.total_changes - before
 
@@ -213,7 +240,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     try:
-        history, master, label = load_source(args.source)
+        history, master, road, label = load_source(args.source)
     except MergeError as error:
         print(f"[실패] {error}")
         return 1
@@ -235,12 +262,15 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     with db.session() as conn:
         added = merge_history(conn, history)
         added_master = merge_master(conn, master)
+        added_road = merge_road(conn, road)
         gaps = missing_master_days(conn, history)
 
     print(f"\n  새로 채움 : {added:,}행")
     print(f"  이미 있음 : {len(history) - added:,}행 (먼저 수집한 값을 남겼습니다)")
     if added_master:
         print(f"  마스터    : {added_master:,}행")
+    if added_road:
+        print(f"  TMAP 실측 : {added_road:,}행 (고정 패널)")
     if gaps:
         print(f"\n  ⚠ 이름·좌표가 없는 날: {', '.join(gaps)}")
         print("    CSV에는 재고만 들어 있습니다. 그 PC의 DB 파일로 다시 합치면 채워집니다.")

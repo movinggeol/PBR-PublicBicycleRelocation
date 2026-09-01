@@ -33,6 +33,13 @@ python tools/transfer_run.py --import data/transfer/runs_all.db
 셋 다 1.3GB짜리 `bike_system.db`를 통째로 옮기는 것보다 **훨씬 작습니다** —
 나머지는 파이프라인이 다시 만들기 때문입니다.
 
+**수집기 자료(재고 시계열·TMAP 실측)는 도구가 다릅니다** — [3-B장](#3-b-수집기-자료-옮기기--재고-시계열tmap-실측):
+
+```powershell
+python tools/export_collected.py --road --out data/transfer/collected.db   # 내보내기
+python tools/merge_stock.py data/transfer/collected.db                     # 받기(합치기)
+```
+
 ---
 
 ## 1. 왜 이걸 해야 하나
@@ -153,7 +160,100 @@ python tools/transfer_run.py --export-all --out data/transfer/runs_all.db
 
 ---
 
-## 4. 받기 (받는 PC에서)
+## 3-B. 수집기 자료 옮기기 — 재고 시계열·TMAP 실측
+
+지금까지는 **파이프라인 실행**을 옮겼습니다. 수집기가 모으는 자료는 **성격이
+다릅니다** — 실행에 묶이지 않고 **시간에 묶여** 계속 쌓입니다.
+
+| 자료 | 무엇 | 수집기 |
+| --- | --- | --- |
+| `stock_history` | 10분마다 쌓는 **재고 시계열** | `collect_stock.py` |
+| `road_leg` | 고정 패널 **TMAP 실측** | `collect_road_time.py` |
+
+> 🔑 **이쪽은 "합치는" 것이지 "덮는" 것이 아닙니다.** 두 PC가 **각자 다른 창을
+> 맡아** 수집하므로(예: A는 평일, B는 휴일) 양쪽에 서로 다른 관측이 있습니다.
+> 덮어쓰면 한쪽 관측이 사라집니다 — 그래서 받는 쪽은 **먼저 수집한 것이
+> 이깁니다**(`INSERT OR IGNORE`).
+
+### 3-B-1. 무엇이 쌓였는지 본다
+
+```powershell
+python tools/export_collected.py --list
+```
+
+```
+  stock_history : 413,005행  2026-08-25 ~ 2026-09-01
+  road_leg      : 고정 패널 300행 · 파이프라인 부산물 478행
+
+날짜별 수집 틱:
+      날짜  틱
+2026-08-25 49
+2026-08-28 61
+...
+```
+
+### 3-B-2. 내보낸다
+
+```powershell
+# 전부 (TMAP 실측까지)
+python tools/export_collected.py --road --out data/transfer/collected.db
+
+# 기간을 잘라서
+python tools/export_collected.py --from 2026-08-25 --to 2026-08-31 --out data/transfer/w35.db
+```
+
+```
+수집 자료(처음 ~ 끝) → data	ransfer\collected.db
+  stock_history        413,005 행
+  stock_station_master   8,233 행
+  road_leg                 300 행
+
+합계 421,538행.
+```
+
+> 📌 **`stock_station_master`(그날의 대여소 이름·좌표)가 함께 담깁니다.**
+> 재고만 옮기면 받는 PC에서 **"이름·좌표가 없는 날"** 경고가 뜹니다 —
+> 한쪽만 관측한 날짜의 대여소 이름을 알 수 없기 때문입니다.
+>
+> 그래서 **`data/raw_data/재고이력/`의 일별 CSV를 복사하는 것보다 이 방법이
+> 낫습니다.** CSV에는 재고만 있고 마스터도 TMAP 실측도 없습니다.
+
+### 3-B-3. 받는다 — `merge_stock.py`가 받습니다
+
+`transfer_run.py`가 **아니라** `merge_stock.py`입니다. 합치는 규칙이 다르기
+때문입니다.
+
+```powershell
+python tools/merge_stock.py data/transfer/collected.db --dry-run
+python tools/merge_stock.py data/transfer/collected.db
+```
+
+```
+  새로 채움 : 413,005행
+  이미 있음 : 0행 (먼저 수집한 값을 남겼습니다)
+  마스터    : 8,233행
+  TMAP 실측 : 300행 (고정 패널)
+```
+
+**몇 번을 다시 넣어도 안전합니다.** 두 번째부터는 `새로 채움 : 0행`이 되고
+행이 늘지 않습니다(겹치는 관측은 건너뜁니다).
+
+> ⚠️ **파이프라인 부산물 `road_leg`는 담기지 않습니다.** `roadprobe%` 라벨,
+> 즉 **고정 패널 수집분만** 옮깁니다. 지도를 그리며 받은 실측은 그 PC의
+> 실행에 속한 것이라 합칠 대상이 아닙니다.
+
+### 3-B-4. 두 방식 비교
+
+| | 파이프라인 실행 | 수집기 자료 |
+| --- | --- | --- |
+| 내보내기 | `transfer_run.py --export…` | `export_collected.py` |
+| 받기 | `transfer_run.py --import` | **`merge_stock.py`** |
+| 겹칠 때 | **멈춘다** (`--overwrite` 필요) | **합친다** (먼저 것이 이김) |
+| 왜 | 실험 결과가 붙어 있어 덮으면 안 됨 | 각자 다른 창을 관측해 둘 다 필요 |
+
+---
+
+## 4. 받기 — 파이프라인 실행 (받는 PC에서)
 
 ### 4-1. 먼저 넣지 말고 확인한다
 
@@ -219,8 +319,8 @@ python tools/transfer_run.py --import data/transfer/run_20260811_real.db --overw
 | --- | --- | --- |
 | `runs`·`station_info`·`station_stock` 등 **12개 표** | ✅ | 라벨 하나에 묶인 실행 전체 |
 | `net_demand` (순수요) | ❌ | 기간 스코프다. `tools/rebuild_net_demand.py`로 다시 만든다 |
-| `road_leg` (TMAP 실측) | ❌ | **양쪽이 각자 쌓는 관측치.** 섞으면 어느 PC에서 잰 것인지 사라진다 |
-| `stock_history` (재고 시계열) | ❌ | 각자 쌓는다. 합칠 때는 **`tools/merge_stock.py`** ([COLLECTOR.md 11장](COLLECTOR.md)) |
+| `road_leg` (TMAP 실측) | ❌ | 각자 쌓는 관측치라 **합쳐야** 한다 → [3-B장](#3-b-수집기-자료-옮기기--재고-시계열tmap-실측) |
+| `stock_history` (재고 시계열) | ❌ | 〃 (`export_collected.py` → `merge_stock.py`) |
 
 ### 6-2. 이 방식의 약점 — 자동이 아니다
 
