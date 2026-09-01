@@ -45,6 +45,26 @@
      하고, 대여소명만 10자에서 접는다 — 나머지(비고)는
      문장이라 접지 않고 남는 폭에 맞춰 자연히 줄바꿈된다. */
   .sheet td.wrap { min-width: 0; }
+
+  /* 좁은 화면 — 표가 카드로 누울 때(base.html의 .m-cards) 순번과 대여소를
+     카드 머리로 세운다. 나머지 칸은 "라벨 … 값" 두 줄짜리인데, 이 둘까지
+     그렇게 두면 무엇에 대한 카드인지가 한눈에 안 들어온다. */
+  [data-narrow] .sheet td.seq {
+    color: var(--blue); font-weight: 600; font-size: var(--fs-ui);
+    padding-bottom: 0;
+  }
+  [data-narrow] .sheet td.seq::after { content: "번째"; color: var(--ink-4); font-weight: 400; }
+  [data-narrow] .sheet td.station { padding-top: 0; padding-bottom: var(--sp-xs); }
+  [data-narrow] .sheet td.station .station-name {
+    font-size: var(--fs-body); font-weight: 600; display: block;
+  }
+  [data-narrow] .sheet td.station .hint { display: block; }
+  /* 할 일·수량은 현장에서 제일 먼저 보는 값이라 키운다. */
+  [data-narrow] .sheet td.pick, [data-narrow] .sheet td.drop { font-size: var(--fs-body); }
+  [data-narrow] .sheet td[data-label="수량"] { font-size: var(--fs-body); font-weight: 600; }
+  /* 2열 그리드는 폭이 넓을 때의 배치다. 카드로 누우면 한 줄에 하나씩. */
+  [data-narrow] .sheet-head { gap: var(--sp-xs); }
+  [data-narrow] .sheet-facts { font-size: var(--fs-fine); }
   /* 대조 표는 열이 13개라 "비고" 하나만 늘어나는 열(grow)로 두면 그
      열이 나머지 열의 몫까지 다 가져간다. 표 폭을 카드에 맞춰 늘리지 않고
      각 열에 직접 px를 줘서 남는 폭이 어느 한 열로 쏠리지 않게 한다.
@@ -74,6 +94,13 @@
   /* 지시서 표는 이름 밑에 대여소 ID를 함께 적는다. break-all을 그대로
      물려받으면 "ST1221"처럼 코드 중간이 잘린다 — 따로 줄을 주고 붙여 둔다. */
   .sheet td.station .hint { display: block; white-space: nowrap; word-break: keep-all; }
+
+  /* 좁은 화면에서 대조 표가 카드로 누울 때는 위의 고정 폭을 전부 푼다.
+     table-layout: fixed와 열별 px는 13열을 한 줄에 욱여넣기 위한 값이라,
+     카드로 누운 뒤에도 남아 있으면 칸이 44~220px에 갇혀 글자가 잘린다.
+     대여소명의 max-width: 10em도 마찬가지 — 카드에서는 한 줄을 다 쓴다. */
+  [data-narrow] .sheet table.cmp-table { table-layout: auto; width: auto; }
+  [data-narrow] .sheet td.station .station-name { max-width: none; word-break: keep-all; }
 </style>
 {% endblock %}
 
@@ -98,14 +125,20 @@
 </section>
 
 {% if targets %}
-<div class="filterbar no-print">
-  <span class="label">계획</span>
-  {% for t in targets %}
-  <a class="chip" href="/orders?run_label={{ t.run_label | urlencode }}&duration={{ t.duration | urlencode }}"
-     {% if t.run_label == run_label and t.duration == duration %}aria-current="true"{% endif %}>
-    {{ t.run_label }} · {{ t.duration }}</a>
-  {% endfor %}
-</div>
+{# 계획이 39개까지 쌓이면 칩만 1029px이라, 좁은 화면에서 첫 지시서가 1546px
+   아래로 밀렸다(실측). 기사는 대개 지금 계획만 보므로 접어 둔다. <details>라
+   스크립트가 없어도 열리고, 넓은 화면에서는 스크립트가 펴 둔다. #}
+<details class="m-fold no-print" open>
+  <summary>계획 고르기 <span class="hint">({{ targets | length }}개)</span></summary>
+  <div class="filterbar">
+    <span class="label">계획</span>
+    {% for t in targets %}
+    <a class="chip" href="/orders?run_label={{ t.run_label | urlencode }}&duration={{ t.duration | urlencode }}"
+       {% if t.run_label == run_label and t.duration == duration %}aria-current="true"{% endif %}>
+      {{ t.run_label }} · {{ t.duration }}</a>
+    {% endfor %}
+  </div>
+</details>
 {% endif %}
 
 {% if not sheets %}
@@ -162,7 +195,7 @@
   {% endif %}
 
   <div class="table-wrap">
-  <table class="cmp-table">
+  <table class="cmp-table m-cards">
     <thead><tr>
       <th class="num">순번</th>
       <th>대여소</th>
@@ -181,21 +214,21 @@
     <tbody>
     {% for stop in cs.stops %}
     <tr class="{% if stop.status == '불가' %}bad{% elif stop.status in ['부족', '넘침'] %}warn{% endif %}">
-      <td class="num muted">{{ stop.no }}</td>
-      <td class="wrap station"><span class="station-name">{{ stop.station_name }}</span>
+      <td class="num muted seq" data-label="">{{ stop.no }}</td>
+      <td class="wrap station" data-label=""><span class="station-name">{{ stop.station_name }}</span>
         <span class="hint">{{ stop.station_id }}</span></td>
-      <td class="{% if stop.action == 'return' %}back{% else %}{{ stop.action }}{% endif %}">
+      <td data-label="할 일" class="{% if stop.action == 'return' %}back{% else %}{{ stop.action }}{% endif %}">
         {{ stop.action_label }}</td>
-      <td class="num">{% if stop.qty %}{{ stop.qty }}대{% else %}—{% endif %}</td>
-      <td class="num muted">{{ stop.load_after }}대</td>
-      <td class="num muted">{{ stop.distance_km }} km</td>
-      <td class="num muted">{{ stop.minutes }}분</td>
-      <td class="num muted">{{ stop.planned_stock if stop.planned_stock is not none else "—" }}</td>
-      <td class="num">{{ stop.live_stock if stop.live_stock is not none else "—" }}</td>
-      <td class="num muted">{% if stop.delta is not none %}{{ "%+d" | format(stop.delta) }}{% else %}—{% endif %}</td>
-      <td class="num">{{ stop.possible if stop.possible is not none else "—" }}</td>
-      <td>{{ stop.status or "—" }}</td>
-      <td class="wrap muted">{{ stop.note or "" }}</td>
+      <td class="num" data-label="수량">{% if stop.qty %}{{ stop.qty }}대{% else %}—{% endif %}</td>
+      <td class="num muted" data-label="싣고 남는 수">{{ stop.load_after }}대</td>
+      <td class="num muted" data-label="이동">{{ stop.distance_km }} km</td>
+      <td class="num muted" data-label="누적">{{ stop.minutes }}분</td>
+      <td class="num muted" data-label="계획 때 재고">{{ stop.planned_stock if stop.planned_stock is not none else "—" }}</td>
+      <td class="num" data-label="지금 재고">{{ stop.live_stock if stop.live_stock is not none else "—" }}</td>
+      <td class="num muted" data-label="차이">{% if stop.delta is not none %}{{ "%+d" | format(stop.delta) }}{% else %}—{% endif %}</td>
+      <td class="num" data-label="가능">{{ stop.possible if stop.possible is not none else "—" }}</td>
+      <td data-label="판정">{{ stop.status or "—" }}</td>
+      <td class="wrap muted" data-label="비고">{{ stop.note or "" }}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -244,8 +277,11 @@
     실제 운행 시간은 복귀분만큼 더 걸립니다.</p>
   {% endif %}
 
+  {# m-cards: 좁은 화면에서 이 표는 카드로 눕는다(base.html). 그때 각 칸이
+     무슨 값인지 잃지 않도록 td마다 data-label로 머리글을 데려간다 —
+     순번·대여소는 그 자체로 무엇인지 알아서 빈 라벨이다. #}
   <div class="table-wrap">
-  <table>
+  <table class="m-cards">
     <thead><tr>
       <th class="num">순번</th><th class="grow">대여소</th><th>할 일</th>
       <th class="num">수량</th>
@@ -255,15 +291,15 @@
     <tbody>
     {% for stop in sheet.stops %}
     <tr>
-      <td class="num muted">{{ stop.no }}</td>
-      <td class="wrap station"><span class="station-name">{{ stop.station_name }}</span>
+      <td class="num muted seq" data-label="">{{ stop.no }}</td>
+      <td class="wrap station" data-label=""><span class="station-name">{{ stop.station_name }}</span>
         <span class="hint">{{ stop.station_id }}</span></td>
-      <td class="{% if stop.action == 'return' %}back{% else %}{{ stop.action }}{% endif %}">
+      <td data-label="할 일" class="{% if stop.action == 'return' %}back{% else %}{{ stop.action }}{% endif %}">
         {{ stop.action_label }}</td>
-      <td class="num">{% if stop.qty %}{{ stop.qty }}대{% else %}—{% endif %}</td>
-      <td class="num muted">{{ stop.load_after }}대</td>
-      <td class="num muted">{{ stop.distance_km }} km</td>
-      <td class="num muted">{{ stop.minutes }}분</td>
+      <td class="num" data-label="수량">{% if stop.qty %}{{ stop.qty }}대{% else %}—{% endif %}</td>
+      <td class="num muted" data-label="싣고 남는 수">{{ stop.load_after }}대</td>
+      <td class="num muted" data-label="이동">{{ stop.distance_km }} km</td>
+      <td class="num muted" data-label="누적">{{ stop.minutes }}분</td>
     </tr>
     {% endfor %}
     </tbody>

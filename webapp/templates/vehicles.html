@@ -54,7 +54,7 @@
 <div class="card flush">
   {% if workload %}
   <div class="table-wrap">
-  <table data-sortable>
+  <table data-sortable class="m-cards">
     <thead><tr>
       <th>차량</th>
       <th class="num"><span class="tip" data-tip="이 차량이 지금까지 나간 횟수입니다.">출동</span></th>
@@ -66,13 +66,13 @@
     <tbody>
     {% for v in workload %}
     <tr>
-      <td><b>{{ v.vehicle_id }}</b></td>
-      <td class="num">{{ v.rounds }}회</td>
-      <td class="num">{{ v.bikes }}</td>
-      <td class="num muted">{{ v.distance_km }} km</td>
-      <td class="num muted">{{ v.minutes }}분</td>
-      <td class="muted">{% if v.last_run %}{{ v.last_run }} {{ v.last_duration }}{% else %}—{% endif %}</td>
-      <td><a href="/api/vehicles/assignments?vehicle_id={{ v.vehicle_id }}">보기</a></td>
+      <td data-label=""><b>{{ v.vehicle_id }}</b></td>
+      <td class="num" data-label="출동">{{ v.rounds }}회</td>
+      <td class="num" data-label="옮긴 대수">{{ v.bikes }}</td>
+      <td class="num muted" data-label="누적 거리">{{ v.distance_km }} km</td>
+      <td class="num muted" data-label="누적 시간">{{ v.minutes }}분</td>
+      <td class="muted" data-label="최근 작업">{% if v.last_run %}{{ v.last_run }} {{ v.last_duration }}{% else %}—{% endif %}</td>
+      <td data-label="이력"><a href="/api/vehicles/assignments?vehicle_id={{ v.vehicle_id }}">보기</a></td>
     </tr>
     {% endfor %}
     </tbody>
@@ -99,7 +99,7 @@
 <div class="card flush">
   {% if assignments %}
   <div class="table-wrap">
-  <table data-sortable>
+  <table data-sortable class="m-cards">
     <thead><tr>
       <th>실행</th><th>회차</th><th>차량</th>
       <th class="num"><span class="tip" data-tip="이 차량이 맡은 대여소 덩어리의 번호입니다.">군집</span></th>
@@ -111,14 +111,14 @@
     {% for a in assignments %}
     {% set over = a.minutes > time_budget %}
     <tr{% if over %} class="over-budget"{% endif %}>
-      <td class="muted">{{ a.run_label }}</td>
-      <td>{{ a.duration }}</td>
-      <td><b>{{ a.vehicle_id }}</b></td>
-      <td class="num muted">{{ a.cluster }}</td>
-      <td class="num">{{ a.stations }}</td>
-      <td class="num">{{ a.bikes }}</td>
-      <td class="num muted">{{ a.distance_km }} km</td>
-      <td class="num{% if over %} over{% else %} muted{% endif %}">
+      <td class="muted" data-label="">{{ a.run_label }}</td>
+      <td data-label="회차">{{ a.duration }}</td>
+      <td data-label="차량"><b>{{ a.vehicle_id }}</b></td>
+      <td class="num muted" data-label="군집">{{ a.cluster }}</td>
+      <td class="num" data-label="대여소">{{ a.stations }}</td>
+      <td class="num" data-label="옮긴 대수">{{ a.bikes }}</td>
+      <td class="num muted" data-label="거리">{{ a.distance_km }} km</td>
+      <td data-label="작업 시간" class="num{% if over %} over{% else %} muted{% endif %}">
         {{ a.minutes }}분{% if over %} ⚠{% endif %}
       </td>
     </tr>

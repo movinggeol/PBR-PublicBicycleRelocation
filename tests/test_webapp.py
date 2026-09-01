@@ -603,3 +603,86 @@ def test_1열_그리드도_minmax_0으로_접는다():
     assert narrow, ".data-grid의 1열 규칙을 찾지 못했다"
     assert "minmax(0" in narrow.group(1), (
         f"1열 규칙이 minmax(0, 1fr)이 아니다: {narrow.group(1).strip()}")
+
+
+# ── 모바일 모드 (TODO 20) ──────────────────────────────────────────────
+
+def test_모바일_토글이_모든_화면에_있다(client):
+    """토글은 base.html에 있으므로 어느 화면에서나 같은 자리에 있어야 한다."""
+    for path in ("/", "/run", "/kpi", "/vehicles", "/orders", "/maps", "/data", "/guide"):
+        html = client.get(path).text
+        assert 'id="view-toggle"' in html, f"{path}에 모바일 토글이 없다"
+        assert 'aria-pressed' in html, f"{path}의 토글에 눌림 상태가 없다"
+
+
+def test_모바일_규칙은_한_벌만_유지한다():
+    """폭(@media)과 버튼(data-view) 양쪽에서 켜지지만 **규칙 본문은 한 벌**이다.
+
+    CSS의 `@media`는 버튼으로 끌 수 없다. 그래서 폭 판정을 스크립트가 하고
+    `<html data-narrow>`를 붙였다 뗀다 — CSS는 그 속성 하나만 본다. 규칙을
+    두 벌로 적으면 시간이 지나며 한쪽만 고치게 되고, 버튼으로 켠 화면과
+    좁은 화면이 서로 달라진다.
+    """
+    import re
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    css = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    # 표를 눕히는 규칙이 [data-narrow]에만 걸려 있는지 — @media 안에 같은
+    # 선택자를 또 두면 두 벌이 된다.
+    assert "[data-narrow] table.m-cards" in css
+    media_blocks = re.findall(r"@media \(max-width: \d+px\) \{(.*?)\n    \}", css, re.S)
+    for block in media_blocks:
+        assert "m-cards" not in block, (
+            "표 카드 규칙이 @media 안에도 있다 — 두 벌이 되면 한쪽만 고치게 된다")
+
+
+def test_카드로_눕는_표는_모든_칸에_라벨이_있다():
+    """`.m-cards` 표의 `<td>`는 전부 `data-label`을 갖는다.
+
+    카드로 누우면 머리글 줄이 사라지므로, 각 칸이 무슨 값인지는 `data-label`이
+    유일한 단서다. 하나라도 빠지면 그 칸만 라벨 없이 값만 떠서 무슨 숫자인지
+    알 수 없다. 빈 라벨(`data-label=""`)은 **의도적으로** 값만 넓게 쓰는
+    칸이므로 허용한다(순번·대여소처럼 그 자체로 무엇인지 아는 칸).
+    """
+    import re
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    templates = Path(webapp_app.__file__).parent / "templates"
+    checked = 0
+    for path in templates.glob("*.html"):
+        text = path.read_text(encoding="utf-8")
+        for table in re.findall(r'<table[^>]*class="[^"]*m-cards[^"]*"[^>]*>(.*?)</table>',
+                                text, re.S):
+            body = re.search(r"<tbody>(.*?)</tbody>", table, re.S)
+            if not body:
+                continue
+            for cell in re.findall(r"<td\b[^>]*>", body.group(1)):
+                assert "data-label" in cell, (
+                    f"{path.name}: 라벨 없는 칸이 있다 — {cell.strip()[:70]}")
+                checked += 1
+    assert checked > 0, "m-cards 표를 하나도 찾지 못했다(선택자가 바뀌었나?)"
+
+
+def test_인쇄는_모바일_모드를_무시한다():
+    """모바일 모드를 켠 채 인쇄해도 종이는 표 그대로여야 한다.
+
+    작업지시서는 차량 한 대가 한 장이다. 카드로 누운 채 인쇄되면 한 대가
+    여러 장으로 흩어져 현장에 그대로 못 낸다.
+    """
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    css = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    print_block = css[css.index("@media print"):]
+    assert "table.m-cards td" in print_block
+    assert "display: table-cell" in print_block, "인쇄에서 칸이 표로 돌아오지 않는다"
+    assert "table-header-group" in print_block, "인쇄에서 머리글이 돌아오지 않는다"

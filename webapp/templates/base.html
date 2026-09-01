@@ -16,6 +16,13 @@
           document.documentElement.dataset.theme = saved;
         }
       } catch (e) { /* 프라이빗 모드 등 — OS 설정을 그대로 따른다 */ }
+      /* 모바일 모드도 첫 페인트 전에 확정한다 — 나중에 걸면 데스크톱 배치가
+         한 번 그려졌다가 접히면서 화면이 튄다(테마와 같은 이유). */
+      try {
+        if (localStorage.getItem("pbr-view") === "mobile") {
+          document.documentElement.dataset.view = "mobile";
+        }
+      } catch (e) { /* 폭 기준 반응형은 그대로 동작한다 */ }
     })();
   </script>
   <style>
@@ -836,6 +843,144 @@
       display: flex; gap: var(--sp-lg); flex-wrap: wrap; justify-content: space-between;
     }
     .site-inner a { color: var(--ink-3); }
+
+    /* ════════════════════════════════════════════════════════════════
+       모바일 모드 (TODO 20)
+
+       두 가지 방법으로 켜진다:
+         ① 화면이 실제로 좁을 때        @media (max-width: 560px)
+         ② 사용자가 버튼을 눌렀을 때     :root[data-view="mobile"]
+
+       ②가 필요한 이유는 **폭과 무관하게 강제**할 수 있어야 하기 때문이다 —
+       데스크톱에서 현장 화면을 미리 보거나, 태블릿처럼 폭은 넓은데 손가락으로
+       쓰는 기기에서 바로 켤 수 있어야 한다.
+
+       ⚠️ 규칙을 두 벌 쓰지 마라. `@media`는 CSS 변수로 켤 수 없어서 선택자를
+       `:where()`로 묶어 **한 벌만** 유지한다. 새 규칙을 넣을 때도 아래
+       `.m-…` 헬퍼처럼 두 조건을 함께 적는다 — 한쪽에만 넣으면 버튼으로 켠
+       화면과 좁은 화면이 서로 달라진다.
+
+       기존 폭 기준 규칙(640/860/900/980px)은 그대로 둔다. 저건 데스크톱에서
+       창을 줄였을 때의 유동형 반응형이고, 여기는 **손가락으로 쓰는 화면**이다.
+       ════════════════════════════════════════════════════════════════ */
+
+    /* ── 켜짐 표시: 버튼이 눌린 상태로 보인다 ── */
+    :root[data-view="mobile"] .view-toggle { opacity: 1; background: rgba(255, 255, 255, .18); }
+
+    /* 규칙은 전부 `[data-narrow]` 하나에 건다. **폭 판정을 CSS가 하지 않는
+       것**이 이 절의 핵심이다 — `@media`는 켜고 끌 수가 없어서, 폭으로도
+       버튼으로도 켜지게 하려면 규칙을 두 벌 적어야 하고 그러면 시간이 지나며
+       한쪽만 고치게 된다. 대신 아래 스크립트가 폭과 버튼을 함께 보고
+       `<html data-narrow>`를 붙였다 뗀다. CSS는 그 결과만 읽으면 된다.
+
+       스크립트가 없으면? `data-narrow`가 안 붙어 데스크톱 배치로 보인다 —
+       기존 폭 기준 반응형(640/860/900/980px)이 그대로 살아 있어서 읽지 못할
+       화면이 되지는 않는다. */
+
+    /* ① 내비·여백 — 3단 내비가 세로를 179px 먹는다(44+83+52). 좁은 화면에서
+       그건 첫 화면의 5분의 1이다. 줄이되 **터치 타깃 44px은 지킨다.** */
+    [data-narrow] .flow-nav-inner { padding: 0 var(--sp-md); gap: var(--sp-xs); min-height: 48px; }
+    [data-narrow] .flow-title { font-size: var(--fs-body); }
+    [data-narrow] .flow-steps { gap: 0; }
+    [data-narrow] .flow-steps a { padding: 12px 10px; }
+    [data-narrow] .group-nav-inner {
+      padding: 4px var(--sp-md); flex-wrap: nowrap;
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+    }
+    [data-narrow] .group-nav a { padding: 12px; }
+    [data-narrow] .global-nav .util { padding: 12px 0; }
+    [data-narrow] .theme-toggle, [data-narrow] .view-toggle { padding: 12px 8px; }
+    [data-narrow] main { padding-left: var(--sp-md); padding-right: var(--sp-md); }
+    /* 버튼으로 켠 경우에만 본문을 폰 폭으로 묶는다. 실제로 좁은 화면에서는
+       화면이 이미 그 폭이라 필요 없고, 넓은 화면에서 안 묶으면 "라벨 …… 값"이
+       1400px 양끝으로 벌어져 미리보기 구실을 못 한다. */
+    :root[data-view="mobile"] main { max-width: 430px; }
+    :root[data-view="mobile"] .flow-nav-inner,
+    :root[data-view="mobile"] .group-nav-inner,
+    :root[data-view="mobile"] .global-nav-inner,
+    :root[data-view="mobile"] .site-inner { max-width: 430px; }
+    [data-narrow] .hero { padding: var(--sp-lg) 0 var(--sp-md); }
+    [data-narrow] { --fs-hero: 30px; --fs-lead: 18px; }
+    [data-narrow] .card { padding: var(--sp-md); }
+    [data-narrow] .btn { padding: 13px 20px; }        /* 44px 이상 */
+    /* 2단 배치는 전부 1단으로. 폭 기준 규칙과 같은 값이지만, 버튼으로 켠
+       데스크톱(넓은 화면)에서도 접혀야 하므로 여기에도 적는다. */
+    [data-narrow] .data-grid,
+    [data-narrow] .split,
+    [data-narrow] .split3,
+    [data-narrow] .grid2 { grid-template-columns: minmax(0, 1fr); }
+
+    /* ② 표를 카드로 눕힌다 — 7열 표가 390px에서 71~89px씩 넘쳐 카드마다
+       가로 스크롤이 생겼다(실측). 손가락으로 가로 스크롤하며 숫자를 읽는 건
+       현장에서 못 쓴다. **`.m-cards`를 단 표만** 눕힌다 — 각 칸이 무슨 값인지
+       잃지 않으려면 머리글을 칸으로 데려와야 하고(`data-label`), 그건 어느
+       열이 무엇인지 아는 템플릿만 붙일 수 있다. */
+    [data-narrow] table.m-cards thead { display: none; }
+    [data-narrow] table.m-cards,
+    [data-narrow] table.m-cards tbody,
+    [data-narrow] table.m-cards tr,
+    [data-narrow] table.m-cards td { display: block; width: auto; }
+    [data-narrow] table.m-cards tr {
+      border: 1px solid var(--divider-soft); border-radius: var(--r-md);
+      padding: var(--sp-sm) var(--sp-md); margin-bottom: var(--sp-sm);
+    }
+    [data-narrow] table.m-cards tr:last-child { margin-bottom: 0; }
+    [data-narrow] table.m-cards td {
+      border: 0; padding: 4px 0; white-space: normal; text-align: left;
+      display: flex; justify-content: space-between; align-items: baseline;
+      gap: var(--sp-md);
+    }
+    /* 머리글을 왼쪽에 붙인다. 빈 값(`data-label=""`)이면 값만 넓게 쓴다 —
+       대여소 이름처럼 그 자체로 무엇인지 아는 칸이다. */
+    [data-narrow] table.m-cards td::before {
+      content: attr(data-label); color: var(--ink-4);
+      font-size: var(--fs-fine); flex: none;
+    }
+    [data-narrow] table.m-cards td[data-label=""] { display: block; }
+    [data-narrow] table.m-cards td[data-label=""]::before { content: none; }
+    [data-narrow] table.m-cards td.num { font-variant-numeric: tabular-nums; }
+    /* 표를 눕히면 가로 스크롤 상자가 필요 없다 — 남겨 두면 카드가 그 안에서
+       잘린다. */
+    [data-narrow] .table-wrap:has(table.m-cards) { overflow-x: visible; }
+
+    /* ③ 접을 수 있는 묶음 — /orders의 계획 선택 칩이 39개·1029px이라 첫
+       지시서가 1546px 아래로 밀려 있었다(실측). 폰 화면 두 번을 넘겨야 본론이
+       나온다. 좁은 화면에서는 접어 두고 필요할 때만 편다.
+
+       `<details>`를 쓰는 이유는 **스크립트 없이 열리기 때문**이다. 넓은 화면
+       에서는 요약을 숨기고 항상 펴 둔다(아래 스크립트가 `open`을 관리한다). */
+    .m-fold > summary { display: none; }
+    [data-narrow] .m-fold > summary {
+      display: block; cursor: pointer; padding: 12px var(--sp-md);
+      font-size: var(--fs-ui); color: var(--blue); font-weight: 500;
+      border: 1px solid var(--hairline); border-radius: var(--r-md);
+      background: var(--surface); list-style: none;
+      margin-bottom: var(--sp-sm);
+    }
+    [data-narrow] .m-fold > summary::-webkit-details-marker { display: none; }
+    [data-narrow] .m-fold > summary::after { content: " ▾"; color: var(--ink-4); }
+    [data-narrow] .m-fold[open] > summary::after { content: " ▴"; }
+
+    /* ④ 지도 iframe은 화면 높이에 맞춘다 (고정 높이면 폰에서 잘리거나 남는다) */
+    [data-narrow] .map-frame { height: 65vh; }
+
+    /* ⑤ 인쇄는 언제나 종이 배치다 — 모바일 모드를 켠 채 인쇄해도 차량 한 대가
+       한 장이어야 한다. 위 규칙이 종이로 새지 않게 되돌린다. */
+    @media print {
+      [data-narrow] table.m-cards thead { display: table-header-group; }
+      [data-narrow] table.m-cards { display: table; }
+      [data-narrow] table.m-cards tbody { display: table-row-group; }
+      [data-narrow] table.m-cards tr {
+        display: table-row; border: 0; padding: 0; margin: 0;
+      }
+      [data-narrow] table.m-cards td {
+        display: table-cell; padding: 9px 12px;
+        border-bottom: 1px solid var(--divider-soft); white-space: nowrap;
+      }
+      [data-narrow] table.m-cards td::before { content: none; }
+      [data-narrow] .data-grid { display: block; }
+      .m-fold > summary { display: none !important; }
+    }
   </style>
 </head>
 <body>
@@ -868,6 +1013,14 @@
        data-tip="이 도구가 무엇을 계산하는지, 무엇을 입력하고 결과를 어떻게 읽는지 설명합니다.">사용 안내</a>
     <a class="util" href="/api/docs"
        data-tip="다른 프로그램에서 결과를 가져다 쓸 때 필요한 JSON API 목록입니다.">API</a>
+    {# 라벨은 **한글**이다. 저장소에 담은 Pretendard 서브셋(KS X 1001)에는
+       이모지도 도형 문자도 없어서(📱 U+1F4F1·▯ U+25AF 모두 없음) 두부가 뜬다.
+       시스템 폰트 폴백에 기대면 기기마다 달라지는데, 이 저장소는 인터넷이
+       끊겨도 같게 보이려고 글꼴을 담은 것이라 그 원칙과 어긋난다.
+       (같은 이유로 옆의 ◐도 서브셋에 없다 — 폴백으로 보이고 있을 뿐이다.) #}
+    <button class="theme-toggle view-toggle" type="button" id="view-toggle"
+            aria-label="모바일 화면으로 전환" aria-pressed="false"
+            data-tip="좁은 화면용 배치로 전환합니다. 표가 카드로 바뀌고 글자·버튼이 커집니다.">모바일</button>
     <button class="theme-toggle" type="button" id="theme-toggle"
             aria-label="밝은 화면과 어두운 화면 전환"
             data-tip="밝은 화면과 어두운 화면을 전환합니다.">◐</button>
@@ -923,6 +1076,66 @@
 
 <div id="tipbox" role="tooltip"></div>
 <script>
+  /* 모바일 모드 (TODO 20).
+
+     CSS는 [data-narrow] 하나만 본다. 폭 판정을 여기서 하는 이유는 @media를
+     버튼으로 끌 수 없기 때문이다 — CSS에 맡기면 규칙을 두 벌 적어야 하고,
+     그러면 나중에 한쪽만 고치게 된다.
+
+     상태는 셋이다:
+       (없음)    폭이 좁으면 모바일, 넓으면 데스크톱   ← 기본
+       "mobile"  폭과 무관하게 모바일                  ← 버튼으로 켬
+       "desktop" 폭과 무관하게 데스크톱                ← 좁은 화면에서 버튼으로 끔 */
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById("view-toggle");
+    var NARROW = window.matchMedia("(max-width: 560px)");
+
+    function chosen() {
+      try { return localStorage.getItem("pbr-view"); } catch (e) { return null; }
+    }
+    function isNarrow() {
+      var pick = chosen();
+      if (pick === "mobile") return true;
+      if (pick === "desktop") return false;
+      return NARROW.matches;
+    }
+    function apply() {
+      var narrow = isNarrow();
+      if (narrow) root.setAttribute("data-narrow", "");
+      else root.removeAttribute("data-narrow");
+      root.dataset.view = chosen() || "";
+      if (!root.dataset.view) root.removeAttribute("data-view");
+      btn.setAttribute("aria-pressed", narrow ? "true" : "false");
+      btn.textContent = narrow ? "넓게" : "모바일";
+      btn.setAttribute("aria-label",
+        narrow ? "데스크톱 화면으로 전환" : "모바일 화면으로 전환");
+      /* 접이식 묶음은 좁을 때만 접는다. 넓은 화면에서 접힌 채로 두면 요약이
+         숨겨져 있어서(위 CSS) 내용에 도달할 방법이 사라진다. */
+      document.querySelectorAll("details.m-fold").forEach(function (d) {
+        if (!narrow) d.open = true;
+        else if (!d.dataset.touched) d.open = false;
+      });
+    }
+
+    btn.addEventListener("click", function () {
+      /* 지금 보이는 것의 반대로 간다 — 폭이 어떻든 눌린 대로 따른다. */
+      var next = isNarrow() ? "desktop" : "mobile";
+      try { localStorage.setItem("pbr-view", next); } catch (e) {}
+      apply();
+    });
+    /* 사람이 직접 편 것은 다시 접지 않는다(창 크기를 바꿔도). */
+    document.addEventListener("toggle", function (e) {
+      if (e.target.matches && e.target.matches("details.m-fold") && e.target.open) {
+        e.target.dataset.touched = "1";
+      }
+    }, true);
+    /* 창 크기가 바뀌면 다시 판정한다 — 단, 사람이 고른 값이 있으면 그게 이긴다. */
+    if (NARROW.addEventListener) NARROW.addEventListener("change", apply);
+    else if (NARROW.addListener) NARROW.addListener(apply);
+    apply();
+  })();
+
   document.getElementById("theme-toggle").addEventListener("click", function () {
     var root = document.documentElement;
     var dark = root.dataset.theme
