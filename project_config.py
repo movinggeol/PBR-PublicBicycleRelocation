@@ -430,6 +430,13 @@ CLUSTER_SEED = int(os.getenv("PBR_CLUSTER_SEED", "42"))
 # 먼저 자른다. 그래서 문턱을 1~4로 바꿔도 후보·작업량·결품이 **전부 같다**.
 # 문턱이 실제로 후보를 고르기 시작하는 것은 5부터다.
 # 재현: experiments/params/min_qty_sweep.py
+#
+# ✅ **두 달에서 확인했다(1.26.67, EXPERIMENTS 19장).** 집행 기준·중립 모집단으로
+# 다시 재도 같다 — 25년 11월은 문턱 1·2가, 26년 03월은 **1·2·3이 후보 수까지
+# 완전히 같다.** 현재값 2는 **평지 위에 있어** 1과의 차이가 6.2~6.6초(씨앗 잡음
+# 수준)다. 5부터 나빠지고, **8에서는 후보가 2~4곳이라 회차에 따라 계획이 아예
+# 서지 않는다.**
+# 재현: experiments/params/convention_sweep.py --knob REBAL_MIN_QTY
 REBAL_MIN_QTY = int(os.getenv("PBR_REBAL_MIN_QTY", "2"))
 
 # Pick·Drop 각각 상위 몇 곳까지 볼 것인가(작업량 내림차순).
@@ -499,6 +506,14 @@ CLUSTER_IMBALANCE_ALLOWANCE = float(os.getenv("PBR_CLUSTER_IMBALANCE", "1.4"))
 #   ADJUST_MAX_ITER        : 대여소 이동 시도 횟수 상한
 #   ADJUST_BALANCE_OK      : 모든 군집의 |수급 합|이 이 값 이하면 만족하고 끝낸다
 #   ADJUST_BALANCE_LIMIT   : 이 값을 넘는 군집은 크기와 무관하게 재조정 대상에 넣는다
+#
+# 실측(1.26.67, EXPERIMENTS 19장): **셋 다 결품을 바꾸지 못한다.** 중립 모집단에서
+# 격자를 4~8배 넓혀 재도 폭이 0.3~25.7초이고 신호/잡음이 1.27 이하다(3 미만이면
+# 씨앗 잡음과 구분되지 않는다). 관행값이지만 **흔들어 본 값**이다.
+#
+# ⚠️ ADJUST_MAX_ITER는 **100·200·400의 결과가 완전히 같다** — 조정 루프가 100회
+#    전에 수렴한다. 200은 쓰이지 않는 여유값이다(50으로 줄이면 덜 조정된다).
+# 재현: experiments/params/convention_sweep.py
 ADJUST_MAX_ITER = int(os.getenv("PBR_ADJUST_MAX_ITER", "200"))
 ADJUST_BALANCE_OK = int(os.getenv("PBR_ADJUST_BALANCE_OK", "3"))
 ADJUST_BALANCE_LIMIT = int(os.getenv("PBR_ADJUST_BALANCE_LIMIT", "5"))
