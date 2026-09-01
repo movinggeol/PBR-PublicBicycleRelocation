@@ -167,22 +167,22 @@
     </div>
     {% if latest %}
       <div class="table-wrap">
-      <table>
+      <table class="m-cards">
         <thead><tr><th>분류</th><th class="grow">파일</th><th>수정 시각</th></tr></thead>
         <tbody>
         {% for group in latest %}
           {% set gi = loop.index0 %}
           {% for e in group.entries %}
           <tr data-page-item="{{ gi }}">
-            <td class="muted">{{ group.title if loop.first else "" }}</td>
-            <td class="wrap">
+            <td class="muted" data-label="분류">{{ group.title if loop.first else "" }}</td>
+            <td class="wrap" data-label="">
               {% if e.name.endswith(".html") %}
                 <a href="/files/{{ e.relpath | urlencode }}" target="_blank">{{ e.name }}</a>
               {% else %}
                 <a href="/preview/{{ e.relpath | urlencode }}">{{ e.name }}</a>
               {% endif %}
             </td>
-            <td class="muted">{{ e.mtime }}</td>
+            <td class="muted" data-label="수정 시각">{{ e.mtime }}</td>
           </tr>
           {% endfor %}
         {% endfor %}
@@ -201,7 +201,7 @@
 <div class="card flush">
   {% if pipeline_runs %}
   <div class="table-wrap">
-  <table data-sortable>
+  <table data-sortable class="m-cards">
     <thead><tr>
       <th>실행 이름</th><th>순수요 기간</th><th>시간대</th><th>요일</th><th>기록 시각</th>
       <th data-nosort>바로 보기</th>
@@ -209,12 +209,12 @@
     <tbody>
     {% for run in pipeline_runs %}
     <tr>
-      <td><b>{{ run.run_label }}</b></td>
-      <td class="muted">{{ run.period or "—" }}</td>
-      <td class="muted">{{ run.duration or "—" }}</td>
-      <td class="muted">{{ "휴일" if run.day_type == "holiday" else ("평일" if run.day_type else "—") }}</td>
-      <td class="muted">{{ run.created_at }}</td>
-      <td>
+      <td data-label=""><b>{{ run.run_label }}</b></td>
+      <td class="muted" data-label="순수요 기간">{{ run.period or "—" }}</td>
+      <td class="muted" data-label="시간대">{{ run.duration or "—" }}</td>
+      <td class="muted" data-label="요일">{{ "휴일" if run.day_type == "holiday" else ("평일" if run.day_type else "—") }}</td>
+      <td class="muted" data-label="기록 시각">{{ run.created_at }}</td>
+      <td data-label="바로 보기">
         <a href="/api/metrics?run_label={{ run.run_label | urlencode }}">지표</a> ·
         <a href="/api/stations?run_label={{ run.run_label | urlencode }}">대여소</a>
       </td>
@@ -233,16 +233,16 @@
 <div class="card flush">
   {% if jobs %}
   <div class="table-wrap">
-  <table data-sortable>
+  <table data-sortable class="m-cards">
     <thead><tr><th>작업</th><th>상태</th><th>시작</th><th>종료</th><th>인자</th></tr></thead>
     <tbody>
     {% for job in jobs %}
     <tr>
-      <td><a href="/runs/{{ job.id }}">{{ job.id }}</a></td>
-      <td><span class="badge {{ job.status }}">{{ job_labels.get(job.status, job.status) }}</span></td>
-      <td class="muted">{{ job.started_at }}</td>
-      <td class="muted">{{ job.finished_at or "—" }}</td>
-      <td class="wrap muted">{{ " ".join(job.args) or "(기본값)" }}</td>
+      <td data-label=""><a href="/runs/{{ job.id }}">{{ job.id }}</a></td>
+      <td data-label="상태"><span class="badge {{ job.status }}">{{ job_labels.get(job.status, job.status) }}</span></td>
+      <td class="muted" data-label="시작">{{ job.started_at }}</td>
+      <td class="muted" data-label="종료">{{ job.finished_at or "—" }}</td>
+      <td class="wrap muted" data-label="인자">{{ " ".join(job.args) or "(기본값)" }}</td>
     </tr>
     {% endfor %}
     </tbody>

@@ -15,16 +15,16 @@
 <div class="card flush" data-pager="5" data-pager-label="{{ group.title }} 쪽 넘기기">
   {% if group.entries %}
   <div class="table-wrap">
-  <table data-sortable>
+  <table data-sortable class="m-cards">
     <thead><tr><th class="grow">파일</th><th>수정 시각</th><th class="num">크기</th>
         <th data-nosort>열기</th></tr></thead>
     <tbody>
     {% for e in group.entries %}
     <tr data-page-item="{{ loop.index0 }}">
-      <td class="wrap">{{ e.name }}</td>
-      <td class="muted">{{ e.mtime }}</td>
-      <td class="num muted">{{ e.size_kb }} KB</td>
-      <td>
+      <td class="wrap" data-label="">{{ e.name }}</td>
+      <td class="muted" data-label="수정 시각">{{ e.mtime }}</td>
+      <td class="num muted" data-label="크기">{{ e.size_kb }} KB</td>
+      <td data-label="열기">
         <a href="/view/{{ e.relpath | urlencode }}">여기서 보기</a> ·
         <a href="/files/{{ e.relpath | urlencode }}" target="_blank">새 창 ↗</a>
       </td>
