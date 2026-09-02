@@ -366,4 +366,4 @@ python tools/transfer_run.py --import data/transfer/run_20260811_real.db --overw
 - [두_PC_작업.md](두_PC_작업.md) — **두 PC 동기화 전체** (무엇을 옮기고 무엇을 다시 만드나)
 - [COLLECTOR.md 11장](COLLECTOR.md) — 재고 시계열 수집 분담·`merge_stock.py`
 - [DECISIONS.md 6-B·6-D](../분석/DECISIONS.md) — 정본 스냅샷을 정한 이유, git을 쓰지 않는 이유
-- [DB_SCHEMA.md](DB_SCHEMA.md) — 표 18개의 컬럼·스코프 규칙
+- [DB_SCHEMA.md](DB_SCHEMA.md) — 표 20개의 컬럼·스코프 규칙

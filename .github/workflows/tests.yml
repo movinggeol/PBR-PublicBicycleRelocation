@@ -1,6 +1,6 @@
 name: tests
 
-# 테스트 548개는 합성 데이터로 step0~step4를 실제로 돌린다(원천 CSV·API 키 불필요).
+# 테스트 556개는 합성 데이터로 step0~step4를 실제로 돌린다(원천 CSV·API 키 불필요).
 # 그래서 CI에서 그대로 돌릴 수 있다 — docs/구현/TESTING.md 참고.
 
 on:
@@ -29,3 +29,12 @@ jobs:
 
       - name: 테스트
         run: python -m pytest -q
+
+      # 문서가 코드와 다른 값을 말하면 여기서 걸린다. 세 번 되살아났던 것들
+      # (테스트 개수·차량 대수·테이블 수)을 사람 대신 기계가 본다 — 1.26.91.
+      #
+      # `--no-commit-check`인 이유: checkout이 얕은 클론이라 이력이 한 개뿐이고,
+      # 커밋 접두사 검사는 이미 push된 이력을 보는 것이라 CI에서 할 일이 아니다.
+      # 그쪽은 로컬에서 `python tools/check_consistency.py`로 본다.
+      - name: 문서·코드 정합성
+        run: python tools/check_consistency.py --strict --no-commit-check
