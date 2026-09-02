@@ -73,7 +73,7 @@
 | `VEHICLE_CAPACITY` | 10대 | project_config 공통 상수 (대전교통공사 확인값) |
 | `DEPOT_*` | ST0001 타슈 관제센터 | project_config 공통 상수 (step3와 공유) |
 | `FLEET_SIZE` | 21대 | 기본값(대전교통공사 확인값, FLEET.md). 웹 실행 폼·`--fleet-size`(`PBR_FLEET_SIZE`)로 실행마다 조정 |
-| `VEHICLES_PER_ROUND` | 10대 | 회차당 투입 상한 = step1의 클러스터 수 상한. 보유 대수로 잘린다 |
+| `VEHICLES_PER_ROUND` | 21대 (= 보유 대수) | 회차당 투입 **상한**. 실제 대수는 그 회차의 작업량이 정한다(step1 `wanted_vehicles`, 실측 K=12~16). 1.19.1에서 10 → 보유 대수로 열었다 |
 | `VEHICLE_SPEED_KMPH` | 25km/h | project_config 공통 상수. **ILP와 같은 값이어야 한다**(1.13.2에서 통일). 선행연구(이은탁·손봉수, 2019, Constraint 3)와 같은 값 |
 | `PICK/DROP_TIME_SEC` | 30초 | 자전거 1대당 작업시간으로 사용. 선행연구(이은탁·손봉수, 2019, Constraint 4)와 같은 값 — 다만 그 논문도 실측이 아니라 가정값이라 "수렴" 근거이지 "실측 검증"은 아니다 |
 

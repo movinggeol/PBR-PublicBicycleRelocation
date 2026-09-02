@@ -67,12 +67,11 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 >    목표값과 무관한 **결품 시간**으로 냈습니다 — [docs/분석/KPI.md](docs/분석/KPI.md).
 > 2. **결품 시간은 실측이 아니라 순수요로 복원한 시뮬레이션**이고, 재고를 0에서
 >    자르므로 **결품의 하한**입니다.
-> 3. **위 표는 마지막 depot 복귀를 빼고 잰 값입니다(1.19.0 이전).** 복귀는
->    1.19.1에서 넣었고, 그만큼 이동거리와 소요시간이 늘어납니다. 표의 대조군
->    실험을 새 코드로 다시 재는 일은 남아 있습니다 —
->    [docs/기록/TODO.md](docs/기록/TODO.md) 1-1.
-> 4. **경로는 greedy 휴리스틱**이며 OR-Tools 대비 이동거리가 평균 9.7%,
->    최악 46.4% 깁니다 — [docs/분석/EXPERIMENTS.md](docs/분석/EXPERIMENTS.md) 6장.
+> 3. **경로는 greedy 휴리스틱**입니다. OR-Tools(탐색 60초) 대비 이동거리 갭은
+>    **씨앗에 따라 평균 1.9~4.9%, 최악 9.0~19.5%** 로 흔들립니다 — 씨앗이 군집을
+>    바꾸면 경로 문제 자체가 달라지기 때문입니다. **단일 값으로 인용하지 마세요.**
+>    갭이 작아 greedy를 유지하기로 했습니다 —
+>    [docs/분석/EXPERIMENTS.md](docs/분석/EXPERIMENTS.md) 6·23·24장.
 
 ## 프로젝트 구조
 
@@ -104,6 +103,7 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 ├── demand_model.py                        # 수요 피처·계절 보정(warmup)·모델 하네스
 ├── tashu.py                               # 타슈 API 클라이언트 (수집·실시간 대조 공용)
 ├── weather.py                             # 날씨 원천 (포털 CSV + 기상청 API 허브)
+├── mapviz.py                              # 지도 범례·군집 팔레트 (세 지도가 공유)
 ├── db.py                                  # SQLite 저장소 (CSV와 이중 기록, DB_SCHEMA.md)
 ├── run_pipeline.py                        # 전체 단계 일괄 실행기
 ├── requirements.txt                       # 런타임 의존성 (하한 `>=` 고정)
@@ -279,7 +279,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 
-python -m pytest              # 501개 통과 확인 (약 70~90초)
+python -m pytest              # 548개 통과 확인 (약 100초)
 python tools/reproduce.py     # 합성 데이터 생성 → step0~step4 → 결과 표 (약 20초)
 ```
 
@@ -311,7 +311,7 @@ $env:PBR_DB_PATH = "data/재현.db"; python -m webapp   # http://127.0.0.1:8000
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest                 # 501개, 약 70~90초 (tests/ 만 수집)
+python -m pytest                 # 548개, 약 100초 (tests/ 만 수집)
 ```
 
 - `tests/test_pipeline.py` (32) — 합성 데이터로 step0→step1→step2→step4를
@@ -420,14 +420,14 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/연구/THESIS.md](docs/연구/THESIS.md) | **졸업작품·논문** — 장별 재료 매핑, 대조군·반복 실험 설계, 체크리스트 |
 | [docs/분석/FORMULATION.md](docs/분석/FORMULATION.md) | **문제 정형화** — 기호표·목표재고·군집 목적함수·ILP·VRP 수식 |
 | [docs/연구/RELATED_WORK.md](docs/연구/RELATED_WORK.md) | **관련 연구** — 문제의 갈래와 본 연구의 위치 |
-| [docs/연구/LITERATURE.md](docs/연구/LITERATURE.md) | **문헌 분석** — 논문 11편 한 편씩 분석·비교표·인용 지도 |
+| [docs/연구/LITERATURE.md](docs/연구/LITERATURE.md) | **문헌 분석** — 논문 24편 한 편씩 분석·비교표·인용 지도 |
 | [docs/분석/EXPERIMENTS.md](docs/분석/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
-| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 357개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
+| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 548개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/구현/PROJECT_PIPELINE.md](docs/구현/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/구현/WEBAPP.md](docs/구현/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/구현/DESIGN.md](docs/구현/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |
 | [docs/분석/DEMAND_DISTRIBUTION.md](docs/분석/DEMAND_DISTRIBUTION.md) | **순수요 분포** — 정규분포 전제 검증, 커버리지 원인 정정, ML 방향 |
-| [docs/구현/DB_SCHEMA.md](docs/구현/DB_SCHEMA.md) | **DB 스키마** — ERD, 테이블 18개 컬럼 레퍼런스, 조인 쿼리 |
+| [docs/구현/DB_SCHEMA.md](docs/구현/DB_SCHEMA.md) | **DB 스키마** — ERD, 테이블 20개 컬럼 레퍼런스, 조인 쿼리 |
 | [docs/구현/DB_PLAN.md](docs/구현/DB_PLAN.md) | SQLite 도입 결정·이관 계획·성능 측정 |
 | [docs/구현/COLLECTOR.md](docs/구현/COLLECTOR.md) | **재고 시계열 수집** — 평일 07–22시 10분 간격 수집기·운영(시작/일시정지/중지), 두 번째 PC로 휴일 맡기기 |
 | [docs/구현/두_PC_작업.md](docs/구현/두_PC_작업.md) | **두 PC로 번갈아 작업** — `.gitignore` 항목별 판단(옮길 것·다시 만들 것), 새 PC 세팅 순서 |
@@ -441,6 +441,11 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/기록/버전관리.md](docs/기록/버전관리.md) | **버전 이력** — 무엇을 왜 바꿨는지 (최신순, 1.0 ~ 현재) |
 | [docs/기록/메모.md](docs/기록/메모.md) | 작업 메모 — README·포트폴리오 정리 노트 (개인 메모) |
 | [docs/기록/출발지-도착지.md](docs/기록/출발지-도착지.md) | depot 좌표 메모 — 초기 설계의 출발지·도착지 |
+| [docs/분석/ML_OPPORTUNITIES.md](docs/분석/ML_OPPORTUNITIES.md) | **ML 기회 조사** — 어디에 머신러닝을 쓸 수 있나 (조사) |
+| [docs/분석/ML_ATTEMPTS.md](docs/분석/ML_ATTEMPTS.md) | **ML 시도 기록** — 해 보고 안 된 것과 **왜 안 됐는지** |
+| [docs/분석/VISUALIZATION.md](docs/분석/VISUALIZATION.md) | **시각화 대안 조사** — HTML 말고 더 나은 수단이 있나 (조사) |
+| [docs/연구/COMPARISON.md](docs/연구/COMPARISON.md) | **선행연구 축별 비교** — 문헌 전부를 한 줄에 놓고 본 표 |
+| [docs/연구/초안/](docs/연구/초안/) | **논문 초안** — 1~8장 + 3-보(방법 선택의 근거) |
 | [docs/구현/steps/step0_raw.md](docs/구현/steps/step0_raw.md) | Step 0: 수집·전처리·순수요·재배치량 |
 | [docs/구현/steps/step0_eda.md](docs/구현/steps/step0_eda.md) | Step 0: 이력 병합·EDA |
 | [docs/구현/steps/step1_clustering.md](docs/구현/steps/step1_clustering.md) | Step 1: Pick/Drop 선정·클러스터링 |

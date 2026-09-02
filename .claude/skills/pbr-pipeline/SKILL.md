@@ -18,17 +18,17 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 460개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 548개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
 | `docs/연구/RELATED_WORK.md` | 관련 연구와 본 연구의 위치 |
-| `docs/연구/LITERATURE.md` | 문헌 11편 분석·비교 (**선행연구를 인용하기 전 필독**) |
+| `docs/연구/LITERATURE.md` | 문헌 24편 분석·비교 (**선행연구를 인용하기 전 필독**) |
 | `docs/구현/PROJECT_PIPELINE.md` | 파이프라인 전체 구조 |
 | `docs/구현/steps/step*.md` | 단계별 입출력·문제점·작업 목록 |
 | `docs/구현/WEBAPP.md` | 웹 대시보드(webapp/) 실행·구조·API |
 | `docs/구현/DESIGN.md` | 화면 디자인 시스템 — 색 토큰·글꼴·내비·타일 (**템플릿을 건드리기 전 필독**) |
-| `docs/구현/DB_SCHEMA.md` | ERD·테이블 18개 컬럼·스코프 규칙 (**DB를 건드리기 전 필독**) |
+| `docs/구현/DB_SCHEMA.md` | ERD·테이블 20개 컬럼·스코프 규칙 (**DB를 건드리기 전 필독**) |
 | `docs/구현/DB_PLAN.md` | SQLite 도입 결정·이관 단계·성능 측정 (CSV→DB 작업 시 필독) |
 | `docs/구현/COLLECTOR.md` | 재고 시계열 수집 — 창 가드·스케줄·운영 (**수집기를 건드리기 전 필독**) |
 | `docs/분석/WEATHER.md` | 날씨 원천·측정 결과 (**날씨를 건드리기 전 필독**) |

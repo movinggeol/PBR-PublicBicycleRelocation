@@ -46,14 +46,16 @@ flowchart TD
 ├── step3_map/
 ├── step4_metrics/
 ├── webapp/                               # 웹 대시보드 (FastAPI + Jinja2)
-├── tests/                                # pytest 424개
+├── tests/                                # pytest 548개(24개 파일)
 ├── tools/                                # 합성 데이터·적재·백테스트·재고 수집 도구
 ├── experiments/                          # 파라미터 실험·구조 결정용 측정
 ├── project_config.py                     # 공통 설정·운영 상수 (now/period/duration/day_type)
 ├── demand_model.py                       # 수요 피처·계절 보정·분위수 모델 하네스
+├── mapviz.py                             # 지도 범례·군집 팔레트 (세 지도가 공유)
 ├── db.py                                 # SQLite 저장소 (CSV와 이중 기록)
 ├── tashu.py                              # 타슈 API 클라이언트 (수집·실시간 대조 공용)
 ├── weather.py                            # 날씨 원천 (포털 CSV + 기상청 API 허브)
+├── run_pipeline.py                       # 전체 단계 일괄 실행기
 └── docs/                                 # 분석/ 구현/ 연구/ 기록/ (목차는 docs/README.md)
 ~~~
 
@@ -190,7 +192,9 @@ vrp.py는 ILP 결과를 실제 차량이 수행할 방문 순서로 바꿉니다
 - 차량 속도: 25 km/h (`project_config.VEHICLE_SPEED_KMPH` — ILP와 같은 값, 1.13.2에서 통일)
 - Pick·Drop 작업 시간: 자전거 1대당 각 30초 (가정값)
 - depot: 타슈 관제센터 (ST0001)
-- 보유 차량 21대(`FLEET_SIZE`), 회차당 투입 상한 10대(`VEHICLES_PER_ROUND`)
+- 보유 차량 21대(`FLEET_SIZE`, 대전교통공사 유선 확인값 — 1.26.57),
+  회차당 투입 **상한**은 보유 대수와 같은 21대(`VEHICLES_PER_ROUND`).
+  상한일 뿐이고 **실제 대수는 그 회차의 작업량이 정한다**(실측 K=12~16, 1.19.1)
 
 **클러스터 1개 = 차량 1대**입니다. 그래서 step1의 클러스터 수는 회차당 투입 가능
 대수를 넘지 못하며, 경로 계산이 끝나면 실제 차량이 배정됩니다. 누적 작업이 적은

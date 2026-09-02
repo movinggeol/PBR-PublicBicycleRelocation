@@ -295,7 +295,7 @@
 
 | 문서 | 내용 |
 | --- | --- |
-| [LITERATURE.md](LITERATURE.md) | **문헌 20편의 카드** — 한 편씩의 분석 |
+| [LITERATURE.md](LITERATURE.md) | **문헌 24편의 카드** — 한 편씩의 분석 |
 | [RELATED_WORK.md](RELATED_WORK.md) | 논문 2장의 서술 뼈대 |
 | [THESIS.md](THESIS.md) | 졸업작품 준비 상태·권장 순서·체크리스트 |
 | [references/README.md](references/README.md) | 원본 자료가 무엇이고 어디까지 읽었나 |
