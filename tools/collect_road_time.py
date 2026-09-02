@@ -329,7 +329,9 @@ def status() -> int:
             " GROUP BY run_label, duration ORDER BY run_label, duration",
             conn, params=(PROBE_PREFIX + "%",))
         other = pd.read_sql(
-            "SELECT COUNT(*) AS n, COUNT(DISTINCT run_label) AS runs"
+            "SELECT COUNT(*) AS n, COUNT(DISTINCT run_label) AS runs,"
+            # start_time이 비어 있으면 1.26.4 이전 파라미터로 부른 값이다.
+            " SUM(CASE WHEN start_time IS NULL THEN 1 ELSE 0 END) AS 옛파라미터"
             " FROM road_leg WHERE run_label NOT LIKE ?",
             conn, params=(PROBE_PREFIX + "%",))
 
@@ -343,6 +345,19 @@ def status() -> int:
 
     print(f"\n파이프라인 실행분(패널 아님): {int(other['n'][0])}구간"
           f" / 실행 {int(other['runs'][0])}건")
+
+    # 옛 파라미터분 경고 — start_time이 NULL이면 1.26.4 이전에 받은 값이다.
+    # 그때는 startTime이 2017년 저녁(퇴근 러시아워)으로 고정돼 있었고 carType도
+    # 대형화물차였다. **표에 표식이 없어 섞어 평균 내기 쉽다** - 실제로 겪었다
+    # (2026-09-02, EXPERIMENTS.md 5-D장 '자료를 가려내는 법').
+    legacy = int(other["옛파라미터"][0] or 0)
+    if legacy:
+        print(f"\n[!] 그중 {legacy}구간은 start_time이 비어 있습니다"
+              " - 1.26.4 이전 파라미터로 받은 값입니다.")
+        print("    (startTime이 2017년 저녁 고정 · carType=대형화물차)")
+        print("    배율이 1.55~1.58로 높게 나오므로 **패널분과 섞어 평균 내지"
+              " 마십시오.**")
+        print("    거르는 법: WHERE start_time IS NOT NULL")
     # 옛 자리(data/)에 있으면 load_panel이 커밋되는 자리로 옮겨 준다.
     if not (PANEL_PATH.exists() or LEGACY_PANEL_PATH.exists()):
         print(f"\n[경고] 패널 파일이 없습니다: {PANEL_PATH}")

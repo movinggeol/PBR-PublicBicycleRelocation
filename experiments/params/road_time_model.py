@@ -77,6 +77,17 @@ def load_legs(include_pipeline: bool, panel_only: bool = True) -> pd.DataFrame:
     frame["패널"] = frame["run_label"].str.startswith(PROBE_PREFIX)
     if not include_pipeline:
         frame = frame[frame["패널"]]
+    else:
+        # 파이프라인 실행분에는 **1.26.4 이전 파라미터로 받은 값**이 섞여 있다
+        # (startTime 2017년 저녁 고정 · carType=대형화물차). start_time이 비어
+        # 있는 것이 그것이고, 배율이 1.55~1.58로 높게 나온다. 섞으면 계수가
+        # 그쪽으로 끌린다 — 2026-09-02에 실제로 겪었다(EXPERIMENTS.md 5-D장).
+        옛것 = int((~frame["패널"] & frame["start_time"].isna()).sum())
+        if 옛것:
+            print(f"[!] 파이프라인 실행분 중 {옛것}구간은 start_time이 비어 있습니다"
+                  " — 1.26.4 이전 파라미터로 받은 값입니다.")
+            print("    배율이 1.55~1.58로 높아 계수를 끌어당깁니다."
+                  " 판정에는 쓰지 마십시오.")
 
     expected = panel_segments()
     if expected:
