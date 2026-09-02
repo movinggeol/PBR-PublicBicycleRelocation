@@ -70,7 +70,7 @@
 
 | 상수 | 값 | 상태 |
 | --- | --- | --- |
-| `VEHICLE_CAPACITY` | 10대 | project_config 공통 상수 (대전교통공사 확인값) |
+| `VEHICLE_CAPACITY` | 10대 | project_config 공통 상수. **상한값**이다 — 관제센터 유선 문의(2026-05-15)에서 통상 7대·최대 10대([ORIGINS](../../기록/ORIGINS.md) 4장) |
 | `DEPOT_*` | ST0001 타슈 관제센터 | project_config 공통 상수 (step3와 공유) |
 | `FLEET_SIZE` | 21대 | 기본값(대전교통공사 확인값, FLEET.md). 웹 실행 폼·`--fleet-size`(`PBR_FLEET_SIZE`)로 실행마다 조정 |
 | `VEHICLES_PER_ROUND` | 21대 (= 보유 대수) | 회차당 투입 **상한**. 실제 대수는 그 회차의 작업량이 정한다(step1 `wanted_vehicles`, 실측 K=12~16). 1.19.1에서 10 → 보유 대수로 열었다 |

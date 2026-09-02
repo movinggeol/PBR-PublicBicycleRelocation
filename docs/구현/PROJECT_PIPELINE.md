@@ -46,7 +46,7 @@ flowchart TD
 ├── step3_map/
 ├── step4_metrics/
 ├── webapp/                               # 웹 대시보드 (FastAPI + Jinja2)
-├── tests/                                # pytest 572개(25개 파일)
+├── tests/                                # pytest 575개(25개 파일)
 ├── tools/                                # 합성 데이터·적재·백테스트·재고 수집 도구
 ├── experiments/                          # 파라미터 실험·구조 결정용 측정
 ├── project_config.py                     # 공통 설정·운영 상수 (now/period/duration/day_type)
@@ -188,7 +188,8 @@ vrp.py는 ILP 결과를 실제 차량이 수행할 방문 순서로 바꿉니다
 
 현재 코드의 운영 가정 (depot·적재 용량은 project_config 공통 상수):
 
-- 차량 적재 용량: 10대 (대전교통공사 확인값, 버전관리.md 1.0.1)
+- 차량 적재 용량: 10대 — **통상 7대의 상한값**이다(관제센터 유선 문의 2026-05-15,
+  버전관리.md 1.0.1 · [ORIGINS.md](../기록/ORIGINS.md) 4장)
 - 차량 속도: 25 km/h (`project_config.VEHICLE_SPEED_KMPH` — ILP와 같은 값, 1.13.2에서 통일)
 - Pick·Drop 작업 시간: 자전거 1대당 각 30초 (가정값)
 - depot: 타슈 관제센터 (ST0001)
