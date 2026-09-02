@@ -875,6 +875,167 @@ def test_vehicles_화면에_막대그래프_자리가_있다():
     assert "workload_svg" in html, "막대그래프를 넣을 자리가 템플릿에 없다"
 
 
+# ── /vehicles 표 행 접기 ────────────────────────────────────────────
+
+def test_차량별_누적_표는_상위_몇_행만_펴_둔다():
+    """막대그래프가 '어디에 몰렸나'를 이미 답하므로 표는 세부 조회용이다.
+    21행을 다 펼치면 그 아래 '회차별 배정 이력'까지 스크롤이 멀어진다."""
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    html = (Path(webapp_app.__file__).parent / "templates" / "vehicles.html").read_text(
+        encoding="utf-8")
+
+    assert "data-row-limit" in html, "행 접기 표시가 없다"
+    limit = re.search(r'data-row-limit="(\d+)"', html)
+    assert limit and int(limit.group(1)) < 21, (
+        "보유 대수(21)보다 크거나 같으면 접히지 않는다")
+
+
+def test_행_접기_표는_서버가_이미_정렬해_보낸다():
+    """DB는 vehicle_id 순으로 준다(db.vehicle_workload의 ORDER BY). 그대로
+    접으면 V01~V08이라는 아무 뜻 없는 여덟 대가 펴진다 — 화면의 '상위 8대'가
+    거짓말이 되고, 위 막대그래프와 순서도 어긋난다."""
+    import inspect
+
+    from webapp import app as webapp_app
+
+    source = inspect.getsource(webapp_app.vehicles_page)
+    assert '"workload": store.records(sorted_wl)' in source, (
+        "표에 정렬 안 된 workload를 그대로 넘기고 있다")
+
+
+def test_행_접기_스크립트가_없으면_전부_보인다():
+    """열 접기·쪽 넘기기와 같은 원칙이다. 접기는 스크립트가 tr에 [hidden]을
+    걸어서 하므로, CSS에 tr을 그냥 숨기는 규칙이 있으면 안 된다 — 카드 모드
+    보정 규칙에도 [hidden]이 걸려 있는지 본다."""
+    import re as _re
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    css = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    rules = _re.findall(r"([^\n{]*m-cards tr[^\n{]*)\{\s*display:\s*none", css)
+    assert rules, "카드 모드에서 접힌 행을 숨기는 규칙을 찾지 못했다"
+    for selector in rules:
+        assert "[hidden]" in selector, (
+            f"스크립트 없이도 행이 숨는 규칙이다: {selector.strip()}")
+
+
+def test_행_접기가_정렬_뒤에도_다시_적용된다():
+    """정렬하면 행 순서가 바뀐다. 처음 고른 행을 그대로 두면 정렬해 놓고도
+    아까 숨은 행이 계속 숨어, 새 순서의 상위 N행이 안 보인다(쪽 넘기기가
+    __pbrPagerRefresh를 다시 부르는 것과 같은 이유)."""
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    js = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    assert "__pbrRowsRefresh" in js
+    # 정렬이 끝난 자리 = 쪽 넘기기를 다시 부르는 곳(정의부가 아니라 호출부)
+    call = js.index("box.__pbrPagerRefresh()")
+    assert "__pbrRowsRefresh" in js[call:call + 400], (
+        "정렬 뒤에 행 접기를 다시 적용하지 않는다")
+
+
+# ── 접기 상태 기억 ──────────────────────────────────────────────────
+
+def test_접기_상태를_기억한다():
+    """열을 펴 놓고 링크를 눌렀다 돌아오면 다시 접혀 있었다. 테마·모바일 모드와
+    같은 pbr-* 열쇠를 쓴다."""
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    js = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    assert "pbr-fold-" in js, "접기 상태를 저장하지 않는다"
+    assert "pbrRecall" in js and "pbrRemember" in js
+    # 열·행 접기가 둘 다 쓰는가
+    assert '"col-" +' in js and '"row-" +' in js
+
+
+def test_저장이_막혀도_접기는_동작한다():
+    """프라이빗 모드에서는 localStorage 접근 자체가 예외를 던진다. 테마가
+    try/catch로 감싼 것과 같은 이유 — 기억이 안 될 뿐 기능은 돌아야 한다."""
+    import re as _re
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    js = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    for fn in ("pbrRecall", "pbrRemember"):
+        body = js[js.index("function " + fn):]
+        body = body[:body.index("\n  }") + 4]
+        assert "try {" in body and "catch" in body, f"{fn}이 저장 실패를 안 막는다"
+
+
+def test_정렬은_일부러_기억하지_않는다():
+    """남이 보낸 링크를 열었을 때 내가 예전에 걸어 둔 정렬이 얹히면, 보낸 사람이
+    말한 순서와 다른 화면을 보게 된다. 접기('얼마나 보여줄까')와 달리 정렬은
+    '무엇을 말하느냐'를 바꾸므로 남기지 않는다."""
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    js = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    start = js.index('document.querySelectorAll("table[data-sortable]")')
+    sort_block = js[start:js.index("__pbrSortable", start)]
+    assert "pbrRemember" not in sort_block and "localStorage" not in sort_block, (
+        "정렬이 저장되고 있다")
+
+
+# ── 빈 상태 규약 ────────────────────────────────────────────────────
+
+def test_빈_상태는_무엇이_없는지와_어떻게_채우는지를_같이_말한다():
+    """'아직 실행한 작업이 없습니다'처럼 사실만 적은 안내는 처음 온 사람에게
+    다음 걸음을 알려 주지 않는다. .empty 문단마다 링크가 하나는 있어야 한다
+    — 대부분 /run이고, 필터 때문에 빈 자리는 필터를 푸는 링크다."""
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    templates = Path(webapp_app.__file__).parent / "templates"
+    missing = []
+    for path in sorted(templates.glob("*.html")):
+        html = path.read_text(encoding="utf-8")
+        # <p class="empty"> ... </p> 한 덩어리씩
+        for block in re.findall(r'<p class="empty">(.*?)</p>', html, re.S):
+            if "<a " not in block:
+                missing.append(f"{path.name}: {' '.join(block.split())[:50]}")
+
+    assert not missing, "빠져나갈 링크가 없는 빈 상태가 있다:\n" + "\n".join(missing)
+
+
+def test_그래프가_빌_때도_자리와_이유가_남는다():
+    """워크로드 그래프를 통째로 감추면 '왜 안 보이지'를 화면에서 알 수 없다.
+    카드는 늘 두고 안쪽만 그래프↔안내로 갈린다."""
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    html = (Path(webapp_app.__file__).parent / "templates" / "vehicles.html").read_text(
+        encoding="utf-8")
+
+    card = html[html.index("누적 작업 시간"):]
+    card = card[:card.index("</div>") + 6]
+    assert "{% else %}" in card, "그래프가 없을 때의 안내가 카드 안에 없다"
+    # 카드 자체가 if로 감싸여 사라지면 안 된다
+    before = html[:html.index('<div class="card viz-card">')]
+    assert not before.rstrip().endswith("{% if workload_svg %}"), (
+        "그래프 카드가 통째로 사라지게 돼 있다")
+
+
 # ── /view 지도 iframe 실패 안내 ──────────────────────────────────────
 
 def test_지도_iframe이_안_뜨면_안내문으로_바뀐다():

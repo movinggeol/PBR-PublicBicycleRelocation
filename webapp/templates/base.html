@@ -821,6 +821,19 @@
        카드 칸에 한해 가중치를 올려 다시 이긴다. */
     [data-narrow] table.m-cards.cols-collapsed td.col-more { display: none; }
 
+    /* ── 표 행 접기 ──
+       행이 많은 표에서 위 몇 줄만 기본으로 보여준다. 열 접기가 '가로로 긴 표'를
+       다루는 것과 짝이다. 조작부는 스크립트가 만들고 [hidden]으로 감추므로,
+       스크립트가 없으면 전부 보인다.
+       ⚠️ 카드 모드에서는 [data-narrow] table.m-cards tr이 display:block이라
+       [hidden]의 display:none을 가중치로 이긴다 — 열 접기에서 겪은 것과 같다. */
+    .row-more-wrap { display: flex; justify-content: center; padding: 10px var(--sp-lg); }
+    .row-more-wrap .chip { font-family: inherit; cursor: pointer; }
+    [data-narrow] table.m-cards tr[hidden] { display: none; }
+    /* 접힌 상태의 마지막 행은 밑줄을 되살린다 — 조작부와 표를 가르는 선이
+       그 한 줄뿐이기 때문이다(쪽 넘기기의 .paged와 같은 이유). */
+    table.rows-collapsed tbody tr:last-child td { border-bottom: 1px solid var(--divider-soft); }
+
     /* ── 쪽 넘기기 ──
        목록이 세로로 길어질 때 쓴다. 조작부는 스크립트가 만들므로, 스크립트가
        없으면 전부 보이는 예전 동작 그대로다(내용이 사라지지 않는다). */
@@ -1427,6 +1440,23 @@
     });
   })();
 
+  /* 접기 상태 기억.
+     테마·모바일 모드와 같은 pbr-* 열쇠를 쓴다. 프라이빗 모드 등에서 막히면
+     조용히 기본값으로 돌아간다 — 기억이 안 될 뿐 기능은 그대로 돈다.
+
+     ⚠️ **정렬은 일부러 기억하지 않는다.** 남이 보낸 링크를 열었을 때 내가
+     예전에 걸어 둔 정렬이 얹히면, 보낸 사람이 말한 순서와 다른 화면을 보게 된다.
+     접기는 '얼마나 보여줄까'라 그런 문제가 없다. */
+  function pbrRecall(key, fallback) {
+    try {
+      var v = localStorage.getItem("pbr-fold-" + key);
+      return v === null ? fallback : v === "1";
+    } catch (e) { return fallback; }
+  }
+  function pbrRemember(key, on) {
+    try { localStorage.setItem("pbr-fold-" + key, on ? "1" : "0"); } catch (e) {}
+  }
+
   /* 표 열 접기.
      .col-toggle-wrap 안의 단추가 형제 표의 .col-more 칸(th·td)을 한꺼번에
      접었다 편다. 부가 열이 많은 표에서 핵심 열만 먼저 보여주려는 것이다 —
@@ -1436,17 +1466,72 @@
       var wrap = btn.closest(".col-toggle-wrap");
       var table = wrap && wrap.parentElement.querySelector("table");
       if (!table || !table.querySelector(".col-more")) return;
+      var key = "col-" + (table.id || "");
 
-      function apply(collapsed) {
+      function apply(collapsed, save) {
         table.classList.toggle("cols-collapsed", collapsed);
         btn.setAttribute("aria-pressed", (!collapsed).toString());
         btn.textContent = collapsed ? "모든 열 보기" : "핵심 열만 보기";
+        if (save) pbrRemember(key, collapsed);
       }
 
       btn.addEventListener("click", function () {
-        apply(!table.classList.contains("cols-collapsed"));
+        apply(!table.classList.contains("cols-collapsed"), true);
       });
-      apply(true);   /* 기본은 핵심 열만 — 스크립트가 켜졌을 때만 접는다 */
+      /* 기본은 핵심 열만 — 스크립트가 켜졌을 때만 접는다. 지난번에 편 채로
+         떠났다면 그대로 펴 준다(저장하지는 않는다 — 사람이 누른 게 아니다). */
+      apply(pbrRecall(key, true), false);
+    });
+  })();
+
+  /* 표 행 접기.
+     data-row-limit="N"을 단 표는 위 N행만 두고 나머지를 접는다. 그래프가 이미
+     '몰림'을 한눈에 답해 주는 표에서, 21행을 다 펼쳐 두면 그 아래 내용까지
+     스크롤이 멀어지기 때문이다. 조작부는 여기서 만든다 — 스크립트가 없으면
+     전부 보이는 예전 동작 그대로다(열 접기·쪽 넘기기와 같은 원칙).
+
+     ⚠️ **어느 행을 접을지는 그때그때 DOM 순서에서 고른다.** 정렬하면 행 순서가
+     바뀌므로, 처음 한 번 집어 두면 정렬한 뒤에도 엉뚱한 행이 숨는다(쪽 넘기기가
+     collect()를 다시 부르는 것과 같은 이유). */
+  (function () {
+    document.querySelectorAll("table[data-row-limit]").forEach(function (table) {
+      var limit = parseInt(table.dataset.rowLimit, 10) || 10;
+      var body = table.tBodies[0];
+      if (!body || body.rows.length <= limit) return;   /* 다 들어가면 조작부를 만들지 않는다 */
+      var total = body.rows.length;
+      var key = "row-" + (table.id || "");
+
+      var wrap = document.createElement("div");
+      wrap.className = "row-more-wrap";
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chip";
+      /* 빈 aria-controls는 유효하지 않다 — id가 있을 때만 건다. */
+      if (table.id) btn.setAttribute("aria-controls", table.id);
+      wrap.appendChild(btn);
+      table.parentNode.insertBefore(wrap, table.nextSibling);
+
+      var collapsed = pbrRecall(key, true);
+
+      function render() {
+        Array.prototype.forEach.call(body.rows, function (row, i) {
+          row.hidden = collapsed && i >= limit;
+        });
+        table.classList.toggle("rows-collapsed", collapsed);
+        btn.setAttribute("aria-expanded", (!collapsed).toString());
+        btn.textContent = collapsed
+          ? "전체 " + total + "행 보기"
+          : "상위 " + limit + "행만 보기";
+      }
+
+      btn.addEventListener("click", function () {
+        collapsed = !collapsed;
+        pbrRemember(key, collapsed);
+        render();
+      });
+      /* 정렬이 행 순서를 바꾸면 불러 준다(아래 표 정렬). */
+      table.__pbrRowsRefresh = render;
+      render();
     });
   })();
 
@@ -1536,6 +1621,9 @@
 
           var box = table.closest("[data-pager]");
           if (box && box.__pbrPagerRefresh) box.__pbrPagerRefresh();
+          /* 행을 접어 둔 표라면 새 순서의 위 N행을 다시 골라야 한다 —
+             안 그러면 정렬해 놓고도 아까 숨은 행이 그대로 숨어 있다. */
+          if (table.__pbrRowsRefresh) table.__pbrRowsRefresh();
         }
 
         th.addEventListener("click", sort);

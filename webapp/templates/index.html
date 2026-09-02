@@ -190,7 +190,7 @@
       </table>
       </div>
     {% else %}
-      <p class="empty">아직 산출물이 없습니다. 계획을 한 번 실행하면 여기에 나타납니다.</p>
+      <p class="empty">아직 산출물이 없습니다. <a href="/run#run">계획을 실행</a>하면 여기에 나타납니다.</p>
     {% endif %}
   </div>
 </div>
@@ -224,7 +224,8 @@
   </table>
   </div>
   {% else %}
-  <p class="empty">데이터베이스에 기록된 실행이 없습니다. 계획을 실행하면 CSV와 함께 저장됩니다.</p>
+  <p class="empty">데이터베이스에 기록된 실행이 없습니다.
+    <a href="/run#run">계획을 실행</a>하면 CSV와 함께 저장됩니다.</p>
   {% endif %}
 </div>
 
@@ -249,7 +250,8 @@
   </table>
   </div>
   {% else %}
-  <p class="empty">아직 실행한 작업이 없습니다.</p>
+  <p class="empty">아직 실행한 작업이 없습니다.
+    <a href="/run#run">계획을 실행</a>하면 진행 상황과 로그가 여기에 남습니다.</p>
   {% endif %}
 </div>
 
