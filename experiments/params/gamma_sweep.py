@@ -76,6 +76,9 @@ def main():
 
     rows = []
     for period in periods:
+        # 기간이 바뀌면 순수요가 달라져 분모도 **정당하게** 달라진다 —
+        # 분모 감시(1.26.73)에 거짓 경보가 뜨지 않게 초기화한다.
+        bc.reset_population_guard()
         net, st_info, warmup = bc.load_inputs(period, run_label, day_type, 0, "")
         for duration in durations:
             base = bc.build_candidates(net, st_info, duration, None, warmup, 0, step1)

@@ -186,3 +186,86 @@ def test_stockout_population_moves_with_the_population_like_the_average_does(bc)
     assert bc.stockout(net, 좁은_집합, {}, "_05_10") != bc.stockout(
         net, 넓은_집합, {}, "_05_10"), (
         "분모는 달라졌는데 결품 평균이 같다면, 분모를 찍어 봐야 결함을 못 잡는다")
+
+
+# ---------------- 분모(모집단) 감시 — 1.26.73 ----------------
+#
+# 결함이 세 번 나왔다(1.26.56 대조군 B2 · 1.26.64 상한 격자 · 1.26.65 z 격자).
+# 세 번 다 stockout()의 docstring이 이미 경고한 **뒤에** 일어났다 —
+# 문서로만 막으면 다음 호출자가 또 밟는다. 그래서 코드가 스스로 알린다.
+
+def _tiny_inputs():
+    """대여소 3곳 · 하루치. 결품 값 자체는 보지 않고 **분모만** 본다."""
+    net = pd.DataFrame({
+        "station_id": ["A", "B", "C"],
+        "날짜": ["2026-01-01"] * 3,
+        "net_demand": [0, 0, 0],
+    })
+    pop = pd.DataFrame({
+        "station_id": ["A", "B", "C"],
+        "stock": [5, 5, 5],
+        "parking_lot": [10, 10, 10],
+    })
+    return net, pop
+
+
+def test_분모가_바뀌면_경고한다(bc, capsys):
+    """같은 회차를 다른 모집단으로 재면 알린다 — 17·18장의 결함이다."""
+    net, pop = _tiny_inputs()
+    bc.reset_population_guard()
+
+    bc.stockout(net, pop, {}, "_05_10")               # 3곳
+    capsys.readouterr()
+    bc.stockout(net, pop.head(2), {}, "_05_10")       # 2곳 — 자가 바뀌었다
+
+    err = capsys.readouterr().err
+    assert "분모가 바뀌었습니다" in err
+    assert "_05_10" in err
+
+
+def test_같은_모집단이면_조용하다(bc, capsys):
+    """정상 사용까지 시끄러우면 경고를 무시하게 된다."""
+    net, pop = _tiny_inputs()
+    bc.reset_population_guard()
+
+    for _ in range(3):
+        bc.stockout(net, pop, {}, "_05_10")
+
+    assert "분모가 바뀌었습니다" not in capsys.readouterr().err
+
+
+def test_경고는_회차마다_한_번만(bc, capsys):
+    """격자를 도는 동안 같은 경고가 수십 번 쏟아지면 아무도 안 읽는다."""
+    net, pop = _tiny_inputs()
+    bc.reset_population_guard()
+
+    bc.stockout(net, pop, {}, "_05_10")
+    capsys.readouterr()
+    for n in (2, 1, 2):
+        bc.stockout(net, pop.head(n), {}, "_05_10")
+
+    assert capsys.readouterr().err.count("분모가 바뀌었습니다") == 1
+
+
+def test_회차가_다르면_서로_간섭하지_않는다(bc, capsys):
+    """회차마다 후보 집합이 다른 것은 정상이다 — 그걸로 경고하면 거짓 경보다."""
+    net, pop = _tiny_inputs()
+    bc.reset_population_guard()
+
+    bc.stockout(net, pop, {}, "_05_10")
+    bc.stockout(net, pop.head(2), {}, "_10_15")
+
+    assert "분모가 바뀌었습니다" not in capsys.readouterr().err
+
+
+def test_감시를_초기화하면_다시_조용해진다(bc, capsys):
+    """기간·스냅샷을 바꿔 다시 잴 때는 분모가 정당하게 달라진다."""
+    net, pop = _tiny_inputs()
+    bc.reset_population_guard()
+
+    bc.stockout(net, pop, {}, "_05_10")
+    bc.reset_population_guard()
+    capsys.readouterr()
+    bc.stockout(net, pop.head(2), {}, "_05_10")
+
+    assert "분모가 바뀌었습니다" not in capsys.readouterr().err

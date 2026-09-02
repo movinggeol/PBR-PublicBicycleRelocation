@@ -247,7 +247,64 @@ def stockout(net, population, delta, duration):
     days = merged["날짜"].nunique()
     count = merged["station_id"].nunique()
     denominator = max(count * days, 1)
+
+    _warn_if_population_moved(duration, count, days)
     return float(before.sum() / denominator), float(after.sum() / denominator)
+
+
+# 회차별로 **처음 본 분모**를 기억해 둔다. 같은 프로세스가 같은 회차를 다시 재는데
+# 분모가 달라졌다면, 파라미터를 따라 자가 움직인 것이다.
+_SEEN_POPULATION: dict = {}
+_WARNED_POPULATION: set = set()
+
+
+def reset_population_guard() -> None:
+    """분모 감시를 초기화한다. **기간·스냅샷을 바꿔 다시 잴 때 부른다.**
+
+    기간이 바뀌면 순수요가 달라져 분모도 정당하게 달라진다 — 그때까지 경고하면
+    거짓 경보가 된다.
+    """
+    _SEEN_POPULATION.clear()
+    _WARNED_POPULATION.clear()
+
+
+def _warn_if_population_moved(duration, count, days) -> None:
+    """분모가 회차 안에서 움직이면 **한 번** 경고한다 (1.26.73).
+
+    🔴 **경고를 문서에만 적어 두면 다음 호출자가 또 밟는다.** 이 결함은 세 번
+    나왔고(1.26.56 대조군 B2 · 1.26.64 상한 격자 · 1.26.65 `z` 격자), 세 번 다
+    위 docstring이 이미 *"population은 방법마다 달라지면 안 된다"* 고 경고한
+    **뒤에** 일어났다. 그래서 이번엔 코드가 스스로 알린다.
+
+    ⚠️ **막지는 않는다** — 정당하게 달라지는 경우가 있다(기간을 바꿔 다시 재는
+    경우, 중립 모집단과 후보 집합을 **의도적으로** 나란히 재는 경우). 판단은
+    사람이 하고, 코드는 **그런 일이 일어났다는 사실**만 알린다.
+
+    🔴 **한계 — 셀마다 자식 프로세스를 띄우는 격자는 잡지 못한다.** 상태가
+    모듈 수준이라 프로세스가 갈리면 초기화된다(`limit_fleet_grid.py` ·
+    `convention_sweep.py` · `limit_fixedpop_grid.py`가 그 방식이다 —
+    `TOP_STATION_LIMIT` 같은 값이 import 시점에 읽히기 때문에 그래야 한다).
+    **그 격자들은 부모가 분모를 모아 비교해야 한다** — `stockout_population()`이
+    그 용도다. 이 감시는 **한 프로세스 안에서 여러 설정을 도는 실험**
+    (`gamma_sweep` · `z_fixedpop_grid` · `cluster_time_term` 등)을 지킨다.
+    """
+    key = str(duration)
+    seen = _SEEN_POPULATION.get(key)
+    if seen is None:
+        _SEEN_POPULATION[key] = (count, days)
+        return
+    if seen == (count, days) or key in _WARNED_POPULATION:
+        return
+
+    _WARNED_POPULATION.add(key)
+    print(
+        f"[!] stockout() 분모가 바뀌었습니다 — {duration}:"
+        f" 대여소 {seen[0]}곳×{seen[1]}일 → {count}곳×{days}일.\n"
+        f"    파라미터를 바꿀 때마다 **재는 자가 같이 바뀌면** 그 표는 서로 다른"
+        f" 자로 잰 값입니다\n"
+        f"    (docs/분석/EXPERIMENTS.md 17·18장). 모집단을 고정했는지 확인하십시오.\n"
+        f"    의도한 것이라면(기간 변경 등) reset_population_guard()를 부르십시오.",
+        file=sys.stderr)
 
 
 def stockout_population(net, population, duration) -> int:

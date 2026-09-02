@@ -115,7 +115,12 @@ def measure(bc, args) -> pd.DataFrame:
                        "candidates": int(len(cand)),
                        "km": stats.get("km"), "over": stats.get("over"),
                        "bikes": stats.get("bikes")}
+                # ⚠️ **여기서는 모집단을 일부러 바꿔 가며 잰다** — 그것이 이
+                #    스크립트의 목적이다(18장: 모집단이 승자를 정하는가).
+                #    분모 감시(1.26.73)는 그것을 결함으로 보고 경고하므로,
+                #    모집단을 옮길 때마다 초기화해 거짓 경보를 막는다.
                 for name, pop in pops.items():
+                    bc.reset_population_guard()
                     before, after = bc.stockout(net, pop, delta, duration)
                     row[f"before::{name}"] = before
                     row[f"after::{name}"] = after

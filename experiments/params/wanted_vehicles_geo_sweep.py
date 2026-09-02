@@ -58,6 +58,8 @@ RUN_LABEL = resolve_run_label(__import__('os').environ.get('PBR_RUN_LABEL'))
 rows = []
 k_rows = []
 for period in PERIODS:
+    # 기간이 바뀌면 분모도 정당하게 달라진다 — 분모 감시(1.26.73) 초기화.
+    bc.reset_population_guard()
     net, st, warm = bc.load_inputs(period, RUN_LABEL, 'weekday', 0, '')
     for dur in ('_05_10', '_10_15', '_15_20'):
         base = bc.build_candidates(net, st, dur, None, warm, 0, step1)

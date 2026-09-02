@@ -62,6 +62,11 @@ sys.path.insert(0, str(ROOT))
 
 WORKER = Path(__file__).with_name("_limit_plan_worker.py")
 
+# 셀 하나가 이 시간을 넘기면 버리고 다음으로 간다 (TODO 대기-12 ①).
+# 이 환경에서 자식 프로세스가 **생성만 되고 시작하지 못하는** 일이 있는데,
+# 타임아웃이 없으면 격자 전체가 그 자리에 선다.
+CELL_TIMEOUT_SEC = int(os.getenv("PBR_GRID_CELL_TIMEOUT", "900"))
+
 
 def collect_plans(limits, args) -> list:
     """상한마다 자식 프로세스를 띄워 계획(delta)을 모은다."""
@@ -77,9 +82,17 @@ def collect_plans(limits, args) -> list:
         env["PBR_EXP_SEEDS"] = ",".join(str(s) for s in args.seeds)
         env["PYTHONIOENCODING"] = "utf-8"
 
-        proc = subprocess.run([sys.executable, str(WORKER)],
-                              capture_output=True, text=True,
-                              env=env, encoding="utf-8")
+        try:
+            proc = subprocess.run([sys.executable, str(WORKER)],
+                                  capture_output=True, text=True,
+                                  env=env, encoding="utf-8",
+                                  timeout=CELL_TIMEOUT_SEC)
+        except subprocess.TimeoutExpired:
+            # 이 환경에서 자식이 '생성만 되고 시작하지 못하는' 일이 있다
+            # (TODO 대기-12 ①). 멈춘 자식은 여기서 죽고 격자는 계속 간다.
+            print(f"  [시간초과] 상한 {limit}: {CELL_TIMEOUT_SEC}초를 넘겨 건너뛴다"
+                  f" (PBR_GRID_CELL_TIMEOUT으로 조정)")
+            continue
         if proc.returncode != 0:
             raise SystemExit(f"상한 {limit} 실패:\n{proc.stderr[-2000:]}")
         rows.extend(json.loads(proc.stdout.strip().splitlines()[-1]))
@@ -170,6 +183,14 @@ def main() -> int:
           f" · 씨앗 {len(args.seeds)}  (스냅샷 '{args.run_label}', {args.period})")
     rows = collect_plans(limits, args)
     df = evaluate(rows, limits, args)
+
+    # 🔴 **잰 것이 없으면 성공이 아니다** (TODO 대기-12). 종료 코드 0으로 끝내면
+    #    호출한 쪽이 완료로 착각한다 — 18셀 격자가 EXIT=0인데 CSV가 없던 일이 있다.
+    if df.empty:
+        print("\n[실패] 잰 것이 하나도 없습니다 —"
+              " 모든 셀이 시간초과이거나 후보가 비었습니다.")
+        return 1
+
     report(df, limits)
 
     if args.out:

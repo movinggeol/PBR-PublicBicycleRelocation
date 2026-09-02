@@ -56,6 +56,11 @@ sys.path.insert(0, str(ROOT))
 
 WORKER = Path(__file__).with_name("_convention_worker.py")
 
+# 셀 하나가 이 시간을 넘기면 버리고 다음으로 간다 (TODO 대기-12 ①).
+# 이 환경에서 자식 프로세스가 **생성만 되고 시작하지 못하는** 일이 있는데,
+# 타임아웃이 없으면 스윕 전체가 그 자리에 선다.
+CELL_TIMEOUT_SEC = int(os.getenv("PBR_GRID_CELL_TIMEOUT", "900"))
+
 # 관행값 → (환경변수, 격자, 현재값)
 KNOBS = {
     "REBAL_MIN_QTY":        ("PBR_REBAL_MIN_QTY",        [1, 2, 3, 5, 8, 12], 2),
@@ -79,9 +84,17 @@ def collect(knob, values, args) -> list:
         env["PBR_EXP_VALUE"] = str(value)
         env["PYTHONIOENCODING"] = "utf-8"
 
-        proc = subprocess.run([sys.executable, str(WORKER)],
-                              capture_output=True, text=True,
-                              env=env, encoding="utf-8")
+        try:
+            proc = subprocess.run([sys.executable, str(WORKER)],
+                                  capture_output=True, text=True,
+                                  env=env, encoding="utf-8",
+                                  timeout=CELL_TIMEOUT_SEC)
+        except subprocess.TimeoutExpired:
+            # 이 환경에서 자식이 '생성만 되고 시작하지 못하는' 일이 있다
+            # (TODO 대기-12 ①). 멈춘 자식은 여기서 죽고 스윕은 계속 간다.
+            print(f"    [시간초과] {knob}={value}: {CELL_TIMEOUT_SEC}초를 넘겨"
+                  f" 건너뛴다 (PBR_GRID_CELL_TIMEOUT으로 조정)")
+            continue
         if proc.returncode != 0:
             raise SystemExit(f"{knob}={value} 실패:\n{proc.stderr[-2000:]}")
         rows.extend(json.loads(proc.stdout.strip().splitlines()[-1]))
@@ -109,6 +122,10 @@ def evaluate(rows, args) -> pd.DataFrame:
             out.append({k: v for k, v in r.items() if k != "delta_json"}
                        | {"before": before, "after": after})
     df = pd.DataFrame(out)
+    if df.empty:
+        # 모든 셀이 시간초과·건너뜀이면 여기가 빈다. KeyError로 죽으면
+        # 코드 결함처럼 보이므로 무엇이 없는지 그대로 말한다.
+        return df
     # 값은 숫자로 — 문자열이면 표가 12, 5 순으로 정렬돼 읽기 어렵다.
     df["value"] = pd.to_numeric(df["value"])
     return df
@@ -215,8 +232,19 @@ def main() -> int:
         print(f"  [{knob}] {values}")
         rows = collect(knob, values, args)
         df = evaluate(rows, args)
+        if df.empty:
+            print(f"  [{knob}] 잰 것이 없습니다 — 모든 셀이 시간초과이거나"
+                  f" 후보가 비었습니다. 표를 내지 않습니다.")
+            continue
         report(df, knob)
         frames.append(df)
+
+    # 🔴 **잰 것이 없으면 성공이 아니다** (TODO 대기-12). 종료 코드 0으로 끝내면
+    #    호출한 쪽이 완료로 착각한다 — 실제로 18셀 격자가 EXIT=0인데 CSV가 없던
+    #    일이 있었다. 파이프(`| tail`)로 받으면 그쪽 종료 코드가 잡혀 더 잘 가려진다.
+    if not frames:
+        print("\n[실패] 잰 것이 하나도 없습니다 — 결과 파일을 쓰지 않습니다.")
+        return 1
 
     if args.out:
         out = Path(args.out)
