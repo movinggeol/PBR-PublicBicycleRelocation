@@ -161,6 +161,47 @@ def test_scale_legend_is_always_available_for_a_heatmap():
     assert charts.scale_legend(0) == "", "그릴 값이 없으면 범례도 없다"
 
 
+def test_scale_legend_says_what_to_do_not_just_the_number():
+    """범례만 따로 봐도 **할 일**을 알아야 한다.
+
+    본문은 "채워 줘야 함/빼내야 함"으로 설명하는데 범례는 그 말을 쓰지 않아,
+    같은 화면이 같은 것을 두 어휘로 부르고 있었다. 범례는 히트맵 바로 밑에
+    있어 본문보다 먼저 눈에 들어온다.
+    """
+    legend = charts.scale_legend(147.0, "대")
+
+    assert "빼내야 함" in legend, "쌓이는 쪽에 할 일이 없다"
+    assert "채워 줘야 함" in legend, "빠져나가는 쪽에 할 일이 없다"
+    # 그 숫자가 합계인지 최댓값인지 — 램프의 양 끝값임을 밝힌다
+    assert "147대까지" in legend, "값이 척도의 끝이라는 것을 밝히지 않았다"
+
+
+def test_scale_legend_explains_the_neutral_middle():
+    """0 근처를 면 색으로 물러나게 한 것이 이 척도의 설계다(DESIGN.md).
+
+    그런데 그 뜻을 글자로 적은 곳이 없어서, 가운데가 '자료 없음'인지
+    '값이 0'인지 범례만으로는 알 수 없었다.
+    """
+    legend = charts.scale_legend(12.5, "대")
+
+    assert "0 근처" in legend
+    assert 'class="viz-scale-note"' in legend
+
+
+def test_scale_legend_keeps_the_ramp_in_one_piece():
+    """색 사다리 9칸이 좁은 화면에서 두 줄로 잘리면 척도가 아니다.
+
+    `.viz-scale`이 flex-wrap이라 칸을 낱개로 두면 가운데에서 줄이 바뀐다 —
+    한 덩어리로 감싸 통째로 줄을 바꾸게 한다(실측: 390px에서 한 줄 유지).
+    """
+    legend = charts.scale_legend(12.5, "대")
+    ramp = re.search(r'<span class="viz-ramp">(.*?)</span>', legend, re.S)
+
+    assert ramp, "램프를 감싼 요소가 없다 — 좁은 화면에서 사다리가 잘린다"
+    assert ramp.group(1).count("<i ") == charts._STEPS * 2 + 1, (
+        "칸이 램프 밖에 흩어져 있다")
+
+
 # ---------------------------------------------------------------- 조립
 
 def _kpi(**over):

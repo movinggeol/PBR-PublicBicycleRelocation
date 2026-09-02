@@ -546,6 +546,10 @@
     }
     .viz-scale i { width: 16px; height: 10px; border-radius: 2px; display: inline-block; }
     .viz-scale span { margin: 0 6px; }
+    /* 색 사다리는 통째로 줄을 바꾼다. 9칸을 flex 항목으로 흩어 두면 좁은
+       화면에서 사다리 가운데가 끊겨 두 줄로 잘린다 — 그러면 척도가 아니다. */
+    .viz-ramp { display: inline-flex; gap: 3px; margin: 0 6px; }
+    .viz-scale-note { font-size: var(--fs-fine); color: var(--ink-4); margin: 3px 0 0; }
     /* '표로 보기'는 **그래프를 대신 읽는 보조 수단**이다. 펴도 카드가 표 길이만큼
        늘어나면 그래프가 화면 밖으로 밀려나 오히려 읽기 나빠진다(1.21.2).
        그래서 편 표는 카드 안에서 **제 높이를 갖고 스스로 스크롤**한다. */

@@ -368,7 +368,24 @@ def heatmap(rows: Sequence[str], cols: Sequence[str],
 
 
 def scale_legend(scale: float, unit: str = "") -> str:
-    """발산 척도 범례. 히트맵과 반드시 함께 낸다."""
+    """발산 척도 범례. 히트맵과 반드시 함께 낸다.
+
+    양 끝에 **무엇을 해야 하는지**(빼내야 함 / 채워 줘야 함)를 값과 함께
+    적는다. 예전에는 `쌓임 −147대` / `빠져나감 +147대`뿐이라 세 가지가
+    빠져 있었다:
+
+    - **할 일이 없었다.** 본문은 "채워 줘야 함/빼내야 함"으로 설명하는데
+      범례는 그 말을 쓰지 않아, 범례만 따로 보면 무엇을 하라는 건지 몰랐다.
+      같은 화면에서 같은 것을 두 어휘로 부르지 않는다.
+    - **그 숫자가 무엇인지 몰랐다.** 합계인지 최댓값인지 알 수 없었다 —
+      램프의 양 끝값이므로 `…까지`를 붙여 밝힌다.
+    - **가운데 무채색을 아무도 설명하지 않았다.** 0 근처를 면 색으로
+      물러나게 한 것이 이 척도의 설계인데(DESIGN.md '발산 척도'),
+      그 뜻을 글자로 적은 곳이 없었다.
+
+    램프는 `.viz-ramp`로 한 번 더 감싼다 — 좁은 화면에서 flex가 줄을 바꿀 때
+    9칸 사이가 끊기면 색 사다리가 두 줄로 잘려 읽히지 않는다.
+    """
     if scale <= 0:
         return ""
     chips = []
@@ -377,6 +394,12 @@ def scale_legend(scale: float, unit: str = "") -> str:
     chips.append('<i style="background:var(--viz-zero)"></i>')
     for level in range(1, _STEPS + 1):
         chips.append(f'<i style="background:var(--viz-pos-{level})"></i>')
-    return (f'<div class="viz-scale"><span>쌓임 −{_fmt(scale)}{unit}</span>'
-            + "".join(chips)
-            + f'<span>빠져나감 +{_fmt(scale)}{unit}</span></div>')
+    return (
+        '<div class="viz-scale">'
+        f'<span><b>쌓임</b> −{_fmt(scale)}{unit}까지 · 빼내야 함</span>'
+        f'<span class="viz-ramp">{"".join(chips)}</span>'
+        f'<span><b>빠져나감</b> +{_fmt(scale)}{unit}까지 · 채워 줘야 함</span>'
+        '</div>'
+        '<p class="viz-scale-note">가운데 무채색은 0 근처입니다 —'
+        ' 그 시간대는 손댈 필요가 없습니다.</p>'
+    )
