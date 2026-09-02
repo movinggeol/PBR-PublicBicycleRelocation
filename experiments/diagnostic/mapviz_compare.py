@@ -17,6 +17,7 @@
 실행:
     python experiments/diagnostic/mapviz_compare.py
 """
+import re
 import sys
 import webbrowser
 from pathlib import Path
@@ -39,21 +40,64 @@ from project_config import DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, MAP_TILES
 from step3_map.main import visit_popup, visit_tooltip
 from step4_metrics.imbalance import demand_satisfaction
 
-# 실제로 존재하는 산출물 한 쌍을 그대로 쓴다(같은 now·duration이라 세 지도가
-# 서로 맞아떨어진다) — 파이프라인을 다시 돌리지 않는다.
-NOW = "2026-05-21 18"
-DURATION = "_05_10"
-
-TOP_FILE = PROJECT_ROOT / "data/pp_data/ILP/후보" / f"top{DURATION} ({NOW}).csv"
-VRP_FILE = PROJECT_ROOT / "data/pp_data/VRP" / f"VRP_plan{DURATION} ({NOW}).csv"
-
 OUT_DIR = PROJECT_ROOT / "data/mapviz_compare"
 
-ORIGINAL = {
-    "step1 군집": PROJECT_ROOT / "data/pp_data/ILP/visualization" / f"clusterd_map{DURATION} ({NOW}).html",
-    "step3 경로": PROJECT_ROOT / "data/pp_data/VRP/visualization" / f"vrp_map{DURATION} ({NOW}).html",
-    "step4 재고 현황": PROJECT_ROOT / "data/pp_data/성능 지표/visualization" / f"imbalance_map{DURATION} ({NOW}).html",
-}
+TOP_DIR = PROJECT_ROOT / "data/pp_data/ILP/후보"
+VRP_DIR = PROJECT_ROOT / "data/pp_data/VRP"
+
+
+def find_snapshot(now: str = "", duration: str = "") -> tuple:
+    """비교에 쓸 (now, duration)을 **찾아서** 돌려준다.
+
+    ⚠️ 여기에 특정 스냅샷 이름을 박아 두면 안 된다. `data/`는 통째로
+    gitignore 대상이라 **다른 PC에는 그 산출물이 없다** — 실제로 처음 이
+    스크립트는 `NOW = "2026-05-21 18"`을 박아 두고 있었고, 그 스냅샷이 없는
+    환경에서는 입력 파일이 없다며 그대로 죽었다.
+
+    그래서 top·VRP_plan이 **둘 다 있는** 조합만 골라 가장 최근 것을 쓴다.
+    두 파일이 같은 실행에서 나와야 세 지도가 서로 맞아떨어지기 때문이다.
+    인자를 주면 그것을 우선한다(특정 스냅샷을 지목해 보고 싶을 때).
+    """
+    if now and duration:
+        return now, duration
+
+    pattern = re.compile(r"^top(_\d\d_\d\d) \((.+)\)\.csv$")
+    pairs = []
+    for path in TOP_DIR.glob("top_*.csv"):
+        matched = pattern.match(path.name)
+        if not matched:
+            continue
+        found_duration, found_now = matched.group(1), matched.group(2)
+        if duration and found_duration != duration:
+            continue
+        if now and found_now != now:
+            continue
+        # 짝이 되는 VRP 계획이 없으면 경로 지도를 못 그린다 — 후보에서 뺀다.
+        if not (VRP_DIR / f"VRP_plan{found_duration} ({found_now}).csv").exists():
+            continue
+        pairs.append((path.stat().st_mtime, found_now, found_duration))
+
+    if not pairs:
+        raise SystemExit(
+            f"top*.csv와 VRP_plan*.csv가 짝을 이루는 산출물이 없습니다.\n"
+            f"  찾은 곳: {TOP_DIR}\n"
+            f"           {VRP_DIR}\n"
+            f"먼저 파이프라인을 한 번 돌려 산출물을 만들어 주세요.")
+
+    _, best_now, best_duration = max(pairs)
+    return best_now, best_duration
+
+
+def source_paths(now: str, duration: str) -> tuple:
+    """(입력 CSV 둘, 나란히 볼 기존 산출물 셋)."""
+    top_file = TOP_DIR / f"top{duration} ({now}).csv"
+    vrp_file = VRP_DIR / f"VRP_plan{duration} ({now}).csv"
+    original = {
+        "step1 군집": PROJECT_ROOT / "data/pp_data/ILP/visualization" / f"clusterd_map{duration} ({now}).html",
+        "step3 경로": PROJECT_ROOT / "data/pp_data/VRP/visualization" / f"vrp_map{duration} ({now}).html",
+        "step4 재고 현황": PROJECT_ROOT / "data/pp_data/성능 지표/visualization" / f"imbalance_map{duration} ({now}).html",
+    }
+    return top_file, vrp_file, original
 
 DEPOT = {"id": DEPOT_ID, "name": DEPOT_NAME, "lat": DEPOT_LAT, "lon": DEPOT_LON}
 
@@ -206,7 +250,11 @@ def build_route_map(pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
 
     legend_rows = [(swatch_circle("green"), "출발 (차고지)"),
                   (swatch_circle("red"), "도착 (차고지 복귀)"),
-                  (swatch_circle("purple", "3"), "방문 순서")]
+                  (swatch_circle("purple", "3"), "방문 순서"),
+                  # ⚠️ 지도에 PolyLineTextPath로 화살표(▶)를 실제로 그린다 —
+                  #    설명을 빼면 화면에 있는 기호를 범례가 모르는 셈이 된다.
+                  #    기존 step3 범례에는 있던 줄이라 처음엔 빠뜨렸다(실측).
+                  ("▶", "차량 이동 방향")]
     legend_rows += [(swatch_line(cluster_color(i), dashed=True), f"군집 {c} 경로")
                     for i, c in enumerate(unique_clusters)]
     m.get_root().html.add_child(folium.Element(legend_html(
@@ -271,10 +319,10 @@ def build_imbalance_map(pick_drop: pd.DataFrame) -> folium.Map:
 
 # ==================== 실행 ====================
 
-def _index_page(paths: dict) -> str:
+def _index_page(paths: dict, original: dict, now: str, duration: str) -> str:
     rows = []
     for title, v2_path in paths.items():
-        orig = ORIGINAL.get(title)
+        orig = original.get(title)
         orig_link = (f'<a href="file:///{orig.as_posix()}" target="_blank">기존 산출물 ↗</a>'
                     if orig and orig.exists() else "기존 산출물 없음")
         rows.append(f"""
@@ -292,7 +340,7 @@ def _index_page(paths: dict) -> str:
       td, th {{ border-bottom: 1px solid #ddd; padding: 10px 8px; text-align: left; }}
       caption {{ text-align: left; color: #555; margin-bottom: 12px; font-size: 14px; }}
     </style>
-    <h1>지도 시각화 비교 — {NOW} {DURATION}</h1>
+    <h1>지도 시각화 비교 — {now} {duration}</h1>
     <p>왼쪽 링크는 mapviz_shared.py(범례 통일 + 색맹 안전 팔레트)로 다시 그린
     비교본, 오른쪽은 실제 파이프라인이 만든 기존 산출물입니다. 새 탭으로 열어
     나란히 두고 비교하세요.</p>
@@ -303,21 +351,27 @@ def _index_page(paths: dict) -> str:
     """
 
 
-def main():
-    if not TOP_FILE.exists() or not VRP_FILE.exists():
-        raise SystemExit(
-            f"입력 파일이 없습니다 — NOW/DURATION을 이 저장소에 실제로 있는 "
-            f"산출물로 맞춰 주세요.\n  {TOP_FILE}\n  {VRP_FILE}")
+def main(argv=None):
+    args = list(argv if argv is not None else sys.argv[1:])
+    # 인자를 주면 그 스냅샷을, 없으면 짝이 맞는 것 중 최근 것을 찾는다.
+    now = args[0] if len(args) > 0 else ""
+    duration = args[1] if len(args) > 1 else ""
+    now, duration = find_snapshot(now, duration)
+    print(f"비교 대상 스냅샷: {now} {duration}")
 
-    pick_drop = pd.read_csv(TOP_FILE, encoding="utf-8")
-    vrp_plan = pd.read_csv(VRP_FILE, encoding="utf-8")
+    top_file, vrp_file, original = source_paths(now, duration)
+    if not top_file.exists() or not vrp_file.exists():
+        raise SystemExit(f"입력 파일이 없습니다.\n  {top_file}\n  {vrp_file}")
+
+    pick_drop = pd.read_csv(top_file, encoding="utf-8")
+    vrp_plan = pd.read_csv(vrp_file, encoding="utf-8")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     outputs = {
-        "step1 군집": OUT_DIR / f"cluster_v2{DURATION} ({NOW}).html",
-        "step3 경로": OUT_DIR / f"route_v2{DURATION} ({NOW}).html",
-        "step4 재고 현황": OUT_DIR / f"imbalance_v2{DURATION} ({NOW}).html",
+        "step1 군집": OUT_DIR / f"cluster_v2{duration} ({now}).html",
+        "step3 경로": OUT_DIR / f"route_v2{duration} ({now}).html",
+        "step4 재고 현황": OUT_DIR / f"imbalance_v2{duration} ({now}).html",
     }
 
     build_cluster_map(pick_drop).save(str(outputs["step1 군집"]))
@@ -331,7 +385,7 @@ def main():
     print(f"저장: {outputs['step4 재고 현황']}")
 
     index_path = OUT_DIR / "index.html"
-    index_path.write_text(_index_page(outputs), encoding="utf-8")
+    index_path.write_text(_index_page(outputs, original, now, duration), encoding="utf-8")
     print(f"\n비교 페이지: {index_path}")
 
     try:

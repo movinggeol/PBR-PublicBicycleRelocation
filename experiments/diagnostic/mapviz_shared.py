@@ -4,6 +4,10 @@
 기존 산출물을 다시 그려 `data/mapviz_compare/`에 따로 내놓으므로, 실제
 산출물과 나란히 열어 비교한 뒤 채택 여부를 정한다.
 
+> **비교 결과는 `experiments/README.md`에 적혀 있다(1.26.79).** 셋을 실제로
+> 띄워 재 보니 판정이 갈렸다 — 재고 현황 지도는 채택할 만하고, 군집·경로
+> 지도는 **범례가 610·688px로 길어져** 보류다. 통째로 가져가지 말 것.
+
 바꾼 것 셋 (버전관리 1.26.72~74 시각화 UX 점검의 연장):
 
 1. **범례를 한 함수로 통일한다** — `step3_map/main.py`만 한글·블러·그림자를
@@ -40,22 +44,40 @@ def cluster_color(index: int) -> str:
     """군집 번호 -> 색.
 
     처음 8개는 색맹 안전색을 그대로 쓴다. 그 이상(9번째부터)은 같은 8색을
-    한 단계씩 어둡게 돌려써서 최소한 '바로 앞 순번'과는 밝기가 갈라지게
-    한다 — 색 자체가 유한하므로 8개를 넘는 군집 전부를 색맹 안전으로
-    보장하지는 못한다. 대신 세 지도 모두 레이어 컨트롤로 군집을 하나씩
-    껐다 켤 수 있으므로, 9번째부터는 '완전히 안전하지는 않다'를 알고 쓰는
-    보완책이다.
+    한 단계씩 **어둡게(검정은 밝게)** 돌려써서 최소한 '바로 앞 순번'과는
+    밝기가 갈라지게 한다 — 색 자체가 유한하므로 8개를 넘는 군집 전부를
+    색맹 안전으로 보장하지는 못한다. 대신 세 지도 모두 레이어 컨트롤로
+    군집을 하나씩 껐다 켤 수 있으므로, 9번째부터는 '완전히 안전하지는
+    않다'를 알고 쓰는 보완책이다.
+
+    ⚠️ **검정(#000000)은 어둡게 만들 수 없다.** 0에 무엇을 곱해도 0이라,
+    처음엔 군집 7과 15가 **똑같은 검정**으로 나왔다(실측: RGB 거리 0).
+    18개 군집을 그리는 실제 산출물에서 두 군집이 한 색이면 범례가 설명하는
+    구분이 지도에 없는 것이다. 그래서 어두운 색은 **밝히는 쪽으로** 돌린다.
     """
     base = _OKABE_ITO[index % len(_OKABE_ITO)]
     cycle = index // len(_OKABE_ITO)
-    return base if cycle == 0 else _darken(base, 0.72 ** cycle)
+    if cycle == 0:
+        return base
+    return _shift(base, 0.72 ** cycle)
 
 
-def _darken(hex_color: str, factor: float) -> str:
+def _shift(hex_color: str, factor: float) -> str:
+    """`factor`(<1)만큼 어둡게 — 단, 이미 어두운 색은 같은 만큼 **밝게**.
+
+    검정처럼 더 어두워질 수 없는 색이 순환마다 제자리에 머무는 것을 막는다.
+    """
     r = int(hex_color[1:3], 16)
     g = int(hex_color[3:5], 16)
     b = int(hex_color[5:7], 16)
-    return f"#{int(r * factor):02x}{int(g * factor):02x}{int(b * factor):02x}"
+    # 사람 눈 기준 밝기(Rec. 601). 어두운 색을 더 어둡게 하면 검정끼리 겹친다.
+    luma = 0.299 * r + 0.587 * g + 0.114 * b
+    if luma < 64:
+        # 흰색 쪽으로 같은 비율만큼 당긴다.
+        r, g, b = (int(v + (255 - v) * (1 - factor)) for v in (r, g, b))
+    else:
+        r, g, b = (int(v * factor) for v in (r, g, b))
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def swatch_circle(color: str, label_inside: str = "") -> str:
