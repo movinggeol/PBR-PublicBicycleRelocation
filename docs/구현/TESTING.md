@@ -1,11 +1,11 @@
 # 테스트
 
 이 프로젝트는 처음에 테스트가 하나도 없었고, **의존성이 전부 깨진 상태**로
-파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 571개 테스트입니다.
+파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 572개 테스트입니다.
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 571개 (약 100초)
+python -m pytest              # 전체 572개 (약 100초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -42,7 +42,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_eda.py](../../tests/test_eda.py) | 7 | **EDA 그래프** — `plt.show()`가 들어오면 subprocess가 창을 띄운 채 파이프라인 전체를 멈춘다. 글꼴 경로를 하드코딩하지 않는지, 자료가 없어도 죽지 않는지 |
 | [tests/test_reproduce.py](../../tests/test_reproduce.py) | 7 | **재현 절차가 정말 합성 데이터로 도는지** — README 절차가 합성 대여소 90곳을 만들어 놓고 실데이터 1,361곳을 돌리고 있었다(2026-08-31). 오류가 없어 아무도 눈치채지 못했다 |
 | [tests/test_stockout_map.py](../../tests/test_stockout_map.py) | 4 | **결품 지도** — '늘 빔'(재배치로 못 고치는 곳)을 섞어 세지 않는지, 관측이 없는 시간을 '결품 없음'으로 읽지 않는지 |
-| **합계** | **571** | 25개 파일 · 약 120초 (`python -m pytest`) |
+| **합계** | **572** | 25개 파일 · 약 120초 (`python -m pytest`) |
 
 > **이 합계는 손으로 세지 마세요.** 1.26.88이 손으로 세어 548이라 적었는데
 > 실측은 555였습니다 — `test_version_log.py` 한 파일을 통째로 빠뜨린 것입니다.

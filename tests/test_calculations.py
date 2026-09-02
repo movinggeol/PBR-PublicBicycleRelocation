@@ -649,6 +649,49 @@ def test_solver_factory_says_what_to_install_when_nothing_is_available(step2, mo
         ilp.build_solver()
 
 
+def test_both_cbc_solvers_give_the_same_plan(step2):
+    """`PULP_CBC_CMD`와 `COIN_CMD`가 **같은 이동 계획**을 내야 한다.
+
+    PuLP 4.0으로 넘어가면 솔버가 바뀌는데, 그때 계획이 달라지면 **문서의 모든
+    수치가 무효가 된다.** `build_solver()`의 폴백은 "돌아가기는 한다"만 지킬 뿐
+    답이 같은지는 지키지 않아, 이 테스트로 못박는다.
+
+    ⚠️ **답이 같을 것이 당연하지 않다.** 이 ILP는 수송문제라 최적해가 여럿인
+    경우가 흔하고, 솔버가 다르면 **같은 목적값의 다른 꼭짓점**을 고를 수 있다.
+    실제로 인공 예제(x+y 최소화)에서는 두 솔버가 다른 해를 냈다. 파이프라인
+    자료에서는 네 회차 모두 글자 그대로 같았지만(1.26.98), 그것은 **측정된
+    사실이지 보장이 아니다** — 그래서 검사로 남긴다.
+
+    cbcbox가 없으면 건너뛴다(149MB라 기본 설치가 아니다).
+    """
+    ilp, _vrp = step2
+    cbcbox = pytest.importorskip("cbcbox", reason="cbcbox 미설치 (pip install cbcbox)")
+
+    legacy = getattr(ilp.pulp, "PULP_CBC_CMD", None)
+    if legacy is None:
+        pytest.skip("PuLP 4.0 — 비교할 구 솔버가 없다")
+
+    cluster = pd.DataFrame([
+        {"station_id": "A", "pick_qty": 6, "drop_qty": 0, "lat": 36.35, "lon": 127.38},
+        {"station_id": "B", "pick_qty": 4, "drop_qty": 0, "lat": 36.36, "lon": 127.40},
+        {"station_id": "C", "pick_qty": 0, "drop_qty": 7, "lat": 36.34, "lon": 127.39},
+        {"station_id": "D", "pick_qty": 0, "drop_qty": 3, "lat": 36.37, "lon": 127.41},
+    ])
+
+    def plan_with(solver):
+        moves = ilp.solve_cluster_moves(cluster.copy(), solver)
+        return sorted((m["pick_station_id"], m["drop_station_id"], m["qty"])
+                      for m in moves)
+
+    old = plan_with(legacy(msg=False, timeLimit=60, gapRel=0.0))
+    new = plan_with(ilp.pulp.COIN_CMD(path=cbcbox.cbc_bin_path(), msg=False,
+                                      timeLimit=60, gapRel=0.0))
+
+    assert old == new, (
+        "두 CBC가 다른 계획을 냈다 — PuLP 4.0 전환이 문서의 수치를 바꾼다."
+        f" PULP_CBC_CMD={old} / COIN_CMD={new}")
+
+
 def test_pipeline_uses_the_solver_factory_everywhere(step2):
     """솔버 설정이 흩어지면 실험과 파이프라인이 다른 조건으로 풀게 된다."""
     import inspect

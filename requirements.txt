@@ -13,6 +13,16 @@ python-dotenv>=1.2.2
 # 공휴일 달력 (평일/휴일 구분). 대체공휴일·임시공휴일까지 다루고 규칙이 해마다
 # 바뀌므로 손으로 관리하지 않는다. 2026년 규칙이 반영된 버전이 필요하다.
 holidays>=0.102
+
+# ILP 솔버. **PuLP 4.0에서 `PULP_CBC_CMD`가 사라진다** — 지금은 PuLP가 CBC를
+# 동봉하지만 4.0부터는 `pip install pulp[cbc]`가 설치하는 cbcbox(약 149MB)를
+# `COIN_CMD`로 써야 한다. `ilp.build_solver()`가 3단 폴백을 갖고 있으나,
+# **cbcbox가 없으면 그 폴백도 실패한다**(2026-09-02 확인: 이 PC에서 COIN_CMD가
+# available=None이었다). 4.0 전에 미리 깔아 두려면 아래 주석을 풀어라 —
+# 지금 기본으로 켜지 않는 것은 149MB를 모든 환경에 강요하지 않기 위해서다.
+#   pip install cbcbox
+# 두 솔버가 같은 답을 내는 것은 확인했다(네 회차 전부 이동 계획이 글자 그대로
+# 동일 · docs/기록/버전관리.md 1.26.98).
 PuLP>=3.3.2
 folium>=0.20.0
 matplotlib>=3.11.1
