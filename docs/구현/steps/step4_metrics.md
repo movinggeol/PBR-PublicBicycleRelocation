@@ -62,6 +62,9 @@ VRP 결과의 distance_km·travel_sec·work_sec·cum_sec 컬럼(1.2.0에서 추�
 - Drop=빨강, Pick=파랑 CircleMarker
 - 원 크기 = 개선량, 투명도 = 개선률
 - 클러스터별 레이어 토글 + 범례
+- **범례는 [`mapviz.py`](../../../mapviz.py)에서 옵니다** — 세 지도가 한 벌을
+  같이 씁니다. 1.26.80 전까지 여기만 영어(`Legend`)에 회색 2px 테두리라,
+  같은 실행의 산출물인데 다른 도구처럼 보였습니다.
 
 ## 작업 목록
 

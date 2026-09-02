@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 import db
+from mapviz import legend_html, swatch_circle
 from project_config import (
     MAP_TILES, PICK_HARM_WARN_SHARE, PROJECT_ROOT, TIME_BUDGET_MINUTES,
     VEHICLE_CAPACITY, duration_hours, duration_list, ensure_output_dirs,
@@ -544,35 +545,15 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
                 popup=folium.Popup(popup_html, max_width=260)
             ).add_to(fg)
 
-    legend_html = """
-    <div style="
-        position : fixed;
-        bottom : 30px;
-        left : 30px;
-        z-index : 9999;
-        background : white;
-        padding : 10px;
-        border : 2px solid gray;
-    ">
-    <b>Legend</b><br>
-
-    🔴 Drop :
-    부족 해소<br>
-
-    🔵 Pick :
-    과잉 해소<br><br>
-
-    원 크기 :
-    불균형 해소량<br>
-
-    원 투명도 :
-    개선률
-    </div>
-    """
-
-    m.get_root().html.add_child(
-        folium.Element(legend_html)
-    )
+    # 범례는 세 지도가 mapviz.py 한 벌을 같이 쓴다. 예전에는 여기만 영어
+    # ("Legend")에 회색 2px 테두리라, 같은 실행의 산출물인데 다른 도구처럼
+    # 보였다(1.26.75 조사 → 1.26.80 채택).
+    m.get_root().html.add_child(folium.Element(legend_html(
+        "범례 — 재고 현황",
+        [(swatch_circle("red"), "Drop — 부족 해소"),
+         (swatch_circle("blue"), "Pick — 과잉 해소")],
+        note="원 크기는 불균형 해소량, 원 투명도는 개선률입니다.<br>"
+             "점에 커서를 대면 자세한 값이 뜹니다.")))
 
     folium.LayerControl(
         collapsed=False

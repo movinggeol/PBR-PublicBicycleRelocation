@@ -21,6 +21,7 @@ from module import (
     start_time_for,
 )
 
+from mapviz import cluster_color, legend_html, swatch_circle, swatch_line
 from project_config import (
     DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, MAP_TILES, PROJECT_ROOT,
     VEHICLE_CAPACITY,
@@ -199,11 +200,9 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
     # 앞뒤 클러스터가 다른 날을 보게 된다 — 한 번만 정하고 돌려 쓴다.
     tmap_start_time = start_time_for(duration)
 
-    palette = [
-        'red','blue','green','purple','orange',
-        'darkred','cadetblue','darkgreen','pink', 'black', 
-        'darkblue', 'darkpurple', 'lightblue', 'lightgreen', 'gray'
-    ]
+    # 경로 색은 mapviz.cluster_color()가 정한다 — 세 지도가 한 벌을 쓴다.
+    # 예전 목록은 red/darkred, green/darkgreen/lightgreen처럼 인접한 색이
+    # 많았다(1.26.75 조사 → 1.26.80 채택).
 
     # ---------------- cluster별 처리 ----------------
     station_map = pick_drop.set_index('station_id').to_dict('index')
@@ -220,7 +219,7 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
 
         current_load = 0
 
-        color = palette[idx % len(palette)]
+        color = cluster_color(idx)
 
         # --------- 경로 구성 ----------
         route_pts = []
@@ -482,30 +481,27 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
     # 범례. 화면의 나머지가 한국어이므로 여기도 한국어로 적고, 지도에 실제로
     # 있는 것만 담는다(보라 원=방문 번호, 파랑/주황=작업 종류).
     # 색을 값으로 읽게 두지 않는다 — 글자를 함께 적는다 (docs/구현/DESIGN.md).
-    legend_html = """
-    <div style="position: fixed; bottom: 24px; left: 24px; z-index: 9999;
-                background: rgba(255,255,255,.94);
-                -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-                padding: 12px 14px; border-radius: 10px;
-                border: 1px solid rgba(0,0,0,.14);
-                box-shadow: rgba(0,0,0,.22) 3px 5px 30px 0;
-                font: 13px/1.7 -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
-                color: #1a1a1a;">
-      <div style="font-weight:700; margin-bottom:6px;">범례</div>
-      🟢 출발 (차고지)<br>
-      🔴 도착 (차고지 복귀)<br>
-      <span style="display:inline-block;width:15px;height:15px;border-radius:50%;
-                   background:purple;color:#fff;font-size:9px;font-weight:700;
-                   text-align:center;line-height:15px;vertical-align:-3px;">3</span>
-      방문 순서<br>
-      ▶ 차량 이동 방향
-      <div style="margin-top:7px; padding-top:7px; border-top:1px solid rgba(0,0,0,.12);
-                  color:#555; font-size:12px;">
-        점에 커서를 대면 요약이,<br>누르면 자세한 내용이 뜹니다.
-      </div>
-    </div>
-    """
-    m.get_root().html.add_child(folium.Element(legend_html))
+    #
+    # 상자 모양은 mapviz.legend_html()이 맡는다 — 이 범례가 세 지도 중
+    # 유일하게 다듬어져 있어서, 그것을 기준 삼아 나머지 둘을 맞췄다(1.26.80).
+    #
+    # ⚠️ 🟢·🔴은 원 배지가 아니라 **이모지 그대로** 둔다. 차고지 마커는
+    #    CircleMarker가 아니라 folium.Icon(핀 모양)이라, 원으로 그리면
+    #    범례와 지도의 모양이 어긋난다.
+    legend_rows = [
+        ("🟢", "출발 (차고지)"),
+        ("🔴", "도착 (차고지 복귀)"),
+        (swatch_circle("purple", "3"), "방문 순서"),
+        ("▶", "차량 이동 방향"),
+    ]
+    # 군집 경로 색은 접어 둔다. 18개를 한 줄씩 세우면 범례가 688px까지
+    # 늘어나 지도를 가린다(실측). 앞의 넷은 늘 보인다.
+    legend_rows += [(swatch_line(cluster_color(i)), f"군집 {c} 경로")
+                    for i, c in enumerate(unique_clusters)]
+    m.get_root().html.add_child(folium.Element(legend_html(
+        "범례 — 경로", legend_rows,
+        collapse_after=4, collapse_label="군집",
+        note="점에 커서를 대면 요약이,<br>누르면 자세한 내용이 뜹니다.")))
 
     folium.LayerControl(collapsed=False).add_to(m)
 

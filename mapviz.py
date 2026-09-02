@@ -1,30 +1,30 @@
-"""세 지도 생성기(step1·step3·step4)가 각자 만든 범례·팔레트를 하나로 모은 시안.
+"""세 지도(step1 군집·step3 경로·step4 재고 현황)가 함께 쓰는 범례·팔레트.
 
-**아직 프로덕션 코드를 대체하지 않는다.** `mapviz_compare.py`가 이 모듈로
-기존 산출물을 다시 그려 `data/mapviz_compare/`에 따로 내놓으므로, 실제
-산출물과 나란히 열어 비교한 뒤 채택 여부를 정한다.
+`project_config.MAP_TILES`가 "세 지도가 같은 배경을 써야 한다"를 맡는 것과
+같은 이유로, **범례와 색도 여기 한 벌만 둔다.** 파일마다 따로 박아 두면
+하나 고칠 때 셋이 갈라진다 — 실제로 그렇게 갈라져 있었다(1.26.75 조사):
+`step3_map/main.py`만 한글·블러·그림자를 갖췄고,
+`step4_metrics/imbalance.py`는 영어("Legend")에 회색 굵은 테두리,
+`step1_cluster/st_visualization.py`는 범례가 **아예 없었다.**
 
-> **비교 결과는 `experiments/README.md`에 적혀 있다(1.26.79).** 셋을 실제로
-> 띄워 재 보니 판정이 갈렸다 — 재고 현황 지도는 채택할 만하고, 군집·경로
-> 지도는 **범례가 610·688px로 길어져** 보류다. 통째로 가져가지 말 것.
+색이 곧 뜻인 화면에서 그 뜻을 설명하는 상자가 화면마다 다르면 같은 도구가
+아닌 것처럼 보인다(docs/구현/DESIGN.md "색만으로 뜻을 전하지 않는다").
 
-바꾼 것 셋 (버전관리 1.26.72~74 시각화 UX 점검의 연장):
+## 어떻게 정해졌나
 
-1. **범례를 한 함수로 통일한다** — `step3_map/main.py`만 한글·블러·그림자를
-   갖췄고, `step4_metrics/imbalance.py`는 영어("Legend")에 회색 굵은 테두리,
-   `step1_cluster/st_visualization.py`는 범례가 아예 없었다. 색이 곧 뜻인
-   화면에서 그 뜻을 설명하는 상자가 화면마다 다르면 같은 도구가 아닌 것처럼
-   보인다(docs/구현/DESIGN.md "색만으로 뜻을 전하지 않는다").
-2. **그 함수를 세 지도가 같이 쓴다** — 팔레트·범례 HTML이 파일마다 따로
-   박혀 있으면 하나 고칠 때 셋 다 갈라진다(실제로 그래서 갈라져 있었다).
-3. **군집 팔레트를 색맹 안전 8색(Okabe–Ito, 2008) 기준으로 새로 짠다** —
-   기존 18색(`st_visualization.py`)은 `red`/`darkred`/`Salmon`,
-   `green`/`Olive`/`Lime`처럼 인접한 색이 많아 군집이 여럿 겹치면 구분이
-   어려웠다.
+`experiments/diagnostic/`의 시안으로 먼저 만들고, 실제 산출물을 다시 그려
+**여섯 장을 나란히 띄워 비교한 뒤** 채택했다(1.26.79 → 1.26.80). 그 비교가
+아니었으면 못 봤을 것 둘을 짚어 둔다:
+
+- **검정은 어둡게 만들 수 없다.** 8색을 순환하며 한 단계씩 어둡게 하는데
+  `#000000`은 0에 무엇을 곱해도 0이라 **군집 7과 15가 같은 색**이었다.
+  `_shift()`가 어두운 색을 밝히는 쪽으로 돌리는 것은 이 때문이다.
+- **범례가 길어지면 지도를 가린다.** 18개 군집을 한 줄씩 세우니 범례가
+  610~688px, 화면의 2/3가 됐다. `collapse_after`가 있는 이유다.
 """
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 # Okabe & Ito(2008)가 제안한, 데이터 시각화에서 널리 쓰이는 공개 색맹 안전
 # 8색이다. 검정은 마커 배경·글자와 겹치기 쉬워 순번을 맨 뒤로 뺐다.
@@ -99,8 +99,10 @@ def swatch_line(color: str, dashed: bool = False) -> str:
     )
 
 
-def legend_html(title: str, rows: List[Tuple[str, str]], *,
+def legend_html(title: str, rows: Sequence[Tuple[str, str]], *,
                 note: Optional[str] = None,
+                collapse_after: Optional[int] = None,
+                collapse_label: str = "항목",
                 position: str = "bottom: 24px; left: 24px;") -> str:
     """세 지도가 같이 쓰는 범례 상자.
 
@@ -108,11 +110,34 @@ def legend_html(title: str, rows: List[Tuple[str, str]], *,
     기존 범례(블러 배경·둥근 모서리·`--shadow-product`와 같은 그림자 값)를
     그대로 기준으로 삼았다 — 이 저장소에서 이미 한 번 다듬어진 모양이라
     처음부터 새로 디자인하지 않는다.
+
+    collapse_after: 이 개수를 넘는 줄은 `<details>`로 접는다.
+      ⚠️ **접지 않으면 범례가 지도를 가린다.** 군집은 실제로 18개라 한 줄씩
+      세우면 범례가 610~688px, 화면 세로의 2/3가 됐다(실측). 앞의 몇 줄
+      (출발·도착 같은 고정 항목)은 늘 보이고 긴 목록만 접힌다.
+      `<details>`는 folium이 CDN에서 받는 것이 아니라 브라우저 기본 기능이라
+      **오프라인에서도 열린다**(1.26.74에서 지도가 하얗게 뜨던 것과 다르다).
     """
-    row_html = "".join(
-        f'<div style="margin-top:4px">{badge} {label}</div>'
-        for badge, label in rows
-    )
+    visible = rows if collapse_after is None else rows[:collapse_after]
+    hidden = () if collapse_after is None else rows[collapse_after:]
+
+    def _lines(items):
+        return "".join(
+            f'<div style="margin-top:4px">{badge} {label}</div>'
+            for badge, label in items
+        )
+
+    row_html = _lines(visible)
+    if hidden:
+        # 접힌 채로 시작한다 — 펴 두면 접는 뜻이 없다.
+        row_html += (
+            '<details style="margin-top:4px;">'
+            '<summary style="cursor:pointer; color:#555; font-size:12px;">'
+            f'{collapse_label} {len(hidden)}개 더 보기</summary>'
+            f'<div style="max-height:40vh; overflow-y:auto;">{_lines(hidden)}</div>'
+            '</details>'
+        )
+
     note_html = ""
     if note:
         note_html = (

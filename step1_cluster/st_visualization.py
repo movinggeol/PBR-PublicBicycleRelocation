@@ -9,6 +9,7 @@ from folium.plugins import FeatureGroupSubGroup
 import pandas as pd
 import numpy as np
 
+from mapviz import cluster_color, legend_html, swatch_circle
 from project_config import (
     MAP_TILES, PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config,
 )
@@ -42,13 +43,9 @@ def make_clustered_map(durations: list):
             tiles=MAP_TILES          # 세 지도가 같은 배경을 써야 한다(project_config)
         )
 
-        colors = ['red', 'orange', 'yellow', 'green',    #3
-                'blue', 'navy', 'purple', 'Magenta',    #7
-                'black', 'Teal', 'Cyan', 'darkred',     #11
-                'Salmon', 'Lime', 'gold', 'gray',       #15
-                'Olive', 'Indigo', 'Brown'              #18
-                ]
-
+        # 색은 mapviz.cluster_color()가 정한다 — 세 지도가 한 벌을 쓴다.
+        # 예전 18색 목록은 red/darkred/Salmon, green/Olive/Lime처럼 인접한
+        # 색이 많아 군집이 겹치면 구분이 어려웠다(1.26.75 조사 → 1.26.80).
         unique_clusters = sorted(pick_drop['cluster'].unique())
         
         # Cluster + Pick/Drop 그룹 생성
@@ -99,12 +96,12 @@ def make_clustered_map(durations: list):
                 location=[row['lat'], row['lon']],
                 radius=radius,
 
-                color=colors[cluster % len(colors)],    # cluster : int
+                color=cluster_color(cluster),    # cluster : int
                 weight=2,
                 opacity=1.0,
-                
+
                 fill=True,
-                fill_color=colors[cluster % len(colors)],
+                fill_color=cluster_color(cluster),
                 fill_opacity=0.5,
 
                 # sticky: 풍선이 커서를 따라온다. 점이 촘촘한 곳에서
@@ -116,7 +113,22 @@ def make_clustered_map(durations: list):
         # 코드가 읽던 top_center*.csv는 **어느 단계도 만들지 않는 파일**이었다.
         # 되살리려면 파일을 만드는 쪽부터 필요하고, webapp의 후보 파일 글롭이
         # 그 파일까지 잡지 않는지도 함께 봐야 한다(store.CSV_FALLBACK).
-        
+
+        # 범례. 이 지도는 원래 범례가 **아예 없어서**, 18색으로 군집을 나눠
+        # 놓고 어느 색이 몇 번인지 알 방법이 레이어 컨트롤의 이름을 읽는 것
+        # 뿐이었다(1.26.75 조사 → 1.26.80 채택).
+        #
+        # ⚠️ 군집 목록은 접는다. 18개를 한 줄씩 세우면 범례가 610px, 화면
+        #    세로의 2/3를 먹는다(실측). 레이어 컨트롤이 이미 군집을 하나씩
+        #    껐다 켤 수 있으므로, 펴 두면 같은 정보가 두 벌 보인다.
+        m.get_root().html.add_child(folium.Element(legend_html(
+            "범례 — 군집",
+            [(swatch_circle(cluster_color(c), str(c)), f"군집 {c}")
+             for c in unique_clusters],
+            collapse_after=0, collapse_label="군집",
+            note="원 크기는 재배치 수량입니다.<br>"
+                 "점에 커서를 대면 자세한 값이 뜹니다.")))
+
         folium.LayerControl(collapsed=False).add_to(m)
 
         m.save(clusterd_map.format(duration=duration, now=now))
