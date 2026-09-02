@@ -55,6 +55,7 @@ import math
 import random
 import sys
 import time
+from datetime import date as date_module
 from datetime import datetime
 from pathlib import Path
 
@@ -276,6 +277,24 @@ def measure_chain(chain: dict, duration: str, start_time: str, headers: dict) ->
     return rows
 
 
+def rotate_durations(durations: list, anchor: str) -> list:
+    """회차 순서를 날짜로 돌린다.
+
+    한도가 소진되면 collect()가 **그 자리에서 멈춘다**(`return saved`). 순서가
+    늘 같으면 잘리는 자리도 늘 같아서, 마지막 회차만 관측이 계속 모자란다 —
+    실제로 `roadprobe-2026-09-01`이 앞의 셋만 100구간씩 받고 `_20_05`를 통째로
+    잃었다(300구간 / 400구간). 열흘을 채워도 그 창만 표본이 적으면 사전 등록
+    기준(회차별 변동계수)을 회차별로 견줄 수 없다.
+
+    **날짜 기준이라 같은 날 다시 돌리면 같은 순서다(멱등).** 평일만 도는
+    스케줄에서도 네 회차가 고르게 마지막에 선다(평일 20회 기준 5·5·5·5).
+    """
+    if len(durations) < 2:
+        return durations
+    shift = date_module.fromisoformat(anchor).toordinal() % len(durations)
+    return durations[shift:] + durations[:shift]
+
+
 def collect(chains: list, durations: list, run_label: str, headers: dict,
             dry_run: bool = False) -> int:
     """회차 × 사슬을 돌며 수집한다. 저장한 구간 수를 돌려준다."""
@@ -435,6 +454,11 @@ def main() -> int:
     if (unknown := [d for d in durations if d not in DURATIONS]):
         print(f"[중단] 모르는 회차 {unknown} — {DURATIONS} 중에서 고르세요.")
         return 1
+
+    # --durations로 직접 고른 경우에는 돌리지 않는다 — 사람이 정한 순서가 의도다.
+    if args.durations == ",".join(DURATIONS):
+        durations = rotate_durations(
+            durations, args.date or datetime.now().strftime("%Y-%m-%d"))
 
     chains = load_panel(rebuild=args.rebuild_panel)
     need = len(chains) * len(durations)

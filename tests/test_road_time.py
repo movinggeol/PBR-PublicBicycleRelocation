@@ -274,3 +274,46 @@ def test_drift_check_flags_legs_outside_the_panel(collector):
     changed = copy.deepcopy(chains)
     changed[0]["points"][1]["id"] = "ST9999"
     assert collector.warn_if_panel_drifted(changed) is True
+
+# ------------------------------------------------- 회차 순서 돌리기
+
+def test_한도가_소진돼도_늘_같은_회차만_잘리지_않는다(collector):
+    """collect()는 TMAP 한도가 소진되면 그 자리에서 멈춘다. 순서가 고정이면
+    잘리는 자리도 고정이라 마지막 회차만 표본이 계속 모자란다 — 실제로
+    roadprobe-2026-09-01이 `_20_05`를 통째로 잃었다(300구간 / 400구간).
+
+    평일만 도는 스케줄에서도 네 회차가 고르게 마지막에 서야 한다. mod 4로
+    도는데 금→월이 3일을 건너뛰므로, 여기서 실제로 세어 확인한다."""
+    from collections import Counter
+    from datetime import date, timedelta
+
+    durations = ["_05_10", "_10_15", "_15_20", "_20_05"]
+    last = Counter()
+    day, seen = date(2026, 9, 4), 0
+    while seen < 20:
+        if day.weekday() < 5:                      # 수집기는 평일만 깨운다
+            order = collector.rotate_durations(durations, day.isoformat())
+            last[order[-1]] += 1
+            seen += 1
+        day += timedelta(days=1)
+
+    assert set(last) == set(durations), f"마지막에 서 보지 못한 회차가 있다: {last}"
+    assert max(last.values()) - min(last.values()) <= 1, (
+        f"잘리는 자리가 한쪽으로 쏠린다: {last}")
+
+
+def test_회차_순서는_같은_날이면_같다(collector):
+    """재실행해도 같은 순서여야 한다 — 하루치를 두 번 받아도 라벨이 같으므로,
+    순서가 흔들리면 어느 회차가 들어왔는지 재현할 수 없다."""
+    durations = ["_05_10", "_10_15", "_15_20", "_20_05"]
+    first = collector.rotate_durations(durations, "2026-09-07")
+    again = collector.rotate_durations(durations, "2026-09-07")
+    assert first == again
+    assert sorted(first) == sorted(durations), "회차가 사라지거나 늘었다"
+
+
+def test_사람이_고른_순서는_돌리지_않는다(collector):
+    """--durations로 직접 고른 경우는 그 순서가 의도다. 하나만 고른 경우에도
+    돌릴 것이 없다."""
+    assert collector.rotate_durations(["_20_05"], "2026-09-07") == ["_20_05"]
+    assert collector.rotate_durations([], "2026-09-07") == []

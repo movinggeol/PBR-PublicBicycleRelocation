@@ -28,7 +28,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_db.py](../../tests/test_db.py) | 25 | SQLite 저장소의 스코프·멱등성·최신 라벨·스키마 마이그레이션 ([DB_SCHEMA.md](DB_SCHEMA.md)) |
 | [tests/test_kpi.py](../../tests/test_kpi.py) | 19 | 성과 지표 계산과 `/kpi` 화면, 결측 지표 렌더링 ([KPI.md](../분석/KPI.md)) |
 | [tests/test_orders.py](../../tests/test_orders.py) | 16 | **작업지시서·실시간 재고 대조** — 대조가 지시량(요구량 아님)을 보는지, 집행 가능 판정이 계획과 같은 상한을 쓰는지, 타슈 API를 누를 때만 부르고 실패해도 500이 아닌지 |
-| [tests/test_road_time.py](../../tests/test_road_time.py) | 16 | **TMAP 실도로 고정 패널** — 패널이 결정적인지(흔들리면 '매일 같은 구간'이 무너진다), 차고지 왕복을 포함하는지, 거리 구간이 고르게 차는지, 누적의 차분이 구간 실측이고 `start_time`이 함께 남는지 ([EXPERIMENTS.md](../분석/EXPERIMENTS.md) 9장) |
+| [tests/test_road_time.py](../../tests/test_road_time.py) | 19 | **TMAP 실도로 고정 패널** — 패널이 결정적인지(흔들리면 '매일 같은 구간'이 무너진다), 차고지 왕복을 포함하는지, 거리 구간이 고르게 차는지, 누적의 차분이 구간 실측이고 `start_time`이 함께 남는지, **한도가 소진돼도 늘 같은 회차만 잘리지 않는지** ([EXPERIMENTS.md](../분석/EXPERIMENTS.md) 9장) |
 | [tests/test_merge_stock.py](../../tests/test_merge_stock.py) | 15 | **두 PC 재고 병합** — 이미 있는 틱을 덮어쓰지 않는지(*먼저 수집한 것이 이긴다*, 수집기의 `INSERT OR REPLACE`와 정반대), 빈 틱은 채우는지, CSV·DB 두 원천을 읽는지, 옮겨온 DB를 읽기 전용으로 여는지, 마스터가 없는 날을 알리는지 ([COLLECTOR.md](COLLECTOR.md) 11장) |
 | [tests/test_webapp_db.py](../../tests/test_webapp_db.py) | 15 | 웹 API가 CSV 대신 DB를 읽는지 |
 | [tests/test_experiment_guards.py](../../tests/test_experiment_guards.py) | 13 | **실험 하네스가 조용히 틀린 답을 내지 않는지** — 없는 라벨을 받으면 작업량 0인 표를 말없이 내놓던 것(1.26.39), 라벨이 없을 때 *"다시 돌리세요"* 라는 **틀린 처방**을 안내하던 것(1.26.54). 여기서 나온 숫자가 논문에 실린다 |
