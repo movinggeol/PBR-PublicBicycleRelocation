@@ -995,6 +995,137 @@ def test_정렬은_일부러_기억하지_않는다():
         "정렬이 저장되고 있다")
 
 
+# ── 명암비 (WCAG 2.1 AA) ────────────────────────────────────────────
+
+def _luminance(hex_color: str) -> float:
+    """WCAG 상대 휘도."""
+    h = hex_color.lstrip("#")
+    parts = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    parts = [v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4 for v in parts]
+    return 0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2]
+
+
+def _contrast(fg: str, bg: str) -> float:
+    a, b = _luminance(fg), _luminance(bg)
+    return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+
+
+def _tokens(block: str) -> dict:
+    """`--이름: 값;` 을 모아 온다."""
+    return dict(re.findall(r"--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})\s*;", block))
+
+
+def _css(name: str = "base.html") -> str:
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    return (Path(webapp_app.__file__).parent / "templates" / name).read_text(
+        encoding="utf-8")
+
+
+def test_흐린_글자색이_라이트_모드에서_읽힌다():
+    """--ink-4는 .hint·.sub·.empty·.step-note·눈금처럼 **뜻이 있는 글자**를
+    칠한다. 장식이 아니므로 WCAG AA(본문 4.5:1)를 지켜야 한다.
+
+    Apple의 2차 회색 #86868b는 라이트에서 흰 바탕 3.62:1, 오프화이트 3.33:1로
+    미달이었다(1.26.102). 두 바탕 모두에서 재는 이유는 오프화이트가 더 빡빡해
+    흰 바탕만 보면 통과로 착각하기 때문이다."""
+    css = _css()
+    light = css[css.index(":root"):css.index("@media (prefers-color-scheme: dark)")]
+    tok = _tokens(light)
+
+    ink4 = tok["ink-4"]
+    for bg_name in ("canvas", "parchment"):
+        ratio = _contrast(ink4, tok[bg_name])
+        assert ratio >= 4.5, (
+            f"--ink-4({ink4})가 --{bg_name}({tok[bg_name]}) 위에서 {ratio:.2f}:1 — "
+            "4.5:1이 필요하다")
+
+
+def test_파랑_위의_글자가_두_테마_모두에서_읽힌다():
+    """--on-blue는 '파랑 위에 놓이는 글자' 토큰이고, --blue를 채움색으로 쓰는
+    단추·현재 위치에만 쓰인다.
+
+    다크의 #2997ff는 Apple이 **글자색**으로 정의한 파랑이라 그 위에 흰 글자를
+    얹으면 3.02:1이었다(1.26.102). 파랑을 어둡게 해서는 못 푼다 — 흰 글자가
+    통과할 만큼 어둡게 하면 이번엔 링크 글자가 어두운 바탕에서 깨진다."""
+    css = _css()
+    light = css[css.index(":root"):css.index("@media (prefers-color-scheme: dark)")]
+    dark = css[css.index('[data-theme="dark"]'):]
+    dark = dark[:dark.index("}")]
+
+    for label, block in (("라이트", light), ("다크", dark)):
+        tok = _tokens(block)
+        ratio = _contrast(tok["on-blue"], tok["blue"])
+        assert ratio >= 4.5, (
+            f"{label}: --on-blue({tok['on-blue']})가 --blue({tok['blue']}) 위에서 "
+            f"{ratio:.2f}:1 — 4.5:1이 필요하다")
+
+
+def test_예산_초과_행의_글자는_흐리지_않다():
+    """붉은 바탕(--critical-soft) 위에서 --ink-3은 4.42:1로 미달이다. 바탕을
+    밝혀 맞추면 경고 색이 흐려지므로 반대로 간다 — **읽어야 하는 행**이라
+    글자를 진하게 한다."""
+    css = _css()
+    assert "tr.over-budget .muted" in css, "예산 초과 행의 흐린 글자를 안 살리고 있다"
+    rule = css[css.index("tr.over-budget .muted"):]
+    rule = rule[:rule.index("}")]
+    assert "--ink-2" in rule, "초과 행 글자를 --ink-2로 진하게 하지 않았다"
+
+
+# ── 인쇄 ────────────────────────────────────────────────────────────
+
+def test_인쇄하면_접어_둔_것이_전부_펴진다():
+    """화면의 접기·쪽 넘기기는 좁은 화면을 위한 편의지 내용을 줄이는 것이
+    아니다. 그런데 종이에는 스크롤도 단추도 없어서, 접힌 채로 인쇄하면 남은
+    것을 볼 방법이 아예 없다.
+
+    실측(1.26.102): /vehicles 21대 중 8대, /kpi 15열 중 5열, /data 156행 중
+    50행만 찍히고 있었다. 화면에는 단추가 있으니 아무도 눈치채지 못했다."""
+    css = _css()
+    printed = css[css.index("@media print"):]
+
+    for needle, what in (
+        ("table.rows-collapsed tbody tr[hidden]", "행 접기"),
+        ("table.cols-collapsed .col-more", "열 접기"),
+        ("[data-page-item][hidden]", "쪽 넘기기"),
+    ):
+        assert needle in printed, f"인쇄에서 {what}를 펴지 않는다"
+
+
+def test_인쇄하면_화면_골격이_빠진다():
+    """내비 세 줄(44+53+52px)이 첫 장 위를 먹고, 종이에서 누를 수 없는 필터
+    칩·쪽 단추가 그대로 찍혔다. `.no-print`를 템플릿마다 붙이게 두면 빠뜨린다 —
+    실제로 orders.html에만 9개 있었고 나머지 화면은 0개였다(1.26.102).
+    그래서 **선택자로** 건다."""
+    css = _css()
+    printed = css[css.index("@media print"):]
+
+    for sel in ("header.global-nav", "nav.flow-nav", "nav.group-nav", "footer.site",
+                ".filterbar", ".pager", ".col-toggle-wrap", ".row-more-wrap"):
+        assert sel in printed, f"인쇄에서 {sel}를 감추지 않는다"
+
+
+# ── 표 팝업이 좁은 화면을 넘지 않는다 ───────────────────────────────
+
+def test_표_팝업은_좁은_화면에서_자리를_고정하지_않는다():
+    """좁은 화면의 표 팝업은 아래에서 올라오는 판이라 자리를 CSS가 잡는다
+    (left:0; right:0). pin()이 right를 auto로 바꾸면 그 묶음이 풀려 폭이 내용에
+    맞춰 늘어난다 — 실측(1.26.102): 390px 화면에서 판이 1072px이 되고 창도 판도
+    가로로 밀리지 않아 **25열 중 16열을 볼 방법이 없었다.**
+
+    drag()는 이미 같은 이유로 좁은 화면을 건너뛰었다 — open()만 빠져 있었다."""
+    js = _css()
+
+    assert "NARROW_PANEL" in js, "좁은 화면 판정을 공유하지 않는다"
+    open_fn = js[js.index("function open() {"):]
+    open_fn = open_fn[:open_fn.index("function close()")]
+    assert "NARROW_PANEL" in open_fn, (
+        "좁은 화면에서도 자리를 고정하고 있다(pin/clamp)")
+    assert "clamp(panel)" in open_fn
+
+
 # ── 잘림 규칙을 문장에 쓰지 않는다 ──────────────────────────────────
 
 def test_설명_문장에는_파일명용_잘림_클래스를_쓰지_않는다():
