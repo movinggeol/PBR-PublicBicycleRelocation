@@ -22,6 +22,7 @@
     python experiments/params/road_time_model.py --include-pipeline
 """
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -45,8 +46,29 @@ MAE_GAIN_THRESHOLD = 0.20        # 상수 속도 대비 표본 밖 MAE 감소폭
 CV_THRESHOLD = 0.15              # 날짜별 계수의 변동계수 상한
 
 
-def load_legs(include_pipeline: bool) -> pd.DataFrame:
-    """road_leg에서 쓸 만한 구간을 읽는다."""
+def panel_segments() -> set:
+    """지금 패널이 정의하는 구간 집합. 파일이 없으면 빈 집합(거르지 않는다)."""
+    path = ROOT / "tools" / "road_panel.json"
+    if not path.exists():
+        return set()
+    spec = json.loads(path.read_text(encoding="utf-8"))
+    return {(int(c["chain"]), leg,
+             c["points"][leg]["id"], c["points"][leg + 1]["id"])
+            for c in spec.get("chains", [])
+            for leg in range(len(c["points"]) - 1)}
+
+
+def load_legs(include_pipeline: bool, panel_only: bool = True) -> pd.DataFrame:
+    """road_leg에서 쓸 만한 구간을 읽는다.
+
+    ⚠️ **`roadprobe` 접두사만으로는 부족하다** (2026-09-02 실측). 패널이 도중에
+    바뀌면 접두사는 같은데 **구간이 다른 날**이 섞인다 — 실제로 09-01이 그랬다
+    (100구간 중 31개가 어긋났다). 그러면 날짜별 계수의 흔들림이 *교통 때문인지
+    구간이 바뀌어서인지* 가릴 수 없는데, **그것이 채택 기준 둘 중 하나다.**
+
+    그래서 기본값으로 **지금 패널과 같은 구간만** 남긴다. `--all-legs`로 끌 수
+    있지만, 껐을 때 무엇이 섞이는지 아래에서 알린다.
+    """
     with db.session() as conn:
         frame = pd.read_sql(
             "SELECT run_label, duration, cluster, leg, from_id, to_id,"
@@ -55,6 +77,23 @@ def load_legs(include_pipeline: bool) -> pd.DataFrame:
     frame["패널"] = frame["run_label"].str.startswith(PROBE_PREFIX)
     if not include_pipeline:
         frame = frame[frame["패널"]]
+
+    expected = panel_segments()
+    if expected:
+        key = list(zip(frame["cluster"], frame["leg"],
+                       frame["from_id"], frame["to_id"]))
+        frame["패널일치"] = [k in expected for k in key]
+        어긋남 = frame[frame["패널"] & ~frame["패널일치"]]
+        if not 어긋남.empty:
+            날짜 = sorted(어긋남["run_label"].unique())
+            print(f"[!] 지금 패널과 다른 구간이 {len(어긋남)}개 있습니다"
+                  f" ({', '.join(날짜)}).")
+            if panel_only:
+                print("    → 제외하고 잽니다. 섞으려면 --all-legs 를 주십시오.")
+                frame = frame[~frame["패널"] | frame["패널일치"]]
+            else:
+                print("    → **섞어서 잽니다** — 날짜별 계수의 흔들림이 교통 탓인지"
+                      " 구간이 바뀐 탓인지 가릴 수 없습니다.")
 
     # 날짜: 패널은 라벨에서, 파이프라인 실행분은 observed_at에서 뽑는다.
     date = frame["run_label"].str.replace(PROBE_PREFIX, "", regex=False)
@@ -196,11 +235,14 @@ def verdict(frame: pd.DataFrame, by_day: pd.DataFrame, oos: pd.DataFrame) -> Non
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="이동시간 모형 재추정")
+    parser.add_argument("--all-legs", action="store_true",
+                        help="지금 패널과 다른 구간도 섞어서 잰다"
+                             " (기본: 제외 — 흔들림의 원인을 가릴 수 없게 된다)")
     parser.add_argument("--include-pipeline", action="store_true",
                         help="파이프라인 실행분도 함께 쓴다 (구간이 매번 다르다)")
     args = parser.parse_args()
 
-    frame = load_legs(args.include_pipeline)
+    frame = load_legs(args.include_pipeline, panel_only=not args.all_legs)
     if frame.empty:
         print("road_leg에 쓸 구간이 없습니다."
               " python tools/collect_road_time.py 부터 돌리십시오.")
