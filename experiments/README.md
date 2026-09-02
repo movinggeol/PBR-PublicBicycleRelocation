@@ -107,9 +107,11 @@ python experiments/baseline/repeat_eval.py --periods "25년 09월,25년 10월,25
 | ~~`travel_time_model.py`~~ | ~~이동시간 예측~~ | **삭제됨(1.23.1).** 정답표인 줄 안 `cum_sec`이 파이프라인 자신의 추정치였다 — 전제가 틀려 결과가 무의미했다. [ML_ATTEMPTS.md](../docs/분석/ML_ATTEMPTS.md) 7번 |
 | `observed_stockout.py` | 결품을 관측에서 직접 세면 복원과 얼마나 다른가 | 실측이 **+13% 크다**(복원은 하한이 맞았다). 수집 하루치라 잠정 |
 | `outlier_impact.py` | 이상치 제거가 계획을 바꾸나 | 바꾼다(작업 대상 13.4%). **그런데 IQR이 자르는 것은 오류가 아니라 정상 상위 4%였다** — 옮기지 않는다 |
+| `budget_split.py` | 예산 초과 군집을 **쪼개면** 예산을 지키나 | 🔴 **지키는 것처럼 보이지만 일을 버린다** — 좌표로 가르면 ILP가 짝지은 pick↔drop이 깨져 **4.5~22.1%를 못 옮긴다.** 배율 1.32에서는 21대를 다 써도 초과가 남는다. 쪼개려면 **ILP를 다시 풀어야** 한다(26장) |
 | `weather_impact.py` | 날씨가 순수요를 설명하나 | 그렇다. 표본 밖 R² +0.412, 작업 대상 MAE +4.3% — **개선은 비 오는 날(10%)에 몰려 있다(+40%)** |
 
 ```powershell
+python experiments/structure/budget_split.py --road-factor 1.32  # 초과 군집 쪼개기
 python experiments/structure/net_vs_volume.py     # 이용량 ↔ 필요량 상관
 python experiments/structure/weekend_profile.py   # 평일/휴일 수요 구조 비교
 python experiments/structure/holiday_impact.py    # 공휴일 제거 효과
