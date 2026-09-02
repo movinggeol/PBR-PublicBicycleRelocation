@@ -154,6 +154,64 @@ def test_stockout_never_goes_negative(step4):
     assert out.iloc[0] == len(hours)   # 전 시간 결품이지 그 이상은 없다
 
 
+def test_saturation_counts_full_hours(step4):
+    """포화 시간 — 거치대가 가득 차 **반납을 못 받는** 시간을 센다 (1.26.101).
+
+    결품만 보면 "채우면 좋다"가 되는데, 채워서 포화가 늘면 반납이 막힌다.
+    두 지표는 서로 반대 방향이라 함께 봐야 한다.
+    """
+    # 거치대 10, 시작 5, 매시 20대씩 반납(순수요 -20) → 첫 시간부터 가득
+    net = pd.DataFrame([{f"net_{h:02d}": -20 for h in range(24)}])
+    out = step4._simulate_stock(net, pd.Series([5.0]), pd.Series([10.0]), [5, 6])
+
+    assert out["saturated"].iloc[0] == 2
+    assert out["stockout"].iloc[0] == 0        # 가득 찬 것은 결품이 아니다
+
+
+def test_simulate_stock_collects_what_the_clips_threw_away(step4):
+    """양쪽 clip에서 **잘려 나간 양**이 곧 못 빌린 수·못 세운 수다.
+
+    이 값들은 예전에는 `clip()` 안에서 사라졌다. KPI.md 3-B가 미구현으로
+    남겨 둔 수요 충족률·포화 시간이 정확히 이 두 값이다.
+    """
+    # 거치대 10, 시작 3.  +5 → 재고 -2를 0으로 자름(못 빌린 2)
+    #                     -20 → 재고 20을 10으로 자름(못 세운 10)
+    net = pd.DataFrame({"net_05": [5.0], "net_06": [-20.0]})
+    out = step4._simulate_stock(net, pd.Series([3.0]), pd.Series([10.0]), [5, 6])
+
+    assert out["unmet"].iloc[0] == 2.0        # 3대뿐인데 5대를 빌리려 했다
+    assert out["refused"].iloc[0] == 10.0     # 20대를 세우려 했으나 자리가 10
+    assert out["outflow"].iloc[0] == 5.0      # 충족률의 분모(순유출만 센다)
+
+
+def test_stockout_hours_is_unchanged_by_the_refactor(step4):
+    """`_stockout_hours`는 **껍데기가 됐어도 값이 같아야** 한다 (1.26.101).
+
+    실험 스크립트 넷이 이 이름으로 부른다(baseline_compare · budget_enforce ·
+    min_qty_sweep · top_limit_sweep). 값이 달라지면 그 표들이 전부 무효가 된다.
+    """
+    net = pd.DataFrame([{f"net_{h:02d}": 4 for h in range(24)}])
+    hours = [5, 6, 7, 8, 9]
+    initial, capacity = pd.Series([10.0]), pd.Series([30])
+
+    thin = step4._stockout_hours(net, initial, capacity, hours)
+    core = step4._simulate_stock(net, initial, capacity, hours)["stockout"]
+
+    assert thin.equals(core)
+    assert thin.iloc[0] == 3          # 10 → 6 → 2 → 0 → 0 → 0
+    assert thin.dtype == core.dtype   # 정수 Series여야 한다(호출부가 합산한다)
+
+
+def test_new_kpi_fields_are_registered_for_saving(step4):
+    """계산해도 `KPI_FIELDS`에 없으면 **조용히 버려진다**."""
+    import db
+
+    for field in ("saturation_hours_before", "saturation_hours_after",
+                  "demand_fulfill_before", "demand_fulfill_after"):
+        assert field in db.KPI_FIELDS, f"{field}가 KPI_FIELDS에 없다"
+        assert field in db.SCHEMA, f"{field} 컬럼이 스키마에 없다"
+
+
 # ---------------- 웹 화면 ----------------
 
 @pytest.fixture

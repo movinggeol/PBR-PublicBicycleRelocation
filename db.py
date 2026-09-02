@@ -331,6 +331,14 @@ CREATE TABLE IF NOT EXISTS kpi_summary (
     stockout_hours_before REAL,
     stockout_hours_after  REAL,      -- VRP가 **실제로 옮긴 양** 기준 (1.18.4~)
     stockout_hours_plan   REAL,      -- 계획량(rebal_qty)이 전부 집행됐다고 본 값
+    -- 결품의 반대쪽. 재고 = 거치대라 **반납을 못 받는** 시간이다 (1.26.101).
+    -- 결품만 보면 "채우면 좋다"가 되는데, 채워서 포화가 늘면 반납이 막힌다.
+    saturation_hours_before REAL,
+    saturation_hours_after  REAL,
+    -- 순유출 대비 실제로 내준 비율. **순수요 기준이라 총 대여 대비가 아니다**
+    -- (net_demand가 대여-반납이라 상쇄된 뒤의 값이다). 결품과 같은 하한 지표.
+    demand_fulfill_before REAL,
+    demand_fulfill_after  REAL,
     demand_mae            REAL,
 
     -- C. 운영 / D. 효율 (1.19.3, docs/분석/KPI.md)
@@ -729,6 +737,8 @@ KPI_FIELDS = (
     "avg_cluster_minutes", "time_budget_minutes", "time_budget_met",
     "vehicle_load_gap", "improvement_per_km", "cluster_max_imbalance",
     "stockout_hours_before", "stockout_hours_after", "stockout_hours_plan",
+    "saturation_hours_before", "saturation_hours_after",
+    "demand_fulfill_before", "demand_fulfill_after",
     "demand_mae",
     # 운영·효율 지표 (1.19.3, docs/분석/KPI.md C·D장)
     "travel_time_ratio", "empty_distance_ratio", "depot_returns",

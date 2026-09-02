@@ -160,25 +160,69 @@ def load_net_demand() -> pd.DataFrame:
     return frame
 
 
-def _stockout_hours(net: pd.DataFrame, initial: pd.Series,
-                    capacity: pd.Series, hours: list) -> pd.Series:
-    '''재고 궤적을 복원해 대여소별 결품 시간(행 단위 합)을 센다.
+def _simulate_stock(net: pd.DataFrame, initial: pd.Series,
+                    capacity: pd.Series, hours: list) -> dict:
+    '''재고 궤적을 **한 번 돌며** 네 가지를 함께 센다 (1.26.101).
 
         stock(t+1) = clip(stock(t) - net(t), 0, 거치대 수)
 
     순수요(net)는 대여 - 반납이므로 양수면 재고가 준다.
-    0에서 잘라내는 것은 물리적 현실이다 — 없는 자전거는 빌릴 수 없고,
-    그 못 빌린 수요는 사라진다(그래서 이 값은 결품의 하한이다).
+
+    🔴 **양쪽 clip이 버리던 값을 여기서 거둔다.** 지금까지는 `clip(0, 거치대)`로
+    잘라내고 **얼마나 잘렸는지는 버렸다.** 그런데 잘려 나간 양이 곧
+    *"빌리려다 못 빌린 수"*(아래 clip)와 *"반납하려다 못 한 수"*(위 clip)다 —
+    [KPI.md](../docs/분석/KPI.md) 3-B가 미구현으로 남겨 둔 **수요 충족률·포화
+    시간**이 바로 이 두 값이다. 궤적을 두 번 돌 필요 없이 같은 루프에서 나온다.
+
+    반환 키:
+      `stockout`  재고 0인 시간 수      (기존 지표)
+      `saturated` 재고 = 거치대인 시간 수 → **반납 실패**
+      `unmet`     아래로 잘린 양 합계    → 못 빌린 자전거 수
+      `refused`   위로 잘린 양 합계      → 못 세운 자전거 수
+      `outflow`   순유출(양수 net) 합계  → 충족률의 분모
+
+    ⚠️ **`unmet`/`outflow`는 순수요 기준이라 '총 대여 건수'가 아니다.** `net_demand`가
+    대여 − 반납이므로, 같은 시간에 오간 것은 이미 상쇄돼 있다. 따라서 충족률은
+    **총 대여 대비가 아니라 순유출 대비**이며, 결품 시간과 같은 성격의
+    **하한 지표**다(못 빌린 수요는 관측되지 않고 사라진다).
     '''
     stock = initial.astype(float).copy()
-    out = pd.Series(0, index=net.index, dtype=int)
+    zeros_i = pd.Series(0, index=net.index, dtype=int)
+    zeros_f = pd.Series(0.0, index=net.index)
+    out = {'stockout': zeros_i.copy(), 'saturated': zeros_i.copy(),
+           'unmet': zeros_f.copy(), 'refused': zeros_f.copy(),
+           'outflow': zeros_f.copy()}
+
     for hour in hours:
         column = f'net_{hour:02d}'
         if column not in net.columns:
             continue
-        stock = (stock - net[column]).clip(lower=0).clip(upper=capacity)
-        out += (stock <= 0).astype(int)
+        flow = net[column]
+        raw = stock - flow                      # 자르기 **전**의 재고
+
+        # 아래로 잘린 만큼이 못 빌린 수, 위로 잘린 만큼이 못 세운 수다.
+        out['unmet'] += (-raw).clip(lower=0)
+        out['refused'] += (raw - capacity).clip(lower=0)
+        out['outflow'] += flow.clip(lower=0)
+
+        stock = raw.clip(lower=0).clip(upper=capacity)
+        out['stockout'] += (stock <= 0).astype(int)
+        out['saturated'] += (stock >= capacity).astype(int)
     return out
+
+
+def _stockout_hours(net: pd.DataFrame, initial: pd.Series,
+                    capacity: pd.Series, hours: list) -> pd.Series:
+    '''대여소별 결품 시간(행 단위 합). `_simulate_stock()`의 얇은 껍데기다.
+
+    0에서 잘라내는 것은 물리적 현실이다 — 없는 자전거는 빌릴 수 없고,
+    그 못 빌린 수요는 사라진다(그래서 이 값은 결품의 하한이다).
+
+    ⚠️ **이 함수를 지우지 마라.** 실험 스크립트 넷과 테스트 넷이 이 이름으로
+    부른다(baseline_compare · budget_enforce · min_qty_sweep · top_limit_sweep).
+    측정 코드와 운영 코드가 같은 궤적을 쓰게 하는 것이 이 저장소의 규약이다.
+    '''
+    return _simulate_stock(net, initial, capacity, hours)['stockout']
 
 
 def executed_delta(vrp: pd.DataFrame) -> pd.Series:
@@ -269,9 +313,12 @@ def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
         print("순수요와 작업 대상 대여소가 겹치지 않아 결품 시뮬레이션을 건너뜁니다.")
         return {}
 
-    before = _stockout_hours(merged, merged['stock'], merged['parking_lot'], hours)
-    after = _stockout_hours(merged, merged['stock'] + merged['moved'],
-                            merged['parking_lot'], hours)
+    # 궤적을 한 번만 돌아 결품·포화·충족률을 함께 얻는다(1.26.101).
+    sim_before = _simulate_stock(merged, merged['stock'],
+                                 merged['parking_lot'], hours)
+    sim_after = _simulate_stock(merged, merged['stock'] + merged['moved'],
+                                merged['parking_lot'], hours)
+    before, after = sim_before['stockout'], sim_after['stockout']
     planned = _stockout_hours(merged, merged['stock'] + merged['rebal_qty'],
                               merged['parking_lot'], hours)
 
@@ -290,7 +337,18 @@ def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
         'stockout_hours_before': float(before.sum() / denominator),
         'stockout_hours_after': float(after.sum() / denominator),
         'stockout_hours_plan': float(planned.sum() / denominator),
+        # 포화 시간 — 반납하려 해도 거치대가 없는 시간 (KPI.md 3-B, 1.26.101)
+        'saturation_hours_before': float(sim_before['saturated'].sum() / denominator),
+        'saturation_hours_after': float(sim_after['saturated'].sum() / denominator),
     }
+
+    # 수요 충족률 — 순유출 대비 실제로 내준 비율. 분모가 0이면(그 회차에 빠져
+    # 나가는 수요가 없으면) 비율이 정의되지 않으므로 아예 넘기지 않는다.
+    for tag, sim in (('before', sim_before), ('after', sim_after)):
+        outflow = float(sim['outflow'].sum())
+        if outflow > 0:
+            served = outflow - float(sim['unmet'].sum())
+            result[f'demand_fulfill_{tag}'] = max(0.0, served / outflow)
 
     improved = int((per_station['delta'] < 0).sum())
     worsened = int((per_station['delta'] > 0).sum())
