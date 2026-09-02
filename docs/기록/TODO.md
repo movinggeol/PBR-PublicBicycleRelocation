@@ -517,7 +517,13 @@ sigma를 키우면 커버리지는 저절로 오르므로, 이걸 걸러내지 �
    계절성 3.2배, 주말 0.87배가 그림으로 보인다.
    ⚠️ 참고 코드의 `plt.show()`와 글꼴 경로 하드코딩은 **가져오지 않았다** —
    전자는 파이프라인을 멈추고 후자는 리눅스·CI에서 죽는다(`tests/test_eda.py`가 지킨다).
-   웹에는 노출하지 않는다(`catalog.py`의 `.html`/`.csv` 제한을 넓히지 않는다).
+   **HTML로도 낸다**(1.26.78) — PNG는 다크 모드에서 흰 판이 뜨고 값을 못 읽는다
+   (`charts.py`가 첫머리에 적어 둔 그대로다). `EDA.html`은 화면용,
+   `*.png`는 문서용이다. HTML은 `webapp/charts.py`를 그대로 써서 그리는 규칙이
+   웹 화면과 갈리지 않게 했고, 그 과정에서 **`vbar`(세로 막대)**를 새로 만들었다
+   (24시간·7요일은 가로로 쌓으면 600px을 넘는다).
+   웹 메뉴에는 올리지 않는다 — `/maps`는 "대전 지도 위에 올린 것"이라 EDA를
+   넣으면 화면의 뜻이 흐려진다.
 7. ~~**step1 매직 넘버**~~ → **완료(1.18.8).** 여섯 개를 `project_config`로 뺐다:
    `REBAL_MIN_QTY`(2) · `TOP_STATION_LIMIT`(50) · `TARGET_CLUSTER_SIZE`(7) ·
    `ADJUST_MAX_ITER`(200) · `ADJUST_BALANCE_OK`(3) · `ADJUST_BALANCE_LIMIT`(5).

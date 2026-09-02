@@ -1,10 +1,20 @@
 """원천 대여 이력의 기초 탐색(EDA).
 
-**PNG 그래프를 파일로 남긴다** — 화면에 띄우지 않는다. 파이프라인이 이 파일을
+**그래프를 파일로 남긴다** — 화면에 띄우지 않는다. 파이프라인이 이 파일을
 subprocess로 돌리므로, `plt.show()`를 부르면 창이 뜬 채 **파이프라인 전체가
 멈춘다**(사람이 닫아 줄 때까지). 그래서 백엔드를 Agg로 고정한다.
 
-산출물: `data/pp_data/EDA/*.png`
+산출물은 **두 벌**이다. 쓰임이 다르기 때문이다:
+
+| | 무엇에 | 왜 |
+| --- | --- | --- |
+| `EDA.html` | 웹·화면 | 다크 모드를 따라가고 커서를 대면 값이 뜬다. `catalog.py`가 `.html`을 이미 서빙하므로 **보안 규약을 넓히지 않고** `/data`에 나온다 |
+| `*.png` | 문서·논문 | 인쇄물과 마크다운에는 이미지가 맞다 |
+
+HTML은 `webapp/charts.py`의 인라인 SVG를 그대로 쓴다 — 그리는 규칙이 웹 화면과
+갈리지 않게 하려는 것이다(`charts.py` 첫머리 참고: 이미지는 다크 모드에서 흰
+판이 뜨고 값을 못 읽는다).
+
   - 월별 대여량 (하루 평균) — 계절성
   - 시간대별 대여량 — 회차(`_05_10` 등)를 왜 그렇게 나눴는지
   - 요일별 대여량 — 평일/휴일을 왜 섞지 않는지
@@ -28,6 +38,7 @@ import pandas as pd
 
 import db
 from project_config import PP_ROOT, get_runtime_config
+from webapp import charts
 
 EDA_DIR = PP_ROOT / "EDA"
 
@@ -119,7 +130,8 @@ def month_graph(df: pd.DataFrame):
 
     print(f"월별 하루 평균: 최소 {lo} {daily['하루평균'].min():,.0f}건 · "
           f"최다 {hi} {daily['하루평균'].max():,.0f}건 ({ratio:.1f}배)")
-    return _save(fig, "월별_대여량.png")
+    _save(fig, "월별_대여량.png")
+    return labels, list(daily["하루평균"]), ratio
 
 
 def hour_graph(df: pd.DataFrame):
@@ -150,7 +162,8 @@ def hour_graph(df: pd.DataFrame):
 
     peak = int((counts / days).idxmax())
     print(f"시간대별: 봉우리 {peak}시 ({counts[peak] / days:,.0f}건/일)")
-    return _save(fig, "시간대별_대여량.png")
+    _save(fig, "시간대별_대여량.png")
+    return [str(h) for h in counts.index], list(counts / days), peak
 
 
 def weekday_graph(df: pd.DataFrame):
@@ -176,7 +189,113 @@ def weekday_graph(df: pd.DataFrame):
     workday, weekend = per_day[:5].mean(), per_day[5:].mean()
     print(f"요일별: 평일 평균 {workday:,.0f}건/일 · 주말 평균 {weekend:,.0f}건/일 "
           f"({weekend / max(workday, 1):.2f}배)")
-    return _save(fig, "요일별_대여량.png")
+    _save(fig, "요일별_대여량.png")
+    return list(WEEKDAY_LABELS), list(per_day), weekend / max(workday, 1)
+
+
+# 독립 HTML이라 base.html의 CSS를 물려받지 못한다. **그래프가 쓰는 토큰만**
+# 담는다 — 화면 전체를 흉내 내려 들면 두 벌을 유지하게 된다.
+HTML_HEAD = """<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>대여 이력 탐색 (EDA)</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --ink: #1d1d1f; --ink-2: #424245; --ink-3: #6e6e73; --ink-4: #86868b;
+    --blue: #0066cc; --critical-ink: #d70015;
+    --page: #f5f5f7; --surface: #ffffff; --divider-soft: #e8e8ed;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #f5f5f7; --ink-2: #d2d2d7; --ink-3: #a1a1a6; --ink-4: #86868b;
+      --blue: #2997ff; --critical-ink: #ff453a;
+      --page: #000000; --surface: #1c1c1e; --divider-soft: #2c2c2e;
+    }
+  }
+  body { margin: 0; padding: 24px; background: var(--page); color: var(--ink);
+         font: 14px/1.5 -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; }
+  main { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 4px; letter-spacing: -.5px; }
+  .lead { color: var(--ink-3); margin: 0 0 24px; }
+  .card { background: var(--surface); border-radius: 12px; padding: 16px;
+          margin-bottom: 16px; }
+  .card h2 { font-size: 15px; margin: 0 0 2px; color: var(--ink-2); }
+  .card .hint { display: block; color: var(--ink-4); font-size: 12px;
+                margin-bottom: 10px; }
+  .viz { width: 100%; height: auto; display: block; overflow: visible; }
+  .viz-grid { stroke: var(--divider-soft); stroke-width: 1; }
+  .viz-line { fill: none; stroke: var(--blue); stroke-width: 2;
+              stroke-linejoin: round; stroke-linecap: round; }
+  .viz-dot { fill: var(--blue); }
+  .viz-dot.ring { stroke: var(--surface); stroke-width: 2; }
+  .viz-bar { fill: var(--blue); }
+  .viz-bar.warn { fill: var(--critical-ink); }
+  .viz-divider { stroke: var(--critical-ink); stroke-width: 1; opacity: .55; }
+  .viz-hit { fill: transparent; cursor: default; }
+  .viz-tick { fill: var(--ink-4); font-size: 10px;
+              font-variant-numeric: tabular-nums; }
+  .viz-axis { fill: var(--ink-3); font-size: 11px; }
+  .viz-axis.note { fill: var(--critical-ink); font-size: 10px; }
+  .viz-value { fill: var(--ink); font-size: 11px; font-weight: 600; }
+  .empty { color: var(--ink-4); }
+  footer { color: var(--ink-4); font-size: 12px; margin-top: 24px; }
+</style></head><body><main>
+"""
+
+
+def write_html(month, hour, weekday, *, span: str, rows: int) -> Path:
+    """세 그래프를 한 장짜리 HTML로 묶는다.
+
+    **PNG와 같은 값을 그린다** — 위 함수들이 이미 집계해 돌려준 것을 받아 쓴다.
+    다시 계산하면 두 산출물이 조용히 갈릴 수 있다.
+
+    `webapp/charts.py`를 쓰는 이유는 그리는 규칙(격자·눈금·커서 설명)이 웹
+    화면과 한 벌이어야 하기 때문이다. 그쪽을 고치면 여기도 같이 바뀐다.
+    """
+    parts = [HTML_HEAD,
+             "<h1>대여 이력 탐색</h1>",
+             f'<p class="lead">{span} · 대여 {rows:,}건. '
+             f'막대와 점에 커서를 대면 값이 뜹니다.</p>']
+
+    def card(title, hint, svg):
+        parts.append(f'<div class="card"><h2>{title}</h2>'
+                     f'<span class="hint">{hint}</span>{svg}</div>')
+
+    if month:
+        labels, values, ratio = month
+        card("월별 대여량 (하루 평균)",
+             f"계절성. 최다/최소 {ratio:.1f}배 — 달마다 일수가 달라 하루 평균으로 잽니다.",
+             # 월 이름은 짧아 전부 적어도 겹치지 않는다. 기본값(처음·끝만)은
+             # 실행 라벨이 길어서 정한 규칙이라 여기엔 맞지 않는다.
+             charts.line(labels, values, title="월별 대여량", unit="건",
+                         width=840, height=220, all_ticks=True))
+    if hour:
+        labels, values, peak = hour
+        card("시간대별 대여량 (하루 평균)",
+             f"봉우리 {peak}시. 붉은 선은 회차 경계(05·10·15·20시)입니다 — "
+             f"파이프라인이 하루를 넷으로 나누는 자리입니다.",
+             charts.vbar(labels, values, title="시간대별 대여량", unit="건",
+                         width=840, height=240,
+                         dividers=DURATION_EDGES,
+                         divider_note="붉은 선 = 회차 경계"))
+    if weekday:
+        labels, values, ratio = weekday
+        card("요일별 대여량 (하루 평균)",
+             f"주말은 평일의 {ratio:.2f}배. 평일과 휴일은 수요 구조가 달라 "
+             f"파이프라인이 섞지 않습니다.",
+             charts.vbar(labels, values, title="요일별 대여량", unit="건",
+                         width=840, height=220,
+                         highlight=(5, 6), divider_note="붉은 막대 = 주말"))
+
+    parts.append('<footer>step0_eda/EDA.py가 만들었습니다. '
+                 'PNG 같은 폴더에 함께 있습니다.</footer></main></body></html>')
+
+    EDA_DIR.mkdir(parents=True, exist_ok=True)
+    path = EDA_DIR / "EDA.html"
+    path.write_text("".join(parts), encoding="utf-8")
+    print(f"저장: {path}")
+    return path
 
 
 def load_history(config) -> pd.DataFrame:
@@ -222,9 +341,13 @@ def main() -> None:
           f"{df['대여일시'].max():%Y-%m-%d}")
 
     _use_korean_font()
-    month_graph(df)
-    hour_graph(df)
-    weekday_graph(df)
+    month = month_graph(df)
+    hour = hour_graph(df)
+    weekday = weekday_graph(df)
+
+    write_html(month, hour, weekday,
+               span=f"{df['대여일시'].min():%Y-%m-%d} ~ {df['대여일시'].max():%Y-%m-%d}",
+               rows=len(df))
 
 
 if __name__ == '__main__':

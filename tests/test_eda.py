@@ -103,14 +103,61 @@ def test_세_그래프를_파일로_남긴다(rentals, tmp_path, monkeypatch):
     monkeypatch.setattr(eda, "EDA_DIR", out)
 
     eda._use_korean_font()
-    assert eda.month_graph(rentals.copy()) is not None
-    assert eda.hour_graph(rentals.copy()) is not None
-    assert eda.weekday_graph(rentals.copy()) is not None
+    month = eda.month_graph(rentals.copy())
+    hour = eda.hour_graph(rentals.copy())
+    weekday = eda.weekday_graph(rentals.copy())
+    assert month and hour and weekday
 
     made = sorted(p.name for p in out.glob("*.png"))
     assert made == ["시간대별_대여량.png", "요일별_대여량.png", "월별_대여량.png"], made
     for png in out.glob("*.png"):
         assert png.stat().st_size > 1000, f"{png.name}이 비어 있다"
+
+
+def test_HTML도_함께_낸다(rentals, tmp_path, monkeypatch):
+    """PNG는 문서용, HTML은 화면용이다.
+
+    `charts.py`가 첫머리에 적어 둔 대로 **이미지는 다크 모드에서 흰 판이 뜨고
+    커서를 대도 값을 못 읽는다.** 그래서 화면에서 볼 것은 인라인 SVG로 낸다.
+    """
+    import importlib
+
+    spec = importlib.util.spec_from_file_location("eda_html", EDA_PATH)
+    eda = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(eda)
+
+    out = tmp_path / "EDA"
+    monkeypatch.setattr(eda, "EDA_DIR", out)
+    eda._use_korean_font()
+
+    path = eda.write_html(
+        eda.month_graph(rentals.copy()),
+        eda.hour_graph(rentals.copy()),
+        eda.weekday_graph(rentals.copy()),
+        span="2026-02-01 ~ 2026-03-31", rows=len(rentals))
+
+    html = path.read_text(encoding="utf-8")
+    assert html.count("<svg") == 3, "그래프 세 장이 아니다"
+    assert "viz-divider" in html, "회차 경계선이 없다"
+    assert "viz-bar warn" in html, "주말 강조가 없다"
+    # 색만으로 뜻을 나르지 않는다 — 글자 설명이 함께 있어야 한다.
+    assert "붉은 선 = 회차 경계" in html and "붉은 막대 = 주말" in html
+    # 커서를 대면 값이 뜬다(charts.py 규약).
+    assert 'data-tip=' in html
+    # 다크 모드를 따라간다 — 이것이 PNG로는 안 되는 것이다.
+    assert "prefers-color-scheme: dark" in html
+
+
+def test_HTML은_charts를_쓴다():
+    """그리는 규칙이 웹 화면과 갈리지 않게 `webapp/charts.py`를 재사용한다.
+
+    여기서 SVG를 직접 조립하기 시작하면 격자·눈금·커서 설명이 두 벌이 되고,
+    한쪽만 고치게 된다.
+    """
+    code = _code_only()
+
+    assert "fromwebappimportcharts" in code, "charts.py를 쓰지 않는다"
+    assert "<svg" not in code, "EDA가 SVG를 직접 조립하고 있다 — charts.py를 쓸 것"
 
 
 def test_자료가_없으면_건너뛴다(tmp_path, monkeypatch):

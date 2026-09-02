@@ -53,11 +53,14 @@ def _text(x: float, y: float, body: str, cls: str = "viz-label",
 
 def line(labels: Sequence[str], values: Sequence[Optional[float]], *,
          title: str, unit: str = "", width: int = 360, height: int = 150,
-         lower_is_better: bool = False) -> str:
+         lower_is_better: bool = False, all_ticks: bool = False) -> str:
     """계열 하나짜리 꺾은선. 실행 순서에 따른 변화를 본다.
 
     labels: x축 이름(실행 라벨). values: 값(None은 건너뛴다 — 못 잰 지표).
     lower_is_better: 마지막 값이 좋아졌는지 판정하는 방향만 뒤집는다.
+    all_ticks: x축 이름을 **전부** 적는다. 기본은 처음·끝만인데, 그건 실행
+      라벨(`2026-08-28 도로실측2`)이 길어 다 적으면 겹치기 때문이다.
+      `2025-01`처럼 짧고 규칙적인 이름이면 켜서 전부 보여 준다.
     """
     pairs = [(i, v) for i, v in enumerate(values) if v is not None]
     if len(pairs) < 2:
@@ -106,10 +109,19 @@ def line(labels: Sequence[str], values: Sequence[Optional[float]], *,
                        "end" if last_i == len(values) - 1 else "middle"))
 
     # x축은 처음과 끝 이름만. 실행 라벨은 길어서 다 적으면 겹친다.
-    parts.append(_text(pad_l, height - 8, labels[pairs[0][0]], "viz-tick", "start"))
-    if pairs[-1][0] != pairs[0][0]:
-        parts.append(_text(width - pad_r, height - 8, labels[pairs[-1][0]],
-                           "viz-tick", "end"))
+    if all_ticks:
+        # 짧은 이름이면 전부 적되, 칸이 좁으면 건너뛰며 적는다(겹침 방지).
+        step = max(1, math.ceil(len(labels) * 52 / max(1, plot_w)))
+        for i, label in enumerate(labels):
+            if i % step:
+                continue
+            anchor = "start" if i == 0 else ("end" if i == len(labels) - 1 else "middle")
+            parts.append(_text(px(i), height - 8, str(label), "viz-tick", anchor))
+    else:
+        parts.append(_text(pad_l, height - 8, labels[pairs[0][0]], "viz-tick", "start"))
+        if pairs[-1][0] != pairs[0][0]:
+            parts.append(_text(width - pad_r, height - 8, labels[pairs[-1][0]],
+                               "viz-tick", "end"))
 
     parts.append("</svg>")
     return "".join(parts)
@@ -156,6 +168,75 @@ def hbar(labels: Sequence[str], values: Sequence[float], *,
             f'data-tip="{html.escape(str(label))}: {_fmt(v, 1)}{unit}"/>')
         parts.append(_text(pad_l + w + 6, cy + 4, f"{_fmt(v, 1)}{unit}",
                            "viz-value", "start"))
+
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def vbar(labels: Sequence[str], values: Sequence[float], *,
+         title: str, unit: str = "", width: int = 640, height: int = 220,
+         highlight: Optional[Sequence[int]] = None,
+         dividers: Optional[Sequence[float]] = None,
+         divider_note: str = "") -> str:
+    """세로 막대. **가로축이 시간·요일처럼 순서가 있는 것**에 쓴다.
+
+    `hbar`와 나뉘는 기준은 축의 성격이다 — 항목 이름이 길고 순서가 없으면
+    가로(`hbar`), 24시간·7요일처럼 **순서가 있고 이름이 짧으면** 세로다.
+    24개를 가로로 쌓으면 세로가 600px을 넘어 한눈에 안 들어온다.
+
+    highlight: 다르게 칠할 막대의 인덱스(예: 주말). **색만으로 뜻을 나르지
+      않으므로** 부르는 쪽이 `divider_note` 같은 글자 설명을 함께 낸다.
+    dividers: 세로 구분선을 그을 x 위치(막대 인덱스 기준, 0.5 단위로 경계).
+    """
+    n = len(labels)
+    if n == 0:
+        return '<p class="empty">그릴 자료가 없습니다.</p>'
+
+    pad_l, pad_r, pad_t, pad_b = 46, 12, 22, 26
+    plot_w = width - pad_l - pad_r
+    plot_h = height - pad_t - pad_b
+    _, high = _nice_bounds(0, max(values, default=0) or 1)
+    span = high or 1
+    slot = plot_w / n
+    bar_w = max(2.0, slot * .72)
+    marked = set(highlight or ())
+
+    parts = [f'<svg viewBox="0 0 {width} {height}" class="viz" role="img" '
+             f'aria-label="{html.escape(title)}">']
+
+    # 가로 격자 셋(0·중간·꼭대기)과 왼쪽 눈금.
+    for k in range(3):
+        value = span * k / 2
+        y = pad_t + plot_h - plot_h * k / 2
+        parts.append(f'<line x1="{pad_l}" y1="{y:.1f}" x2="{width - pad_r}" '
+                     f'y2="{y:.1f}" class="viz-grid"/>')
+        parts.append(_text(pad_l - 6, y + 4, _fmt(value, 0), "viz-tick", "end"))
+
+    for i, (label, v) in enumerate(zip(labels, values)):
+        x = pad_l + slot * i + (slot - bar_w) / 2
+        h = max(0.0, plot_h * v / span)
+        y = pad_t + plot_h - h
+        cls = "viz-bar warn" if i in marked else "viz-bar"
+        parts.append(
+            f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w:.1f}" height="{h:.1f}" '
+            f'rx="2" class="{cls}" tabindex="0" '
+            f'data-tip="{html.escape(str(label))}: {_fmt(v, 1)}{unit}"/>')
+
+    # x축 눈금은 **골라서** 붙인다 — 24개를 다 적으면 글자가 겹친다.
+    step = 1 if n <= 12 else 2
+    for i, label in enumerate(labels):
+        if i % step:
+            continue
+        cx = pad_l + slot * i + slot / 2
+        parts.append(_text(cx, height - pad_b + 14, str(label), "viz-tick", "middle"))
+
+    for edge in dividers or ():
+        x = pad_l + slot * edge
+        parts.append(f'<line x1="{x:.1f}" y1="{pad_t}" x2="{x:.1f}" '
+                     f'y2="{pad_t + plot_h}" class="viz-divider"/>')
+    if divider_note:
+        parts.append(_text(width - pad_r, pad_t - 8, divider_note,
+                           "viz-axis note", "end"))
 
     parts.append("</svg>")
     return "".join(parts)

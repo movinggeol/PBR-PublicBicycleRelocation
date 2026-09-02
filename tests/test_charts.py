@@ -333,3 +333,71 @@ def test_그래프_그리드는_카드를_늘리지_않는다():
     assert block, ".viz-grid2 규칙을 찾지 못했다"
     assert "align-items: start" in block.group(0), (
         "그래프 그리드에 align-items: start가 없다 — '표로 보기'를 펴면 옆 카드가 늘어난다")
+
+
+# ── 세로 막대 (1.26.78) ────────────────────────────────────────────────
+
+def test_세로막대는_순서있는_축에_쓴다():
+    """`vbar`는 24시간·7요일처럼 **순서가 있고 이름이 짧은** 축에 쓴다.
+
+    `hbar`(가로)로 24개를 그리면 세로가 600px을 넘어 한눈에 안 들어온다.
+    나뉘는 기준이 흐려지면 둘 중 아무거나 쓰게 되므로 문서로 못박아 둔다.
+    """
+    svg = charts.vbar([str(h) for h in range(24)], [h * 10 for h in range(24)],
+                      title="시간대별", unit="건")
+
+    assert svg.count("<rect") == 24
+    assert 'class="viz-bar"' in svg
+    # 커서를 대면 값이 뜬다(charts.py 공통 규약).
+    assert svg.count("data-tip=") == 24
+
+
+def test_세로막대의_강조와_구분선은_글자_설명을_함께_낸다():
+    """색만으로 뜻을 나르지 않는다(DESIGN.md 규칙 5).
+
+    주말 막대를 붉게 칠하거나 경계선을 그으면, 그것이 무슨 뜻인지 **글자로도**
+    적혀야 한다 — 색을 못 가리는 사람에게는 색이 아무 말도 하지 않는다.
+    """
+    svg = charts.vbar(list("월화수목금토일"), [10] * 7, title="요일별",
+                      highlight=(5, 6), divider_note="붉은 막대 = 주말")
+
+    assert svg.count('class="viz-bar warn"') == 2, "강조 막대가 둘이 아니다"
+    assert "붉은 막대 = 주말" in svg, "색의 뜻을 글자로 적지 않았다"
+
+    with_edges = charts.vbar([str(h) for h in range(24)], [10] * 24,
+                             title="시간대별", dividers=(5, 10, 15, 20),
+                             divider_note="붉은 선 = 회차 경계")
+    assert with_edges.count('class="viz-divider"') == 4
+    assert "붉은 선 = 회차 경계" in with_edges
+
+
+def test_세로막대_눈금은_촘촘하면_건너뛴다():
+    """24개를 다 적으면 글자가 겹친다 — 골라서 붙인다(charts.py 규약)."""
+    many = charts.vbar([str(h) for h in range(24)], [10] * 24, title="24시간")
+    few = charts.vbar(list("월화수목금토일"), [10] * 7, title="7요일")
+
+    # 24개는 건너뛰고(12개), 7개는 전부 적는다.
+    assert many.count('class="viz-tick"') < 24 + 3
+    assert few.count('class="viz-tick"') >= 7
+
+
+def test_꺾은선_x축_이름은_기본이_처음과_끝뿐이다():
+    """실행 라벨(`2026-08-28 도로실측2`)은 길어서 다 적으면 겹친다.
+
+    `all_ticks`로 켤 수 있게 열어 뒀지만 **기본은 꺼져 있어야 한다** —
+    /kpi 화면이 그 기본에 기대고 있다.
+    """
+    labels = [f"2026-08-{d:02d} 실행분" for d in range(1, 13)]
+    values = list(range(12))
+
+    # ⚠️ 라벨은 커서 설명(data-tip)에도 들어가므로 원문을 그냥 세면 안 된다 —
+    #    **축 눈금(<text class="viz-tick">)만** 센다.
+    def ticks(svg):
+        return re.findall(r'class="viz-tick"[^>]*>([^<]*)</text>', svg)
+
+    default = ticks(charts.line(labels, values, title="추세"))
+    assert sum(1 for t in default if t in labels) == 2,         f"기본이 처음·끝이 아니다: {[t for t in default if t in labels]}"
+
+    every = ticks(charts.line(labels, values, title="추세",
+                              all_ticks=True, width=840))
+    assert sum(1 for t in every if t in labels) > 2, "all_ticks가 동작하지 않는다"

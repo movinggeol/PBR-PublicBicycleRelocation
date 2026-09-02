@@ -513,6 +513,11 @@
     /* 겹치는 점은 면 색 링으로 떼어 놓는다. 테두리를 그리는 것이 아니다. */
     .viz-dot.ring { stroke: var(--surface); stroke-width: 2; }
     .viz-bar { fill: var(--blue); }
+    /* 다르게 칠하는 막대(주말 등). **색이 혼자 뜻을 나르지 않는다** — 부르는
+       쪽이 글자 설명을 함께 낸다(DESIGN.md 규칙 5). */
+    .viz-bar.warn { fill: var(--critical-ink); }
+    /* 세로 구분선(회차 경계 등). 격자보다 진하되 마크보다는 옅다. */
+    .viz-divider { stroke: var(--critical-ink); stroke-width: 1; opacity: .55; }
     /* 히트 영역. 8px 점을 정확히 짚게 만들지 않는다(약 24px). */
     .viz-hit { fill: transparent; cursor: default; }
     .viz-hit:focus-visible { outline: 2px solid var(--blue-focus); outline-offset: 0; }
@@ -520,6 +525,9 @@
     .viz-tick { fill: var(--ink-4); font-size: 10px; letter-spacing: 0;
                 font-variant-numeric: tabular-nums; }
     .viz-axis { fill: var(--ink-3); font-size: 11px; letter-spacing: -.08px; }
+    /* 구분선·강조 막대가 무슨 뜻인지 적는 자리. 그 색으로 적어야 무엇을
+       가리키는지 이어진다. */
+    .viz-axis.note { fill: var(--critical-ink); font-size: 10px; }
     .viz-value { fill: var(--ink); font-size: 11px; font-weight: 600; }
     .viz-card { padding: var(--sp-md) var(--sp-md) var(--sp-sm); }
     .viz-card h3 { margin: 0 0 2px; font-size: var(--fs-ui); color: var(--ink-2); }
