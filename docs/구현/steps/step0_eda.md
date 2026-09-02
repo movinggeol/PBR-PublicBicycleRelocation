@@ -15,20 +15,42 @@
   옵션 없이 실행하면(파이프라인 기본) 병합 파일이 있을 때만 이상치 제거를 수행하고 없으면 건너뜀
 
 ### `EDA.py`
-- **처리**: 월별 대여량 집계(`month_graph`), 현재 월 필터링(`now_month`)
-- **입력**: project_config의 `raw_file`. 파일이 없으면 건너뛰고 정상 종료(파이프라인 중단 방지)
+- **처리**: 그래프 3장을 PNG로 만듭니다(1.26.77). 예전에는 `month_graph`가 이름과
+  달리 `print()`만 했습니다.
+
+  | 산출물 | 무엇을 보여주나 |
+  | --- | --- |
+  | `월별_대여량.png` | **계절성.** 하루 평균으로 재며, 최다/최소 달과 그 배율을 함께 적습니다 |
+  | `시간대별_대여량.png` | **회차를 왜 그렇게 끊었나.** 05·10·15·20시 경계를 그어 출퇴근 봉우리와 맞대어 봅니다 |
+  | `요일별_대여량.png` | **평일과 휴일을 왜 안 섞나.** 주말 막대를 다른 색으로 칠합니다 |
+
+- **입력**: **DB의 대여이력 전 기간**을 우선 읽고, 없으면 원천 CSV 한 기간으로
+  물러섭니다. 계절성은 한 달만 봐서는 보이지 않기 때문입니다.
+  자료가 없으면 건너뛰고 정상 종료합니다(파이프라인 중단 방지).
+- **출력**: `data/pp_data/EDA/*.png`. 웹 대시보드에는 노출하지 않습니다 —
+  `catalog.py`가 `.html`/`.csv`만 서빙하고, EDA는 사람이 자료를 훑을 때 한 번
+  돌려 문서·논문에 붙이는 탐색 단계이기 때문입니다.
+
+⚠️ **`plt.show()`를 쓰면 안 됩니다.** `run_pipeline.py`가 이 파일을 subprocess로
+돌리므로 창이 뜨면 **사람이 닫을 때까지 파이프라인 전체가 멈춥니다.** 그래서
+pyplot을 들이기 **전에** `matplotlib.use("Agg")`로 백엔드를 고정합니다.
+`tests/test_eda.py`가 이 둘을 지킵니다.
+
+⚠️ **글꼴 경로를 하드코딩하지 마세요.** 참고 코드에 있던
+`C:/Windows/Fonts/malgun.ttf`를 그대로 쓰면 리눅스·CI에서 죽습니다. 설치된 것
+중 있는 것을 골라 쓰고, 하나도 없으면 경고만 남기고 그립니다(한글만 깨집니다).
 
 ## 현재 문제점
 
-| 우선순위 | 문제 |
-| --- | --- |
-| 🟢 | 시각화 코드가 `experiments/learning/matplotlib_month_graph.py`(matplotlib 월별 그래프, 더미 데이터)에 분리되어 있음 — EDA.py로 통합 |
+없습니다. (시각화 통합은 1.26.77에서 끝났습니다.)
 
 ## 작업 목록
 
 - [x] ~~`pd.DateFrame` → `pd.DataFrame` 오타 수정~~ (1.0.3)
 - [x] ~~`month_graph(df)` 호출 인자 수정~~ (1.0.3)
 - [x] ~~`concat_file`/`preprocessing` 실행을 CLI 인자(`--concat`/`--preprocess`)로 선택~~ (1.0.3)
-- [ ] `month_graph`에 matplotlib 시각화 통합 (한글 폰트 설정 포함,
-  [experiments/learning/matplotlib_month_graph.py](../../../experiments/learning/matplotlib_month_graph.py) 참고)
+- [x] ~~`month_graph`에 matplotlib 시각화 통합~~ (1.26.77) — 월별·시간대별·요일별
+  3장을 PNG로 남깁니다. 참고 코드
+  ([matplotlib_month_graph.py](../../../experiments/learning/matplotlib_month_graph.py))의
+  `plt.show()`와 글꼴 경로 하드코딩은 **가져오지 않았습니다**(위 ⚠️ 참고).
 - [ ] 이상치 제거 기준(IQR×1.5)을 README 또는 본 문서의 데이터 품질 섹션에 명시

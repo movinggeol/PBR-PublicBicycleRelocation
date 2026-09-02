@@ -511,8 +511,13 @@ sigma를 키우면 커버리지는 저절로 오르므로, 이걸 걸러내지 �
      **남은 것**: 컬럼 이름 변경·삭제·타입 변경은 여전히 수동이다(데이터 손실 위험이라
      의도적으로 자동화하지 않음). 기본값 없는 NOT NULL 추가도 SQLite 제약으로 불가 —
      경고만 낸다. 그런 변경이 실제로 필요해지면 그때 테이블 재생성 절차를 만들 것.
-6. **EDA 시각화**: `month_graph`에 matplotlib 그래프 통합
-   (`experiments/learning/matplotlib_month_graph.py`의 한글 폰트 설정 참고).
+6. ~~**EDA 시각화**~~ → **완료 (1.26.77, 2026-09-02).** `month_graph()`가
+   `print()`만 하던 것을 **PNG 3장**(월별·시간대별·요일별)으로 바꿨다.
+   DB의 전 기간 539만 건을 읽고 **하루 평균**으로 잰다(총량은 달 길이에 왜곡된다).
+   계절성 3.2배, 주말 0.87배가 그림으로 보인다.
+   ⚠️ 참고 코드의 `plt.show()`와 글꼴 경로 하드코딩은 **가져오지 않았다** —
+   전자는 파이프라인을 멈추고 후자는 리눅스·CI에서 죽는다(`tests/test_eda.py`가 지킨다).
+   웹에는 노출하지 않는다(`catalog.py`의 `.html`/`.csv` 제한을 넓히지 않는다).
 7. ~~**step1 매직 넘버**~~ → **완료(1.18.8).** 여섯 개를 `project_config`로 뺐다:
    `REBAL_MIN_QTY`(2) · `TOP_STATION_LIMIT`(50) · `TARGET_CLUSTER_SIZE`(7) ·
    `ADJUST_MAX_ITER`(200) · `ADJUST_BALANCE_OK`(3) · `ADJUST_BALANCE_LIMIT`(5).

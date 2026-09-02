@@ -820,6 +820,7 @@ def ensure_output_dirs() -> None:
         "ILP/visualization",
         "VRP/visualization",
         "성능 지표/visualization",
+        "EDA",
     ):
         (PP_ROOT / relative).mkdir(parents=True, exist_ok=True)
 
