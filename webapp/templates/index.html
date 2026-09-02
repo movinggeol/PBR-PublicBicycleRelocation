@@ -168,7 +168,7 @@
     {% if latest %}
       <div class="table-wrap">
       <table class="m-cards">
-        <thead><tr><th>분류</th><th class="grow">파일</th><th>수정 시각</th></tr></thead>
+        <thead><tr><th scope="col">분류</th><th scope="col" class="grow">파일</th><th scope="col">수정 시각</th></tr></thead>
         <tbody>
         {% for group in latest %}
           {% set gi = loop.index0 %}
@@ -203,8 +203,8 @@
   <div class="table-wrap">
   <table data-sortable class="m-cards">
     <thead><tr>
-      <th>실행 이름</th><th>순수요 기간</th><th>시간대</th><th>요일</th><th>기록 시각</th>
-      <th data-nosort>바로 보기</th>
+      <th scope="col">실행 이름</th><th scope="col">순수요 기간</th><th scope="col">시간대</th><th scope="col">요일</th><th scope="col">기록 시각</th>
+      <th scope="col" data-nosort>바로 보기</th>
     </tr></thead>
     <tbody>
     {% for run in pipeline_runs %}
@@ -234,7 +234,7 @@
   {% if jobs %}
   <div class="table-wrap">
   <table data-sortable class="m-cards">
-    <thead><tr><th>작업</th><th>상태</th><th>시작</th><th>종료</th><th>인자</th></tr></thead>
+    <thead><tr><th scope="col">작업</th><th scope="col">상태</th><th scope="col">시작</th><th scope="col">종료</th><th scope="col">인자</th></tr></thead>
     <tbody>
     {% for job in jobs %}
     <tr>

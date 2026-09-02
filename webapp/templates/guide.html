@@ -133,14 +133,14 @@
     <div class="table-wrap">
       <table>
         <tbody>
-          <tr><th>보유 차량</th><td class="num">{{ fleet_size }}대</td></tr>
-          <tr><th>한 회차 투입 상한</th><td class="num">최대 {{ per_round }}대</td></tr>
+          <tr><th scope="row">보유 차량</th><td class="num">{{ fleet_size }}대</td></tr>
+          <tr><th scope="row">한 회차 투입 상한</th><td class="num">최대 {{ per_round }}대</td></tr>
           {% if typical_vehicles %}
-          <tr><th>실제로 나간 대수</th><td class="num">회차당 {{ typical_vehicles }}대</td></tr>
+          <tr><th scope="row">실제로 나간 대수</th><td class="num">회차당 {{ typical_vehicles }}대</td></tr>
           {% endif %}
-          <tr><th>한 대 적재 용량</th><td class="num">{{ capacity }}대</td></tr>
-          <tr><th>평균 주행 속도</th><td class="num">{{ speed | round | int }} km/h</td></tr>
-          <tr><th>한 회차 시간 예산</th><td class="num">{{ time_budget | round | int }}분</td></tr>
+          <tr><th scope="row">한 대 적재 용량</th><td class="num">{{ capacity }}대</td></tr>
+          <tr><th scope="row">평균 주행 속도</th><td class="num">{{ speed | round | int }} km/h</td></tr>
+          <tr><th scope="row">한 회차 시간 예산</th><td class="num">{{ time_budget | round | int }}분</td></tr>
         </tbody>
       </table>
     </div>
@@ -168,7 +168,7 @@
   <div class="table-wrap">
   <table class="table-prose">
     <thead><tr>
-      <th>항목</th><th>무엇인가</th><th>언제 바꾸나</th>
+      <th scope="col">항목</th><th scope="col">무엇인가</th><th scope="col">언제 바꾸나</th>
     </tr></thead>
     <tbody>
       <tr>
@@ -269,7 +269,7 @@
 <div class="card flush">
   <div class="table-wrap">
   <table class="table-prose">
-    <thead><tr><th>지표</th><th>뜻</th><th>어떻게 볼까</th></tr></thead>
+    <thead><tr><th scope="col">지표</th><th scope="col">뜻</th><th scope="col">어떻게 볼까</th></tr></thead>
     <tbody>
       <tr>
         <td><b>평균 개선률</b></td>
@@ -328,7 +328,7 @@
 <div class="card flush">
   <div class="table-wrap">
   <table class="table-prose">
-    <thead><tr><th>상황</th><th>어떻게 하나</th></tr></thead>
+    <thead><tr><th scope="col">상황</th><th scope="col">어떻게 하나</th></tr></thead>
     <tbody>
       <tr>
         <td><b>실행이 실패했습니다</b></td>
@@ -387,7 +387,7 @@
 <div class="card flush">
   <div class="table-wrap">
   <table class="table-prose">
-    <thead><tr><th>말</th><th>뜻</th></tr></thead>
+    <thead><tr><th scope="col">말</th><th scope="col">뜻</th></tr></thead>
     <tbody>
       <tr><td><b>순수요</b></td>
         <td class="muted">한 대여소에서 <b>빌려 나간 수 − 반납된 수</b>.
@@ -424,7 +424,7 @@
 <div class="card flush">
   <div class="table-wrap">
   <table class="table-prose">
-    <thead><tr><th>기준</th><th>값</th><th>왜</th></tr></thead>
+    <thead><tr><th scope="col">기준</th><th scope="col">값</th><th scope="col">왜</th></tr></thead>
     <tbody>
       <tr>
         <td><b>얼마부터 작업 대상인가</b></td>
@@ -464,13 +464,13 @@
   <div class="table-wrap">
     <table class="table-prose">
       <tbody>
-        <tr><th style="width:16rem"><code>docs/분석/KPI.md</code></th>
+        <tr><th scope="row" style="width:16rem"><code>docs/분석/KPI.md</code></th>
             <td class="muted">지표를 왜 이렇게 정의했고 무엇을 못 재는지</td></tr>
-        <tr><th><code>docs/구현/FLEET.md</code></th>
+        <tr><th scope="row"><code>docs/구현/FLEET.md</code></th>
             <td class="muted">차량 배정과 로테이션 규칙</td></tr>
-        <tr><th><code>docs/분석/DEMAND_DISTRIBUTION.md</code></th>
+        <tr><th scope="row"><code>docs/분석/DEMAND_DISTRIBUTION.md</code></th>
             <td class="muted">목표 재고를 잡는 근거와 그 전제의 한계</td></tr>
-        <tr><th><code>docs/구현/WEBAPP.md</code></th>
+        <tr><th scope="row"><code>docs/구현/WEBAPP.md</code></th>
             <td class="muted">이 대시보드의 구조와 API</td></tr>
       </tbody>
     </table>

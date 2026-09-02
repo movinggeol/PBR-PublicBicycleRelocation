@@ -669,6 +669,81 @@ def test_카드로_눕는_표는_모든_칸에_라벨이_있다():
     assert checked > 0, "m-cards 표를 하나도 찾지 못했다(선택자가 바뀌었나?)"
 
 
+def test_모든_표_머리글에_scope가_있다():
+    """머리글에 `scope`가 없으면 스크린리더가 셀과 머리글을 못 잇는다.
+
+    93개 전부 빠져 있었다(1.26.94). `<thead>` 안이면 `col`, 본문 행의 첫
+    칸이면 `row`다 — 값이 뒤바뀌면 없느니만 못하므로 위치까지 함께 본다.
+    """
+    import re
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    templates = Path(webapp_app.__file__).parent / "templates"
+    checked = 0
+    for path in sorted(templates.glob("*.html")):
+        text = path.read_text(encoding="utf-8")
+        if "<th" not in text:
+            continue
+        # thead 구간을 표시해 두고, 각 <th>가 그 안인지 밖인지로 기대값을 정한다
+        in_head = False
+        for m in re.finditer(r"</?thead\b|<th\b[^>]*>", text):
+            tok = m.group(0)
+            if tok.startswith("<thead"):
+                in_head = True
+            elif tok.startswith("</thead"):
+                in_head = False
+            else:
+                want = 'scope="col"' if in_head else 'scope="row"'
+                assert want in tok, (
+                    f"{path.name}: {want}가 없다 — {tok[:70]}")
+                checked += 1
+    assert checked > 90, f"머리글을 {checked}개밖에 못 찾았다(선택자가 바뀌었나?)"
+
+
+def test_지시서_머리글은_접히고_값은_안_접힌다():
+    """지시서 표는 2열 카드 안(514px)이라 긴 머리글 하나가 표 전체의
+    최소폭을 밀어 올렸다 — '싣고 남는 수'가 81px을 잡아 7열 합 526px로
+    카드보다 12px 넓었다(1.26.94).
+
+    base.html은 `th, td`를 통째로 nowrap으로 두는데, 여기서는 **머리글만**
+    풀어 준다. 값(td)까지 풀면 '6.37 km'가 두 줄로 갈라진다.
+    """
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    css = (Path(webapp_app.__file__).parent / "templates" / "orders.html").read_text(
+        encoding="utf-8")
+
+    assert ".sheet thead th { white-space: normal;" in css, (
+        "지시서 머리글이 접히지 않는다 — 표가 카드 밖으로 새어 나간다")
+    assert ".sheet tbody td { white-space: normal" not in css, (
+        "값까지 접으면 숫자가 두 줄로 갈라진다")
+
+
+def test_실행_폼의_터치_타깃이_44px을_지킨다():
+    """44px 규약을 표 안의 링크에만 적용하고 폼은 빠뜨렸었다 — 실측이
+    체크박스 22px(라벨 포함)·입력칸 38px·셀렉트 40px이었다(1.26.94).
+
+    `/run`은 모바일 작업 흐름의 1단계다. 체크박스 네모 자체는 16px로 두고
+    **감싼 라벨**이 누를 면을 갖는다(표 안 링크에서 쓴 것과 같은 수법).
+    """
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    css = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    narrow = css[css.index("[data-narrow]"):]
+    assert "[data-narrow] .checks label { min-height: 44px;" in narrow, (
+        "체크박스를 감싼 라벨이 44px을 채우지 않는다")
+    assert "[data-narrow] .field select { padding: 12px 13px; min-height: 44px; }" in narrow, (
+        "폼 입력칸이 44px을 채우지 않는다")
+
+
 def test_인쇄는_모바일_모드를_무시한다():
     """모바일 모드를 켠 채 인쇄해도 종이는 표 그대로여야 한다.
 

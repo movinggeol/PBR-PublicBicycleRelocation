@@ -64,12 +64,12 @@
   <div class="table-wrap">
   <table data-sortable class="m-cards">
     <thead><tr>
-      <th>차량</th>
-      <th class="num"><span class="tip" data-tip="이 차량이 지금까지 나간 횟수입니다.">출동</span></th>
-      <th class="num"><span class="tip" data-tip="이 차량이 싣고 옮긴 자전거 총 대수입니다.">옮긴 대수</span></th>
-      <th class="num">누적 거리</th>
-      <th class="num"><span class="tip" data-tip="이동 시간에 자전거를 싣고 내리는 시간을 더한 값입니다. 배정 순서는 이 값이 작은 차량부터입니다.">누적 시간</span></th>
-      <th class="grow">최근 작업</th><th data-nosort>이력</th>
+      <th scope="col">차량</th>
+      <th scope="col" class="num"><span class="tip" data-tip="이 차량이 지금까지 나간 횟수입니다.">출동</span></th>
+      <th scope="col" class="num"><span class="tip" data-tip="이 차량이 싣고 옮긴 자전거 총 대수입니다.">옮긴 대수</span></th>
+      <th scope="col" class="num">누적 거리</th>
+      <th scope="col" class="num"><span class="tip" data-tip="이동 시간에 자전거를 싣고 내리는 시간을 더한 값입니다. 배정 순서는 이 값이 작은 차량부터입니다.">누적 시간</span></th>
+      <th scope="col" class="grow">최근 작업</th><th scope="col" data-nosort>이력</th>
     </tr></thead>
     <tbody>
     {% for v in workload %}
@@ -109,11 +109,11 @@
   <div class="table-wrap">
   <table data-sortable class="m-cards">
     <thead><tr>
-      <th>실행</th><th>회차</th><th>차량</th>
-      <th class="num"><span class="tip" data-tip="이 차량이 맡은 대여소 덩어리의 번호입니다.">군집</span></th>
-      <th class="num">대여소</th><th class="num">옮긴 대수</th>
-      <th class="num">거리</th>
-      <th class="num"><span class="tip" data-tip="이동 시간 + 자전거를 싣고 내리는 시간입니다. {{ time_budget | round | int }}분을 넘으면 붉게 표시됩니다.">작업 시간</span></th>
+      <th scope="col">실행</th><th scope="col">회차</th><th scope="col">차량</th>
+      <th scope="col" class="num"><span class="tip" data-tip="이 차량이 맡은 대여소 덩어리의 번호입니다.">군집</span></th>
+      <th scope="col" class="num">대여소</th><th scope="col" class="num">옮긴 대수</th>
+      <th scope="col" class="num">거리</th>
+      <th scope="col" class="num"><span class="tip" data-tip="이동 시간 + 자전거를 싣고 내리는 시간입니다. {{ time_budget | round | int }}분을 넘으면 붉게 표시됩니다.">작업 시간</span></th>
     </tr></thead>
     <tbody>
     {% for a in assignments %}

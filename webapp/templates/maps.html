@@ -16,8 +16,8 @@
   {% if group.entries %}
   <div class="table-wrap">
   <table data-sortable class="m-cards">
-    <thead><tr><th class="grow">파일</th><th>수정 시각</th><th class="num">크기</th>
-        <th data-nosort>열기</th></tr></thead>
+    <thead><tr><th scope="col" class="grow">파일</th><th scope="col">수정 시각</th><th scope="col" class="num">크기</th>
+        <th scope="col" data-nosort>열기</th></tr></thead>
     <tbody>
     {% for e in group.entries %}
     <tr data-page-item="{{ loop.index0 }}">

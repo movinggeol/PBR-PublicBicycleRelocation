@@ -82,11 +82,11 @@
   <div class="table-wrap">
   <table>
     <tbody>
-      <tr><th style="width:9rem">시작</th><td>{{ job.started_at }}</td></tr>
-      <tr><th>종료</th><td>{{ job.finished_at or "—" }}</td></tr>
-      <tr><th><span class="tip" data-tip="0이면 정상 종료입니다. 그 밖의 값은 어딘가에서 오류가 났다는 뜻입니다.">종료 코드</span></th>
+      <tr><th scope="row" style="width:9rem">시작</th><td>{{ job.started_at }}</td></tr>
+      <tr><th scope="row">종료</th><td>{{ job.finished_at or "—" }}</td></tr>
+      <tr><th scope="row"><span class="tip" data-tip="0이면 정상 종료입니다. 그 밖의 값은 어딘가에서 오류가 났다는 뜻입니다.">종료 코드</span></th>
           <td>{{ job.returncode if job.returncode is not none else "—" }}</td></tr>
-      <tr><th>인자</th><td class="muted wrap">{{ " ".join(job.args) or "(기본값)" }}</td></tr>
+      <tr><th scope="row">인자</th><td class="muted wrap">{{ " ".join(job.args) or "(기본값)" }}</td></tr>
     </tbody>
   </table>
   </div>

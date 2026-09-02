@@ -98,7 +98,7 @@
       <button type="button" class="table-open" data-table-open="{{ t.title }}">표로 보기</button>
       <div class="table-panel" hidden>
         <table>
-          <thead><tr><th class="grow">실행</th><th class="num">{{ t.title }}</th></tr></thead>
+          <thead><tr><th scope="col" class="grow">실행</th><th scope="col" class="num">{{ t.title }}</th></tr></thead>
           <tbody>
           {% for label, value in t.table %}
           <tr><td class="wrap muted">{{ label }}</td>
@@ -153,22 +153,22 @@
   <div class="table-wrap">
   <table data-sortable class="m-cards" id="kpi-runs-table">
     <thead><tr>
-      <th>실행</th>
-      <th><span class="tip" data-tip="계획한 시간대입니다. 예: _10_15 는 10시~15시.">회차</span></th>
-      <th class="num col-more"><span class="tip" data-tip="이번 계획에서 손을 댄 대여소 수입니다.">대여소</span></th>
-      <th class="num col-more"><span class="tip" data-tip="대여소를 가까운 것끼리 묶은 덩어리 수입니다. 차량 한 대가 한 덩어리를 맡습니다.">군집</span></th>
-      <th class="num col-more"><span class="tip" data-tip="실제로 출동한 차량 수입니다.">차량</span></th>
-      <th class="num col-more"><span class="tip" data-tip="옮긴 자전거 총 대수입니다.">옮긴 대수</span></th>
-      <th class="num"><span class="tip" data-tip="목표 재고까지 모자란 양을 계획이 몇 % 메웠는지입니다. 수요를 맞췄다는 뜻이 아니라 계획을 지켰다는 뜻입니다.">개선률</span></th>
-      <th class="num col-more"><span class="tip" data-tip="목표 재고를 완전히 채운 대여소의 비율입니다. 계획량이 적재 용량 근처에서 눌리므로 격차가 8대만 넘어도 도달이 구조적으로 불가능합니다 — 실행 품질을 재는 값이 아닙니다.">목표 도달</span></th>
-      <th class="num col-more"><span class="tip" data-tip="목표까지 벌어진 양이 트럭 적재 용량 안이라 한 번 방문으로 해결할 수 있었던 대여소의 비율입니다. 낮으면 애초에 한 회차로는 못 푸는 일감이 많다는 뜻입니다.">한 번에 닿는 범위</span></th>
-      <th class="num col-more"><span class="tip" data-tip="목표까지 벌어진 양의 중앙값과 최댓값입니다. 적재 용량과 견줘 보세요.">격차 (중앙/최대)</span></th>
-      <th class="num"><span class="tip" data-tip="모든 차량이 움직인 거리의 합입니다.">이동거리</span></th>
-      <th class="num"><span class="tip" data-tip="가장 오래 걸린 차량 한 대의 작업 시간입니다. 시간 예산을 넘으면 붉게 표시됩니다.">최장 작업</span></th>
-      <th class="num col-more"><span class="tip" data-tip="정해진 시간 안에 끝난 회차의 비율입니다. 작업이 늦어지면 예측한 시간대가 지나가 계획의 효과가 줄어듭니다.">예산 준수</span></th>
-      <th class="num col-more"><span class="tip" data-tip="1km 움직일 때마다 개선률이 얼마나 올랐는지입니다. 연료 대비 효율로 볼 수 있습니다.">km당 개선</span></th>
+      <th scope="col">실행</th>
+      <th scope="col"><span class="tip" data-tip="계획한 시간대입니다. 예: _10_15 는 10시~15시.">회차</span></th>
+      <th scope="col" class="num col-more"><span class="tip" data-tip="이번 계획에서 손을 댄 대여소 수입니다.">대여소</span></th>
+      <th scope="col" class="num col-more"><span class="tip" data-tip="대여소를 가까운 것끼리 묶은 덩어리 수입니다. 차량 한 대가 한 덩어리를 맡습니다.">군집</span></th>
+      <th scope="col" class="num col-more"><span class="tip" data-tip="실제로 출동한 차량 수입니다.">차량</span></th>
+      <th scope="col" class="num col-more"><span class="tip" data-tip="옮긴 자전거 총 대수입니다.">옮긴 대수</span></th>
+      <th scope="col" class="num"><span class="tip" data-tip="목표 재고까지 모자란 양을 계획이 몇 % 메웠는지입니다. 수요를 맞췄다는 뜻이 아니라 계획을 지켰다는 뜻입니다.">개선률</span></th>
+      <th scope="col" class="num col-more"><span class="tip" data-tip="목표 재고를 완전히 채운 대여소의 비율입니다. 계획량이 적재 용량 근처에서 눌리므로 격차가 8대만 넘어도 도달이 구조적으로 불가능합니다 — 실행 품질을 재는 값이 아닙니다.">목표 도달</span></th>
+      <th scope="col" class="num col-more"><span class="tip" data-tip="목표까지 벌어진 양이 트럭 적재 용량 안이라 한 번 방문으로 해결할 수 있었던 대여소의 비율입니다. 낮으면 애초에 한 회차로는 못 푸는 일감이 많다는 뜻입니다.">한 번에 닿는 범위</span></th>
+      <th scope="col" class="num col-more"><span class="tip" data-tip="목표까지 벌어진 양의 중앙값과 최댓값입니다. 적재 용량과 견줘 보세요.">격차 (중앙/최대)</span></th>
+      <th scope="col" class="num"><span class="tip" data-tip="모든 차량이 움직인 거리의 합입니다.">이동거리</span></th>
+      <th scope="col" class="num"><span class="tip" data-tip="가장 오래 걸린 차량 한 대의 작업 시간입니다. 시간 예산을 넘으면 붉게 표시됩니다.">최장 작업</span></th>
+      <th scope="col" class="num col-more"><span class="tip" data-tip="정해진 시간 안에 끝난 회차의 비율입니다. 작업이 늦어지면 예측한 시간대가 지나가 계획의 효과가 줄어듭니다.">예산 준수</span></th>
+      <th scope="col" class="num col-more"><span class="tip" data-tip="1km 움직일 때마다 개선률이 얼마나 올랐는지입니다. 연료 대비 효율로 볼 수 있습니다.">km당 개선</span></th>
       {# '12.5 → 8.3시간'처럼 숫자가 둘이라 한 열로는 정렬할 수 없다. #}
-      <th data-nosort class="col-more"><span class="tip" data-tip="자전거가 없어 빌리지 못하는 시간이 재배치로 얼마나 줄었는지입니다(시뮬레이션).">결품 (전→후)</span></th>
+      <th scope="col" data-nosort class="col-more"><span class="tip" data-tip="자전거가 없어 빌리지 못하는 시간이 재배치로 얼마나 줄었는지입니다(시뮬레이션).">결품 (전→후)</span></th>
     </tr></thead>
     <tbody>
     {% for r in rows %}
@@ -222,13 +222,13 @@
   <div class="table-wrap">
   <table data-sortable class="m-cards">
     <thead><tr>
-      <th>시간대</th>
-      <th class="num"><span class="tip" data-tip="이어지는 달을 (학습, 검증)으로 짝지은 횟수입니다.">월쌍</span></th>
-      <th class="num"><span class="tip" data-tip="예측이 실제와 평균 몇 대 틀렸나(MAE). 낮을수록 좋습니다.">예측 오차</span></th>
-      <th class="num"><span class="tip" data-tip="'늘 0이라고 예측'과 '전체 평균으로 예측' 중 더 낮은(더 어려운) 쪽입니다.">기준선</span></th>
-      <th class="num"><span class="tip" data-tip="기준선보다 얼마나 나은가. 0 이하면 mu를 쓸 근거가 없다는 뜻입니다.">기준선 대비</span></th>
-      <th class="num"><span class="tip" data-tip="목표 재고가 실제 수요를 덮은 비율. 설계 의도는 95%입니다.">커버리지</span></th>
-      <th class="num"><span class="tip" data-tip="양수면 실제보다 적게 예측했다는 뜻입니다(과소예측).">편향</span></th>
+      <th scope="col">시간대</th>
+      <th scope="col" class="num"><span class="tip" data-tip="이어지는 달을 (학습, 검증)으로 짝지은 횟수입니다.">월쌍</span></th>
+      <th scope="col" class="num"><span class="tip" data-tip="예측이 실제와 평균 몇 대 틀렸나(MAE). 낮을수록 좋습니다.">예측 오차</span></th>
+      <th scope="col" class="num"><span class="tip" data-tip="'늘 0이라고 예측'과 '전체 평균으로 예측' 중 더 낮은(더 어려운) 쪽입니다.">기준선</span></th>
+      <th scope="col" class="num"><span class="tip" data-tip="기준선보다 얼마나 나은가. 0 이하면 mu를 쓸 근거가 없다는 뜻입니다.">기준선 대비</span></th>
+      <th scope="col" class="num"><span class="tip" data-tip="목표 재고가 실제 수요를 덮은 비율. 설계 의도는 95%입니다.">커버리지</span></th>
+      <th scope="col" class="num"><span class="tip" data-tip="양수면 실제보다 적게 예측했다는 뜻입니다(과소예측).">편향</span></th>
     </tr></thead>
     <tbody>
     {% for r in forecast.summary %}
@@ -257,7 +257,7 @@
       <button type="button" class="table-open" data-table-open="{{ s.title }}">표로 보기</button>
       <div class="table-panel" hidden>
         <table>
-          <thead><tr><th class="grow">검증 월</th><th class="num">예측 오차</th></tr></thead>
+          <thead><tr><th scope="col" class="grow">검증 월</th><th scope="col" class="num">예측 오차</th></tr></thead>
           <tbody>
           {% for label, value in s.table %}
           <tr><td class="muted">{{ label }}</td><td class="num">{{ "%.2f" | format(value) }}대</td></tr>
@@ -299,7 +299,7 @@
     <button type="button" class="table-open" data-table-open="수요 구조 — 요일 × 시간">표로 보기</button>
     <div class="table-panel" hidden>
       <table>
-        <thead><tr><th>요일</th>{% for c in heat.cols %}<th class="num">{{ c }}</th>{% endfor %}</tr></thead>
+        <thead><tr><th scope="col">요일</th>{% for c in heat.cols %}<th scope="col" class="num">{{ c }}</th>{% endfor %}</tr></thead>
         <tbody>
         {% for r in range(heat.rows | length) %}
         <tr><td><b>{{ heat.rows[r] }}</b></td>

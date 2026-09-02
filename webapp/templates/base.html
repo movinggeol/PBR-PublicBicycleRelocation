@@ -946,6 +946,20 @@
     [data-narrow] .skip-link { padding: 13px 16px; }
     /* 아이콘 단추 두 개(모바일·테마)는 글자가 짧아 세로만으로는 안 찬다. */
     [data-narrow] .theme-toggle { padding: 14px 10px; min-height: 44px; }
+
+    /* ── 실행 폼의 입력 컨트롤 (1.26.94) ──
+       44px 규약을 **표 안의 링크에만** 적용했었다. 정작 폼은 손대지 않아
+       실측이 체크박스 22px(라벨 포함)·입력칸 38px·셀렉트 40px이었다 —
+       `/run`은 모바일 작업 흐름의 1단계이고 시간대 체크박스는 그 화면에서
+       가장 조작하기 까다로운 컨트롤이다.
+
+       체크박스 자체는 16px로 둔다. 네모를 키우면 글자와 견줘 커 보이고
+       기기마다 다르게 그려진다 — 대신 **감싼 라벨이 누를 면을 갖는다**
+       (표 안 링크에서 쓴 것과 같은 수법). */
+    [data-narrow] .field input[type=text],
+    [data-narrow] .field input[type=number],
+    [data-narrow] .field select { padding: 12px 13px; min-height: 44px; }
+    [data-narrow] .checks label { min-height: 44px; padding: 4px 0; }
     /* 2단 배치는 전부 1단으로. 폭 기준 규칙과 같은 값이지만, 버튼으로 켠
        데스크톱(넓은 화면)에서도 접혀야 하므로 여기에도 적는다. */
     [data-narrow] .data-grid,
