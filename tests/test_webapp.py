@@ -995,6 +995,82 @@ def test_정렬은_일부러_기억하지_않는다():
         "정렬이 저장되고 있다")
 
 
+# ── 잘림 규칙을 문장에 쓰지 않는다 ──────────────────────────────────
+
+def test_설명_문장에는_파일명용_잘림_클래스를_쓰지_않는다():
+    """.step-file은 파일명 전용이다 — nowrap + ellipsis라 한 줄을 넘으면 잘린다.
+    /runs/{id}의 'step1_cluster/top_st_clustering.py'처럼 뒤가 잘려도 알아볼 수
+    있는 값에는 맞지만, /guide가 같은 클래스를 **설명 문장**에 써서 여덟 줄이
+    말줄임표로 잘려 있었다(1.26.99). 처음 쓰는 사람을 위한 화면인데 정작
+    설명이 안 보였다."""
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    guide = (Path(webapp_app.__file__).parent / "templates" / "guide.html").read_text(
+        encoding="utf-8")
+
+    assert "step-file" not in guide, (
+        "설명 문장에 파일명용 잘림 클래스(.step-file)를 쓰고 있다 — .step-note를 써라")
+    assert "step-note" in guide, "설명용 클래스가 안 쓰이고 있다"
+
+
+def test_설명용_클래스는_줄을_접는다():
+    """.step-note는 .step-file과 한 글자만 다른 이름이라, 규칙까지 베껴 오면
+    고친 의미가 없다. 접히는지(normal)와 한국어 낱말이 안 쪼개지는지를 본다."""
+    import re as _re
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    css = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    block = _re.search(r"\.step-note\s*\{([^}]*)\}", css)
+    assert block, ".step-note 규칙이 없다"
+    body = block.group(1)
+    assert "white-space: normal" in body, "설명이 한 줄로 눌린다"
+    assert "text-overflow" not in body, "설명을 말줄임표로 자르고 있다"
+    assert "keep-all" in body, "한국어 낱말이 줄 끝에서 쪼개진다"
+
+    # 파일명 쪽은 그대로여야 한다 — 이쪽까지 풀면 /runs/{id} 배치가 무너진다
+    fileblock = _re.search(r"\.step-file\s*\{([^}]*)\}", css)
+    assert fileblock and "nowrap" in fileblock.group(1), (
+        "파일명 잘림 규칙까지 같이 풀렸다")
+
+
+# ── 긴 파일 경로의 이름 안내 ────────────────────────────────────────
+
+def test_긴_경로는_파일_이름을_따로_알린다():
+    """원천 CSV 경로가 칸보다 88px 길어, 좁은 화면에서는 'data/raw_data/…'만
+    보이고 어느 달 자료인지 말해 주는 이름이 밀려 있었다(1.26.99).
+
+    값을 고칠 수 있는 칸이라 서버가 미리 적어 둘 수 없다 — 고치는 순간
+    어긋난다. 스크립트가 지금 값에서 뽑고, 넘칠 때만 보여준다."""
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    templates = Path(webapp_app.__file__).parent / "templates"
+    index = (templates / "index.html").read_text(encoding="utf-8")
+    js = (templates / "base.html").read_text(encoding="utf-8")
+
+    assert 'id="f-raw-name"' in index, "파일 이름을 적을 자리가 없다"
+    assert "hidden" in index[index.index('id="f-raw-name"'):
+                             index.index('id="f-raw-name"') + 40], (
+        "처음부터 보이면 안 된다 — 넘칠 때만 뜬다")
+
+    assert 'getElementById("f-raw-name")' in js
+    # 넘칠 때만 — 데스크톱에서 같은 말을 두 번 하지 않는다
+    assert "scrollWidth > input.clientWidth" in js, (
+        "넘침을 재지 않고 늘 보여주고 있다")
+    # 값이 바뀌면 따라간다
+    assert 'input.addEventListener("input"' in js, "값을 고쳐도 안 따라간다"
+    # 윈도우 역슬래시 경로에서도 이름을 뽑는다
+    assert r"split(/[\\/]/)" in js, (
+        "역슬래시 경로에서 이름을 못 뽑는다 — 윈도우 경로가 통째로 이름이 된다")
+
+
 # ── 빈 상태 규약 ────────────────────────────────────────────────────
 
 def test_빈_상태는_무엇이_없는지와_어떻게_채우는지를_같이_말한다():

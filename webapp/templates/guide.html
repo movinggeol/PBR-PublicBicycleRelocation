@@ -33,7 +33,7 @@
       <span class="step-mark" aria-hidden="true">1</span>
       <span class="step-body">
         <span class="step-name"><b>계획 실행</b> — 값을 그대로 두고 “계획 실행”을 누릅니다</span>
-        <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
+        <span class="step-note">
           기본값이 이미 채워져 있습니다. 처음에는 아무것도 바꾸지 마세요.</span>
       </span>
       <span class="step-state"><a href="/run#run">실행 화면 →</a></span>
@@ -42,7 +42,7 @@
       <span class="step-mark" aria-hidden="true">2</span>
       <span class="step-body">
         <span class="step-name"><b>끝날 때까지 기다립니다</b> — 진행 단계가 화면에 나옵니다</span>
-        <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
+        <span class="step-note">
           <b>대여소를 묶는 단계</b>가 전체 시간의 3분의 2 이상을 차지합니다.
           화면은 3초마다 저절로 새로고침됩니다.
           {% if typical_minutes %}
@@ -59,7 +59,7 @@
       <span class="step-mark" aria-hidden="true">3</span>
       <span class="step-body">
         <span class="step-name"><b>결과를 봅니다</b> — 지도로 경로를 확인하고 지표로 성적을 봅니다</span>
-        <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
+        <span class="step-note">
           현장에 내보낼 것은 지도입니다. 지표는 “이번 계획이 쓸 만한가”를 판단할 때 봅니다.</span>
       </span>
       <span class="step-state"><a href="/maps">지도 →</a></span>
@@ -83,7 +83,7 @@
       <span class="step-mark" aria-hidden="true">1</span>
       <span class="step-body">
         <span class="step-name">지금 재고를 확인합니다</span>
-        <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
+        <span class="step-note">
           타슈 API에서 대여소마다 자전거가 몇 대 있는지 실시간으로 받아옵니다.</span>
       </span>
     </li>
@@ -91,7 +91,7 @@
       <span class="step-mark" aria-hidden="true">2</span>
       <span class="step-body">
         <span class="step-name">얼마나 필요할지 추정합니다 — <b>목표 재고</b></span>
-        <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
+        <span class="step-note">
           과거 같은 조건(같은 시간대, 같은 평일/휴일)에서 이 대여소의 순수요가
           평균 얼마였고 얼마나 들쭉날쭉했는지를 보고, 넉넉하게 잡습니다.</span>
       </span>
@@ -100,7 +100,7 @@
       <span class="step-mark" aria-hidden="true">3</span>
       <span class="step-body">
         <span class="step-name">어디서 얼마를 옮길지 정합니다</span>
-        <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
+        <span class="step-note">
           남는 대여소와 모자란 대여소를 짝지어, 총 이동량이 가장 적어지도록 배분합니다.</span>
       </span>
     </li>
@@ -108,7 +108,7 @@
       <span class="step-mark" aria-hidden="true">4</span>
       <span class="step-body">
         <span class="step-name">대여소를 덩어리로 묶습니다 — 군집</span>
-        <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
+        <span class="step-note">
           차량 한 대가 한 덩어리를 맡습니다. 가까운 것끼리, 일감이 고르게 나뉘도록 묶습니다.
           <b>몇 덩어리로 나눌지는 그 회차의 일감이 정합니다</b> — 옮길 자전거가 많고
           들를 대여소가 흩어져 있으면 더 많은 차가 나갑니다.
@@ -120,7 +120,7 @@
       <span class="step-mark" aria-hidden="true">5</span>
       <span class="step-body">
         <span class="step-name">차량이 도는 순서를 짭니다 — 경로</span>
-        <span class="step-file" style="font-family:inherit; letter-spacing:-.08px">
+        <span class="step-note">
           차고지에서 출발해 맡은 대여소를 다 들르고 돌아옵니다. 실제 도로 경로로 계산합니다.</span>
       </span>
     </li>

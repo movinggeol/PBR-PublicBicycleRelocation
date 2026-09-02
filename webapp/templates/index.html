@@ -136,6 +136,9 @@
             <span class="tip" data-tip="수요를 계산할 원본 대여 이력입니다. 프로젝트 폴더를 기준으로 한 상대 경로를 적습니다.">원천 대여 이력 CSV</span>
           </label>
           <input id="f-raw" type="text" name="raw_file" value="{{ defaults.raw_file }}">
+          {# 경로가 칸보다 길면 좁은 화면에서 앞쪽만 보인다 — 정작 어느 달 자료인지는
+             끝의 파일 이름에 있다. 넘칠 때만 스크립트가 이름을 아래에 적는다. #}
+          <span class="hint" id="f-raw-name" hidden></span>
         </div>
       </div>
 
