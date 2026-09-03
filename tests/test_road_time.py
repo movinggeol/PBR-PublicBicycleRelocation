@@ -317,3 +317,84 @@ def test_사람이_고른_순서는_돌리지_않는다(collector):
     돌릴 것이 없다."""
     assert collector.rotate_durations(["_20_05"], "2026-09-07") == ["_20_05"]
     assert collector.rotate_durations([], "2026-09-07") == []
+
+
+# ---------------------------------------------------------------- 이어받기(--if-needed)
+#
+# 새벽 03:30 한 번이던 스케줄을 "켜져 있을 만한 시각 여럿 + 로그온"으로 바꾸면서
+# 필요해진 판단이다(1.26.105). 하루에 여러 번 깨우므로, **이미 받은 날 다시
+# 부르지 않는 것**이 곧 TMAP 한도를 지키는 일이 된다.
+
+def _leg_row(**over):
+    row = {
+        "cluster": 0, "leg": 0, "from_id": "A", "to_id": "B",
+        "from_lat": 36.3, "from_lon": 127.3, "to_lat": 36.35, "to_lon": 127.35,
+        "straight_km": 5.0, "road_sec": 600.0,
+        "observed_at": "2026-09-03 09:00", "start_time": "202609040500",
+    }
+    row.update(over)
+    return row
+
+
+def _save(collector, label, duration, count):
+    import db
+    frame = pd.DataFrame([_leg_row(leg=i) for i in range(count)])
+    return db.save_output("road_leg", frame, run_label=label, duration=duration)
+
+
+def test_회차_하나가_다_찼을_때의_구간_수(collector):
+    """사슬 21지점 = 구간 20개. 지금 패널(5사슬)이면 회차당 100구간이다."""
+    chains = [{"points": [None] * 21} for _ in range(5)]
+    assert collector.legs_per_duration(chains) == 100
+
+
+def test_다_받은_날은_부를_회차가_없다(collector):
+    """이미 채운 날 다시 깨워도 TMAP을 부르지 않아야 한다 — 안 그러면 하루에
+    여러 번 깨우는 스케줄이 그대로 한도 초과가 된다."""
+    label = collector.PROBE_PREFIX + "2026-09-04"
+    durations = ["_05_10", "_10_15"]
+    for d in durations:
+        _save(collector, label, d, 100)
+
+    assert collector.pending_durations(durations, label, 100) == []
+
+
+def test_잘린_회차만_다시_받는다(collector):
+    """한도 소진으로 끊긴 회차만 채운다. 다 받은 회차를 지우고 새로 받으면
+    호출을 두 배로 쓰게 된다."""
+    label = collector.PROBE_PREFIX + "2026-09-04"
+    _save(collector, label, "_05_10", 100)      # 다 받음
+    _save(collector, label, "_10_15", 40)       # 중간에 끊김
+    durations = ["_05_10", "_10_15", "_15_20"]  # 마지막은 아예 없음
+
+    assert collector.pending_durations(durations, label, 100) == ["_10_15", "_15_20"]
+
+
+def test_이어받기는_돌려_놓은_순서를_지킨다(collector):
+    """rotate_durations()가 정한 차례가 '이번에 잘려도 되는 회차'의 순서다.
+    여기서 다시 정렬하면 그 배려가 없어진다."""
+    label = collector.PROBE_PREFIX + "2026-09-04"
+    rotated = ["_15_20", "_20_05", "_05_10", "_10_15"]
+    _save(collector, label, "_05_10", 100)
+
+    assert collector.pending_durations(rotated, label, 100) == [
+        "_15_20", "_20_05", "_10_15"]
+
+
+def test_다른_날짜는_서로_간섭하지_않는다(collector):
+    """어제 다 받았다고 오늘을 건너뛰면 안 된다."""
+    yesterday = collector.PROBE_PREFIX + "2026-09-03"
+    today = collector.PROBE_PREFIX + "2026-09-04"
+    _save(collector, yesterday, "_05_10", 100)
+
+    assert collector.pending_durations(["_05_10"], today, 100) == ["_05_10"]
+
+
+def test_주말은_건너뛴다(collector):
+    """start_time_for()가 '다음 평일'을 쓰므로 토·일에 받으면 금요일과 똑같은
+    '다음 월요일' 교통량이다 — 다른 날로 세면 표본이 부풀어 오른다.
+    로그온 트리거는 주말에도 깨므로 수집기가 스스로 걸러야 한다."""
+    assert collector.is_weekend("2026-09-05") is True    # 토
+    assert collector.is_weekend("2026-09-06") is True    # 일
+    assert collector.is_weekend("2026-09-04") is False   # 금
+    assert collector.is_weekend("2026-09-07") is False   # 월

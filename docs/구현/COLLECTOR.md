@@ -14,7 +14,15 @@
 > ℹ️ **수집기는 둘입니다.** 이 문서는 **재고** 수집기(`scripts/collector.ps1` ·
 > `tools/collect_stock.py`)를 다룹니다. **TMAP 실도로 소요시간** 수집기는 별개이며
 > (`scripts/road_collector.ps1` · `tools/collect_road_time.py`), 창 가드도 요일
-> 옵션도 다릅니다 — 그쪽은 [EXPERIMENTS.md](../분석/EXPERIMENTS.md) 9장에 있습니다.
+> 옵션도 다릅니다 — 운영은 [COLLECTOR_ROAD.md](COLLECTOR_ROAD.md), 실험 설계는
+> [EXPERIMENTS.md](../분석/EXPERIMENTS.md) 9장입니다.
+>
+> **둘이 어떻게 다른지**는 [COLLECTOR_ROAD.md 7장](COLLECTOR_ROAD.md)에 표로
+> 있습니다 — 한쪽 규칙을 다른 쪽에 옮겨 붙이면 안 되는 자리가 여럿입니다.
+
+> 📌 **어느 환경이 무엇을 돌리고 있는지**는 [두_PC_작업.md 0장](두_PC_작업.md)이
+> 정본입니다. 2026-09-03 기준 재고는 **회사환경(평일)** + **집환경(휴일)**,
+> 도로는 **집환경만** 돕니다.
 
 ## 1. 왜 모으는가
 
@@ -694,7 +702,8 @@ python tools\merge_stock.py D:\B_PCike_system.db
 | 문서 | 내용 |
 | --- | --- |
 | [DB_SCHEMA.md](DB_SCHEMA.md) | `stock_history`·`stock_station_master` 컬럼 표 |
-| [두_PC_작업.md](두_PC_작업.md) | 두 PC로 **개발**을 번갈아 할 때 — `.gitignore` 항목별로 옮길 것과 다시 만들 것 |
+| [두_PC_작업.md](두_PC_작업.md) | **0장 = 어느 환경이 무엇을 수집하나(정본).** 그 밖에는 두 PC로 개발을 번갈아 할 때 옮길 것과 다시 만들 것 |
+| [COLLECTOR_ROAD.md](COLLECTOR_ROAD.md) | **실도로 소요시간** 수집기 — 고정 패널·TMAP 한도·재고 수집기와의 차이 |
 | [TODO.md](../기록/TODO.md) | 1-4 — 이 수집이 해소하려는 한계 |
 | [THESIS.md](../연구/THESIS.md) | 4장 한계 — 결품이 실측이 아니라는 문제 |
 | [TESTING.md](TESTING.md) | 외부 API를 부르지 않고 검증하는 방법 |

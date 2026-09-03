@@ -1,22 +1,32 @@
 ﻿<#
 .SYNOPSIS
-    TMAP 실도로 소요시간 반복 수집기 운영 — 하루 한 번 (docs/분석/EXPERIMENTS.md 9장).
+    TMAP 실도로 소요시간 반복 수집기 운영 — 하루 한 번치 (docs/구현/COLLECTOR_ROAD.md).
 
 .DESCRIPTION
-    재고 수집기(collector.ps1)와 달리 **하루 한 번**만 돌면 된다. TMAP의
+    재고 수집기(collector.ps1)와 달리 **하루 한 번치**만 모으면 된다. TMAP의
     `startTime`이 교통량을 정하므로, 언제 호출하든 같은 시각의 교통량을 받는다.
+    그래서 "몇 시에 도느냐"가 아니라 "그날 받았느냐"만 중요하다.
 
-    **평일에만 깨운다.** `start_time_for()`가 '다음 평일'을 쓰기 때문에 금·토·일에
-    돌리면 셋 다 '다음 월요일'을 가리켜 같은 값이 세 번 쌓인다.
+    **하루에 여러 번 깨우고, 필요할 때만 부른다** (1.26.105). 수집기에
+    `--if-needed`를 붙여 돌리므로
 
-    호출은 하루 20건(사슬 5 × 회차 4)이다. 재고 수집기와 달리 TMAP 유료 API를
-    쓰므로 간격을 좁히지 마라 — 일일 한도를 파이프라인 실행분과 나눠 쓴다.
+      · 그날 몫(회차 4개 × 100구간)을 이미 받았으면 TMAP을 **한 번도 부르지 않고** 끝난다
+      · 한도 소진·네트워크 실패로 잘린 회차가 있으면 **그것만** 채운다
+      · 주말이면 스스로 건너뛴다
+
+    그래서 시각을 여러 개 걸어도 **호출은 하루 20건(사슬 5 × 회차 4)을 넘지 않는다.**
+    예전에는 평일 03:30 한 번이었는데, 새벽에 PC를 켜 두지 않는 환경에서는 그날을
+    통째로 잃었다(2026-09-03에 실제로 비었다).
+
+    **평일만 센다.** `start_time_for()`가 '다음 평일'을 쓰기 때문에 토·일에 받으면
+    금요일과 똑같은 '다음 월요일' 교통량이라 다른 날로 셀 수 없다.
 
 .EXAMPLE
-    .\scripts\road_collector.ps1 install    # 매 평일 03:30 수집 시작
-    .\scripts\road_collector.ps1 install -At 04:00
+    .\scripts\road_collector.ps1 install                      # 평일 09/12/15/18/21시 + 로그온
+    .\scripts\road_collector.ps1 install -Slots 10:00,16:00   # 시각을 직접 정한다
     .\scripts\road_collector.ps1 status     # 스케줄 + 쌓인 현황
-    .\scripts\road_collector.ps1 now        # 지금 한 번 즉시 수집
+    .\scripts\road_collector.ps1 now        # 지금 한 번 즉시 수집 (모자란 회차만)
+    .\scripts\road_collector.ps1 now -Full  # 그날 것을 전부 다시 받는다
     .\scripts\road_collector.ps1 pause      # 일시정지
     .\scripts\road_collector.ps1 resume
     .\scripts\road_collector.ps1 uninstall  # 작업 삭제 (데이터는 남는다)
@@ -30,9 +40,12 @@ param(
     [ValidateSet('install', 'pause', 'resume', 'uninstall', 'status', 'now')]
     [string]$Command = 'status',
 
-    # 수집 시각. 새벽으로 잡는 이유는 TMAP 일일 한도를 파이프라인 실행보다
-    # 먼저 조금 떼어 두기 위해서다(한도는 자정에 풀린다).
-    [string]$At = '03:30'
+    # 깨울 시각들. PC가 켜져 있을 만한 때를 넓게 훑는다 — 앞선 시각을 놓쳐도
+    # 다음 시각이 받고, 이미 받았으면 호출 없이 끝나므로 늘려도 비용이 없다.
+    [string[]]$Slots = @('09:00', '12:00', '15:00', '18:00', '21:00'),
+
+    # now에서만 쓴다. 모자란 회차만이 아니라 그날 것을 전부 다시 받는다.
+    [switch]$Full
 )
 
 $ErrorActionPreference = 'Stop'
@@ -54,14 +67,18 @@ function Format-Stamp {
 }
 
 function Format-Result {
-    param([int]$Code)
+    param([long]$Code)
     switch ($Code) {
-        0      { '성공' }
-        1      { '수집 실패 (한도 초과 등 — now로 손수 돌려 확인)' }
-        267011 { '아직 실행 전' }
-        267009 { '실행 중' }
-        267014 { '중지됨' }
-        default { "코드 $Code" }
+        0          { '성공 (받았거나, 이미 받아서 건너뜀)' }
+        1          { '수집 실패 (한도 초과 등 — now로 손수 돌려 확인)' }
+        267011     { '아직 실행 전' }
+        267009     { '실행 중' }
+        267014     { '중지됨' }
+        # 0x40010004. PC를 끄거나 로그오프하면 실행 중이던 작업이 이렇게 끊긴다.
+        # 2026-09-03 08:29에 실제로 이 코드로 끝나 그날치가 통째로 비었다 —
+        # 여러 시각을 걸게 된 계기다.
+        1073807364 { '중도 종료 (0x40010004 — 종료·로그오프 등으로 끊김)' }
+        default    { "코드 $Code" }
     }
 }
 
@@ -80,29 +97,44 @@ function Assert-Paths {
 
 function Invoke-Install {
     Assert-Paths
-    $when = [datetime]::ParseExact($At.Trim(), 'HH:mm', $null)
 
+    # `--if-needed`가 이 스케줄의 전제다. 하루에 여러 번 깨우되, 그날 몫을 이미
+    # 채웠으면 TMAP을 **한 번도 부르지 않고** 끝난다. 잘린 회차만 있으면 그것만
+    # 채운다. 그래서 아래 시각을 늘려도 호출은 하루 20건을 넘지 않는다.
     $action = New-ScheduledTaskAction -Execute $PythonW `
-        -Argument ('"{0}"' -f $Script) -WorkingDirectory $Root
+        -Argument ('"{0}" --if-needed' -f $Script) -WorkingDirectory $Root
 
-    # 평일만. 주말에 깨워 봐야 '다음 월요일'을 세 번 재게 된다.
-    $trigger = New-ScheduledTaskTrigger -Weekly -At $when `
-        -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday
+    $triggers = @()
+
+    # ① 켜져 있을 만한 시간대를 훑는다. 앞선 시각에 PC가 꺼져 있었으면 다음
+    #    시각이 받고, 이미 받았으면 그냥 끝난다. 새벽을 뺀 이유는 이 프로젝트를
+    #    쓰는 환경이 새벽에 PC를 켜 두지 않기 때문이다(2026-09-03).
+    foreach ($slot in $Slots) {
+        $when = [datetime]::ParseExact($slot.Trim(), 'HH:mm', $null)
+        $triggers += New-ScheduledTaskTrigger -Weekly -At $when `
+            -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday
+    }
+
+    # ② 켜자마자도 한 번. 슬롯을 전부 놓친 날(늦게 켠 날)을 위한 안전망이다.
+    #    로그온은 주말에도 걸리지만 `--if-needed`가 주말을 스스로 거른다.
+    $logon = New-ScheduledTaskTrigger -AtLogOn
+    $logon.Delay = 'PT3M'          # 부팅 직후 혼잡을 피한다
+    $triggers += $logon
 
     # StartWhenAvailable을 **켠다** — 재고 수집기와 반대다. 저쪽은 10분 뒤 다음
-    # 틱이 오지만 이쪽은 하루 한 번뿐이라, PC가 꺼져 있었다면 그날을 통째로 잃는다.
-    # 하루치를 늦게 채우는 것은 격자를 덮어쓰지 않는다(라벨이 날짜 단위다).
+    # 틱이 오지만 이쪽은 하루치가 통째로 걸려 있다.
     $settings = New-ScheduledTaskSettingsSet `
         -MultipleInstances IgnoreNew `
         -ExecutionTimeLimit (New-TimeSpan -Minutes 20) `
         -StartWhenAvailable `
         -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 
-    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
+    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers `
         -Settings $settings -Force `
-        -Description "TMAP 고정 패널 실도로 소요시간을 매 평일 $At 에 수집합니다 (docs/분석/EXPERIMENTS.md 9장)." | Out-Null
+        -Description "TMAP 고정 패널 실도로 소요시간을 평일에 수집합니다. 시각 $($Slots -join ', ') + 로그온 시. 그날 몫을 이미 받았으면 호출하지 않습니다 (docs/구현/COLLECTOR_ROAD.md)." | Out-Null
 
-    Write-Host "[등록] $TaskName — 평일 $At · 하루 TMAP 20호출" -ForegroundColor Green
+    Write-Host "[등록] $TaskName — 평일 $($Slots -join ', ') + 로그온 시" -ForegroundColor Green
+    Write-Host "  그날 처음 깨는 실행만 TMAP 20호출을 쓰고, 나머지는 즉시 끝납니다."
     Write-Host "  다음 실행: $(Format-Stamp (Get-ScheduledTaskInfo -TaskName $TaskName).NextRunTime)"
     Write-Host "  현황 보기: .\scripts\road_collector.ps1 status"
 }
@@ -148,8 +180,13 @@ function Invoke-Status {
 
 function Invoke-Now {
     Assert-Paths
-    Write-Host "[즉시 수집] TMAP 20호출을 지금 보냅니다." -ForegroundColor Cyan
-    & $Python $Script
+    if ($Full) {
+        Write-Host "[즉시 수집] 그날 것을 전부 다시 받습니다 — TMAP 20호출." -ForegroundColor Cyan
+        & $Python $Script
+    } else {
+        Write-Host "[즉시 수집] 모자란 회차만 채웁니다 (다 찼으면 호출 없이 끝납니다)." -ForegroundColor Cyan
+        & $Python $Script --if-needed
+    }
 }
 
 

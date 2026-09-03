@@ -53,13 +53,14 @@ docs/
 | [PROJECT_PIPELINE.md](구현/PROJECT_PIPELINE.md) | step0~step4 전체 구조와 데이터 흐름 | 코드를 처음 열 때 |
 | [steps/](구현/steps/) | 단계별 입출력·문제점·작업 목록 (6개) | 그 단계를 고칠 때 |
 | [COLLECTOR.md](구현/COLLECTOR.md) | 재고 시계열 수집 — 창 가드·스케줄·운영 | 수집기를 건드리기 전 |
+| [COLLECTOR_ROAD.md](구현/COLLECTOR_ROAD.md) | **실도로 소요시간 수집** — 고정 패널·TMAP 한도·재고 수집기와의 차이 | 도로 수집기를 건드리기 전 |
 | [FLEET.md](구현/FLEET.md) | 차량 로테이션·형평성·회차 배정 | 차량/클러스터 수를 건드리기 전 |
 | [WEBAPP.md](구현/WEBAPP.md) | 웹 대시보드 실행·구조·API | 화면·라우트를 다룰 때 |
 | [DESIGN.md](구현/DESIGN.md) | 화면 디자인 시스템 — 색 토큰·글꼴·내비·타일 | 템플릿을 건드리기 전 |
 | [DB_SCHEMA.md](구현/DB_SCHEMA.md) | ERD·테이블 컬럼 레퍼런스·스코프 규칙 | DB를 건드리기 전 |
 | [DB_PLAN.md](구현/DB_PLAN.md) | SQLite 도입 결정·이관 단계·성능 측정 | CSV→DB 작업 시 |
 | [TESTING.md](구현/TESTING.md) | 테스트가 무엇을 지키는지, 격리 장치, 외부 API 수동 검증 | 테스트를 추가하기 전 |
-| [두_PC_작업.md](구현/두_PC_작업.md) | **두 PC로 번갈아 작업** — `.gitignore` 항목별로 무엇을 옮기고 무엇을 다시 만드나 | 다른 PC에 환경을 새로 꾸릴 때 |
+| [두_PC_작업.md](구현/두_PC_작업.md) | **0장 = 어느 환경이 무엇을 수집하나(정본).** 그 밖에는 `.gitignore` 항목별로 무엇을 옮기고 무엇을 다시 만드나 | 수집기를 켜고 끌 때 · 다른 PC에 환경을 새로 꾸릴 때 |
 | [DB_이관.md](구현/DB_이관.md) | **DB 이관 절차서** — 하나만/기간별/전부 내보내고 받기, 오류 메시지별 대처 | 스냅샷을 다른 PC로 옮길 때 |
 
 ## 연구/ — 졸업작품·논문
@@ -100,7 +101,7 @@ docs/
 | 남은 과제 | [기록/TODO.md](기록/TODO.md) | RETROSPECTIVE 7장은 우선순위 요약만 |
 | 논문용 과제 | [연구/THESIS.md](연구/THESIS.md) | TODO는 **시스템 과제만** 다룹니다 |
 | 용어 | [GLOSSARY.md](GLOSSARY.md) | 웹 `/guide`는 **현장용 여덟 낱말**만 |
-| 두 PC 구성 | 상황에 따라 나뉩니다 | **개발**을 번갈아 = [구현/두_PC_작업.md](구현/두_PC_작업.md) · **수집** 분담 = [구현/COLLECTOR.md](구현/COLLECTOR.md) 11장 |
+| 두 PC 구성 | 상황에 따라 나뉩니다 | **누가 무엇을 수집 중인가** = [구현/두_PC_작업.md](구현/두_PC_작업.md) 0장 · **개발**을 번갈아 = 같은 문서 1장~ · 재고 **분담 규칙** = [구현/COLLECTOR.md](구현/COLLECTOR.md) 11장 |
 
 ---
 

@@ -42,11 +42,31 @@
     python tools/collect_road_time.py --status          # 쌓인 현황
     python tools/collect_road_time.py --dry-run         # 호출 계획만 확인
     python tools/collect_road_time.py                   # 오늘치 수집
+    python tools/collect_road_time.py --if-needed       # 모자란 회차만 (스케줄러용)
     python tools/collect_road_time.py --durations _05_10,_10_15
     python tools/collect_road_time.py --rebuild-panel   # ⚠️ 패널을 새로 만든다
 
 저장은 `road_leg`, `run_label`은 `roadprobe-YYYY-MM-DD`다. 같은 날 다시 돌리면
 그 날짜 행을 지우고 다시 넣는다(멱등).
+
+## `--if-needed` — 켜져 있는 시간대에 한 번만 (1.26.105)
+
+원래 스케줄은 **평일 03:30 한 번**이었다. 새벽에 PC를 켜 두지 않는 환경에서는
+`StartWhenAvailable`이 아침에 뒤늦게 깨우는데, 그마저 놓치면 그날을 통째로 잃는다
+(실제로 09-03이 그렇게 비었다).
+
+그래서 **하루에 여러 번 깨우되 필요한 때만 호출**하게 했다. 이 옵션은 셋을 본다.
+
+  1. **주말이면 아무것도 안 한다.** `start_time_for()`가 '다음 평일'을 쓰므로
+     금·토·일은 셋 다 '다음 월요일'을 가리킨다 — 토요일에 받으면 금요일과 같은
+     교통량을 '다른 날'로 세게 된다. 로그온 트리거는 주말에도 깨므로 여기서 막는다.
+  2. **이미 채운 회차는 건너뛴다.** 회차마다 100구간(사슬 5 × 20구간)이 다 있으면
+     다시 부르지 않는다. 네 회차가 다 차 있으면 **TMAP을 한 번도 부르지 않고** 끝난다.
+  3. **모자란 회차만 채운다.** 한도 소진·네트워크 실패로 잘린 회차가 있으면 그것만
+     다시 부른다 — 다 받은 회차를 지우고 새로 받지 않는다(호출을 두 배로 쓰게 된다).
+
+즉 **같은 날 몇 번을 깨워도 TMAP 호출은 하루 20건을 넘지 않는다.** 사람이 손으로
+돌릴 때(옵션 없이)는 예전처럼 전부 다시 받는다 — 일부러 새로 재려는 의도로 본다.
 """
 import argparse
 import hashlib
@@ -295,6 +315,35 @@ def rotate_durations(durations: list, anchor: str) -> list:
     return durations[shift:] + durations[:shift]
 
 
+def legs_per_duration(chains: list) -> int:
+    """회차 하나가 다 찼을 때의 구간 수. 지금 패널로는 5사슬 × 20구간 = 100."""
+    return sum(max(len(chain["points"]) - 1, 0) for chain in chains)
+
+
+def collected_legs(run_label: str) -> dict:
+    """그 라벨로 이미 저장된 회차별 구간 수."""
+    with db.session() as conn:
+        frame = pd.read_sql(
+            "SELECT duration, COUNT(*) AS n FROM road_leg WHERE run_label = ?"
+            " GROUP BY duration", conn, params=(run_label,))
+    return {row.duration: int(row.n) for row in frame.itertuples()}
+
+
+def pending_durations(durations: list, run_label: str, expected: int) -> list:
+    """아직 다 못 채운 회차만 **원래 순서 그대로** 남긴다.
+
+    순서를 지키는 이유: `rotate_durations()`가 날짜로 돌려 놓은 차례가 곧
+    '이번에 잘려도 되는 회차'의 순서다. 여기서 다시 정렬하면 그 배려가 없어진다.
+    """
+    done = collected_legs(run_label)
+    return [d for d in durations if done.get(d, 0) < expected]
+
+
+def is_weekend(date_text: str) -> bool:
+    """토·일이면 참. `start_time_for()`가 '다음 평일'을 쓰기 때문에 필요하다."""
+    return date_module.fromisoformat(date_text).weekday() >= 5
+
+
 def collect(chains: list, durations: list, run_label: str, headers: dict,
             dry_run: bool = False) -> int:
     """회차 × 사슬을 돌며 수집한다. 저장한 구간 수를 돌려준다."""
@@ -437,6 +486,9 @@ def main() -> int:
                         help="run_label에 쓸 날짜(YYYY-MM-DD). 기본 오늘")
     parser.add_argument("--max-calls", type=int, default=None,
                         help="이번 실행의 TMAP 호출 상한. 기본은 필요한 만큼")
+    parser.add_argument("--if-needed", action="store_true",
+                        help="모자란 회차만 채운다. 주말이거나 다 찼으면 호출 없이 끝낸다"
+                             " (스케줄러용 — 하루 여러 번 깨워도 안전하다)")
     args = parser.parse_args()
 
     if args.status:
@@ -461,12 +513,30 @@ def main() -> int:
             durations, args.date or datetime.now().strftime("%Y-%m-%d"))
 
     chains = load_panel(rebuild=args.rebuild_panel)
-    need = len(chains) * len(durations)
-    tmap_mod.MAX_CALLS = args.max_calls or need
-    tmap_mod.reset_call_count()
 
     date = args.date or datetime.now().strftime("%Y-%m-%d")
     run_label = PROBE_PREFIX + date
+
+    if args.if_needed:
+        if is_weekend(date):
+            print(f"[건너뜀] {date}는 주말입니다 — 토·일에 받으면 금요일과 똑같은"
+                  " '다음 월요일' 교통량이라 다른 날로 셀 수 없습니다."
+                  " TMAP을 부르지 않았습니다.")
+            return 0
+        expected = legs_per_duration(chains)
+        remaining = pending_durations(durations, run_label, expected)
+        if not remaining:
+            print(f"[건너뜀] {run_label}은 이미 회차 {len(durations)}개가"
+                  f" 각 {expected}구간씩 차 있습니다. TMAP을 부르지 않았습니다.")
+            return 0
+        if len(remaining) < len(durations):
+            done = [d for d in durations if d not in remaining]
+            print(f"[이어받기] 이미 채운 회차 {done} 는 건너뜁니다.")
+        durations = remaining
+
+    need = len(chains) * len(durations)
+    tmap_mod.MAX_CALLS = args.max_calls or need
+    tmap_mod.reset_call_count()
 
     print(f"고정 패널 {len(chains)}사슬 × 회차 {len(durations)}개"
           f" = TMAP 호출 {need}건 (상한 {tmap_mod.MAX_CALLS})")
