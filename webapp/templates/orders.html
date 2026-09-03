@@ -54,8 +54,12 @@
   .tally { display: flex; gap: var(--sp-lg); flex-wrap: wrap; margin: var(--sp-sm) 0 0; }
   .tally div { font-size: var(--fs-ui); color: var(--ink-3); }
   .tally b { color: var(--ink); font-size: var(--fs-h3); }
-  td.pick { color: var(--good-ink); font-weight: 600; }
-  td.drop { color: var(--blue); font-weight: 600; }
+  /* 싣기·내리기는 **범주**다. 예전에는 각각 `--good-ink`(상태 전용)와
+     `--blue`(상호작용 전용)를 빌려 썼는데, 지도는 파랑이 싣기라 같은
+     파랑이 두 화면에서 반대 작업을 뜻했다(1.26.107). 이제 지도와 같은
+     한 벌을 쓴다 — 정의는 base.html, 지도 쪽은 mapviz.py. */
+  td.pick { color: var(--pick-ink); font-weight: 600; }
+  td.drop { color: var(--drop-ink); font-weight: 600; }
   td.back { color: var(--ink-4); }
   tr.bad td { background: var(--critical-soft); }
   tr.warn td { background: var(--warning-soft); }
@@ -177,9 +181,36 @@
 </details>
 {% endif %}
 
+{# 차량 고르기. 한 회차에 17대가 나가면 지시서가 세로로 39,000px — 휴대폰에서
+   47화면이다(실측 1.26.107). 기사는 자기 차 한 장만 필요하고, 인쇄도 그렇다.
+   서버가 걸러 주므로 스크립트 없이도 되고 인쇄가 저절로 한 장이 된다. #}
+{% if sheet_names | length > 1 %}
+<details class="m-fold no-print" open>
+  <summary>차량 고르기 <span class="hint">({{ sheet_names | length }}대)</span></summary>
+  <div class="filterbar">
+    <span class="label">차량</span>
+    <a class="chip" href="/orders?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}"
+       {% if not selected_vehicle %}aria-current="true"{% endif %}>전체</a>
+    {% for name in sheet_names %}
+    <a class="chip" href="/orders?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}&vehicle={{ name | urlencode }}"
+       {% if selected_vehicle == name %}aria-current="true"{% endif %}>{{ name }}</a>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
+
+{% if selected_vehicle %}
+<div class="alert no-print"><span><b>{{ selected_vehicle }}</b> 한 대만 보고 있습니다 —
+  <b>인쇄하면 이 한 장만 나옵니다.</b>
+  <a href="/orders?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}">전체 {{ sheet_names | length }}대 보기</a></span></div>
+{% endif %}
+
 {% if not sheets %}
-<div class="card"><p class="empty">경로가 없습니다.
-  <a href="/run#run">계획을 끝까지 실행</a>하면 여기에 나타납니다.</p></div>
+<div class="card"><p class="empty">
+  {%- if selected_vehicle %}“{{ selected_vehicle }}”의 지시서가 없습니다.
+  <a href="/orders?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}">전체 보기</a>
+  {%- else %}경로가 없습니다.
+  <a href="/run#run">계획을 끝까지 실행</a>하면 여기에 나타납니다.{% endif %}</p></div>
 {% endif %}
 
 {# ───────────────────────── 실시간 재고 대조 ───────────────────────── #}

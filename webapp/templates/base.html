@@ -96,6 +96,22 @@
       --critical-ink: #b02525;
       --critical-soft: #fbecec;
 
+      /* ── 작업 두 종류: 싣기·내리기. **범주색이지 상태색이 아니다.**
+         예전에는 싣기를 `--good-ink`, 내리기를 `--blue`로 칠했는데 둘 다
+         예약된 색이었고(위 상태색 규약 · `--blue`는 상호작용 전용),
+         무엇보다 **지도에서는 파랑이 싣기**라 같은 파랑이 두 화면에서
+         정반대를 뜻했다(1.26.107).
+
+         색은 지도와 같은 Okabe-Ito 계열이다(mapviz.PICK_COLOR/DROP_COLOR).
+         지도는 채운 원이라 순색을 쓰고 여기는 글자라 명암비를 맞춘 값을
+         쓴다 — 채움과 글자는 기준이 다르다(`--on-blue`에서 겪은 것과 같다).
+         실측(가장 낮은 배경 기준): 내리기 4.83 · 싣기 4.56, 둘 다 AA 통과.
+
+         ⚠️ 두 색은 **명도가 아니라 색상**으로 갈린다(서로 대비 1.06).
+            색만으로 두면 흑백 인쇄에서 사라진다 — 반드시 글자와 함께 쓴다. */
+      --pick-ink: #0072B2;        /* 싣기 — 남는 곳에서 실어 온다 */
+      --drop-ink: #b34700;        /* 내리기 — 모자란 곳에 내린다 */
+
       /* ── 모서리 ── */
       --r-sm: 8px;                /* 조밀한 유틸리티 */
       --r-md: 11px;               /* 입력칸 */
@@ -179,6 +195,11 @@
         --critical-ink: #ff8a82;
         --critical-soft: #3a1a1a;
 
+        /* 어두운 면에서는 라이트 값이 배경에 잠긴다(#0072B2 = 3.28).
+           같은 색상 계열을 밝힌 값. 실측 최저: 내리기 6.69 · 싣기 5.88. */
+        --pick-ink: #56B4E9;
+        --drop-ink: #ff9e6b;
+
         /* 그래프 발산 척도 — 어두운 면에서는 0 근처가 면 색으로 물러나야 하므로
            단계가 뒤집힌다(어두운 쪽이 0, 밝은 쪽이 큰 값). 밝은 값을 뒤집은 것이
            아니라 어두운 면 기준으로 따로 고른 값이다. */
@@ -216,6 +237,11 @@
       --critical: #ff6961;
       --critical-ink: #ff8a82;
       --critical-soft: #3a1a1a;
+
+      /* 어두운 면에서는 라이트 값이 배경에 잠긴다(#0072B2 = 3.28).
+         같은 색상 계열을 밝힌 값. 실측 최저: 내리기 6.69 · 싣기 5.88. */
+      --pick-ink: #56B4E9;
+      --drop-ink: #ff9e6b;
 
       /* 그래프 발산 척도 — 어두운 면에서는 0 근처가 면 색으로 물러나야 하므로
          단계가 뒤집힌다(어두운 쪽이 0, 밝은 쪽이 큰 값). 밝은 값을 뒤집은 것이
@@ -427,6 +453,13 @@
       line-height: 1.15; margin: 0; color: var(--ink);
       font-variant-numeric: tabular-nums;
     }
+    /* 문턱을 넘은 값. 홈의 '최장 소요'가 시간 예산을 넘으면 여기에 걸린다.
+       ⚠️ **규칙이 아예 없었다**(1.26.107). home.html은 예산을 넘으면
+       `class="value bad"`를 붙이고 있었는데 `.delta.bad`만 있고
+       `.value.bad`는 없어서, 122.8분(예산 120분)이 평범한 검은 글씨로
+       떴다 — 화면이 경고를 붙였다고 믿으면서 아무것도 안 하고 있었다.
+       색만으로 두지 않는다: 밑줄의 '· 초과'가 같은 말을 글자로 한다. */
+    .tile .value.bad { color: var(--critical-ink); }
     .tile .unit {
       font-size: var(--fs-fine); font-weight: 400; color: var(--ink-4);
       letter-spacing: -.08px; margin-left: 2px;
@@ -539,6 +572,19 @@
     .viz-bar.warn { fill: var(--critical-ink); }
     /* 세로 구분선(회차 경계 등). 격자보다 진하되 마크보다는 옅다. */
     .viz-divider { stroke: var(--critical-ink); stroke-width: 1; opacity: .55; }
+    /* 편차 막대의 기준선(평균). 격자가 아니라 **뜻이 있는 선**이라 한 단
+       진하다 — 이 그래프에는 세로선이 이것 하나뿐이라야 어느 것이 기준인지
+       흐려지지 않는다. */
+    .viz-baseline { stroke: var(--ink-3); stroke-width: 1; }
+
+    /* 표 안에서 값을 바꾸는 작은 폼(실행 종류 등). 행 높이를 늘리지 않는다. */
+    .kind-form { margin: 0; }
+    .kind-form select {
+      font: inherit; font-size: var(--fs-fine); color: var(--ink-2);
+      background: var(--surface); border: 1px solid var(--hairline);
+      border-radius: var(--r-sm); padding: 3px 6px; cursor: pointer;
+    }
+    .kind-form select:focus-visible { outline: 2px solid var(--blue-focus); outline-offset: 1px; }
     /* 히트 영역. 8px 점을 정확히 짚게 만들지 않는다(약 24px). */
     .viz-hit { fill: transparent; cursor: default; }
     .viz-hit:focus-visible { outline: 2px solid var(--blue-focus); outline-offset: 0; }
@@ -899,6 +945,11 @@
       border-radius: var(--r-lg); background: var(--canvas);
       box-shadow: var(--shadow-product);
     }
+    /* 목록 위에 미리 띄우는 지도. 전용 화면(view.html)보다 낮게 잡는다 —
+       한 화면에 세 장이 서므로 각각이 화면을 다 먹으면 목록에 닿지 못한다. */
+    .map-preview { margin: 0 0 var(--sp-md); }
+    .map-preview .map-frame { height: 46vh; min-height: 280px; }
+    .map-preview figcaption { display: block; margin-top: var(--sp-xs); }
     .back { display: inline-block; margin-top: var(--sp-lg); font-size: var(--fs-ui); }
     .preview-table { font-size: 13px; }
 

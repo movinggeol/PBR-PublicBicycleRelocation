@@ -1267,3 +1267,151 @@ def test_지도_iframe이_안_뜨면_안내문으로_바뀐다():
     assert "contentWindow" in base_js and ".L)" in base_js, (
         "Leaflet 전역(window.L) 존재로 성패를 판정하는 로직이 없다")
     assert "frame.hidden = true" in base_js and "fallback.hidden = false" in base_js
+
+
+# ───────────────────── 싣기·내리기 색 (1.26.107) ─────────────────────
+
+def test_싣기_내리기_색이_두_테마_모두에서_읽힌다():
+    """싣기·내리기는 **범주색**이고, 표의 글자를 칠하므로 본문 4.5:1이 필요하다.
+
+    두 바탕을 다 재는 이유는 대조 표가 판정에 따라 행 배경을 바꾸기 때문이다
+    (`tr.bad`=--critical-soft, `tr.warn`=--warning-soft). 흰 바탕만 보면
+    통과로 착각한다 — 실제로 가장 빡빡한 것은 붉은 바탕이다."""
+    css = _css()
+    light = css[css.index(":root"):css.index("@media (prefers-color-scheme: dark)")]
+    dark = css[css.index('[data-theme="dark"]'):]
+    dark = dark[:dark.index("}")]
+
+    for label, block in (("라이트", light), ("다크", dark)):
+        tok = _tokens(block)
+        for ink in ("pick-ink", "drop-ink"):
+            assert ink in tok, f"{label} 블록에 --{ink}가 없다"
+            for bg in ("canvas", "parchment", "warning-soft", "critical-soft"):
+                ratio = _contrast(tok[ink], tok[bg])
+                assert ratio >= 4.5, (
+                    f"{label}: --{ink}({tok[ink]})가 --{bg}({tok[bg]}) 위에서 "
+                    f"{ratio:.2f}:1 — 4.5:1이 필요하다")
+
+
+def test_싣기_내리기에_예약된_색을_빌려_쓰지_않는다():
+    """`--good-ink`는 상태 전용이고 `--blue`는 상호작용 전용이다
+    (docs/구현/DESIGN.md). 범주를 그 색으로 칠하면 두 가지가 어긋난다 —
+    규약이 깨지고, 무엇보다 **지도는 파랑이 싣기**라 같은 파랑이 두 화면에서
+    반대 작업을 뜻하게 된다(1.26.107에서 실제로 그랬다)."""
+    css = _css("orders.html")
+    assert "td.pick { color: var(--pick-ink)" in css, "싣기가 범주색을 안 쓴다"
+    assert "td.drop { color: var(--drop-ink)" in css, "내리기가 범주색을 안 쓴다"
+    assert "td.drop { color: var(--blue)" not in css, "내리기가 상호작용색을 빌려 쓴다"
+    assert "td.pick { color: var(--good-ink)" not in css, "싣기가 상태색을 빌려 쓴다"
+
+
+def test_지도와_웹이_싣기_내리기를_같은_색상으로_칠한다():
+    """색 값 자체는 다르다 — 지도는 **채운 원**이라 순색을 쓰고 웹은 **글자**라
+    명암비를 맞춘 값을 쓴다. 같아야 하는 것은 **어느 쪽이 따뜻한 색인가**다.
+    지도에서 싣기가 파랑인데 웹에서 내리기가 파랑이면 기사가 반대로 간다."""
+    import mapviz
+
+    css = _css()
+    light = _tokens(css[css.index(":root"):css.index("@media (prefers-color-scheme: dark)")])
+
+    def _hue_is_warm(hex_color: str) -> bool:
+        h = hex_color.lstrip("#")
+        r, _, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+        return r > b
+
+    assert _hue_is_warm(mapviz.DROP_COLOR), "지도의 내리기가 따뜻한 색이 아니다"
+    assert not _hue_is_warm(mapviz.PICK_COLOR), "지도의 싣기가 차가운 색이 아니다"
+    assert _hue_is_warm(light["drop-ink"]), "웹의 내리기가 지도와 반대 계열이다"
+    assert not _hue_is_warm(light["pick-ink"]), "웹의 싣기가 지도와 반대 계열이다"
+
+
+def test_불균형_지도가_색을_직접_박지_않는다():
+    """세 지도와 웹이 한 벌을 쓰게 하는 것이 mapviz.py의 존재 이유다.
+    `'red'`/`'blue'`를 파일에 박으면 한쪽만 고쳐지고 다시 갈라진다."""
+    from pathlib import Path
+
+    import mapviz
+
+    src = (Path(mapviz.__file__).parent / "step4_metrics" / "imbalance.py").read_text(
+        encoding="utf-8")
+    body = src[src.index("def make_imbalance_map") if "def make_imbalance_map" in src else 0:]
+    assert "color = 'red'" not in body and 'color = "red"' not in body, \
+        "불균형 지도가 색을 직접 박고 있다"
+    assert "DROP_COLOR" in body and "PICK_COLOR" in body, \
+        "불균형 지도가 mapviz의 색을 안 쓴다"
+    assert "Drop —" not in body and "Pick —" not in body, \
+        "범례가 아직 영어 용어를 쓴다"
+
+
+# ───────────────── 조용히 거짓말하지 않는다 (1.26.107) ─────────────────
+
+def test_문턱을_넘은_타일_값에_색_규칙이_있다():
+    """home.html은 예산을 넘으면 `class="value bad"`를 붙인다. 그런데 CSS에는
+    `.delta.bad`만 있고 `.value.bad`가 **없었다** — 122.8분(예산 120분)이
+    평범한 검은 글씨로 떴다(1.26.107). 클래스를 붙이는 쪽과 칠하는 쪽이
+    갈리면 화면은 경고했다고 믿으면서 아무것도 안 한다."""
+    assert 'class="value {% if last.max_minutes > last.budget %}bad{% endif %}"' \
+        in _css("home.html"), "홈이 초과 표시를 안 붙인다"
+    assert ".tile .value.bad" in _css(), "초과 타일 값을 칠하는 규칙이 없다"
+
+
+def test_배정_이력을_말없이_자르지_않는다():
+    """상한을 두는 것은 맞다(실행마다 쌓인다). 자른 것을 **안 말하는 것**이
+    틀렸다 — 86건 중 60건만 보여 주고 표가 그냥 끝났다(1.26.107)."""
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    src = Path(webapp_app.__file__).read_text(encoding="utf-8")
+    assert "assignments_hidden" in src, "라우트가 자른 건수를 안 넘긴다"
+    assert ".head(60)" not in src, "옛 상한이 남아 있다"
+
+    html = _css("vehicles.html")
+    assert "assignments_hidden" in html and "건이 더 있습니다" in html, \
+        "화면이 잘렸다는 말을 안 한다"
+
+
+def test_실행_종류를_라벨_하드코딩으로_짐작하지_않는다():
+    """예전에는 웹 라우트 안의 목록으로 실험 여부를 짐작했고, 목록에 없던
+    `obs-cmp-1520`이 경고 없이 첫 화면 헤드라인에 올라왔다(1.26.107)."""
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    src = Path(webapp_app.__file__).read_text(encoding="utf-8")
+    assert '"g3000"' not in src and '"z199"' not in src, \
+        "라우트에 라벨 하드코딩 목록이 남아 있다"
+    assert "_run_kind(" in src, "실행 종류를 DB에서 안 읽는다"
+
+
+def test_계획이_아닌_실행은_계획_필터에_안_뜬다():
+    """도로 시간 수집기도 `runs`에 행을 남긴다. 필터 칩으로 내면 계획인 척
+    섞여 있다가 눌러 보면 지표도 배정도 없는 빈 표만 나온다(1.26.107)."""
+    import db
+
+    assert db.classify_run_label("roadprobe-2026-09-03") == "probe"
+    assert db.classify_run_label("obs-cmp-1520") == "experiment"
+    assert db.classify_run_label("2026-08-27 23") == "plan"
+
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    src = Path(webapp_app.__file__).read_text(encoding="utf-8")
+    assert src.count("store.plan_runs()") == 2, \
+        "/kpi·/vehicles의 필터가 계획만 고르지 않는다"
+
+
+def test_실행_종류는_못박으면_짐작을_이긴다():
+    """짐작은 컬럼이 생기기 전 행을 위한 폴백일 뿐이다. 라벨 규칙이 안 통하는
+    이름을 쓰더라도 `kind`를 적어 두면 그것이 정답이어야 한다."""
+    import db
+
+    with db.session() as conn:
+        db.ensure_run(conn, "아무이름-없는규칙", kind="probe")
+        rows = db.list_runs(conn)
+        got = rows.loc[rows["run_label"] == "아무이름-없는규칙", "kind"].iloc[0]
+        assert got == "probe", f"못박은 종류를 안 쓴다: {got}"
+
+        # 짐작이라면 'plan'이 나왔을 이름이다 — 폴백이 이기면 안 된다.
+        assert db.classify_run_label("아무이름-없는규칙") == "plan"

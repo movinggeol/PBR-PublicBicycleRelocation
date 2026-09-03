@@ -348,6 +348,13 @@ def collect(chains: list, durations: list, run_label: str, headers: dict,
             dry_run: bool = False) -> int:
     """회차 × 사슬을 돌며 수집한다. 저장한 구간 수를 돌려준다."""
     saved = 0
+    # 이 라벨은 **계획이 아니다.** 못박아 두지 않으면 웹의 계획 목록에 계획인
+    # 척 섞여, 눌러도 지표도 경로도 없는 빈 표만 나온다(1.26.107). 저장보다
+    # 먼저 적는다 — save_output()이 만드는 runs 행에 종류가 처음부터 붙게.
+    if not dry_run:
+        with db.session() as conn:
+            db.ensure_run(conn, run_label, kind="probe")
+
     for duration in durations:
         start_time = start_time_for(duration)
         print(f"\n[{duration}] 교통량 기준 시각 {start_time}"

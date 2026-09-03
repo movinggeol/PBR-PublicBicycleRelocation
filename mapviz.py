@@ -40,6 +40,35 @@ _OKABE_ITO = [
 ]
 
 
+# ─────────────────────── 싣기·내리기 (작업 두 종류) ───────────────────────
+#
+# 🔴 **파랑이 두 화면에서 정반대를 뜻했다**(1.26.107에서 잡았다).
+#
+#   개념                     작업지시서(웹)   불균형 지도
+#   Pick · 싣기 · 과잉 해소   초록            **파랑**
+#   Drop · 내리기 · 부족 해소  **파랑**        빨강
+#
+# 기사가 지도에서 파란 점을 보고 "내릴 곳"으로 읽으면 정확히 반대로 간다.
+# 게다가 웹이 쓰던 두 색은 **둘 다 예약된 색**이었다 — `--good-ink`는
+# 상태 전용이고 `--blue`는 상호작용 전용이다(docs/구현/DESIGN.md). 범주를
+# 상태색으로 칠한 쪽이 틀린 것이라, 지도가 아니라 웹을 고쳤다.
+#
+# 색은 Okabe-Ito에서 골랐다. 지도는 **채운 원**이라 순색을 그대로 쓰고,
+# 웹은 **글자**라 같은 색상 계열에서 명암비를 맞춘 값을 따로 둔다
+# (base.html의 `--pick-ink`/`--drop-ink`) — 채움과 글자는 기준이 다르다.
+# `--on-blue`에서 이미 겪은 것과 같다: 한 색이 두 역할을 못 한다.
+PICK_COLOR = "#0072B2"   # 싣기 — 자전거가 남는 곳에서 실어 온다
+DROP_COLOR = "#D55E00"   # 내리기 — 자전거가 모자란 곳에 내린다
+
+# 화면·종이·지도가 같은 말을 쓰게 한다. 예전 범례는 `Drop`·`Pick`이라는
+# 영어를 그대로 노출했는데, 지시서는 싣기/내리기, CSV는 pick/drop이라
+# **한 개념에 용어가 세 벌**이었다.
+# 범례 상자는 좁다 — 길게 쓰면 두 줄로 접힌다(실측). step1 툴팁과 **같은 말**을
+# 쓴다: 화면마다 표현이 다르면 같은 개념인지 알아보기 어렵다.
+PICK_LABEL = "싣기 (과잉 해소)"
+DROP_LABEL = "내리기 (부족 해소)"
+
+
 def cluster_color(index: int) -> str:
     """군집 번호 -> 색.
 
@@ -88,6 +117,33 @@ def swatch_circle(color: str, label_inside: str = "") -> str:
         f'font-weight:700;text-align:center;line-height:15px;'
         f'vertical-align:-3px;">{label_inside}</span>'
     )
+
+
+def swatch_size_scale(radii: Sequence[float], labels: Sequence[str],
+                      color: str = "#8a8a8f") -> str:
+    """크기로 값을 나타낼 때 함께 내는 **눈금**.
+
+    ⚠️ 크기 인코딩은 눈금 없이는 못 읽는다. 예전 범례는 *"원 크기는 불균형
+    해소량"* 이라고 적어 놓고 **몇 대가 얼마만 한 원인지는 안 줬다**
+    (1.26.107). 그러면 "이 원이 저 원보다 크다"까지만 알 수 있고, 정작
+    묻고 싶은 "몇 대인가"는 점을 하나씩 눌러 봐야 한다.
+
+    지름이 아니라 **반지름**을 받는다 — 그리는 쪽(CircleMarker)의 단위와
+    같아야 눈금이 실제 마커와 맞는다.
+    """
+    cells = []
+    box = max(radii) * 2 + 2
+    for r, label in zip(radii, labels):
+        d = r * 2
+        cells.append(
+            f'<span style="display:inline-block;width:{box:.0f}px;'
+            f'text-align:center;vertical-align:bottom;">'
+            f'<span style="display:block;width:{d:.0f}px;height:{d:.0f}px;'
+            f'margin:0 auto 3px;border-radius:50%;background:{color};'
+            f'opacity:.55;border:1.5px solid {color};"></span>'
+            f'<span style="font-size:11px;color:#555;">{label}</span></span>')
+    return ('<span style="display:inline-flex;gap:6px;align-items:flex-end;'
+            'margin-top:4px;">' + "".join(cells) + "</span>")
 
 
 def swatch_line(color: str, dashed: bool = False) -> str:

@@ -503,7 +503,11 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
         collapse_after=4, collapse_label="군집",
         note="점에 커서를 대면 요약이,<br>누르면 자세한 내용이 뜹니다.")))
 
-    folium.LayerControl(collapsed=False).add_to(m)
+    # ⚠️ 레이어 컨트롤은 지도 **위에** 겹쳐 뜬다. 펴 두면 군집 수만큼
+    # 줄이 서서 지도 오른쪽을 위에서 아래까지 덮는다 — 군집 19개짜리
+    # 산출물에서 38줄, 780px였다(실측 1.26.107). 접어 둔다: 색이 무슨
+    # 뜻인지는 이제 **범례**가 말하고, 컨트롤은 걸러 보는 도구다.
+    folium.LayerControl(collapsed=True).add_to(m)
 
     m.save(result_path.format(duration=duration, now=now))
 

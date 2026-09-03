@@ -442,3 +442,53 @@ def test_꺾은선_x축_이름은_기본이_처음과_끝뿐이다():
     every = ticks(charts.line(labels, values, title="추세",
                               all_ticks=True, width=840))
     assert sum(1 for t in every if t in labels) > 2, "all_ticks가 동작하지 않는다"
+
+
+# ─────────────── 평균 기준 편차 막대 (1.26.107) ───────────────
+
+def test_편차_막대는_평균을_기준으로_좌우로_뻗는다():
+    """0 기준 막대는 *"값이 얼마인가"* 를 물을 때 옳다. 차량 형평성은
+    *"고른가"* 를 묻는 것이라 기준이 **평균**이라야 한다 — 실측값
+    339~402분을 0 기준으로 그렸더니 21개가 전부 같아 보였다(1.26.107)."""
+    values = [402.3, 400.4, 381.5, 342.1, 339.2]
+    svg = charts.deviation_hbar(["V06", "V03", "V15", "V01", "V09"], values,
+                                title="시험", unit="분")
+    mean = sum(values) / len(values)
+    assert f"평균 {mean:.1f}분" in svg, "기준선에 평균값이 안 적혔다"
+    # 부호를 붙여 적어야 어느 쪽으로 뻗은 막대인지 글자로도 읽힌다.
+    assert f"{max(values) - mean:+.1f}분" in svg, "양의 편차를 부호와 함께 안 적는다"
+    assert f"{min(values) - mean:+.1f}분" in svg, "음의 편차를 부호와 함께 안 적는다"
+    assert "viz-baseline" in svg, "기준선을 격자로 그리고 있다"
+
+
+def test_편차_막대_풍선에_절대값이_남아_있다():
+    """편차만 보여 주면 '그래서 이 차는 몇 분 일했나'를 표까지 가야 안다.
+    기준을 옮기되 값을 잃지는 않는다."""
+    svg = charts.deviation_hbar(["V06", "V09"], [402.3, 339.2],
+                                title="시험", unit="분")
+    assert "V06: 402.3분" in svg, "풍선에 절대값이 없다"
+    assert "평균 대비" in svg, "풍선에 편차가 없다"
+
+
+def test_편차_막대의_값_글자가_항목_이름을_덮지_않는다():
+    """막대가 **양쪽으로** 뻗으므로 값 글자 자리도 양쪽에 있어야 한다.
+    왼쪽에 이름 몫만 잡았더니 가장 긴 음수 막대의 값이 차량 이름 위로
+    올라탔다(실측 -58.8px)."""
+    values = [500.0] + [100.0] * 4          # 한쪽으로 크게 치우친 최악의 경우
+    svg = charts.deviation_hbar(["V01", "V02", "V03", "V04", "V05"], values,
+                                title="시험", unit="분")
+    import re
+
+    # 이름은 text-anchor=end로 label_w에서 끝나고, 음수 값 글자도 end다.
+    # 값 글자의 x가 이름 글자의 x보다 오른쪽이어야 겹치지 않는다.
+    ticks = [float(m) for m in re.findall(
+        r'<text x="([\d.]+)"[^>]*class="viz-tick" text-anchor="end"', svg)]
+    values_x = [float(m) for m in re.findall(
+        r'<text x="([\d.]+)"[^>]*class="viz-value" text-anchor="end"', svg)]
+    assert ticks and values_x, "글자를 못 찾았다"
+    assert min(values_x) > max(ticks), (
+        f"음수 값 글자({min(values_x)})가 항목 이름({max(ticks)}) 자리로 넘어왔다")
+
+
+def test_빈_자료에도_죽지_않는다():
+    assert "그릴 자료가 없습니다" in charts.deviation_hbar([], [], title="시험")

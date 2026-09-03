@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS runs (
     duration    TEXT,
     raw_file    TEXT,
     day_type    TEXT,     -- weekday | holiday. 산출물 파일명에는 안 들어가므로 여기 남긴다
+    kind        TEXT,     -- plan | experiment | probe (db.RUN_KINDS). NULL이면 라벨로 짐작한다
     created_at  TEXT NOT NULL
 );
 
@@ -658,20 +659,20 @@ def latest_label(conn: sqlite3.Connection, table: str) -> Optional[str]:
 
 def record_run(conn: sqlite3.Connection, run_label: str, period: Optional[str] = None,
                duration: Optional[str] = None, raw_file: Optional[str] = None,
-               day_type: Optional[str] = None) -> None:
+               day_type: Optional[str] = None, kind: Optional[str] = None) -> None:
     """실행 메타데이터를 기록한다(같은 라벨이면 덮어쓴다)."""
     conn.execute(
         "INSERT OR REPLACE INTO runs"
-        " (run_label, period, duration, raw_file, day_type, created_at)"
-        " VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))",
-        (run_label, period, duration, raw_file, day_type),
+        " (run_label, period, duration, raw_file, day_type, kind, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))",
+        (run_label, period, duration, raw_file, day_type, kind),
     )
     conn.commit()
 
 
 def ensure_run(conn: sqlite3.Connection, run_label: str, period: Optional[str] = None,
                duration: Optional[str] = None, raw_file: Optional[str] = None,
-               day_type: Optional[str] = None) -> None:
+               day_type: Optional[str] = None, kind: Optional[str] = None) -> None:
     """실행 행이 없으면 만들고, 새로 알게 된 값만 채운다.
 
     단계 스크립트는 저마다 아는 정보가 다르다(순수요 단계는 period만, 최적화 단계는
@@ -691,9 +692,12 @@ def ensure_run(conn: sqlite3.Connection, run_label: str, period: Optional[str] =
         "UPDATE runs SET period = COALESCE(period, ?),"
         "                duration = COALESCE(duration, ?),"
         "                raw_file = COALESCE(raw_file, ?),"
-        "                day_type = COALESCE(?, day_type)"
+        "                day_type = COALESCE(?, day_type),"
+        # kind는 **부르는 쪽이 알 때만** 넘어온다(수집기는 'probe'를 안다).
+        # 먼저 못박힌 종류를 나중 단계가 지우지 않게 COALESCE 순서를 지킨다.
+        "                kind = COALESCE(kind, ?)"
         " WHERE run_label = ?",
-        (period, duration, raw_file, day_type, run_label),
+        (period, duration, raw_file, day_type, kind, run_label),
     )
     conn.commit()
 
@@ -722,9 +726,60 @@ def save_output(table: str, df: pd.DataFrame, run_label: Optional[str] = None,
         return 0
 
 
+# ---------------- 실행의 종류 (1.26.107) ----------------
+#
+# 한 DB에 세 가지가 섞여 쌓인다. 이것을 가르지 않아서 화면이 여러 번 거짓말했다:
+#
+#   plan       파이프라인이 낸 재배치 계획. 화면이 보여 주려는 것.
+#   experiment 파라미터 스윕·대조군처럼 **계획 모양이지만 운영이 아닌** 실행.
+#   probe      계획이 아예 아닌 기록(도로 시간 수집 등). 지표도 경로도 없다.
+#
+# 예전에는 종류를 **웹 라우트 안의 하드코딩 목록**으로 짐작했다. 목록에 없던
+# `obs-cmp-1520`이 첫 화면 헤드라인에 "마지막 계획"으로 경고 없이 올라왔고,
+# `roadprobe-*`는 계획 필터에 계획인 척 섞여 눌러도 빈 표만 나왔다.
+RUN_KINDS = ("plan", "experiment", "probe")
+
+# 컬럼이 생기기 **전에** 쌓인 행을 위한 짐작. 앞으로 만드는 실행은 kind를
+# 직접 넣으므로 여기 기대지 않는다 — 목록을 늘려 가며 버티는 것이 원래 문제였다.
+_LEGACY_PROBE_PREFIXES = ("roadprobe-", "stockprobe-")
+_LEGACY_EXPERIMENT_MARKS = (
+    "sweep", "test", "테스트", "obs-cmp", "baseline", "ablation",
+    "g1000", "g2000", "g3000", "g5000", "z165", "z199",
+)
+
+
+def classify_run_label(run_label: str) -> str:
+    """라벨만 보고 실행 종류를 짐작한다. **`kind`가 비어 있을 때만 쓴다.**"""
+    label = str(run_label).lower()
+    if any(label.startswith(p) for p in _LEGACY_PROBE_PREFIXES):
+        return "probe"
+    if any(mark in label for mark in _LEGACY_EXPERIMENT_MARKS):
+        return "experiment"
+    return "plan"
+
+
+def set_run_kind(conn: sqlite3.Connection, run_label: str, kind: str) -> None:
+    """실행 종류를 못박는다. 라벨 규칙에 기대지 않는 유일한 방법이다."""
+    if kind not in RUN_KINDS:
+        raise ValueError(f"모르는 실행 종류: {kind!r} (가능: {', '.join(RUN_KINDS)})")
+    conn.execute("UPDATE runs SET kind = ? WHERE run_label = ?", (kind, run_label))
+    conn.commit()
+
+
 def list_runs(conn: sqlite3.Connection) -> pd.DataFrame:
-    """실행 이력을 최신순으로 돌려준다."""
-    return pd.read_sql("SELECT * FROM runs ORDER BY run_label DESC", conn)
+    """실행 이력을 최신순으로. `kind`가 비어 있으면 라벨로 채워서 돌려준다.
+
+    화면이 종류를 다시 짐작하지 않게 **여기서 한 번만** 채운다 — 라우트마다
+    따로 짐작하면 화면마다 다른 답이 나온다(그래서 겪은 일이 1.26.107이다).
+    """
+    frame = pd.read_sql("SELECT * FROM runs ORDER BY run_label DESC", conn)
+    if frame.empty:
+        return frame
+    if "kind" not in frame.columns:
+        frame["kind"] = None
+    guessed = frame["run_label"].map(classify_run_label)
+    frame["kind"] = frame["kind"].where(frame["kind"].notna(), guessed)
+    return frame
 
 
 # ---------------- 성과 지표 (docs/분석/KPI.md) ----------------

@@ -12,6 +12,30 @@
    분류 이름이 표 밖(h2)에 있으므로 행 단위로 끊어도 된다. 최신순이라 첫 쪽이 최근분. #}
 {% for group in groups %}
 <h2>{{ group.title }}</h2>
+{# ⚠️ 이 화면에는 **지도가 한 장도 없었다**(1.26.107). "계산 결과를 대전 지도
+   위에 올린 것입니다"라고 써 놓고 파일 목록만 있었다 — 지도를 보려면 한 번
+   더 눌러 들어가야 했다. 분류마다 가장 최근 것 한 장을 여기서 바로 보여 준다.
+   나머지는 아래 목록에 그대로 있다.
+
+   iframe은 loading="lazy"다. 세 장이 각 100~800KB라 한꺼번에 받으면 화면이
+   늦다 — 스크롤이 닿는 것부터 받는다. #}
+{% if group.entries %}
+{% set newest = group.entries[0] %}
+<figure class="map-preview">
+  <iframe class="map-frame" data-map-frame loading="lazy"
+          src="/files/{{ newest.relpath | urlencode }}"
+          title="{{ newest.name }}"></iframe>
+  <figcaption class="hint">
+    가장 최근 <b>{{ newest.name }}</b> · {{ newest.mtime }}
+    · <a href="/view/{{ newest.relpath | urlencode }}">크게 보기</a>
+    · <a href="/files/{{ newest.relpath | urlencode }}" target="_blank">새 창 ↗</a>
+  </figcaption>
+</figure>
+<p class="empty no-print" data-map-fallback hidden>
+  지도를 불러오지 못했습니다 — 지도 배경은 외부 지도 서비스에서 받아 오므로
+  인터넷 연결이 필요합니다. 연결을 확인한 뒤 새로고침해 보세요.
+</p>
+{% endif %}
 <div class="card flush" data-pager="5" data-pager-label="{{ group.title }} 쪽 넘기기">
   {% if group.entries %}
   <div class="table-wrap">

@@ -173,6 +173,82 @@ def hbar(labels: Sequence[str], values: Sequence[float], *,
     return "".join(parts)
 
 
+def deviation_hbar(labels: Sequence[str], values: Sequence[float], *,
+                   title: str, unit: str = "", baseline_label: str = "평균",
+                   width: int = 640, bar_h: int = 18, gap: int = 7) -> str:
+    """**평균에서 얼마나 떨어졌는가**를 좌우로 그리는 가로 막대.
+
+    ## 왜 따로 있나 — `hbar`가 답을 못 준 자리
+
+    차량별 누적 작업 시간을 `hbar`로 그렸더니 21개 막대가 **전부 같아 보였다**
+    (1.26.107). 값이 339.2~402.3분이라 폭이 16%뿐인데 0에서 시작하는 막대는
+    그 차이를 막대 길이의 16%로 밖에 못 그린다. 그래프가 답해야 할 질문이
+    *"한 대에 일이 몰렸나"* 인데, 1000px를 쓰고도 바로 위 타일이 이미 적어 둔
+    "차량 간 차이 63.1분"보다 못 알려 줬다.
+
+    ⚠️ **0에서 시작하는 막대가 언제나 정직한 것은 아니다.** 0 기준은 *"값이
+    얼마인가"* 를 물을 때 옳다. *"고른가"* 를 물을 때는 **고른 상태(평균)가
+    기준**이라야 하고, 그때 0 기준은 차이를 숨긴다. 축을 잘라 과장하는 것과는
+    반대 방향의 실수다 — 여기서는 축을 자르는 것이 아니라 **기준을 옮긴다**.
+
+    막대 길이는 `값 − 평균`이고 눈금도 그렇게 읽는다. 절대값은 커서 풍선과
+    바로 아래 표에 그대로 있다 — 어느 쪽도 잃지 않는다.
+    """
+    n = len(labels)
+    if n == 0:
+        return '<p class="empty">그릴 자료가 없습니다.</p>'
+
+    mean = sum(values) / n
+    devs = [v - mean for v in values]
+    # 좌우 대칭이라야 "왼쪽이 더 길다"가 눈대중으로 성립한다.
+    reach = max((abs(d) for d in devs), default=0) or 1
+
+    # 막대가 **양쪽으로** 뻗으므로 값 글자 자리도 양쪽에 있어야 한다. 왼쪽에
+    # 항목 이름 몫(label_w)만 잡았더니 가장 긴 음수 막대의 "-42.3분"이 차량
+    # 이름 위로 올라탔다(실측). 왼쪽 = 이름 + 값, 오른쪽 = 값.
+    label_w, value_w = 60, 62
+    pad_l, pad_r, pad_t, pad_b = label_w + value_w, value_w, 18, 6
+    row_h = bar_h + gap
+    plot_w = width - pad_l - pad_r
+    half = plot_w / 2
+    zero_x = pad_l + half
+    height = pad_t + row_h * n + pad_b
+
+    parts = [f'<svg viewBox="0 0 {width} {height}" class="viz" role="img" '
+             f'aria-label="{html.escape(title)}">']
+
+    # 기준선(평균). 이 그래프에서 유일하게 뜻이 있는 세로선이라 격자를 더 두지
+    # 않는다 — 선이 여럿이면 어느 것이 기준인지 흐려진다.
+    parts.append(f'<line x1="{zero_x:.1f}" y1="{pad_t - 6}" x2="{zero_x:.1f}" '
+                 f'y2="{height - pad_b}" class="viz-baseline"/>')
+    parts.append(_text(zero_x, pad_t - 9,
+                       f"{baseline_label} {_fmt(mean, 1)}{unit}", "viz-tick", "middle"))
+
+    for i, (label, value, dev) in enumerate(zip(labels, values, devs)):
+        y = pad_t + row_h * i
+        cy = y + bar_h / 2
+        w = max(1.5, half * abs(dev) / reach)
+        x = zero_x if dev >= 0 else zero_x - w
+        parts.append(_text(label_w, cy + 4, label, "viz-tick", "end"))
+        # 풍선에는 **절대값과 편차를 함께** 싣는다. 편차만 보여 주면
+        # "그래서 이 차는 몇 분 일했나"를 표까지 가야 알 수 있다.
+        parts.append(
+            f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{bar_h}" '
+            f'rx="3" class="viz-bar" tabindex="0" '
+            f'data-tip="{html.escape(str(label))}: {_fmt(value, 1)}{unit}'
+            f' ({baseline_label} 대비 {dev:+.1f}{unit})"/>')
+        # 값 글자는 막대 바깥, 뻗어 나간 쪽에 붙인다.
+        if dev >= 0:
+            parts.append(_text(x + w + 6, cy + 4, f"{dev:+.1f}{unit}",
+                               "viz-value", "start"))
+        else:
+            parts.append(_text(x - 6, cy + 4, f"{dev:+.1f}{unit}",
+                               "viz-value", "end"))
+
+    parts.append("</svg>")
+    return "".join(parts)
+
+
 def vbar(labels: Sequence[str], values: Sequence[float], *,
          title: str, unit: str = "", width: int = 640, height: int = 220,
          highlight: Optional[Sequence[int]] = None,
@@ -242,6 +318,38 @@ def vbar(labels: Sequence[str], values: Sequence[float], *,
     return "".join(parts)
 
 
+def _overlaps(a: tuple, b: tuple) -> bool:
+    return not (a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1])
+
+
+def _label_spot(label: str, cx: float, cy: float, taken: list,
+                width: int, pad_l: int, pad_r: int):
+    """점 옆 글자를 **비어 있는 자리에** 놓는다. 없으면 놓지 않는다.
+
+    ⚠️ 예전에는 언제나 점 위 11px에 붙였다. 그래서 값이 가까운 두 점의 글자가
+    겹쳐 `20_05`가 `0_05`로 잘려 보였고, 한쪽 글자가 다른 점 위에 올라탔다
+    (실측 1.26.107). 커서를 못 대는 인쇄·터치에서는 읽을 방법이 없었다.
+
+    위 → 아래 → 오른쪽 → 왼쪽 순으로 빈자리를 찾는다. 넷 다 막혔으면
+    **글자를 포기한다** — 겹쳐 찍는 것보다 없는 편이 낫다. 값은 커서 풍선과
+    표에 그대로 있다(부르는 쪽이 표 보기를 함께 낸다).
+    """
+    # 글꼴이 11px 굵은 글씨다. 폭은 정확히 잴 수 없으므로 넉넉히 잡는다 —
+    # 좁게 잡으면 '안 겹친다'고 판단해 놓고 실제로는 겹친다.
+    w, h = len(str(label)) * 6.6 + 2, 12
+    for dx, dy, anchor in ((0, -11, "middle"), (0, 15, "middle"),
+                           (9, 4, "start"), (-9, 4, "end")):
+        lx, ly = cx + dx, cy + dy
+        left = lx - (w / 2 if anchor == "middle" else (w if anchor == "end" else 0))
+        box = (left, ly - h + 3, left + w, ly + 3)
+        if box[0] < pad_l - 4 or box[2] > width - pad_r + 4:
+            continue                       # 그림 밖으로 나가면 잘린다
+        if any(_overlaps(box, other) for other in taken):
+            continue
+        return lx, ly, anchor, box
+    return None
+
+
 def scatter(points: Sequence[dict], *, x_key: str, y_key: str,
             x_label: str, y_label: str, width: int = 640,
             height: int = 300) -> str:
@@ -288,6 +396,9 @@ def scatter(points: Sequence[dict], *, x_key: str, y_key: str,
         v = x_low + x_span * k / 2
         parts.append(_text(px(v), height - 20, _fmt(v), "viz-tick"))
 
+    placed = [(px(p[x_key]) - 7, py(p[y_key]) - 7,
+               px(p[x_key]) + 7, py(p[y_key]) + 7) for p in usable]
+
     for p in usable:
         cx, cy = px(p[x_key]), py(p[y_key])
         parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="13" class="viz-hit" '
@@ -295,7 +406,11 @@ def scatter(points: Sequence[dict], *, x_key: str, y_key: str,
         # 겹치는 점은 면 색 링으로 떼어 놓는다(테두리를 그리는 게 아니다).
         parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="5" class="viz-dot ring"/>')
         if p.get("label"):
-            parts.append(_text(cx, cy - 11, p["label"], "viz-value"))
+            spot = _label_spot(p["label"], cx, cy, placed, width, pad_l, pad_r)
+            if spot:
+                lx, ly, anchor, box = spot
+                placed.append(box)
+                parts.append(_text(lx, ly, p["label"], "viz-value", anchor))
 
     parts.append(_text(pad_l + plot_w / 2, height - 4, x_label, "viz-axis"))
     parts.append(f'<text x="12" y="{pad_t + plot_h / 2:.1f}" class="viz-axis" '

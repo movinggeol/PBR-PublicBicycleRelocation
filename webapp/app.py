@@ -28,6 +28,7 @@ from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from project_config import (
     DAY_TYPE_AUTO, DAY_TYPE_LABELS, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_DURATION,
@@ -46,6 +47,48 @@ _HERE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(_HERE / "templates"))
 # 글꼴을 같이 담아 서빙한다 — 인터넷이 끊겨도 화면이 같아야 한다.
 app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
+
+
+# ---------------- 오류 화면 ----------------
+
+# 사람이 보는 화면에 날 JSON을 띄우지 않는다. 예전에는 산출물이 정리된 뒤 옛
+# 링크를 누르면 `{"detail":"파일을 찾을 수 없습니다."}` 가 떴다(1.26.107) —
+# 내비도 돌아갈 링크도 없었고, `/없는페이지`는 영어로 "Not Found"였다.
+#
+# ⚠️ **API는 그대로 JSON이다.** 기계가 읽는 자리라 화면을 돌려주면 오히려
+#    깨진다. 가르는 기준은 경로(`/api/…`)와 `Accept` 헤더 둘 다 본다 —
+#    경로만 보면 `fetch('/files/…')` 같은 호출이 HTML을 받는다.
+ERROR_TITLES = {
+    404: "찾는 것이 없습니다",
+    400: "요청을 이해하지 못했습니다",
+    403: "열 수 없는 파일입니다",
+    500: "문제가 생겼습니다",
+}
+
+
+def _wants_html(request: Request) -> bool:
+    if request.url.path.startswith("/api/"):
+        return False
+    accept = request.headers.get("accept", "")
+    # 브라우저 주소창은 text/html을 먼저 요구한다. fetch·curl은 그렇지 않다.
+    return "text/html" in accept
+
+
+@app.exception_handler(StarletteHTTPException)
+def http_error(request: Request, exc: StarletteHTTPException):
+    code = exc.status_code
+    if not _wants_html(request):
+        return JSONResponse({"detail": exc.detail}, status_code=code,
+                            headers=getattr(exc, "headers", None))
+    detail = exc.detail
+    if not isinstance(detail, str) or detail == "Not Found":
+        detail = "주소가 바뀌었거나, 그 사이에 산출물이 정리되었을 수 있습니다."
+    return templates.TemplateResponse(
+        request, "error.html",
+        {"code": code, "title": ERROR_TITLES.get(code, f"오류 {code}"),
+         "detail": detail},
+        status_code=code)
+
 
 # 작업 상태를 사람이 읽는 말로 — 템플릿 전역이라 어느 화면에서나 같은 낱말을 쓴다.
 JOB_STATUS_LABELS = {
@@ -220,6 +263,24 @@ def _index_context(error: Optional[str] = None) -> dict:
     }
 
 
+def _run_kind(run_label: str) -> str:
+    """실행 종류(`plan`·`experiment`·`probe`). 판정 규칙은 db.py 한 곳에 있다.
+
+    `runs`에 행이 없어도 **모른다고 넘기지 않는다.** 지표만 남고 실행 행이
+    없는 경우가 있는데(옛 자료·부분 기록), 그때 '모름'을 운영 계획으로 취급
+    하면 화면이 조용히 거짓말한다 — 그것이 1.26.107에서 고친 바로 그 결함
+    이다. 라벨 짐작이라도 붙인다.
+    """
+    import db
+
+    runs = store.run_labels()
+    if not runs.empty and "kind" in runs:
+        row = runs.loc[runs["run_label"] == run_label, "kind"]
+        if len(row) and pd.notna(row.iloc[0]):
+            return str(row.iloc[0])
+    return db.classify_run_label(run_label)
+
+
 def _home_context() -> dict:
     """메인 화면(현황판)이 쓸 값. **읽기만 한다** — 외부 API를 부르지 않는다.
 
@@ -248,12 +309,14 @@ def _home_context() -> dict:
                 "budget": float(part["time_budget_minutes"].max())
                           if "time_budget_minutes" in part else TIME_BUDGET_MINUTES,
             }
-            # 실험용 실행(파라미터 스윕 등)은 운영 계획이 아니다. 라벨로 가른다 —
-            # DB에 함께 쌓이므로 가장 최근 것이 실험일 수 있다.
-            label = str(order[0]).lower()
-            last["is_experiment"] = any(
-                mark in label for mark in ("sweep", "test", "테스트", "g1000", "g2000",
-                                           "g3000", "g5000", "z165", "z199"))
+            # 실험용 실행(파라미터 스윕·대조군)은 운영 계획이 아니다. DB에
+            # 함께 쌓이므로 가장 최근 것이 실험일 수 있다.
+            #
+            # ⚠️ 예전에는 여기서 **라벨 하드코딩 목록**으로 짐작했다. 목록에
+            #    없던 `obs-cmp-1520`이 경고 없이 첫 화면 헤드라인에 올라왔다
+            #    (1.26.107). 판정은 db.list_runs()가 한 벌로 하고 화면은 읽기만
+            #    한다 — 화면마다 짐작하면 화면마다 다른 답이 나온다.
+            last["is_experiment"] = _run_kind(order[0]) == "experiment"
             if last["stockout_before"]:
                 last["cut_pct"] = round(
                     (1 - last["stockout_after"] / last["stockout_before"]) * 100, 1)
@@ -411,6 +474,34 @@ def cancel_run(job_id: str):
     return RedirectResponse(url=f"/runs/{job_id}", status_code=303)
 
 
+@app.post("/runs/{run_label:path}/kind")
+def set_run_kind(run_label: str, kind: str = Form(...)):
+    """실행의 종류(운영 계획·실험·수집)를 못박는다.
+
+    라벨 규칙으로 짐작한 값은 틀릴 수 있다 — 그리고 틀린 채로 두면 실험이
+    첫 화면에 운영 계획으로 올라간다(1.26.107). 사람이 고칠 수 있어야
+    짐작에 기대지 않게 된다.
+
+    ⚠️ **지우지는 않는다.** 실행 하나를 지우려면 20개 가까운 테이블에서
+    행을 걷어내야 하고, 되돌릴 수 없다. 그 일은 `tools/forget_run.py`가
+    `--dry-run`과 함께 맡는다 — 웹 화면에서 한 번의 클릭으로 할 일이 아니다.
+    """
+    import db
+
+    if kind not in db.RUN_KINDS:
+        raise HTTPException(status_code=400, detail="모르는 실행 종류입니다.")
+    try:
+        with db.session() as conn:
+            # 실행 행이 없으면 만들어 두고 못박는다 — 지표만 있고 runs 행이
+            # 없는 옛 자료에도 종류를 붙일 수 있어야 한다.
+            db.ensure_run(conn, run_label)
+            db.set_run_kind(conn, run_label, kind)
+    except Exception as err:                          # noqa: BLE001
+        raise HTTPException(status_code=500,
+                            detail=f"실행 종류를 바꾸지 못했습니다: {err}") from err
+    return RedirectResponse(url="/run#saved-runs", status_code=303)
+
+
 @app.get("/runs/{job_id}")
 def run_detail(request: Request, job_id: str):
     job = jobs.get_job(job_id)
@@ -452,17 +543,36 @@ def guide_page(request: Request):
     })
 
 
-def _orders_context(run_label: Optional[str], duration: Optional[str]) -> dict:
+def _sheet_name(sheet: dict) -> str:
+    """지시서 한 장을 가리키는 이름. 차량이 없는 옛 산출물은 군집 번호로."""
+    return str(sheet.get("vehicle_id") or f"군집 {sheet.get('cluster')}")
+
+
+def _orders_context(run_label: Optional[str], duration: Optional[str],
+                    vehicle: Optional[str] = None) -> dict:
     """작업지시서 화면의 공통 재료. 고르지 않으면 가장 최근 경로를 쓴다."""
     targets = store.records(store.plan_targets())
     if targets and not run_label:
         run_label = targets[0]["run_label"]
         duration = duration or targets[0]["duration"]
+
+    sheets = orders.build(run_label, duration) if run_label else []
+
+    # 차량 하나만 보기. 한 회차에 17대가 나가면 지시서가 세로로 39,000px,
+    # 휴대폰에서 **47화면**이었다(실측 1.26.107). 기사는 자기 차 한 장만
+    # 필요한데 앞의 열여섯 장을 넘겨야 했고, 인쇄도 17장이 통으로 나왔다.
+    # 서버에서 거른다 — 스크립트가 없어도 되고, 인쇄가 저절로 한 장이 된다.
+    names = [_sheet_name(s) for s in sheets]
+    if vehicle:
+        sheets = [s for s in sheets if _sheet_name(s) == vehicle]
+
     return {
         "targets": targets,
         "run_label": run_label,
         "duration": duration,
-        "sheets": orders.build(run_label, duration) if run_label else [],
+        "sheets": sheets,
+        "sheet_names": names,
+        "selected_vehicle": vehicle if vehicle in names else None,
         "capacity": VEHICLE_CAPACITY,
         "depot_name": DEPOT_NAME,
         "upper_ratio": TARGET_QTY_UPPER_RATIO,
@@ -472,10 +582,10 @@ def _orders_context(run_label: Optional[str], duration: Optional[str]) -> dict:
 
 @app.get("/orders")
 def orders_page(request: Request, run_label: Optional[str] = None,
-                duration: Optional[str] = None):
+                duration: Optional[str] = None, vehicle: Optional[str] = None):
     """차량별 작업지시서 — 현장에 그대로 내보내는 종이."""
     return templates.TemplateResponse(
-        request, "orders.html", _orders_context(run_label, duration))
+        request, "orders.html", _orders_context(run_label, duration, vehicle))
 
 
 @app.get("/orders/live")
@@ -621,7 +731,9 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
         "latest_label": latest["run_label"].iloc[0] if latest is not None else None,
         "previous_label": previous["run_label"].iloc[0] if previous is not None else None,
         "selected_run": run_label,
-        "runs": store.records(store.run_labels()),
+        # 계획이 아닌 실행(도로 수집 등)은 필터에서 뺀다 — 눌러도
+        # 빈 표만 나오는 칩이었다(1.26.107).
+        "runs": store.records(store.plan_runs()),
     })
 
 
@@ -682,11 +794,25 @@ def vehicles_page(request: Request, run_label: Optional[str] = None):
 
     # balance와 같은 조건이다 — 아직 한 번도 안 나간 새 설치라면 21대가 전부
     # 0분짜리 막대가 되어 아무 뜻이 없다.
+    #
+    # 🔴 0 기준 막대(`charts.hbar`)로 그렸더니 **21개가 전부 같아 보였다**
+    #    (1.26.107). 값이 339~402분이라 폭이 16%뿐이라서, 1000px를 쓰고도
+    #    바로 위 타일의 "차이 63.1분"보다 못 알려 줬다. 묻는 것이 *"얼마인가"*
+    #    가 아니라 *"고른가"* 라면 기준은 0이 아니라 **고른 상태(평균)** 다.
     workload_svg = None
     if balance:
-        workload_svg = charts.hbar(
+        workload_svg = charts.deviation_hbar(
             sorted_wl["vehicle_id"].tolist(), sorted_wl["minutes"].tolist(),
-            title="차량별 누적 작업 시간", unit="분")
+            title="차량별 누적 작업 시간 — 평균과의 차이", unit="분")
+
+    # 배정 이력은 실행을 거듭할수록 무한히 쌓이므로 상한을 둔다. 다만
+    # **자른 것은 반드시 말한다** — 예전에는 86건 중 60건만 조용히 보여
+    # 주고 있었다(1.26.107). 표가 끝난 자리에서 멈추면 사람은 그것이 전부인
+    # 줄 안다. 상한은 넉넉히 두되(200), 걸리면 몇 건이 남았는지 적고
+    # 실행을 골라 좁히는 길을 알려 준다.
+    ASSIGNMENT_LIMIT = 200
+    assignments_total = len(assignments)
+    assignments_shown = min(assignments_total, ASSIGNMENT_LIMIT)
 
     return templates.TemplateResponse(request, "vehicles.html", {
         "fleet_size": fleet_size,
@@ -694,11 +820,15 @@ def vehicles_page(request: Request, run_label: Optional[str] = None):
         "time_budget": TIME_BUDGET_MINUTES,
         "workload": store.records(sorted_wl),
         "workload_svg": workload_svg,
-        "assignments": store.records(assignments.head(60)),
+        "assignments": store.records(assignments.head(ASSIGNMENT_LIMIT)),
+        "assignments_total": assignments_total,
+        "assignments_hidden": assignments_total - assignments_shown,
         "balance": balance,
         "budget": budget,
         "selected_run": run_label,
-        "runs": store.records(store.run_labels()),
+        # 계획이 아닌 실행(도로 수집 등)은 필터에서 뺀다 — 눌러도
+        # 빈 표만 나오는 칩이었다(1.26.107).
+        "runs": store.records(store.plan_runs()),
     })
 
 

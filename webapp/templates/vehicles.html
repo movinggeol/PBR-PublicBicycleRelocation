@@ -55,9 +55,15 @@
 
 {# 그래프 자리를 통째로 없애면 '왜 안 보이지'를 화면에서 알 수 없다 —
    빈 상태에도 자리를 남기고 무엇이 없어서 비었는지 적는다. #}
+{# 막대 길이는 **평균과의 차이**다. 0에서 시작하면 21대가 339~402분이라
+   전부 같은 길이로 보여, 정작 물으려던 "몰렸나"에 답을 못 했다(1.26.107). #}
 <div class="card viz-card">
-  <h3>누적 작업 시간 <span class="hint">많이 일한 차량이 위</span></h3>
+  <h3>누적 작업 시간 — 평균과의 차이
+    <span class="hint">오른쪽으로 뻗을수록 많이 일한 차량</span></h3>
   {% if workload_svg %}
+  <p class="hint" style="margin:0 0 var(--sp-xs)">막대는 <b>평균에서 떨어진 만큼</b>이고
+    가운데 세로선이 평균입니다 — 값 자체가 아니라 <b>고른지</b>를 보는 그림이라
+    기준을 평균에 둡니다. 차량별 실제 누적 시간은 커서를 대면 뜨고 아래 표에 있습니다.</p>
   {{ workload_svg | safe }}
   {% else %}
   <p class="empty">아직 출동한 차량이 없어 그릴 것이 없습니다 — 보유 {{ fleet_size }}대가 모두 0분입니다.
@@ -101,7 +107,8 @@
   {% endif %}
 </div>
 
-<h2>회차별 배정 이력</h2>
+<h2>회차별 배정 이력
+  {% if assignments_total %}<span class="hint">{{ assignments_total }}건</span>{% endif %}</h2>
 
 {% if runs %}
 <div class="filterbar">
@@ -144,6 +151,13 @@
     </tbody>
   </table>
   </div>
+  {# 자른 것은 말한다. 표가 그냥 끝나면 사람은 그것이 전부인 줄 안다 —
+     예전에는 86건 중 60건만 조용히 보여 주고 있었다(1.26.107). #}
+  {% if assignments_hidden %}
+  <p class="hint" style="padding:0 var(--sp-lg) var(--sp-md)">
+    최근 {{ assignments | length }}건만 보이고 <b>{{ assignments_hidden }}건이 더 있습니다.</b>
+    위에서 실행을 고르면 그 실행의 배정만 볼 수 있습니다.</p>
+  {% endif %}
   {% else %}
   {# 실행을 고른 상태라면 '실행하세요'가 틀린 안내다 — 이력은 있는데 그 실행에만
      없는 것이므로, 필터를 푸는 쪽을 알려 준다. #}

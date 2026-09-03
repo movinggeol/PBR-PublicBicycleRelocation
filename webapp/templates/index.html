@@ -198,21 +198,38 @@
   </div>
 </div>
 
-<h2>저장된 실행</h2>
+<h2 id="saved-runs">저장된 실행</h2>
 <p class="section-lead">실행할 때마다 결과가 이름과 함께 데이터베이스에 남습니다.
-  지난 실행의 지표와 대여소별 계획을 그대로 다시 꺼내 볼 수 있습니다.</p>
+  지난 실행의 지표와 대여소별 계획을 그대로 다시 꺼내 볼 수 있습니다.
+  <b>한 데이터베이스에 세 가지가 섞여 쌓입니다</b> — 운영 계획, 견줘 보려고 돌린
+  실험, 계획이 아닌 기록(도로 시간 수집 등). <b>실험·수집은 결과 화면의 계획
+  목록에서 다르게 다룹니다</b>, 그래서 종류를 여기서 밝히고 고칠 수 있게 뒀습니다.</p>
 <div class="card flush">
   {% if pipeline_runs %}
   <div class="table-wrap">
   <table data-sortable class="m-cards">
     <thead><tr>
-      <th scope="col">실행 이름</th><th scope="col">순수요 기간</th><th scope="col">시간대</th><th scope="col">요일</th><th scope="col">기록 시각</th>
+      <th scope="col">실행 이름</th>
+      <th scope="col"><span class="tip" data-tip="운영 계획 · 실험(견줘 보려고 돌린 것) · 수집(계획이 아닌 기록). 수집은 결과 화면의 계획 목록에 뜨지 않습니다.">종류</span></th>
+      <th scope="col">순수요 기간</th><th scope="col">시간대</th><th scope="col">요일</th><th scope="col">기록 시각</th>
       <th scope="col" data-nosort>바로 보기</th>
     </tr></thead>
     <tbody>
     {% for run in pipeline_runs %}
     <tr>
       <td data-label=""><b>{{ run.run_label }}</b></td>
+      {# 종류는 눌러서 바꾼다. 라벨 규칙으로 짐작한 것이 틀릴 수 있고, 틀린 채
+         두면 실험이 첫 화면에 운영 계획으로 올라간다(1.26.107). #}
+      <td data-label="종류">
+        <form method="post" action="/runs/{{ run.run_label | urlencode }}/kind" class="kind-form">
+          <select name="kind" aria-label="{{ run.run_label }} 실행 종류" onchange="this.form.submit()">
+            {% for value, text in [("plan", "운영 계획"), ("experiment", "실험"), ("probe", "수집")] %}
+            <option value="{{ value }}" {% if run.kind == value %}selected{% endif %}>{{ text }}</option>
+            {% endfor %}
+          </select>
+          <noscript><button type="submit" class="chip">바꾸기</button></noscript>
+        </form>
+      </td>
       <td class="muted" data-label="순수요 기간">{{ run.period or "—" }}</td>
       <td class="muted" data-label="시간대">{{ run.duration or "—" }}</td>
       <td class="muted" data-label="요일">{{ "휴일" if run.day_type == "holiday" else ("평일" if run.day_type else "—") }}</td>

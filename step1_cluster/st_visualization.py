@@ -48,19 +48,22 @@ def make_clustered_map(durations: list):
         # 색이 많아 군집이 겹치면 구분이 어려웠다(1.26.75 조사 → 1.26.80).
         unique_clusters = sorted(pick_drop['cluster'].unique())
         
-        # Cluster + Pick/Drop 그룹 생성
+        # 군집 × (내리기·싣기) 그룹. 이름은 한글로 둔다 — 지시서는
+        # 싣기/내리기인데 여기만 Pick/Drop이면 한 개념에 용어가 두 벌이다
+        # (1.26.107). 레이어 컨트롤은 지도 위에 겹쳐 뜨므로 이름이 짧아야
+        # 한다 — 군집 19개면 줄이 38개다.
         layer_dict = {}
         
         # cluster별 Layer 생성
         for c in unique_clusters:
             drop_layer = folium.FeatureGroup(
-                name=f"Cluster {c} - Drop",
+                name=f"군집 {c} · 내리기",
                 show=True
             )
             drop_layer.add_to(m)
 
             pick_layer = folium.FeatureGroup(
-                name=f"Cluster {c} - Pick",
+                name=f"군집 {c} · 싣기",
                 show=True
             )
             pick_layer.add_to(m)
@@ -74,10 +77,10 @@ def make_clustered_map(durations: list):
             rebal = row['rebal_qty']
             
             if rebal > 0:
-                status = 'Drop (분배)'
+                status = '내리기 (부족 해소)'
                 layer = layer_dict[(cluster, 'drop')]
             else:
-                status = 'Pick (회수)'
+                status = '싣기 (과잉 해소)'
                 layer = layer_dict[(cluster, 'pick')]
             
             radius = max(5, abs(rebal)*0.3)
@@ -129,7 +132,11 @@ def make_clustered_map(durations: list):
             note="원 크기는 재배치 수량입니다.<br>"
                  "점에 커서를 대면 자세한 값이 뜹니다.")))
 
-        folium.LayerControl(collapsed=False).add_to(m)
+        # ⚠️ 레이어 컨트롤은 지도 **위에** 겹쳐 뜬다. 펴 두면 군집 수만큼
+        # 줄이 서서 지도 오른쪽을 위에서 아래까지 덮는다 — 군집 19개짜리
+        # 산출물에서 38줄, 780px였다(실측 1.26.107). 접어 둔다: 색이 무슨
+        # 뜻인지는 이제 **범례**가 말하고, 컨트롤은 걸러 보는 도구다.
+        folium.LayerControl(collapsed=True).add_to(m)
 
         m.save(clusterd_map.format(duration=duration, now=now))
         print(f"folium map 저장 완료({duration})\n")

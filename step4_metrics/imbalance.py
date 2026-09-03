@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 
 import db
-from mapviz import legend_html, swatch_circle
+from mapviz import (DROP_COLOR, DROP_LABEL, PICK_COLOR, PICK_LABEL,
+                    legend_html, swatch_circle, swatch_size_scale)
 from project_config import (
     MAP_TILES, PICK_HARM_WARN_SHARE, PROJECT_ROOT, TIME_BUDGET_MINUTES,
     VEHICLE_CAPACITY, duration_hours, duration_list, ensure_output_dirs,
@@ -537,7 +538,8 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
     for idx, c in enumerate(unique_clusters):
         
         fg = folium.FeatureGroup(
-            name=f"Cluster {c}", 
+            # 레이어 컨트롤은 지도 위에 겹쳐 뜬다 — 이름이 짧아야 한다.
+            name=f"군집 {c}",
             show=True
         )
         fg.add_to(m)
@@ -546,13 +548,15 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
 
         for _, row in cluster_df.iterrows():
             
-            # Pick/Drop 색상
+            # 싣기/내리기 색은 mapviz.py 한 벌에서 온다 — 예전에는 여기
+            # 'red'/'blue'를 직접 박아 두어, 웹 작업지시서와 **파랑이 서로
+            # 반대 작업**을 뜻했다(1.26.107). 용어도 한글로 통일한다.
             if row['rebal_qty'] > 0:
-                color = 'red'
-                status = 'Drop'
+                color = DROP_COLOR
+                status = '내리기'
             else:
-                color = 'blue'
-                status = 'Pick'
+                color = PICK_COLOR
+                status = '싣기'
             
             # 작업 후 불균형 '개선률(improvement_rate)' 기반 마커
             radius = max(3, row['improvement'])
@@ -608,14 +612,19 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
     # 보였다(1.26.75 조사 → 1.26.80 채택).
     m.get_root().html.add_child(folium.Element(legend_html(
         "범례 — 재고 현황",
-        [(swatch_circle("red"), "Drop — 부족 해소"),
-         (swatch_circle("blue"), "Pick — 과잉 해소")],
-        note="원 크기는 불균형 해소량, 원 투명도는 개선률입니다.<br>"
+        [(swatch_circle(DROP_COLOR), DROP_LABEL),
+         (swatch_circle(PICK_COLOR), PICK_LABEL),
+         # 크기로 값을 말했으면 **눈금도 줘야** 읽을 수 있다. 마커 반지름이
+         # 곧 해소 대수(max(3, improvement))라 눈금도 같은 수를 쓴다.
+         (swatch_size_scale([3, 7, 12], ["3대", "7대", "12대"]), "")],
+        note="원 크기는 불균형 해소량, 원이 진할수록 개선률이 높습니다.<br>"
              "점에 커서를 대면 자세한 값이 뜹니다.")))
 
-    folium.LayerControl(
-        collapsed=False
-    ).add_to(m)
+    # ⚠️ 레이어 컨트롤은 지도 **위에** 겹쳐 뜬다. 펴 두면 군집 수만큼
+    # 줄이 서서 지도 오른쪽을 위에서 아래까지 덮는다 — 군집 19개짜리
+    # 산출물에서 38줄, 780px였다(실측 1.26.107). 접어 둔다: 색이 무슨
+    # 뜻인지는 이제 **범례**가 말하고, 컨트롤은 걸러 보는 도구다.
+    folium.LayerControl(collapsed=True).add_to(m)
 
 
     m.save(map_file_path.format(duration=duration, now=now))

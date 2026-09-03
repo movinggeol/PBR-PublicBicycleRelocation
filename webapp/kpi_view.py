@@ -119,7 +119,8 @@ def cost_benefit(rows: pd.DataFrame) -> dict:
     그 사실을 부제로 밝힌다(두 뜻을 한 그래프에 섞지 않는다).
     """
     if rows.empty:
-        return {"points": [], "y_label": "", "note": ""}
+        return {"points": [], "y_label": "", "y_unit": "",
+                "table": [], "note": ""}
 
     has_stockout = ("stockout_hours_before" in rows
                     and not rows["stockout_hours_before"].isna().all())
@@ -151,14 +152,24 @@ def cost_benefit(rows: pd.DataFrame) -> dict:
             "label": str(row["duration"]).lstrip("_"),
             "tip": f"{row['run_label']} {row['duration']} · "
                    f"이동 {float(distance):.0f}km · {y_text}",
+            # 표 보기가 쓸 값. 점 옆 글자는 회차뿐이라 같은 회차가 여러 번
+            # 나오면 어느 실행인지 구분되지 않는다 — 표에는 실행까지 적는다.
+            "run_label": str(row["run_label"]),
+            "duration": str(row["duration"]),
         })
 
     note = ""
     if skipped:
         note = f"값이 없는 {skipped}건은 빼고 그렸습니다."
+    # 커서만으로 값을 읽게 두지 않는다 — 다른 그래프는 전부 표 보기를 함께
+    # 내는데 이 산점도만 없었다(1.26.107). 인쇄·터치에서는 풍선이 안 뜬다.
+    table = [(f"{p['run_label']} {p['duration']}", p["x"], p["y"])
+             for p in sorted(points, key=lambda q: q["y"], reverse=True)]
     return {
         "points": points,
         "y_label": "결품 감소 (시간)" if has_stockout else "평균 개선률 (%)",
+        "y_unit": "시간" if has_stockout else "%",
+        "table": table,
         "note": note,
     }
 

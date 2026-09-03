@@ -119,6 +119,22 @@ def run_labels() -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def plan_runs() -> pd.DataFrame:
+    """계획 화면의 필터가 쓸 실행 목록 — **계획이 아닌 실행을 뺀다.**
+
+    도로 시간 수집기(`roadprobe-*`)도 `runs`에 행을 남긴다. 그것까지 필터
+    칩으로 내면 계획인 척 섞여 있다가, 눌러 보면 지표도 배정도 없는 빈 표만
+    나온다(1.26.107에서 실제로 그랬다). 종류는 db.list_runs()가 붙여 준다.
+
+    실험(`experiment`)은 **남긴다** — 계획 모양이고 실제로 견줘 볼 값이
+    들어 있다. 빼야 하는 것은 애초에 계획이 아닌 것뿐이다.
+    """
+    runs = run_labels()
+    if runs.empty or "kind" not in runs:
+        return runs
+    return runs[runs["kind"] != "probe"]
+
+
 def plan_targets() -> pd.DataFrame:
     """작업지시서를 만들 수 있는 (실행, 회차) 목록 — `vrp_plan`에 경로가 있는 것.
 

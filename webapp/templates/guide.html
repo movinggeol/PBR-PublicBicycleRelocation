@@ -330,6 +330,15 @@
   <table class="table-prose">
     <thead><tr><th scope="col">상황</th><th scope="col">어떻게 하나</th></tr></thead>
     <tbody>
+      <tr id="backtest">
+        <td><b><a href="/kpi">성과 지표</a>의 "수요 예측은 얼마나 맞나"가 비어 있습니다</b></td>
+        <td class="muted">그 절은 <b>목표 재고의 전제</b>(평균 순수요 mu)가 다음 달을 얼마나
+          맞히는지 재는 것이라 계획 실행과 별개로, 터미널에서 한 번 돌려야 채워집니다.
+          <br><code>python tools/backtest_demand.py</code>
+          <br>한 달 자료로 만든 mu가 다음 달 수요를 얼마나 맞혔는지 월쌍으로 쌓아 둡니다.
+          평일·휴일은 <code>--day-type</code>으로 따로 재고, 값이 남으면
+          <code>docs/분석/KPI.md</code> E장에서 읽는 법을 설명합니다.</td>
+      </tr>
       <tr>
         <td><b>실행이 실패했습니다</b></td>
         <td class="muted">실행 화면에서 그 작업을 열면 <b>진행 단계</b>에 붉게 표시된 곳이 있습니다.
