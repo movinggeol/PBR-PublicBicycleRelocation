@@ -170,8 +170,10 @@ python tools/collect_road_time.py --durations _05_10,_10_15
 python tools/collect_road_time.py --date 2026-09-04 # 라벨 날짜를 직접
 ```
 
-> ⚠️ **`install`·`pause`·`uninstall`은 관리자 권한 PowerShell이 필요합니다.**
-> 일반 권한에서는 `Access is denied`가 납니다.
+> ℹ️ **권한** — 이미 등록된 작업을 다시 걸거나(`install` 재실행) 켜고 끄는 것은
+> 일반 권한으로 됩니다(2026-09-03 실측). **작업을 처음 만들 때**는
+> `Access is denied`가 날 수 있는데, 그때만 관리자 권한 PowerShell로 한 번
+> 돌리면 됩니다.
 
 **데이터를 지우는 명령은 없습니다.** `pause`·`uninstall` 모두 스케줄만 건드립니다.
 
@@ -190,8 +192,8 @@ python tools/collect_road_time.py --date 2026-09-04 # 라벨 날짜를 직접
 | `StartWhenAvailable` | 끔 | **켬** |
 | 비용 | 무료 API | **유료 TMAP · 일일 한도** |
 | 하루 호출 | 90틱 × 대여소 | **20건** |
-| 두 환경이 겹치면 | 안전 (`INSERT OR IGNORE`로 병합) | **낭비** — 같은 값에 한도를 두 배로 쓴다 |
-| 요일 분담 | 평일/휴일로 나눔 | **한 환경만** 돌린다 |
+| 두 환경이 겹치면 | **안전** — 병합 때 `INSERT OR IGNORE`로 걸러진다 | **낭비** — 표본은 안 늘고 한도만 두 배 |
+| 분담 | **안 나눈다** — 둘 다 매일 07:00–23:00, 켜져 있는 만큼 | **한 환경만** 돌린다 |
 
 > 🔴 **도로 수집기는 두 환경에서 동시에 돌리지 마십시오.** 패널이 git으로
 > 공유되고 `startTime`도 같아서 **두 환경이 사실상 같은 값을 받습니다.**
