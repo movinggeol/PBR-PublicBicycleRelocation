@@ -1,11 +1,11 @@
 # 테스트
 
 이 프로젝트는 처음에 테스트가 하나도 없었고, **의존성이 전부 깨진 상태**로
-파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 588개 테스트입니다.
+파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 607개 테스트입니다.
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 588개 (약 100초)
+python -m pytest              # 전체 607개 (약 100초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -17,18 +17,18 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 
 | 파일 | 개수 | 무엇을 지키는가 |
 | --- | --- | --- |
-| [tests/test_webapp.py](../../tests/test_webapp.py) | 95 | 웹 라우트가 통째로 깨지는 사고 방지, 실행 폼 입력 검증(기간·시간대 목록 포함), 파일 목록 쪽 나눔, **표 정렬을 건 표/걸지 않은 표**, 표 열·행 접기와 그 상태 기억, 빈 상태 규약, **파일명용 잘림 규칙을 문장에 쓰지 않는지**, **명암비 AA**(토큰 값으로 직접 계산), **인쇄가 접은 것을 펴는지** ([DESIGN.md](DESIGN.md) · [WEBAPP.md](WEBAPP.md)) |
-| [tests/test_calculations.py](../../tests/test_calculations.py) | 70 | **계산 자체** — 목표재고 공식·군집 목적함수·VRP 적재/시간 제약·ILP 수급 제약·집행 기준 결품·**솔버 값 반올림/입력 방어** ([FORMULATION.md](../분석/FORMULATION.md)) |
+| [tests/test_webapp.py](../../tests/test_webapp.py) | 104 | 웹 라우트가 통째로 깨지는 사고 방지, 실행 폼 입력 검증(기간·시간대 목록 포함), 파일 목록 쪽 나눔, **표 정렬을 건 표/걸지 않은 표**, 표 열·행 접기와 그 상태 기억, 빈 상태 규약, **파일명용 잘림 규칙을 문장에 쓰지 않는지**, **명암비 AA**(토큰 값으로 직접 계산), **인쇄가 접은 것을 펴는지** ([DESIGN.md](DESIGN.md) · [WEBAPP.md](WEBAPP.md)) |
+| [tests/test_calculations.py](../../tests/test_calculations.py) | 71 | **계산 자체** — 목표재고 공식·군집 목적함수·VRP 적재/시간 제약·ILP 수급 제약·집행 기준 결품·**솔버 값 반올림/입력 방어** ([FORMULATION.md](../분석/FORMULATION.md)) |
 | [tests/test_weather.py](../../tests/test_weather.py) | 43 | **날씨 원천** — 빈칸의 뜻이 컬럼마다 다른지(강수는 0, 기온은 보간), 겨울 3시간 누적 강수를 펴는지, 창 접기(합·평균·최대)와 자정을 넘긴 창, 자료가 없어도 죽지 않는지, API 결측(-9)을 값으로 읽지 않는지 ([WEATHER.md](../분석/WEATHER.md)) |
 | [tests/test_day_type.py](../../tests/test_day_type.py) | 36 | 평일/휴일 분리·공휴일 판정·수요 모델 폴백·계절 보정, **평가도 같은 구분을 쓰는지** ([steps/step0_raw.md](steps/step0_raw.md)) |
 | [tests/test_stock_history.py](../../tests/test_stock_history.py) | 36 | **재고 시계열 수집** — 창 가드(휴일·창 밖에 API를 부르지 않는지), 틱 격자 반올림, 멱등 저장, 실패도 로그에 남는지, 파이프라인 이력을 건드리지 않는지, 요일 옵션 세 갈래(평일만 / 평일+휴일 / **휴일만**)가 **창 가드는 지키는지**, `--holidays-only`가 **공휴일(평일인 날)까지 잡는지** ([COLLECTOR.md](COLLECTOR.md)) |
 | [tests/test_pipeline.py](../../tests/test_pipeline.py) | 35 | step0→1→2→4를 **실제로 실행**해 산출물·스키마 확인 |
-| [tests/test_charts.py](../../tests/test_charts.py) | 31 | **그래프 규칙** — 계열 하나에 선 하나(축 둘 금지), 색을 SVG에 박지 않는지, 값 표시는 끝점만, 좌표가 뷰박스 안인지, 발산 척도의 가운데가 무채색인지, **범례가 값만이 아니라 할 일까지 말하는지**(1.26.92) |
+| [tests/test_charts.py](../../tests/test_charts.py) | 35 | **그래프 규칙** — 계열 하나에 선 하나(축 둘 금지), 색을 SVG에 박지 않는지, 값 표시는 끝점만, 좌표가 뷰박스 안인지, 발산 척도의 가운데가 무채색인지, **범례가 값만이 아니라 할 일까지 말하는지**(1.26.92) |
 | [tests/test_tmap.py](../../tests/test_tmap.py) | 28 | TMAP 엔드포인트 선택·폴백, **경로 지도 팝업이 파이썬 자료구조를 새지 않는지** ([steps/step3_visualization.md](steps/step3_visualization.md)) |
 | [tests/test_db.py](../../tests/test_db.py) | 25 | SQLite 저장소의 스코프·멱등성·최신 라벨·스키마 마이그레이션 ([DB_SCHEMA.md](DB_SCHEMA.md)) |
-| [tests/test_kpi.py](../../tests/test_kpi.py) | 19 | 성과 지표 계산과 `/kpi` 화면, 결측 지표 렌더링 ([KPI.md](../분석/KPI.md)) |
+| [tests/test_kpi.py](../../tests/test_kpi.py) | 23 | 성과 지표 계산과 `/kpi` 화면, 결측 지표 렌더링 ([KPI.md](../분석/KPI.md)) |
 | [tests/test_orders.py](../../tests/test_orders.py) | 16 | **작업지시서·실시간 재고 대조** — 대조가 지시량(요구량 아님)을 보는지, 집행 가능 판정이 계획과 같은 상한을 쓰는지, 타슈 API를 누를 때만 부르고 실패해도 500이 아닌지 |
-| [tests/test_road_time.py](../../tests/test_road_time.py) | 19 | **TMAP 실도로 고정 패널** — 패널이 결정적인지(흔들리면 '매일 같은 구간'이 무너진다), 차고지 왕복을 포함하는지, 거리 구간이 고르게 차는지, 누적의 차분이 구간 실측이고 `start_time`이 함께 남는지, **한도가 소진돼도 늘 같은 회차만 잘리지 않는지** ([EXPERIMENTS.md](../분석/EXPERIMENTS.md) 9장) |
+| [tests/test_road_time.py](../../tests/test_road_time.py) | 25 | **TMAP 실도로 고정 패널** — 패널이 결정적인지(흔들리면 '매일 같은 구간'이 무너진다), 차고지 왕복을 포함하는지, 거리 구간이 고르게 차는지, 누적의 차분이 구간 실측이고 `start_time`이 함께 남는지, **한도가 소진돼도 늘 같은 회차만 잘리지 않는지** ([EXPERIMENTS.md](../분석/EXPERIMENTS.md) 9장) |
 | [tests/test_merge_stock.py](../../tests/test_merge_stock.py) | 15 | **두 PC 재고 병합** — 이미 있는 틱을 덮어쓰지 않는지(*먼저 수집한 것이 이긴다*, 수집기의 `INSERT OR REPLACE`와 정반대), 빈 틱은 채우는지, CSV·DB 두 원천을 읽는지, 옮겨온 DB를 읽기 전용으로 여는지, 마스터가 없는 날을 알리는지 ([COLLECTOR.md](COLLECTOR.md) 11장) |
 | [tests/test_webapp_db.py](../../tests/test_webapp_db.py) | 15 | 웹 API가 CSV 대신 DB를 읽는지 |
 | [tests/test_experiment_guards.py](../../tests/test_experiment_guards.py) | 13 | **실험 하네스가 조용히 틀린 답을 내지 않는지** — 없는 라벨을 받으면 작업량 0인 표를 말없이 내놓던 것(1.26.39), 라벨이 없을 때 *"다시 돌리세요"* 라는 **틀린 처방**을 안내하던 것(1.26.54). 여기서 나온 숫자가 논문에 실린다 |
@@ -42,7 +42,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_eda.py](../../tests/test_eda.py) | 7 | **EDA 그래프** — `plt.show()`가 들어오면 subprocess가 창을 띄운 채 파이프라인 전체를 멈춘다. 글꼴 경로를 하드코딩하지 않는지, 자료가 없어도 죽지 않는지 |
 | [tests/test_reproduce.py](../../tests/test_reproduce.py) | 7 | **재현 절차가 정말 합성 데이터로 도는지** — README 절차가 합성 대여소 90곳을 만들어 놓고 실데이터 1,361곳을 돌리고 있었다(2026-08-31). 오류가 없어 아무도 눈치채지 못했다 |
 | [tests/test_stockout_map.py](../../tests/test_stockout_map.py) | 4 | **결품 지도** — '늘 빔'(재배치로 못 고치는 곳)을 섞어 세지 않는지, 관측이 없는 시간을 '결품 없음'으로 읽지 않는지 |
-| **합계** | **588** | 25개 파일 · 약 120초 (`python -m pytest`) |
+| **합계** | **607** | 25개 파일 · 약 120초 (`python -m pytest`) |
 
 > **이 합계는 손으로 세지 마세요.** 1.26.88이 손으로 세어 548이라 적었는데
 > 실측은 555였습니다 — `test_version_log.py` 한 파일을 통째로 빠뜨린 것입니다.
