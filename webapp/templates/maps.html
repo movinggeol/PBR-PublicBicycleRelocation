@@ -11,7 +11,30 @@
 {# 실행을 거듭하면 분류마다 지도가 쌓인다. 분류당 5건씩 끊어 보여준다 —
    분류 이름이 표 밖(h2)에 있으므로 행 단위로 끊어도 된다. 최신순이라 첫 쪽이 최근분. #}
 {% for group in groups %}
-<h2>{{ group.title }}</h2>
+<h2>{{ group.title }}
+  {%- if group.stale_count %} <span class="hint">낡음 {{ group.stale_count }}장</span>{% endif %}</h2>
+
+{# 🔴 **지도는 코드가 바뀌어도 저절로 다시 그려지지 않는다.** 범례·팔레트는
+   코드에 있고 산출물은 디스크에 있어서, 색을 고쳐도 이미 그려 둔 HTML은
+   낡은 채로 남는다. 실제로 두 번 갈렸고(1.26.80 팔레트·1.26.107 싣기/내리기
+   색) **두 번 다 사람이 눈으로 발견했다.** 이제 그릴 때 코드 지문을 함께
+   찍어 두고 여기서 견준다(1.26.122). #}
+{% if group.stale_count %}
+<div class="alert bad no-print">
+  <span><b>이 분류의 지도 {{ group.stale_count }}장이 낡았습니다.</b>
+  그린 뒤에 범례·색을 정하는 코드가 바뀌어서, 지금 화면의 다른 곳과
+  <b>다른 색·다른 범례</b>일 수 있습니다.
+  {% if group.title.startswith('VRP') %}
+  경로 지도는 실도로 좌표가 있어야 그려지므로 <b>파이프라인을 다시 돌려야</b> 합니다
+  (TMAP 호출이 필요합니다).
+  {% else %}
+  <code>python tools/redraw_maps.py --all</code>로 값은 건드리지 않고 다시 그릴 수 있습니다.
+  {% endif %}</span>
+</div>
+{% elif group.unknown_count and group.unknown_count == group.entries | length %}
+<p class="hint">이 분류의 지도는 <b>낡았는지 알 수 없습니다</b> — 코드 지문을 찍기 전에
+  그린 것이라 견줄 값이 없습니다. 다시 그리면 이후로는 자동으로 알려 줍니다.</p>
+{% endif %}
 {# ⚠️ 이 화면에는 **지도가 한 장도 없었다**(1.26.107). "계산 결과를 대전 지도
    위에 올린 것입니다"라고 써 놓고 파일 목록만 있었다 — 지도를 보려면 한 번
    더 눌러 들어가야 했다. 분류마다 가장 최근 것 한 장을 여기서 바로 보여 준다.
@@ -45,7 +68,8 @@
     <tbody>
     {% for e in group.entries %}
     <tr data-page-item="{{ loop.index0 }}">
-      <td class="wrap" data-label="">{{ e.name }}</td>
+      <td class="wrap" data-label="">{{ e.name }}
+        {%- if e.stale %} <span class="hint" title="그린 뒤 범례·색 코드가 바뀌었습니다">· 낡음</span>{% endif %}</td>
       <td class="muted" data-label="수정 시각">{{ e.mtime }}</td>
       <td class="num muted" data-label="크기">{{ e.size_kb }} KB</td>
       <td data-label="열기">

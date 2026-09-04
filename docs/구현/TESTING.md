@@ -1,11 +1,11 @@
 # 테스트
 
 이 프로젝트는 처음에 테스트가 하나도 없었고, **의존성이 전부 깨진 상태**로
-파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 646개 테스트입니다.
+파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 647개 테스트입니다.
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 646개 (약 100초)
+python -m pytest              # 전체 647개 (약 100초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -35,14 +35,14 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_fleet.py](../../tests/test_fleet.py) | 16 | 차량 로테이션·형평성과 보유 대수 변경, **배정 이력을 한 쪽만 읽고 쪽을 다 넘기면 한 행도 안 빠지는지**(1.26.116) ([FLEET.md](FLEET.md)) |
 | [tests/test_pipeline_progress.py](../../tests/test_pipeline_progress.py) | 12 | 실행 로그에서 진행 단계를 뽑는 규약 ([WEBAPP.md](WEBAPP.md)) |
 | [tests/test_rentals.py](../../tests/test_rentals.py) | 10 | 대여이력 적재와 **CSV·DB 결과 동일성** |
-| [tests/test_mapviz.py](../../tests/test_mapviz.py) | 17 | **지도 범례·팔레트**([mapviz.py](../../mapviz.py)) — 군집마다 색이 실제로 다른지(검정은 어두워지지 않아 군집 둘이 같은 색이 됐다), 색만으로 뜻을 전하지 않는지, 긴 범례가 지도를 가리지 않는지, **크기 눈금이 하한(max(3,·))을 감추지 않는지**, 세 지도가 **같은 낱말**을 쓰는지(step3만 'Pick (회수)'였다), **산출물이 낡았는지 알리는 지문**(코드를 고쳐도 이미 그린 지도는 낡은 채 남는다 — 두 번 다 사람이 눈으로 발견했다) ([DESIGN.md](DESIGN.md)) |
+| [tests/test_mapviz.py](../../tests/test_mapviz.py) | 18 | **지도 범례·팔레트**([mapviz.py](../../mapviz.py)) — 군집마다 색이 실제로 다른지(검정은 어두워지지 않아 군집 둘이 같은 색이 됐다), 색만으로 뜻을 전하지 않는지, 긴 범례가 지도를 가리지 않는지, **크기 눈금이 하한(max(3,·))을 감추지 않는지**, 세 지도가 **같은 낱말**을 쓰는지(step3만 'Pick (회수)'였다), **산출물이 낡았는지 알리는 지문**(코드를 고쳐도 이미 그린 지도는 낡은 채 남는다 — 두 번 다 사람이 눈으로 발견했다) ([DESIGN.md](DESIGN.md)) |
 | [tests/test_transfer_run.py](../../tests/test_transfer_run.py) | 10 | **실행 라벨 PC 간 이관** — `station_info.stock`은 실행 순간의 라이브 API 값이라 다시 만들 수 없다. 값이 그대로 옮겨지는지, 같은 라벨을 말없이 덮지 않는지, `road_leg`는 따라가지 않는지, **새 스코프 테이블이 이관 목록에서 조용히 빠지지 않는지**(손으로 적은 목록이라 늘 때 빠뜨린다) ([두_PC_작업.md](두_PC_작업.md)) |
 | [tests/test_guide.py](../../tests/test_guide.py) | 8 | 사용 안내가 설정값을 하드코딩하지 않는지, 폼 항목을 빠짐없이 설명하는지, **입력 예시가 실제로 통하는 형식인지**, 예상 소요를 지난 실행에서 뽑는지 |
 | [tests/test_version_log.py](../../tests/test_version_log.py) | 8 | **버전 번호가 또 겹치지 않는지**([tools/check_consistency.py](../../tools/check_consistency.py)) — 네 번 겹쳤고 규칙은 지켜지지 않았다(1.26.90). 여기서 지키는 것은 *"검사기가 실제로 걸러 내는가"* 다. 지금 문서를 통과시키는 것만으로는 부족하다 — **통과만 하고 아무것도 못 잡는 검사기는 규칙이 없는 것과 같다** |
 | [tests/test_eda.py](../../tests/test_eda.py) | 7 | **EDA 그래프** — `plt.show()`가 들어오면 subprocess가 창을 띄운 채 파이프라인 전체를 멈춘다. 글꼴 경로를 하드코딩하지 않는지, 자료가 없어도 죽지 않는지 |
 | [tests/test_reproduce.py](../../tests/test_reproduce.py) | 7 | **재현 절차가 정말 합성 데이터로 도는지** — README 절차가 합성 대여소 90곳을 만들어 놓고 실데이터 1,361곳을 돌리고 있었다(2026-08-31). 오류가 없어 아무도 눈치채지 못했다 |
 | [tests/test_stockout_map.py](../../tests/test_stockout_map.py) | 4 | **결품 지도** — '늘 빔'(재배치로 못 고치는 곳)을 섞어 세지 않는지, 관측이 없는 시간을 '결품 없음'으로 읽지 않는지 |
-| **합계** | **646** | 25개 파일 · 약 120초 (`python -m pytest`) |
+| **합계** | **647** | 25개 파일 · 약 120초 (`python -m pytest`) |
 
 > **이 합계는 손으로 세지 마세요.** 1.26.88이 손으로 세어 548이라 적었는데
 > 실측은 555였습니다 — `test_version_log.py` 한 파일을 통째로 빠뜨린 것입니다.

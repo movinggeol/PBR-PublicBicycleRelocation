@@ -24,6 +24,10 @@
 """
 from __future__ import annotations
 
+import hashlib
+import re
+import sys
+from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
 # Okabe & Ito(2008)가 제안한, 데이터 시각화에서 널리 쓰이는 공개 색맹 안전
@@ -175,6 +179,67 @@ def swatch_line(color: str, dashed: bool = False) -> str:
     )
 
 
+# ── 산출물이 낡았는지 알리는 도장 ──────────────────────────────
+#
+# 지도의 범례·팔레트는 **코드**에 있고 산출물은 **디스크**에 있다. 코드를
+# 고쳐도 이미 그려 둔 지도는 낡은 채로 남는데, 사람이 보는 것은 디스크의
+# HTML이다. 실제로 두 번 갈렸다 — 1.26.80이 색맹 안전 팔레트를 넣었지만
+# 화면의 군집 지도에는 범례가 아예 없었고, 1.26.107이 싣기·내리기 색을 웹과
+# 통일했지만 지도는 한동안 **웹과 반대 색**이었다.
+#
+# 🔴 둘 다 **사람이 눈으로 발견했다.** 알려 주는 장치가 없으면 다음에도
+#    누군가 우연히 볼 때까지 틀린 채로 남는다. 그래서 그릴 때 그린 코드의
+#    지문을 함께 찍고, `/maps`가 그것을 지금 코드와 견준다.
+#
+# 지문에는 **이 파일과 부르는 쪽 모듈**이 함께 들어간다. 이 파일만 해싱하면
+# `imbalance.py`가 자기 범례를 고쳤을 때를 놓친다. 부르는 쪽을 손으로 적은
+# 목록에 두지 않고 호출 프레임에서 얻는 것은, 그런 목록이 늘 때 빠뜨리기
+# 때문이다(`transfer_run.RUN_TABLES`에서 겪었다 — 1.26.113).
+STAMP_ATTR = "data-mapviz"
+_STAMP_RE = re.compile(rf'{STAMP_ATTR}="([0-9a-f]{{12}})"')
+
+
+def source_stamp(caller_file: Optional[str] = None) -> str:
+    """이 파일(+부르는 쪽)의 내용을 해싱한 12자리 지문.
+
+    내용이 한 글자라도 바뀌면 값이 달라진다 — 판 번호를 손으로 올리지 않아도
+    되고, **올리는 것을 잊을 수도 없다.**
+
+    ⚠️ **값을 캐시하지 않는다.** 처음에는 캐시를 뒀는데, 웹앱은 오래 떠 있는
+    프로세스라 한 번 읽은 지문이 굳어 **서버를 다시 띄우기 전까지 코드 변경을
+    영영 못 보는** 상태가 됐다(실측으로 잡았다 — 코드를 고쳤는데 `/maps`가
+    끝까지 "낡지 않았다"고 했다). 낡음을 알리려고 만든 장치가 낡은 값을 쥐고
+    있으면 없느니만 못하다. 파일 두 개(50KB)를 해싱하는 데 0.4ms라
+    `/maps` 한 번에 1.2ms다 — 캐시할 이유가 없다.
+    """
+    digest = hashlib.sha256()
+    paths = [Path(__file__)]
+    if caller_file:
+        paths.append(Path(caller_file))
+    for path in paths:
+        try:
+            digest.update(path.read_bytes())
+        except OSError:
+            # 읽을 수 없으면 그 사실 자체를 지문에 남긴다 — 조용히 빼면
+            # 서로 다른 코드가 같은 지문을 갖게 된다.
+            digest.update(b"<unreadable>")
+    return digest.hexdigest()[:12]
+
+
+def stamp_in(html_text: str) -> Optional[str]:
+    """저장된 지도 HTML에서 지문을 읽는다. 없으면 None(도장 이전 산출물)."""
+    found = _STAMP_RE.search(html_text)
+    return found.group(1) if found else None
+
+
+def _caller_file() -> Optional[str]:
+    """`legend_html()`을 부른 모듈의 파일 경로."""
+    try:
+        return sys._getframe(2).f_globals.get("__file__")
+    except Exception:      # noqa: BLE001 — 지문이 없어도 지도는 그려져야 한다
+        return None
+
+
 def legend_html(title: str, rows: Sequence[Tuple[str, str]], *,
                 note: Optional[str] = None,
                 collapse_after: Optional[int] = None,
@@ -221,8 +286,11 @@ def legend_html(title: str, rows: Sequence[Tuple[str, str]], *,
             'border-top:1px solid rgba(0,0,0,.12); color:#555; font-size:12px;">'
             f'{note}</div>'
         )
+    # 그린 코드의 지문을 산출물에 남긴다 — `/maps`가 이것으로 낡음을 안다.
+    stamp = source_stamp(_caller_file())
     return f"""
-    <div style="position: fixed; {position} z-index: 9999;
+    <div {STAMP_ATTR}="{stamp}"
+         style="position: fixed; {position} z-index: 9999;
                 background: rgba(255,255,255,.94);
                 -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
                 padding: 12px 14px; border-radius: 10px;

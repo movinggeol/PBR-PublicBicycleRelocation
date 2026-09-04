@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import mapviz
 from project_config import PROJECT_ROOT
 
 DATA_ROOT = PROJECT_ROOT / "data"
@@ -24,6 +25,27 @@ MAP_CATEGORIES = [
     ("VRP 경로 지도 (step3)", "VRP/visualization", "*.html"),
     ("불균형 개선 지도 (step4)", "성능 지표/visualization", "*.html"),
 ]
+
+# 각 폴더의 지도를 **그리는 모듈**. 낡음 판정에 쓴다 —
+# `mapviz.source_stamp()`가 이 파일과 mapviz.py를 함께 해싱하므로, 둘 중
+# 어느 쪽이 바뀌어도 이미 그려 둔 지도가 낡았다는 것이 드러난다.
+#
+# ⚠️ `MAP_CATEGORIES`와 **열쇠가 맞아야** 한다. 손으로 적은 두 목록이라
+#    지도가 늘 때 한쪽만 고치기 쉽다 — `tests/test_mapviz.py`가 둘이
+#    어긋나면 실패한다(`transfer_run.RUN_TABLES`에서 겪은 것과 같은 자리).
+MAP_DRAWERS = {
+    "ILP/visualization": PROJECT_ROOT / "step1_cluster" / "st_visualization.py",
+    "VRP/visualization": PROJECT_ROOT / "step3_map" / "main.py",
+    "성능 지표/visualization": PROJECT_ROOT / "step4_metrics" / "imbalance.py",
+}
+
+# 지도 한 장이 100~800KB라 스물몇 장을 통째로 읽으면 화면이 느려진다.
+#
+# ⚠️ 처음에는 **꼬리**부터 읽었다. folium이 범례를 문서 끝에 붙일 것이라고
+#    짐작했는데, 실제로 재 보니 지문은 **2,235번째 글자**(파일 앞쪽)에 있었다.
+#    그래서 꼬리에서 못 찾고 매번 전부 다시 읽어, 최적화가 오히려 느리게
+#    만들고 있었다(39장에 63ms). 머리부터 읽는다.
+_HEAD_BYTES = 64 * 1024
 
 CSV_CATEGORIES = [
     ("대여소별 재고 (step0)", "대여소별 재고", "*.csv"),
@@ -63,8 +85,71 @@ def _scan(categories) -> List[Dict]:
     return result
 
 
+# 읽어 둔 산출물의 지문. 열쇠에 **mtime과 크기**가 들어간다.
+#
+# ⚠️ `mapviz.source_stamp()`의 캐시는 걷어냈는데 여기는 두는 이유가 있다.
+#    거기는 열쇠(모듈 경로)가 내용이 바뀌어도 그대로라 옛 값이 굳었다. 여기는
+#    **파일이 바뀌면 열쇠가 바뀐다** — 굳을 수가 없다. 도장 이전에 그린
+#    산출물은 지문이 없어 매번 파일 전체를 읽게 되는데(지금 39장 중 37장이
+#    그렇다), 그것을 화면을 열 때마다 되풀이할 이유는 없다.
+_FILE_STAMPS: Dict[tuple, Optional[str]] = {}
+
+
+def _stamp_of_file(path: Path) -> Optional[str]:
+    """저장된 지도에서 지문을 읽는다. 머리부터 보고 없을 때만 전부 읽는다."""
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+
+    key = (str(path), stat.st_mtime_ns, stat.st_size)
+    if key in _FILE_STAMPS:
+        return _FILE_STAMPS[key]
+
+    try:
+        with path.open("rb") as fh:
+            head = fh.read(_HEAD_BYTES).decode("utf-8", "ignore")
+        found = mapviz.stamp_in(head)
+        if found is None and stat.st_size > _HEAD_BYTES:
+            # 앞쪽에 없으면 자리가 바뀐 것일 수 있다 — 놓치면 낡음을 영영
+            # 모르므로, 확인만은 끝까지 한다(그 결과를 여기 남긴다).
+            found = mapviz.stamp_in(
+                path.read_text(encoding="utf-8", errors="ignore"))
+    except OSError:
+        return None
+
+    # 열쇠가 파일마다·판마다 다르므로 무한히 자라지는 않지만, 실행이 쌓이면
+    # 옛 판의 열쇠가 남는다. 넉넉한 상한에서 통째로 비운다 — 다시 읽으면 된다.
+    if len(_FILE_STAMPS) > 512:
+        _FILE_STAMPS.clear()
+    _FILE_STAMPS[key] = found
+    return found
+
+
 def list_maps() -> List[Dict]:
-    return _scan(MAP_CATEGORIES)
+    """지도 목록. 각 항목에 **낡았는지**(`stale`)를 함께 싣는다.
+
+    `stale`은 셋 중 하나다:
+      `True`   그린 뒤에 코드가 바뀌었다 — 다시 그려야 화면과 맞는다
+      `False`  지금 코드로 그린 것이다
+      `None`   도장 이전에 그린 산출물이라 **알 수 없다**(모른다고 말한다)
+    """
+    groups = _scan(MAP_CATEGORIES)
+    for group, (_title, subdir, _pattern) in zip(groups, MAP_CATEGORIES):
+        drawer = MAP_DRAWERS.get(subdir)
+        current = mapviz.source_stamp(str(drawer)) if drawer else None
+        stale_count = 0
+        for entry in group["entries"]:
+            stamp = _stamp_of_file(DATA_ROOT / entry["relpath"])
+            entry["stamp"] = stamp
+            entry["stale"] = None if (stamp is None or current is None) \
+                else stamp != current
+            if entry["stale"]:
+                stale_count += 1
+        group["stale_count"] = stale_count
+        group["unknown_count"] = sum(
+            1 for e in group["entries"] if e["stale"] is None)
+    return groups
 
 
 def list_csvs() -> List[Dict]:

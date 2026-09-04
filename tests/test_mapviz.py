@@ -211,3 +211,93 @@ def test_쓰지_않는_색_변수를_두지_않는다():
     code = (PROJECT_ROOT / "step3_map" / "main.py").read_text(encoding="utf-8")
     body = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("#"))
     assert "base_color" not in body, "쓰지 않는 색 변수가 남아 있다"
+
+
+# ─────────── 산출물이 낡았는지 알리는 도장 (1.26.122) ───────────
+
+def test_범례에_그린_코드의_지문이_찍힌다():
+    """지도의 범례·팔레트는 코드에 있고 산출물은 디스크에 있다.
+
+    코드를 고쳐도 이미 그려 둔 HTML은 낡은 채로 남는데, 사람이 보는 것은
+    디스크의 HTML이다. 실제로 두 번 갈렸고(1.26.80 팔레트·1.26.107 싣기/내리기
+    색) **두 번 다 사람이 눈으로 발견했다.**
+    """
+    html = mapviz.legend_html("시험", [(mapviz.swatch_circle("#000"), "가")])
+    stamp = mapviz.stamp_in(html)
+    assert stamp, "범례에 지문이 없다 — 낡음을 알 길이 없어진다"
+    assert len(stamp) == 12 and all(c in "0123456789abcdef" for c in stamp)
+
+
+def test_코드가_바뀌면_지문도_바뀐다(tmp_path):
+    """판 번호를 손으로 올리는 방식이면 올리는 것을 잊는다.
+    내용을 해싱하므로 **잊을 수가 없다.**"""
+    fake = tmp_path / "drawer.py"
+    fake.write_text("# 처음\n", encoding="utf-8")
+    first = mapviz.source_stamp(str(fake))
+
+    fake.write_text("# 처음\n# 한 줄 더\n", encoding="utf-8")
+    second = mapviz.source_stamp(str(fake))
+
+    assert first != second, "부르는 쪽이 바뀌었는데 지문이 그대로다"
+
+    # 부르는 쪽이 다르면 지문도 달라야 한다 — 그래야 분류별로 가려 낸다.
+    other = tmp_path / "other.py"
+    other.write_text("# 처음\n", encoding="utf-8")
+    assert mapviz.source_stamp(str(other)) != second
+
+
+def test_지문을_캐시하지_않는다(tmp_path):
+    """⚠️ 처음에는 캐시를 뒀는데, 웹앱은 오래 떠 있는 프로세스라 한 번 읽은
+    지문이 굳어 **서버를 다시 띄우기 전까지 코드 변경을 영영 못 보는** 상태가
+    됐다. 낡음을 알리려고 만든 장치가 낡은 값을 쥐고 있으면 없느니만 못하다.
+    """
+    fake = tmp_path / "drawer.py"
+    fake.write_text("# 1\n", encoding="utf-8")
+    a = mapviz.source_stamp(str(fake))
+    fake.write_text("# 2\n", encoding="utf-8")
+    b = mapviz.source_stamp(str(fake))
+    assert a != b, "같은 경로를 다시 물었더니 옛 값이 나온다(캐시가 살아 있다)"
+
+
+def test_지도_분류마다_그리는_모듈이_적혀_있다():
+    """`MAP_CATEGORIES`와 `MAP_DRAWERS`는 손으로 적은 두 목록이다 —
+    지도가 늘 때 한쪽만 고치면 그 분류는 **낡음을 영영 모른다.**
+    `transfer_run.RUN_TABLES`에서 겪은 것과 같은 자리다(1.26.113)."""
+    import sys
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    from webapp import catalog
+
+    subdirs = {subdir for _title, subdir, _pattern in catalog.MAP_CATEGORIES}
+    assert subdirs == set(catalog.MAP_DRAWERS), (
+        f"두 목록이 어긋난다: 분류에만 {subdirs - set(catalog.MAP_DRAWERS)}, "
+        f"그리는 모듈에만 {set(catalog.MAP_DRAWERS) - subdirs}")
+
+    for subdir, drawer in catalog.MAP_DRAWERS.items():
+        assert drawer.is_file(), f"{subdir}의 그리는 모듈이 없다: {drawer}"
+
+
+def test_산출물_지문_캐시가_파일_변경을_따라온다(tmp_path):
+    """파일 지문은 캐시하되 **열쇠에 mtime과 크기를 넣는다.**
+
+    `mapviz.source_stamp()`의 캐시는 걷어냈다 — 거기는 열쇠(모듈 경로)가
+    내용이 바뀌어도 그대로라 옛 값이 굳었기 때문이다. 여기는 파일이 바뀌면
+    열쇠가 바뀌므로 굳을 수 없어야 한다. 굳으면 다시 그린 지도가 계속
+    "낡음"으로 남는다.
+    """
+    import sys
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    from webapp import catalog
+
+    f = tmp_path / "map.html"
+    f.write_text('<div data-mapviz="aaaaaaaaaaaa"></div>', encoding="utf-8")
+    assert catalog._stamp_of_file(f) == "aaaaaaaaaaaa"
+
+    # 같은 경로, 다른 내용 -> 새 값이 나와야 한다
+    f.write_text('<div data-mapviz="bbbbbbbbbbbb"></div>', encoding="utf-8")
+    assert catalog._stamp_of_file(f) == "bbbbbbbbbbbb",         "파일이 바뀌었는데 캐시가 옛 지문을 내놓는다"
+
+    # 지문이 없는 산출물은 None (도장 이전 파일) — 모른다고 말한다
+    f.write_text("<div>도장 없음</div>", encoding="utf-8")
+    assert catalog._stamp_of_file(f) is None

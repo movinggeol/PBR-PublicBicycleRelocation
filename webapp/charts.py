@@ -35,6 +35,23 @@ def _empty(message: str = "그릴 자료가 없습니다.") -> str:
     return f'<p class="empty">{html.escape(message)}</p>'
 
 
+def _svg_open(width: float, height: float, label: str) -> str:
+    """모든 그래프가 같이 쓰는 SVG 여는 태그.
+
+    여섯 그래프가 **같은 문자열을 각자 적어** 두고 있었다. 문제는 길이가
+    아니라 **갈라진다는 것**이다 — `class="viz"`가 스타일을, `role="img"`와
+    `aria-label`이 접근성을 맡는데, 그중 하나를 고치려면 여섯 곳을 찾아
+    고쳐야 하고 그러면 한둘은 빠진다. 이 저장소가 이미 겪은 자리다
+    (`mapviz.py`가 생기기 전 세 지도의 범례가 그렇게 갈라져 있었다).
+
+    ⚠️ `aria-label`은 **부르는 쪽이 완성해서 넘긴다.** 대부분은 제목이지만
+    산점도는 *"y 대비 x"*, 히트맵은 *"요일과 시간대별 값"* 이라 제목만으로는
+    안 된다 — 여기서 제목을 받아 조립하면 그 둘이 다시 예외가 된다.
+    """
+    return (f'<svg viewBox="0 0 {width} {height}" class="viz" role="img" '
+            f'aria-label="{html.escape(label)}">')
+
+
 def _fmt(value: float, digits: int = 1) -> str:
     """축·표시용 숫자. 정수로 떨어지면 소수점을 붙이지 않는다."""
     if value == int(value):
@@ -90,8 +107,7 @@ def line(labels: Sequence[str], values: Sequence[Optional[float]], *,
     def py(v):
         return pad_t + plot_h - plot_h * (v - low) / span
 
-    parts = [f'<svg viewBox="0 0 {width} {height}" class="viz" role="img" '
-             f'aria-label="{html.escape(title)}">']
+    parts = [_svg_open(width, height, title)]
 
     # 격자 3줄 + y 눈금. 눈금 글자는 세로로 줄이 맞아야 해서 tabular-nums를 쓴다.
     for k in range(3):
@@ -158,8 +174,7 @@ def hbar(labels: Sequence[str], values: Sequence[float], *,
     _, high = _nice_bounds(0, max(values, default=0) or 1)
     span = high or 1
 
-    parts = [f'<svg viewBox="0 0 {width} {height}" class="viz" role="img" '
-             f'aria-label="{html.escape(title)}">']
+    parts = [_svg_open(width, height, title)]
 
     # 세로 격자 두 줄(중간·끝) — 값이 얼마나 찼는지 눈대중할 기준선.
     for k in (1, 2):
@@ -242,8 +257,7 @@ def deviation_hbar(labels: Sequence[str], values: Sequence[float], *,
     zero_x = pad_l + half
     height = pad_t + row_h * n + pad_b
 
-    parts = [f'<svg viewBox="0 0 {width} {height}" class="viz" role="img" '
-             f'aria-label="{html.escape(title)}">']
+    parts = [_svg_open(width, height, title)]
 
     # 기준선(평균). 이 그래프에서 유일하게 뜻이 있는 세로선이라 격자를 더 두지
     # 않는다 — 선이 여럿이면 어느 것이 기준인지 흐려진다.
@@ -305,8 +319,7 @@ def vbar(labels: Sequence[str], values: Sequence[float], *,
     bar_w = max(2.0, slot * .72)
     marked = set(highlight or ())
 
-    parts = [f'<svg viewBox="0 0 {width} {height}" class="viz" role="img" '
-             f'aria-label="{html.escape(title)}">']
+    parts = [_svg_open(width, height, title)]
 
     # 가로 격자 셋(0·중간·꼭대기)과 왼쪽 눈금.
     for k in range(3):
@@ -411,8 +424,7 @@ def scatter(points: Sequence[dict], *, x_key: str, y_key: str,
     def py(v):
         return pad_t + plot_h - plot_h * (v - y_low) / y_span
 
-    parts = [f'<svg viewBox="0 0 {width} {height}" class="viz" role="img" '
-             f'aria-label="{html.escape(y_label)} 대비 {html.escape(x_label)}">']
+    parts = [_svg_open(width, height, f"{y_label} 대비 {x_label}")]
 
     for k in range(3):
         y = py(y_low + y_span * k / 2)
@@ -483,8 +495,7 @@ def heatmap(rows: Sequence[str], cols: Sequence[str],
     values = [v for row in matrix for v in row if v is not None]
     scale = max((abs(v) for v in values), default=0)
 
-    parts = [f'<svg viewBox="0 0 {total_w} {total_h}" class="viz" role="img" '
-             f'aria-label="요일과 시간대별 값">']
+    parts = [_svg_open(total_w, total_h, "요일과 시간대별 값")]
 
     for c, name in enumerate(cols):
         # 칸이 좁으면 두 칸에 한 번만 적는다 — 다 적으면 글자가 겹친다.

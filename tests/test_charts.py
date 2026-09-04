@@ -548,3 +548,24 @@ def test_빈_상태_문구를_그래프마다_따로_적지_않는다():
         charts.vbar([], [], title="t") if hasattr(charts, "vbar") else charts._empty(),
     }
     assert len(outputs) == 1, f"그래프마다 빈 상태가 다르다: {outputs}"
+
+
+def test_모든_그래프가_svg_봉투를_한_벌로_쓴다():
+    """여섯 그래프가 같은 여는 태그를 **각자 적어** 두고 있었다.
+
+    길이가 문제가 아니라 **갈라진다는 것**이 문제다 — `class="viz"`가
+    스타일을, `role="img"`·`aria-label`이 접근성을 맡는데 그중 하나를
+    고치려면 여섯 곳을 찾아야 하고 그러면 한둘은 빠진다.
+    """
+    import re
+    from pathlib import Path
+
+    code = (Path(charts.__file__)).read_text(encoding="utf-8")
+    raw = re.findall(r"<svg viewBox", code)
+    assert len(raw) == 1, (
+        f"SVG 여는 태그를 {len(raw)}곳에서 직접 적고 있다 — _svg_open()을 써라")
+
+    # 봉투가 접근성 속성을 실제로 달고 있는지도 함께 본다.
+    tag = charts._svg_open(100, 50, "제목<&>")
+    assert 'class="viz"' in tag and 'role="img"' in tag
+    assert "제목&lt;&amp;&gt;" in tag, "aria-label을 이스케이프하지 않는다"
