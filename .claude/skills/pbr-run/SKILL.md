@@ -31,7 +31,7 @@ description: PBR 프로젝트의 앱을 실제로 띄우고 조작해 변경이 
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-**607개 통과가 기준선이다.** 여기서 깨지면 아래로 내려가지 마라.
+**635개 통과가 기준선이다.** 여기서 깨지면 아래로 내려가지 마라.
 
 ---
 
@@ -173,6 +173,99 @@ page.locator("#tipbox .tipclose").click()              # x로 닫는다
 ⚠️ **고정은 `.tip` 딱지에서만 된다.** 내비 링크에도 `data-tip`이 있어서,
 아무 데서나 고정하면 **페이지 이동이 막힌다**(1.22.1에서 겪음).
 
+### 400% 확대 — 낱말이 세로로 쪼개지는지 (1.26.115)
+
+1280x1024를 400%로 확대하면 **CSS 폭이 320px**이다(WCAG 1.4.10이 보는 폭).
+뷰포트를 그 값으로 두면 미디어 쿼리도 같은 폭을 봐서 실제 확대와 조건이 같다.
+
+⚠️ **가로 스크롤 0건이 "읽힌다"는 뜻이 아니다.** 좁아지면 브라우저가 줄을
+바꿔 넘침을 없애므로 `scrollWidth > clientWidth`는 통과한다. 그런데 두 글자
+낱말이 한 글자씩 세로로 서면 넘치지 않아도 못 읽는다 — 내비 단추 라벨
+"넓게"가 **여덟 화면 전부에서** 그러고 있었는데 숫자 검사를 다 빠져나갔다.
+
+```python
+page = b.new_page(viewport={"width": 320, "height": 256})   # = 1280 @ 400%
+page.goto(BASE + path, wait_until="load")   # /maps는 networkidle이 안 끝난다
+page.wait_for_timeout(900)                  # 지연 스크립트가 붙은 뒤에 잰다
+
+# ⚠️ 줄 수를 **상자 높이로 짐작하지 마라.** 44px 터치 타깃을 전부 "2줄"로
+#    잘못 센다. Range는 글자가 실제로 그려진 줄마다 사각형을 하나씩 준다.
+bad = page.evaluate("""() => {
+    const out = [];
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let n;
+    while ((n = w.nextNode())) {
+        const t = n.textContent.trim();
+        if (!t || t.length > 24) continue;
+        const r = document.createRange();
+        r.selectNodeContents(n);
+        const rects = [...r.getClientRects()].filter(x => x.width && x.height);
+        if (rects.length < 2) continue;                  // 한 줄이면 통과
+        const words = t.split(/\\s+/).filter(Boolean);
+        if (words.length >= rects.length) continue;      // 낱말마다 줄 = 정상
+        out.push({text: t, lines: rects.length});        // 낱말 하나가 여러 줄
+    }
+    return out;
+}""")
+# ⚠️ 이 검사는 **정상인 것도 문다.** 걸린 것을 다 고치려 들지 마라.
+print(path, bad)
+```
+
+지금 기준선(1.26.115 실측)은 **8개 화면 중 5개가 0건**이고, 나머지 셋에 걸리는
+것은 **고치지 않기로 한 것들**이다. 새로 걸린 것이 있는지만 보면 된다.
+
+| 걸리는 것 | 어디 | 왜 안 고치나 |
+| --- | --- | --- |
+| `--day-type` · `docs/분석/KPI.md` | `/guide` | 60~84px 열에 정말 안 들어간다. 그 표는 **가로로 스크롤되는 상자 안**이라 WCAG 1.4.10이 명시적으로 허용하는 예외다 |
+| `했습니다(` · `참고.` | `/run` · `/vehicles` | 산문이 인라인 태그 경계에서 흐르는 것이라 **검사기의 오탐**이다. 낱말이 쪼개진 것이 아니다 |
+
+**고칠 때**: 짧고 접히면 안 되는 라벨에는 `white-space: nowrap`과
+`flex-shrink: 0`을 **함께** 건다(하나만 걸면 flex가 여전히 줄인다). 긴 코드
+문자열에는 `word-break: break-all` 대신 **`overflow-wrap: anywhere`** 를 쓴다 —
+`break-all`은 다음 줄에 통째로 들어갈 토큰까지 갈랐다.
+
+### 저사양 렌더 — 스크립트인가 레이아웃인가 (1.26.115)
+
+CPU를 느리게 두고 잰다. ⚠️ **한 번만 재면 잡음을 사실로 남긴다** — 노드
+162개짜리 홈이 1971개짜리 지시서보다 느리게 나온 적이 있다. **각 5회**를 재고
+중앙값을 쓴다.
+
+```python
+cdp = page.context.new_cdp_session(page)
+cdp.send("Emulation.setCPUThrottlingRate", {"rate": 6})   # 저가 기기
+cdp.send("Performance.enable")
+page.goto(url, wait_until="load")          # /maps는 networkidle이 안 끝난다
+page.wait_for_timeout(2000)
+m = {x["name"]: x["value"] for x in cdp.send("Performance.getMetrics")["metrics"]}
+# ScriptDuration / LayoutDuration / RecalcStyleDuration 으로 갈린다
+```
+
+**어디를 고칠지는 이 갈래가 정한다.** 실측(1.26.115)은 스크립트 13~79ms에
+레이아웃 560~2136ms였다 — 코드가 아니라 CSS 쪽이었다. CPU 프로파일에
+자바스크립트 자기시간이 0이고 전부 `(program)`이면 그것도 같은 신호다.
+
+⚠️ **글꼴을 줄이겠다는 판단은 반드시 A/B로 확인하라.** 518KB 가변 글꼴을
+의심해 막고 재니 **레이아웃이 오히려 34% 느려졌다**(시스템 대체 글꼴이 더
+비싸다). 재 보지 않았으면 화면을 느리게 만들 뻔했다.
+
+사용자가 실제로 겪는 값은 **누르고 나서 화면이 바뀌기까지**다. 총 로드 시간이
+길어도 조금씩 나눠 쓰면 화면은 반응한다.
+
+```python
+ms = page.evaluate("""(sel) => new Promise(res => {
+    const el = document.querySelector(sel);
+    const t0 = performance.now();
+    let done = false;
+    const fin = () => { if (!done) { done = true; res(Math.round(performance.now() - t0)); } };
+    requestAnimationFrame(() => requestAnimationFrame(fin));   // 실제 페인트까지
+    el.click();
+    setTimeout(fin, 6000);
+})""", "#view-toggle")
+```
+
+기준(INP): 200ms 이하 좋음 · 500ms 넘으면 나쁨. 6배 느린 CPU에서 이 저장소는
+42~173ms였다.
+
 ---
 
 ## 5. 무엇을 볼 것인가 — 화면별
@@ -229,7 +322,7 @@ m.call_tmap_chunked = fake_chunked      # step3 모듈을 로드한 뒤 갈아�
 
 ## 8. 마무리 체크리스트
 
-- [ ] `pytest` 통과 (607개)
+- [ ] `pytest` 통과 (635개)
 - [ ] 서버를 **PowerShell로** 껐다
 - [ ] 테스트 라벨 파일·DB 행을 **둘 다** 지웠다
 - [ ] `git status`가 깨끗하다 (합성 데이터가 남지 않았나)
