@@ -660,12 +660,22 @@ def latest_label(conn: sqlite3.Connection, table: str) -> Optional[str]:
 def record_run(conn: sqlite3.Connection, run_label: str, period: Optional[str] = None,
                duration: Optional[str] = None, raw_file: Optional[str] = None,
                day_type: Optional[str] = None, kind: Optional[str] = None) -> None:
-    """실행 메타데이터를 기록한다(같은 라벨이면 덮어쓴다)."""
+    """실행 메타데이터를 기록한다(같은 라벨이면 덮어쓴다).
+
+    ⚠️ **`kind`만은 덮어쓰지 않는다.** 나머지 값은 파이프라인이 다시 계산해
+    낼 수 있지만 종류는 **사람이 화면에서 못박은 것**이라 다시 만들어 낼 길이
+    없다. `kind=None`으로 덮으면 `list_runs()`가 라벨 짐작으로 되돌아가,
+    짐작과 다르게 정정해 둔 실행이 조용히 원래대로 돌아간다 —
+    `tools/csv_to_db.py`가 `kind` 없이 재적재하면 실제로 그렇게 됐다.
+    `ensure_run()`이 COALESCE로 지키는 것과 같은 규칙을 여기서도 지킨다.
+    """
     conn.execute(
         "INSERT OR REPLACE INTO runs"
         " (run_label, period, duration, raw_file, day_type, kind, created_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))",
-        (run_label, period, duration, raw_file, day_type, kind),
+        " VALUES (?, ?, ?, ?, ?,"
+        "         COALESCE(?, (SELECT kind FROM runs WHERE run_label = ?)),"
+        "         datetime('now', 'localtime'))",
+        (run_label, period, duration, raw_file, day_type, kind, run_label),
     )
     conn.commit()
 

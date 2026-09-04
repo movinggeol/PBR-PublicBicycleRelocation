@@ -182,6 +182,37 @@ def test_run_registry(conn):
     assert runs.loc[runs["run_label"] == "R2", "duration"].iloc[0] == "_05_10,_10_15"
 
 
+def test_record_run_keeps_the_kind_a_person_pinned(conn):
+    """재적재가 **사람이 못박은 종류를 지우지 않는다.**
+
+    나머지 값은 파이프라인이 다시 만들지만 종류는 사람만 안다. 짐작과 다르게
+    정정한 실행(`obs-cmp-*`은 라벨로는 실험인데 운영으로 고쳐 둠)을
+    `tools/csv_to_db.py`처럼 `kind` 없이 재적재하면 조용히 짐작으로 되돌아갔다.
+    """
+    db.ensure_run(conn, "obs-cmp-1520", period="25년 11월")
+    db.set_run_kind(conn, "obs-cmp-1520", "plan")
+
+    db.record_run(conn, run_label="obs-cmp-1520", period="25년 11월", duration="_15_20")
+
+    # DB 실제 값으로 본다 — list_runs()는 NULL이면 라벨로 짐작해 덮으므로
+    # 그것만 보면 지워진 것을 못 잡는다(이 버그가 숨어 있던 이유).
+    kind = conn.execute("SELECT kind FROM runs WHERE run_label = ?",
+                        ("obs-cmp-1520",)).fetchone()[0]
+    assert kind == "plan"
+
+
+def test_record_run_takes_an_explicit_kind(conn):
+    """넘긴 종류는 이긴다 — 지키는 것은 '모를 때'뿐이다."""
+    db.ensure_run(conn, "R9", period="25년 11월")
+    db.set_run_kind(conn, "R9", "plan")
+
+    db.record_run(conn, run_label="R9", period="25년 11월", kind="probe")
+
+    kind = conn.execute("SELECT kind FROM runs WHERE run_label = ?",
+                        ("R9",)).fetchone()[0]
+    assert kind == "probe"
+
+
 def test_unknown_table_raises(conn):
     with pytest.raises(KeyError):
         db.save_frame(conn, "없는테이블", pd.DataFrame(), run_label="R1")

@@ -1334,7 +1334,12 @@ def test_불균형_지도가_색을_직접_박지_않는다():
 
     src = (Path(mapviz.__file__).parent / "step4_metrics" / "imbalance.py").read_text(
         encoding="utf-8")
-    body = src[src.index("def make_imbalance_map") if "def make_imbalance_map" in src else 0:]
+    # ⚠️ 함수 이름을 틀리게 적으면 **조용히 파일 전체를 훑는다.** 예전에는
+    # 없는 이름(`make_imbalance_map`)을 찾고 있어서 `if ... else 0` 때문에
+    # 범위 좁히기가 한 번도 동작하지 않았다 — 통과는 했지만 우연이었다.
+    marker = "def demand_satisfaction_map"
+    assert marker in src, f"{marker}를 찾지 못했다 — 함수 이름이 바뀌었나?"
+    body = src[src.index(marker):]
     assert "color = 'red'" not in body and 'color = "red"' not in body, \
         "불균형 지도가 색을 직접 박고 있다"
     assert "DROP_COLOR" in body and "PICK_COLOR" in body, \

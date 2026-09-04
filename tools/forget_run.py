@@ -107,8 +107,10 @@ def main() -> int:
         tables = scoped_tables(conn)
         counts = count_rows(conn, tables, labels)
 
-        unknown = [l for l in labels if l not in known and l not in
-                   {t for t in counts}]
+        # `counts`의 열쇠는 **테이블 이름**이지 라벨이 아니다. 예전에는
+        # `l not in {t for t in counts}`가 한 항 더 붙어 있었는데, 라벨과
+        # 테이블 이름을 견주는 것이라 늘 참이어서 아무것도 거르지 않았다.
+        unknown = [l for l in labels if l not in known]
         if not counts:
             print(f"지울 것이 없습니다: {', '.join(labels)}")
             if unknown:
