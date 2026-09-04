@@ -269,3 +269,106 @@ def test_감시를_초기화하면_다시_조용해진다(bc, capsys):
     bc.stockout(net, pop.head(2), {}, "_05_10")
 
     assert "분모가 바뀌었습니다" not in capsys.readouterr().err
+
+
+# ------------------------------------------- 실측 결품: 어느 날을 셌다고 말하는가
+
+def load_observed():
+    """`experiments/structure/observed_stockout.py`를 싣는다."""
+    for path in (PROJECT_ROOT, PROJECT_ROOT / "experiments" / "structure"):
+        if str(path) not in sys.path:
+            sys.path.insert(0, str(path))
+    spec = importlib.util.spec_from_file_location(
+        "observed_stockout",
+        PROJECT_ROOT / "experiments" / "structure" / "observed_stockout.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def obs():
+    return load_observed()
+
+
+def _mixed_window_frame(obs):
+    """창이 섞인 자료. 넓은 날 하나와 좁지만 **자기 창 안에서는 촘촘한** 날들.
+
+    실제로 겪은 모양이다 — 8/31만 07~22시고 나머지는 09~17시대였다.
+    """
+    rows = []
+    for day, (start, end) in {
+        "2026-08-25": (9, 17), "2026-08-26": (9, 17),
+        "2026-08-31": (7, 22),
+    }.items():
+        for hour in range(start, end):
+            for minute in range(0, 60, 10):
+                rows.append({"station_id": "ST0001",
+                             "관측": pd.Timestamp(f"{day} {hour:02d}:{minute:02d}"),
+                             "날짜": day, "시각": hour, "stock": 0, "parking_lot": 10})
+    return pd.DataFrame(rows)
+
+
+def test_하루_전체_판정은_자료를_더하면_움직인다(obs):
+    """**이것이 결함이다** — 좁은 창 날은 자기 창 안에서 결측 0인데도, 나중에
+    넓은 날이 들어오면 소급해서 탈락한다. 잣대가 자료에 따라 움직인다.
+    """
+    frame = _mixed_window_frame(obs)
+    narrow = frame[frame["날짜"] != "2026-08-31"]
+
+    assert len(obs.complete_days(narrow)) == 2      # 좁은 날끼리는 둘 다 온전
+    assert obs.complete_days(frame) == ["2026-08-31"]   # 넓은 날이 들어오자 탈락
+
+
+def test_회차_판정은_넓은_날이_들어와도_흔들리지_않는다(obs):
+    """회차별 판정은 그 시간대만 보므로 **소급해서 뒤집히지 않는다.**
+    분석이 이쪽을 쓰는 이유이고, 머리기사도 이쪽이어야 한다.
+    """
+    frame = _mixed_window_frame(obs)
+    hours = [10, 11, 12, 13, 14]
+    narrow = frame[frame["날짜"] != "2026-08-31"]
+
+    assert len(obs.duration_complete_days(narrow, hours)) == 2
+    assert len(obs.duration_complete_days(frame, hours)) == 3
+
+
+def test_머리기사는_회차별로_말하고_창이_모자라면_밝힌다(obs):
+    """머리기사가 `complete_days()` 하나로 말하면 **근거를 낮춰 말한다** —
+    실측에서 `_10_15`가 6일인데 "온전한 날 1일"이라고 적고 있었다.
+
+    창이 회차를 통째로 덮지 못하면 날 수가 있어도 복원과 맞대지 못하므로
+    그것도 함께 밝혀야 한다 — 안 그러면 쓸 수 있는 줄 안다.
+    """
+    frame = _mixed_window_frame(obs)
+    window = frame["시각"].unique()
+
+    usable = obs.usable_by_duration(frame, ["_10_15", "_05_10"], window)
+
+    assert len(usable["_10_15"][0]) == 3
+    assert usable["_10_15"][1] is False           # 10~14시는 창이 다 덮는다
+    assert usable["_05_10"][1] is True            # 5~8시는 07시부터라 모자란다
+
+    summary = obs.format_usable(usable)
+    assert "_10_15 3일" in summary
+    assert "(창 일부)" in summary and "_10_15 3일(창 일부)" not in summary
+
+
+def test_관측시간을_함께_내야_두_평균의_차이가_설명된다(obs):
+    """본표는 반쪽짜리 날을 섞고 비교표는 안 섞는다. 같은 대여소·같은 회차인데
+    값이 다른 이유가 **분모**이므로, 분모를 낼 수 있어야 한다.
+
+    실측에서 `_10_15` 245곳이 1.02(7일) 대 1.15(6일)였다.
+    """
+    frame = _mixed_window_frame(obs)
+    hours = [10, 11, 12, 13, 14]
+    half = frame[(frame["날짜"] != "2026-08-25") | (frame["시각"] < 12)]
+
+    full = obs.observed_hours(frame, hours).groupby("station_id")[
+        ["결품시간", "관측시간"]].mean()
+    mixed = obs.observed_hours(half, hours).groupby("station_id")[
+        ["결품시간", "관측시간"]].mean()
+
+    assert full.loc["ST0001", "관측시간"] == pytest.approx(5.0)
+    # 반쪽 날이 섞이면 관측시간이 줄고, 결품시간도 그만큼 낮게 잡힌다
+    assert mixed.loc["ST0001", "관측시간"] < full.loc["ST0001", "관측시간"]
+    assert mixed.loc["ST0001", "결품시간"] < full.loc["ST0001", "결품시간"]

@@ -1,11 +1,11 @@
 # 테스트
 
 이 프로젝트는 처음에 테스트가 하나도 없었고, **의존성이 전부 깨진 상태**로
-파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 647개 테스트입니다.
+파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 651개 테스트입니다.
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 647개 (약 100초)
+python -m pytest              # 전체 651개 (약 100초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -31,7 +31,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_road_time.py](../../tests/test_road_time.py) | 25 | **TMAP 실도로 고정 패널** — 패널이 결정적인지(흔들리면 '매일 같은 구간'이 무너진다), 차고지 왕복을 포함하는지, 거리 구간이 고르게 차는지, 누적의 차분이 구간 실측이고 `start_time`이 함께 남는지, **한도가 소진돼도 늘 같은 회차만 잘리지 않는지** ([EXPERIMENTS.md](../분석/EXPERIMENTS.md) 9장) |
 | [tests/test_merge_stock.py](../../tests/test_merge_stock.py) | 15 | **두 PC 재고 병합** — 이미 있는 틱을 덮어쓰지 않는지(*먼저 수집한 것이 이긴다*, 수집기의 `INSERT OR REPLACE`와 정반대), 빈 틱은 채우는지, CSV·DB 두 원천을 읽는지, 옮겨온 DB를 읽기 전용으로 여는지, 마스터가 없는 날을 알리는지 ([COLLECTOR.md](COLLECTOR.md) 11장) |
 | [tests/test_webapp_db.py](../../tests/test_webapp_db.py) | 15 | 웹 API가 CSV 대신 DB를 읽는지 |
-| [tests/test_experiment_guards.py](../../tests/test_experiment_guards.py) | 13 | **실험 하네스가 조용히 틀린 답을 내지 않는지** — 없는 라벨을 받으면 작업량 0인 표를 말없이 내놓던 것(1.26.39), 라벨이 없을 때 *"다시 돌리세요"* 라는 **틀린 처방**을 안내하던 것(1.26.54). 여기서 나온 숫자가 논문에 실린다 |
+| [tests/test_experiment_guards.py](../../tests/test_experiment_guards.py) | 17 | **실험 하네스가 조용히 틀린 답을 내지 않는지** — 없는 라벨을 받으면 작업량 0인 표를 말없이 내놓던 것(1.26.39), 라벨이 없을 때 *"다시 돌리세요"* 라는 **틀린 처방**을 안내하던 것(1.26.54), 그리고 **실측 결품 보고서가 어느 날을 셌다고 말하는지**(1.26.123) — 하루 전체 판정은 **자료를 더하면 움직이고**, 회차 판정은 안 움직인다 · 창이 회차를 못 덮으면 밝히는지 · 반쪽짜리 날이 섞이면 관측시간과 결품시간이 함께 줄어드는지. 여기서 나온 숫자가 논문에 실린다 |
 | [tests/test_fleet.py](../../tests/test_fleet.py) | 16 | 차량 로테이션·형평성과 보유 대수 변경, **배정 이력을 한 쪽만 읽고 쪽을 다 넘기면 한 행도 안 빠지는지**(1.26.116) ([FLEET.md](FLEET.md)) |
 | [tests/test_pipeline_progress.py](../../tests/test_pipeline_progress.py) | 12 | 실행 로그에서 진행 단계를 뽑는 규약 ([WEBAPP.md](WEBAPP.md)) |
 | [tests/test_rentals.py](../../tests/test_rentals.py) | 10 | 대여이력 적재와 **CSV·DB 결과 동일성** |
@@ -42,7 +42,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_eda.py](../../tests/test_eda.py) | 7 | **EDA 그래프** — `plt.show()`가 들어오면 subprocess가 창을 띄운 채 파이프라인 전체를 멈춘다. 글꼴 경로를 하드코딩하지 않는지, 자료가 없어도 죽지 않는지 |
 | [tests/test_reproduce.py](../../tests/test_reproduce.py) | 7 | **재현 절차가 정말 합성 데이터로 도는지** — README 절차가 합성 대여소 90곳을 만들어 놓고 실데이터 1,361곳을 돌리고 있었다(2026-08-31). 오류가 없어 아무도 눈치채지 못했다 |
 | [tests/test_stockout_map.py](../../tests/test_stockout_map.py) | 4 | **결품 지도** — '늘 빔'(재배치로 못 고치는 곳)을 섞어 세지 않는지, 관측이 없는 시간을 '결품 없음'으로 읽지 않는지 |
-| **합계** | **647** | 25개 파일 · 약 120초 (`python -m pytest`) |
+| **합계** | **651** | 25개 파일 · 약 120초 (`python -m pytest`) |
 
 > **이 합계는 손으로 세지 마세요.** 1.26.88이 손으로 세어 548이라 적었는데
 > 실측은 555였습니다 — `test_version_log.py` 한 파일을 통째로 빠뜨린 것입니다.

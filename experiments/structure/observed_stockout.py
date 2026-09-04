@@ -112,6 +112,33 @@ def duration_complete_days(frame: pd.DataFrame, hours: list) -> list:
     return sorted(ticks[ticks >= need].index)
 
 
+def usable_by_duration(frame: pd.DataFrame, durations: list, window) -> dict:
+    """회차마다 **쓸 수 있는 날**과 창이 회차를 통째로 덮는지를 돌려준다.
+
+    `{회차: (날 목록, 창이_일부인가)}`. 머리기사가 이것을 써야 하는 이유는
+    `complete_days()`의 잣대가 **자료를 더하면 움직이기** 때문이다 —
+    `expected_ticks()`가 가장 넓게 모인 날로 기준을 정하므로, 좁은 창에서
+    촘촘히 모은 날이 나중에 소급해 탈락한다(4일 → 1일이 실제로 났다).
+
+    창이 회차를 통째로 덮지 못하면 날이 아무리 많아도 복원과 맞댈 수 없다
+    (`compare_with_simulation`이 건너뛴다). 날 수만 적으면 쓸 수 있는 줄 안다.
+    """
+    usable = {}
+    for duration in durations:
+        whole = duration_hours(duration)
+        inside = [h for h in whole if h in window]
+        usable[duration] = (duration_complete_days(frame, inside),
+                            len(inside) < len(whole))
+    return usable
+
+
+def format_usable(usable: dict) -> str:
+    """`_10_15 6일 · _05_10 1일(창 일부)` 꼴로 적는다."""
+    return " · ".join(
+        f"{duration} {len(days)}일" + ("(창 일부)" if partial else "")
+        for duration, (days, partial) in usable.items())
+
+
 def observed_hours(frame: pd.DataFrame, hours: list) -> pd.DataFrame:
     """대여소·날짜별로 **빌릴 수 없던 시간**과 **반납할 수 없던 시간**을 센다.
 
@@ -232,7 +259,7 @@ def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
     return rows
 
 
-def _save_calibration(rows: list, day_type: str, days: int, window) -> None:
+def _save_calibration(rows: list, day_type: str, window) -> None:
     """보정 계수를 DB에 남긴다 (1.26.1, 수정안 37).
 
     **왜 저장하는가 — 수집이 멈춰도 계수는 남기 위해서다.**
@@ -272,8 +299,12 @@ def _save_calibration(rows: list, day_type: str, days: int, window) -> None:
         print(f"  {row['duration']:8} 보정비 {ratio:.3f}"
               f"  (실측 {row['observed']:.2f} / 복원 {row['simulated']:.2f},"
               f" 온전한 날 {row['days']}일)")
-    if days < 14:
-        print(f"  ⚠️  근거가 {days}일뿐입니다. 논문에 인용할 때 이 사실을 함께 적으십시오.")
+    # 가장 얇은 **회차**로 경고한다 (2026-09-05). 하루 전체 판정의 값 하나로
+    # 재면 근거를 실제보다 얇게 말한다 — `_10_15`가 6일인데 "1일뿐"이라고 했다.
+    thinnest = min(payload, key=lambda row: row["days"])
+    if thinnest["days"] < 14:
+        print(f"  ⚠️  근거가 가장 얇은 회차는 {thinnest['duration']}"
+              f" {thinnest['days']}일입니다. 논문에 인용할 때 함께 적으십시오.")
 
 
 def main() -> int:
@@ -297,18 +328,37 @@ def main() -> int:
     expected = expected_ticks(frame)
     threshold = max(int(expected * COMPLETE_DAY_RATIO), MIN_TICKS_FLOOR)
     print(f"관측된 창: 하루 {expected}틱 기대 · 온전한 날 기준 {threshold}틱 이상")
-    print(f"온전한 날: {len(days)}일{' — ' + ', '.join(days) if days else ''}\n")
-
-    if not days:
-        print("⚠️  **아직 온전한 날이 없습니다.** 아래 숫자는 참고용이며, 하루가 다 모이기")
-        print("    전까지는 결품 '시간'으로 인용하지 마십시오 — 관측한 시간만큼만 셉니다.\n")
+    print(f"하루 전체가 온전한 날: {len(days)}일"
+          f"{' — ' + ', '.join(days) if days else ''}")
 
     # 수집 창과 겹치는 시간대만 뜻이 있다. 창은 자료에서 읽는다(박아 두지 않는다).
     window = frame["시각"].unique()
     durations = [args.duration] if args.duration else list(DURATIONS)
     targets = target_stations()
 
-    print(f"{'시간대':8} {'겹치는 시각':>10} {'대여소':>7} "
+    # ⚠️ **위 숫자를 머리기사로 쓰지 않는다** (2026-09-05). 이 잣대는 자료를
+    # 더하면 움직인다 — `expected_ticks()`가 **가장 넓게 모인 날**로 기준을
+    # 정하므로, 좁은 창에서 촘촘히 모은 날이 통째로 탈락한다(실제로 자료를
+    # 늘렸더니 4일 → 1일이 됐다). 분석이 실제로 쓰는 것은 **회차별** 판정이다.
+    usable = usable_by_duration(frame, durations, window)
+    if any(days_ for days_, _ in usable.values()):
+        print(f"회차별 쓸 수 있는 날: {format_usable(usable)}")
+        print("  ↳ 회차 비교에 필요한 것은 '하루가 온전한가'가 아니라 **그 회차의"
+              " 시간대가 다 덮였는가**입니다.")
+        print("     '(창 일부)'는 수집 창이 그 회차를 통째로 덮지 못한다는 뜻이라"
+              " 복원과 맞대지 않습니다.\n")
+    else:
+        print("\n⚠️  **아직 온전히 덮인 회차가 없습니다.** 아래 숫자는 참고용이며,")
+        print("    한 회차가 다 모이기 전까지는 결품 '시간'으로 인용하지 마십시오"
+              " — 관측한 시간만큼만 셉니다.\n")
+
+    # `날`·`관측/일`을 함께 낸다 (2026-09-05). **이 표는 온전하지 않은 날도
+    # 섞어 평균한다** — 그래서 아래 비교표(온전한 날만)와 같은 회차·같은
+    # 대여소인데도 값이 다르다. 실측 `_10_15`·작업 대상 245곳 기준으로
+    # 1.02(9일) 대 1.15(6일), **12.6% 낮게** 나온다. 결품 시간은 절대값이라
+    # 반쪽만 관측한 날이 그대로 평균을 끌어내린다. 분모를 감추면 두 숫자가
+    # 같은 이름을 달고 서로 다른 말을 한다.
+    print(f"{'시간대':8} {'겹치는 시각':>10} {'날':>4} {'관측/일':>8} {'대여소':>7} "
           f"{'결품시간/일':>11} {'만차시간/일':>11} {'결품 비율':>9}")
     printed = 0
     for duration in durations:
@@ -320,7 +370,8 @@ def main() -> int:
             continue
         per_day = daily.groupby("station_id")[["결품시간", "만차시간", "관측시간"]].mean()
         share = (daily["빈틱"].sum() / daily["틱"].sum()) if daily["틱"].sum() else 0
-        print(f"{duration:8} {len(hours):10d} {len(per_day):7,d} "
+        print(f"{duration:8} {len(hours):10d} {daily['날짜'].nunique():4d} "
+              f"{per_day['관측시간'].mean():8.2f} {len(per_day):7,d} "
               f"{per_day['결품시간'].mean():11.2f} {per_day['만차시간'].mean():11.2f} "
               f"{share * 100:8.1f}%")
         printed += 1
@@ -329,7 +380,8 @@ def main() -> int:
         if dur_targets:
             picked = per_day.loc[per_day.index.isin(dur_targets)]
             if not picked.empty:
-                print(f"{'  └ 작업 대상만':22} {len(picked):7,d} "
+                print(f"{'  └ 작업 대상만':25} {picked['관측시간'].mean():8.2f} "
+                      f"{len(picked):7,d} "
                       f"{picked['결품시간'].mean():11.2f} {picked['만차시간'].mean():11.2f}")
 
     if not printed:
@@ -340,12 +392,17 @@ def main() -> int:
     rows = compare_with_simulation(frame, durations, window, targets)
 
     if args.save:
-        _save_calibration(rows, args.day_type, len(days), window)
+        _save_calibration(rows, args.day_type, window)
 
     hours = sorted(int(h) for h in window)
     print("\n읽는 법")
     print(f"  · 한 틱 = {TICK_MINUTES}분. 수집 창({hours[0]:02d}~{hours[-1]:02d}시) 안에서만 셉니다.")
     print("  · **결품 시간은 관측한 시간에 대한 값**입니다. 창 밖(야간·새벽)은 모릅니다.")
+    print("  · ⚠️ **위 표와 아래 비교표는 날을 다르게 고릅니다.** 위 표는 반쪽만")
+    print("    관측한 날도 섞어 평균하고(그래서 `날`·`관측/일`을 함께 냅니다),")
+    print("    아래 비교표는 **그 회차를 온전히 덮은 날만** 씁니다. 같은 회차·같은")
+    print("    대여소인데 값이 다르면 그 때문입니다 — 결품 시간은 절대값이라")
+    print("    반쪽짜리 날이 평균을 끌어내립니다(`_10_15` 245곳: 1.02 대 1.15).")
     print("  · step4의 결품은 순수요로 복원한 값이라 **직접 비교하려면 같은 시간대·같은")
     print("    대여소로 맞춰야** 합니다. 맞대어 보는 것이 이 스크립트의 목적입니다.")
     print("  · ⚠️ **두 값은 서로 다른 세상을 잽니다.** 복원은 `stockout_hours_before`")
