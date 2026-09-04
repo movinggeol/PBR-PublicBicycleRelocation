@@ -411,3 +411,69 @@ def test_registered_args_survives_a_missing_scheduler(monkeypatch):
 
     monkeypatch.setattr("subprocess.run", boom)
     assert collector.registered_args() is None
+
+
+def _task_xml(window="07:00-22:00", interval=10) -> str:
+    """작업 스케줄러가 `/xml ONE`으로 뱉는 것과 같은 꼴."""
+    return (
+        '<?xml version="1.0" encoding="UTF-16"?>'
+        '<Task version="1.3" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">'
+        "<Actions><Exec><Command>python.exe</Command><Arguments>"
+        f'"tools/collect_stock.py" --window {window} --interval {interval}'
+        "</Arguments></Exec></Actions></Task>")
+
+
+class _Done:
+    def __init__(self, stdout, returncode=0):
+        self.stdout, self.returncode = stdout, returncode
+
+
+def test_등록된_창을_읽을_때_utf16으로_잘못_디코드하지_않는다(monkeypatch):
+    """🔴 **"예외가 안 났다"는 "맞게 읽었다"가 아니다.**
+
+    `bytes.decode("utf-16")`은 길이가 **짝수이기만 하면** ASCII 바이트에도 예외를
+    내지 않고 깨진 글자를 돌려준다. 예전 루프는 utf-16을 먼저 시도해 놓고 그
+    결과로 `break`했기 때문에, **출력 길이의 홀짝에 따라 되기도 하고 안 되기도
+    했다** — 도로 수집 작업은 홀수라 utf-8로 넘어가 읽혔고, 재고 작업은 짝수라
+    깨진 채 통과해 `None`이 됐다(1.26.120).
+
+    그러면 `--status`가 낡은 기본값(09~17시·49틱)으로 결측을 세고, 실측에서
+    **"온전한 날 5일"이 실제로는 0일**이었다. 그 숫자를 `z`·`γ` 재조정이 기다린다.
+    """
+    payload = _task_xml().encode("utf-8")
+    if len(payload) % 2:                      # 짝수로 맞춰 utf-16이 통과하게 만든다
+        payload += b" "
+    assert len(payload) % 2 == 0
+    # 전제 확인 — 이 바이트는 utf-16으로도 '예외 없이' 읽힌다.
+    payload.decode("utf-16")
+
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: _Done(payload))
+    assert collector.registered_args() == {"window": "07:00-22:00", "interval": 10}
+
+
+def test_schtasks가_PATH에_없어도_등록된_창을_읽는다(monkeypatch):
+    """`schtasks`는 System32에 있는데 **PATH에 그 자리가 없는 환경**이 있다.
+
+    이름만으로 부르면 `FileNotFoundError`가 나고, 그것을 삼키면 낡은 기본값으로
+    조용히 물러난다 — 이 함수가 막으려던 바로 그 일이다. 전체 경로를 먼저 쓴다.
+    """
+    payload = _task_xml().encode("utf-8")
+    tried = []
+
+    def fake_run(cmd, *a, **k):
+        tried.append(cmd[0])
+        if cmd[0] == "schtasks":              # PATH에 없는 환경을 흉내낸다
+            raise FileNotFoundError("schtasks")
+        return _Done(payload)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    assert collector.registered_args() == {"window": "07:00-22:00", "interval": 10}
+    assert tried and tried[0].endswith("schtasks.exe"), "전체 경로를 먼저 시도해야 한다"
+
+
+def test_XML이_아닌_응답은_받아들이지_않는다(monkeypatch):
+    """깨진 글자를 그럴듯하게 읽어 놓고 창을 못 찾으면 **조용히 기본값**이 된다.
+    읽은 것이 실제로 그 XML인지 확인하고 받아들인다."""
+    monkeypatch.setattr("subprocess.run",
+                        lambda *a, **k: _Done("오류: 작업이 없습니다".encode("cp949")))
+    assert collector.registered_args() is None

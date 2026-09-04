@@ -60,25 +60,47 @@ def registered_args() -> Optional[dict]:
     `scripts/collector.ps1`의 `Get-RegisteredArgs`가 하는 일과 **같은 것**이다.
     두 경로가 다른 답을 내면 어느 쪽을 믿어야 할지 알 수 없으므로 여기도 둔다.
     """
+    import os
     import re
     import subprocess
 
-    try:
-        done = subprocess.run(
-            ["schtasks", "/query", "/tn", TASK_NAME, "/xml", "ONE"],
-            capture_output=True, timeout=10)
-    except (OSError, subprocess.SubprocessError):
+    # ⚠️ **이름만으로 부르지 않는다.** `schtasks`는 System32에 있는데 PATH에
+    # 그 자리가 없는 환경이 있다(이 저장소에서 실제로 겪었다 — 파일은 있고
+    # 전체 경로로는 종료 코드 0인데 이름으로는 FileNotFoundError였다).
+    # 그러면 아래 `except OSError`가 삼키고 **낡은 기본값으로 조용히 물러난다** —
+    # 이 함수가 막으려던 바로 그 일이 다시 일어난다(1.26.120).
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    candidates = [os.path.join(system_root, "System32", "schtasks.exe"), "schtasks"]
+
+    done = None
+    for exe in candidates:
+        try:
+            done = subprocess.run(
+                [exe, "/query", "/tn", TASK_NAME, "/xml", "ONE"],
+                capture_output=True, timeout=10)
+            break
+        except (OSError, subprocess.SubprocessError):
+            continue
+    if done is None:
         return None
     if done.returncode != 0:
         return None
 
+    # ⚠️ **"예외가 안 났다"를 "맞게 읽었다"로 쓰지 마라.** `bytes.decode("utf-16")`은
+    # 길이가 **짝수이기만 하면** ASCII 바이트에도 예외를 내지 않고 깨진 글자를
+    # 돌려준다. 그래서 예전 루프는 utf-16을 먼저 시도해 놓고 그 결과로 `break`했고,
+    # 출력 길이에 따라 **되기도 하고 안 되기도 했다**(도로 수집 작업은 홀수라
+    # utf-16이 예외를 내 utf-8로 넘어갔고, 재고 작업은 짝수라 깨진 채 통과했다).
+    # 읽은 것이 **실제로 그 XML인지** 확인하고 받아들인다(1.26.120).
     text = ""
-    for encoding in ("utf-16", "utf-8", "cp949"):
+    for encoding in ("utf-8-sig", "utf-16", "cp949"):
         try:
-            text = done.stdout.decode(encoding)
-            break
+            candidate = done.stdout.decode(encoding)
         except (UnicodeDecodeError, LookupError):
             continue
+        if "<Task" in candidate:      # 스케줄러 XML의 뿌리 요소
+            text = candidate
+            break
     if "--window" not in text:
         return None
 

@@ -46,7 +46,7 @@ flowchart TD
 ├── step3_map/
 ├── step4_metrics/
 ├── webapp/                               # 웹 대시보드 (FastAPI + Jinja2)
-├── tests/                                # pytest 635개(25개 파일)
+├── tests/                                # pytest 638개(25개 파일)
 ├── tools/                                # 합성 데이터·적재·백테스트·재고 수집 도구
 ├── experiments/                          # 파라미터 실험·구조 결정용 측정
 ├── project_config.py                     # 공통 설정·운영 상수 (now/period/duration/day_type)
