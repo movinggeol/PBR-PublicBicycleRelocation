@@ -477,3 +477,53 @@ def test_XML이_아닌_응답은_받아들이지_않는다(monkeypatch):
     monkeypatch.setattr("subprocess.run",
                         lambda *a, **k: _Done("오류: 작업이 없습니다".encode("cp949")))
     assert collector.registered_args() is None
+
+
+# ------------------------------------------------- 결측을 무엇으로 읽게 하는가
+
+def test_가동_구간은_간격보다_벌어진_곳에서_끊긴다():
+    """연속 틱은 한 구간, 벌어지면 다른 구간 — 그 사이가 PC가 꺼져 있던 때다."""
+    stamps = [datetime(2026, 9, 4, 7, m) for m in (10, 20, 30)]
+    stamps += [datetime(2026, 9, 4, 13, m) for m in (10, 20)]
+
+    blocks = collector.uptime_blocks(stamps, INTERVAL)
+
+    assert len(blocks) == 2
+    assert blocks[0] == (datetime(2026, 9, 4, 7, 10), datetime(2026, 9, 4, 7, 30))
+    assert blocks[1] == (datetime(2026, 9, 4, 13, 10), datetime(2026, 9, 4, 13, 20))
+
+
+def test_현황표는_결측을_가동_구간과_함께_보여_준다(history_dir):
+    """**결측 61틱**만으로는 수집기가 고장난 것인지 PC가 꺼져 있던 것인지
+    구분할 수 없다. 실제로 그렇게 잘못 읽었다 — 하루가 세 구간으로 쪼개진
+    것을 보고서야 그것이 가동 시간의 그림자임을 알 수 있다.
+    """
+    with db.session() as conn:
+        for hour, minutes in ((9, (0, 10, 20)), (14, (0, 10))):
+            for minute in minutes:
+                db.save_stock_snapshot(conn, f"2026-08-24 {hour:02d}:{minute:02d}",
+                                       sample_frame())
+
+    row = collector.coverage(*WINDOW, INTERVAL).iloc[0]
+
+    assert row["틱"] == 5
+    assert row["구간"] == 2                    # 09시대와 14시대 사이가 비었다
+    assert row["덮은 시간"] == "09:00~14:10"
+
+
+def test_현황은_한_환경만_보고_온전함을_단언하지_않는다(history_dir, capsys):
+    """수집기는 **두 환경**에서 돈다(두_PC_작업.md 0장). 한쪽 DB의 '결측'은
+    다른 환경이 그 틱을 가지고 있을 수 있어 **아직 판정이 아니다.**
+
+    이 구분이 문서에만 있었고 도구는 "실험에 쓸 수 있는 날입니다"라고 단언해서,
+    한쪽 숫자만 보고 "수집이 고장났다"고 읽었다(1.26.120에서 실제로 그랬다).
+    """
+    with db.session() as conn:
+        db.save_stock_snapshot(conn, "2026-08-24 09:00", sample_frame())
+
+    collector.print_status(*WINDOW, INTERVAL)
+    out = capsys.readouterr().out
+
+    assert "실험에 쓸 수 있는 날입니다" not in out
+    assert "merge_stock.py" in out              # 무엇을 해야 판정되는지 말한다
+    assert "두_PC_작업.md" in out

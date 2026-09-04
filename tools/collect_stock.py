@@ -314,35 +314,63 @@ def run_loop(start: clock, end: clock, interval: int, *, dry_run: bool = False,
 
 # ---- 현황 ----
 
+def uptime_blocks(stamps: Sequence[datetime], interval: int) -> list:
+    """연속된 틱을 하나의 **가동 구간**으로 묶는다. [(첫틱, 끝틱), ...]
+
+    간격보다 넓게 벌어졌다면 그 사이 **PC가 꺼져 있었다**는 뜻이다(7장) —
+    수집기가 실패한 것이 아니라 아예 돌지 않은 것이다. 구간이 여럿이면
+    결측은 고장이 아니라 가동 시간의 그림자다.
+    """
+    blocks = []
+    start = prev = None
+    for stamp in sorted(stamps):
+        if prev is None:
+            start = stamp
+        elif stamp - prev > timedelta(minutes=interval):
+            blocks.append((start, prev))
+            start = stamp
+        prev = stamp
+    if prev is not None:
+        blocks.append((start, prev))
+    return blocks
+
+
 def coverage(start: clock, end: clock, interval: int) -> pd.DataFrame:
-    """날짜별 수집 현황. 컬럼: 날짜, 틱, 기대, 결측, 상태.
+    """날짜별 수집 현황. 컬럼: 날짜, 틱, 기대, 결측, 구간, 덮은 시간, 상태.
 
     **로그가 아니라 DB의 기대 격자와 대조한다** — 절전으로 놓친 틱은 스크립트
     자체가 안 돌아 로그에도 안 남기 때문이다.
+
+    `구간`·`덮은 시간`을 함께 내는 이유는 **결측의 원인을 표 안에서 읽히게**
+    하기 위해서다. 하루가 세 구간으로 쪼개져 있으면 그것은 수집 실패가 아니라
+    PC를 세 번 켰다는 뜻이고, 그 둘은 대응이 완전히 다르다.
     """
     with db.session() as conn:
         ticks = db.stock_history_ticks(conn)
-    columns = ["날짜", "틱", "기대", "결측", "상태"]
+    columns = ["날짜", "틱", "기대", "결측", "구간", "덮은 시간", "상태"]
     if ticks.empty:
         return pd.DataFrame(columns=columns)
 
     stamps = pd.to_datetime(ticks["observed_at"])
-    per_day = stamps.dt.strftime("%Y-%m-%d").value_counts().sort_index()
     target = expected_ticks(start, end, interval)
     today = date.today()
     now = datetime.now().time()
 
     rows = []
-    for day, count in per_day.items():
+    for day, group in stamps.groupby(stamps.dt.strftime("%Y-%m-%d")):
         stamp = datetime.strptime(day, "%Y-%m-%d").date()
-        missing = max(target - int(count), 0)
+        count = int(len(group))
+        missing = max(target - count, 0)
         if stamp == today and now < end:
             status = "수집 중"
         elif missing == 0:
             status = "온전"
         else:
             status = "결측"
-        rows.append(dict(zip(columns, [day, int(count), target, missing, status])))
+        blocks = uptime_blocks(group.tolist(), interval)
+        span = f"{blocks[0][0]:%H:%M}~{blocks[-1][1]:%H:%M}"
+        rows.append(dict(zip(columns, [day, count, target, missing,
+                                       len(blocks), span, status])))
     return pd.DataFrame(rows)
 
 
@@ -370,7 +398,18 @@ def print_status(start: clock, end: clock, interval: int,
     intact = table.loc[table["상태"] == "온전", "날짜"].tolist()
     tail = f" (최근 {', '.join(intact[-5:])})" if intact else ""
     print(f"  온전한 날: {len(intact)}일{tail}")
-    print("             ↳ 실험에 쓸 수 있는 날입니다.")
+    # 이 환경 DB만 세는 값이다. 병합은 틱을 **더하기만** 하므로 '온전'은 합치기
+    # 전에도 참이지만 '결측'은 아직 판정이 아니다 — 다른 환경이 그 틱을 가지고
+    # 있을 수 있다. 이 구분을 문서에만 적어 두면 (실제로 그랬듯) 한쪽 숫자만
+    # 보고 "수집이 고장났다"고 읽는다.
+    print("             ↳ 이 환경 DB만 센 값입니다. '온전'은 합쳐도 그대로지만,")
+    print("               '결측'은 다른 환경분을 tools/merge_stock.py로 합치기")
+    print("               전까지 판정이 아닙니다 (docs/구현/두_PC_작업.md 0장).")
+
+    split = table.loc[table["구간"] > 1]
+    if not split.empty:
+        print(f"  가동 구간: {len(split)}일이 여러 구간으로 나뉩니다 — 그 사이")
+        print("             PC가 꺼져 있었다는 뜻입니다. 수집기 고장이 아닙니다.")
     print()
     print(table.to_string(index=False))
 
