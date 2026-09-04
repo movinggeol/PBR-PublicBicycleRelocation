@@ -525,3 +525,26 @@ def test_편차_막대의_기준을_부르는_쪽이_정할_수_있다():
 
 def test_빈_자료에도_죽지_않는다():
     assert "그릴 자료가 없습니다" in charts.deviation_hbar([], [], title="시험")
+
+
+def test_빈_상태_문구를_그래프마다_따로_적지_않는다():
+    """네 그래프가 **같은 문구를 각자** 적어 두고 있었다(1.26.117).
+
+    빈 상태 문구는 화면 전체가 같아야 하는 값이라(DESIGN.md 빈 상태 규약),
+    한쪽만 고치면 같은 자리에서 화면마다 다른 말이 나온다. 여기서 지키는 것은
+    *"문구가 무엇인가"* 가 아니라 **"한 곳에서 나오는가"** 다.
+    """
+    from pathlib import Path
+
+    src = Path(charts.__file__).read_text(encoding="utf-8")
+    literal = src.count('class="empty">그릴 자료가 없습니다')
+    assert literal == 0, f"빈 상태 문구를 직접 적은 곳이 {literal}군데 남아 있다"
+    assert src.count("def _empty(") == 1, "빈 상태를 내는 곳은 하나여야 한다"
+
+    # 실제로 같은 문구가 나오는지도 본다 — 함수만 있고 안 쓰면 뜻이 없다.
+    outputs = {
+        charts.hbar([], [], title="t"),
+        charts.deviation_hbar([], [], title="t"),
+        charts.vbar([], [], title="t") if hasattr(charts, "vbar") else charts._empty(),
+    }
+    assert len(outputs) == 1, f"그래프마다 빈 상태가 다르다: {outputs}"

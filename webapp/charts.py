@@ -25,6 +25,16 @@ import math
 from typing import Optional, Sequence
 
 
+def _empty(message: str = "그릴 자료가 없습니다.") -> str:
+    """자료가 없을 때 그래프 자리에 놓는 안내.
+
+    네 그래프가 **같은 문구를 각자 적어** 두고 있었다(1.26.117). 빈 상태 문구는
+    화면 전체가 같아야 하는 값이라(DESIGN.md의 빈 상태 규약) 한 곳에서 낸다 —
+    한쪽만 고치면 같은 자리에서 화면마다 다른 말이 나온다.
+    """
+    return f'<p class="empty">{html.escape(message)}</p>'
+
+
 def _fmt(value: float, digits: int = 1) -> str:
     """축·표시용 숫자. 정수로 떨어지면 소수점을 붙이지 않는다."""
     if value == int(value):
@@ -138,7 +148,7 @@ def hbar(labels: Sequence[str], values: Sequence[float], *,
     """
     n = len(labels)
     if n == 0:
-        return '<p class="empty">그릴 자료가 없습니다.</p>'
+        return _empty()
 
     pad_l, pad_r, pad_t, pad_b = 60, 56, 4, 4
     row_h = bar_h + gap
@@ -210,7 +220,7 @@ def deviation_hbar(labels: Sequence[str], values: Sequence[float], *,
     """
     n = len(labels)
     if n == 0:
-        return '<p class="empty">그릴 자료가 없습니다.</p>'
+        return _empty()
 
     mean = sum(values) / n if baseline is None else float(baseline)
     # ⚠️ **표시 자리에서 반올림한 뒤 0을 붙인다.** 값이 다 같아도 평균에는
@@ -284,7 +294,7 @@ def vbar(labels: Sequence[str], values: Sequence[float], *,
     """
     n = len(labels)
     if n == 0:
-        return '<p class="empty">그릴 자료가 없습니다.</p>'
+        return _empty()
 
     pad_l, pad_r, pad_t, pad_b = 46, 12, 22, 26
     plot_w = width - pad_l - pad_r
@@ -463,7 +473,7 @@ def heatmap(rows: Sequence[str], cols: Sequence[str],
     표 보기를 붙인다.
     """
     if not rows or not cols:
-        return '<p class="empty">그릴 자료가 없습니다.</p>'
+        return _empty()
 
     pad_l, pad_t, pad_b = 42, 20, 8
     grid_w = cell * len(cols)
