@@ -23,8 +23,13 @@
   <div class="tile">
     <p class="label">차량 간 작업량 차이</p>
     <p class="value">{{ balance.gap_minutes }}<span class="unit">분</span></p>
-    <p class="sub">가장 적게 일한 차량 {{ balance.min_minutes }}분,
-      가장 많이 일한 차량 {{ balance.max_minutes }}분 — 작을수록 고르게 나뉜 것</p>
+    {# 안 나간 차량이 있을 때만 무엇을 뺐는지 밝힌다 — 없는 경우까지 적으면
+       일어나지도 않은 일을 설명하는 군더더기가 된다. #}
+    <p class="sub">{% if balance.idle %}출동한 차량 가운데 {% endif %}가장 적게 일한 차량 {{ balance.min_minutes }}분,
+      가장 많이 일한 차량 {{ balance.max_minutes }}분 — 작을수록 고르게 나뉜 것
+      {%- if balance.idle %}<br>
+      <span class="muted">한 번도 안 나간 {{ balance.idle }}대의 0분은 빼고 잽니다 —
+        섞으면 이 값이 곧 최대값이 되어 로테이션이 고른지를 못 봅니다</span>{% endif %}</p>
   </div>
   {% endif %}
   {% if budget %}
@@ -63,7 +68,10 @@
   {% if workload_svg %}
   <p class="hint" style="margin:0 0 var(--sp-xs)">막대는 <b>평균에서 떨어진 만큼</b>이고
     가운데 세로선이 평균입니다 — 값 자체가 아니라 <b>고른지</b>를 보는 그림이라
-    기준을 평균에 둡니다. 차량별 실제 누적 시간은 커서를 대면 뜨고 아래 표에 있습니다.</p>
+    기준을 평균에 둡니다. 차량별 실제 누적 시간은 커서를 대면 뜨고 아래 표에 있습니다.
+    {% if balance and balance.idle %}<b>기준선은 출동한 {{ balance.used }}대의 평균입니다</b> —
+    한 번도 안 나간 {{ balance.idle }}대의 0분을 섞으면 기준이 내려앉아 일한 차량이
+    전부 평균 위로 보이기 때문입니다. 그 {{ balance.idle }}대는 맨 아래 왼쪽 끝 막대입니다.{% endif %}</p>
   {{ workload_svg | safe }}
   {% else %}
   <p class="empty">아직 출동한 차량이 없어 그릴 것이 없습니다 — 보유 {{ fleet_size }}대가 모두 0분입니다.

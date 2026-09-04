@@ -21,7 +21,8 @@ from module import (
     start_time_for,
 )
 
-from mapviz import cluster_color, legend_html, swatch_circle, swatch_line
+from mapviz import (DROP_WORD, PICK_WORD, cluster_color, legend_html,
+                    swatch_circle, swatch_line)
 from project_config import (
     DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, MAP_TILES, PROJECT_ROOT,
     VEHICLE_CAPACITY,
@@ -380,14 +381,22 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
                 continue
 
             # --- 적재량 계산 ---
+            # 낱말은 mapviz.py 한 벌에서 온다. 예전에는 여기만
+            # "Pick (회수)"/"Drop (분배)"라, 같은 작업을 지도는 영어로
+            # 웹 작업지시서는 한글로 불렀다 — 기사가 두 화면을 오가며
+            # 보는데 세 번째 어휘가 살아 있었다(1.26.107이 놓친 자리).
+            #
+            # ⚠️ 여기서 **색은 정하지 않는다.** 이 지도의 대여소 마커는
+            #    방문 순서를 보라는 보라 원(DivIcon)이라 작업 종류로 색을
+            #    나누지 않는다. 예전에는 `base_color`에 "blue"/"orange"를
+            #    넣어 두고 **쓰지 않았다** — 읽는 사람은 색이 작업을
+            #    뜻한다고 오해하게 된다. 지운다.
             if action == "pick":
                 current_load += qty
-                action_txt = "Pick (회수)"
-                base_color = "blue"
+                action_txt = PICK_WORD
             else:
                 current_load -= qty
-                action_txt = "Drop (분배)"
-                base_color = "orange"
+                action_txt = DROP_WORD
 
             # 방문 정보 저장
             if sid not in station_visits:
@@ -479,7 +488,13 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
             ).add_to(fg)
     # --------- Legend ----------
     # 범례. 화면의 나머지가 한국어이므로 여기도 한국어로 적고, 지도에 실제로
-    # 있는 것만 담는다(보라 원=방문 번호, 파랑/주황=작업 종류).
+    # 있는 것만 담는다(보라 원=방문 번호, 선=군집별 경로).
+    #
+    # ⚠️ 예전 주석은 *"파랑/주황=작업 종류"* 라고 적어 두었는데
+    #    `legend_rows`에 그런 항목은 **없다.** 이 지도는 작업 종류를
+    #    색으로 말하지 않고(마커는 전부 보라 원이다) 풍선·창의
+    #    ‘작업 유형’ 글자로 말한다. 주석이 없는 색을 설명하면 다음
+    #    사람이 범례에서 그것을 찾다가 범례가 빠졌다고 오해한다.
     # 색을 값으로 읽게 두지 않는다 — 글자를 함께 적는다 (docs/구현/DESIGN.md).
     #
     # 상자 모양은 mapviz.legend_html()이 맡는다 — 이 범례가 세 지도 중

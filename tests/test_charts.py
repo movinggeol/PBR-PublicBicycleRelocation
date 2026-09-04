@@ -490,5 +490,38 @@ def test_편차_막대의_값_글자가_항목_이름을_덮지_않는다():
         f"음수 값 글자({min(values_x)})가 항목 이름({max(ticks)}) 자리로 넘어왔다")
 
 
+def test_편차_막대의_기준을_부르는_쪽이_정할_수_있다():
+    """어느 값이 평균에 들어갈지는 그리는 함수가 판단할 수 없다.
+
+    차량 누적에서 `0분`은 "일이 없었다"가 아니라 **"아직 한 번도 안 나갔다"** 인데,
+    그 0을 평균에 넣으면 기준선이 통째로 끌려 내려온다. 21대 중 4대가 놀고
+    17대가 340분씩 일한 자료면 기준이 275.2분이 되고 **일한 17대가 전부
+    `+64.8분`** — 오른쪽으로만 뻗는다. "누구에게 몰렸나"에 "일한 사람은 다
+    평균 이상"이라고 답하는 그림이라 뜻이 없다.
+    """
+    values = [340.0] * 17 + [0.0] * 4
+
+    # 기준을 안 주면 예전처럼 0까지 섞은 평균이다(그것이 옳은 자리도 있다).
+    naive = charts.deviation_hbar([f"V{i:02d}" for i in range(1, 22)], values,
+                                  title="시험", unit="분")
+    assert "평균 275.2분" in naive
+    assert "+64.8분" in naive, "0을 섞으면 일한 차량이 전부 평균 위가 된다"
+
+    # 부른 쪽이 거른 평균을 넘기면 기준선이 그것을 따른다.
+    worked = [v for v in values if v > 0]
+    fixed = charts.deviation_hbar([f"V{i:02d}" for i in range(1, 22)], values,
+                                  title="시험", unit="분",
+                                  baseline=sum(worked) / len(worked),
+                                  baseline_label="출동한 차량 평균")
+    assert "출동한 차량 평균 340분" in fixed, "넘긴 기준을 안 쓴다"
+    assert "+64.8분" not in fixed, "거른 평균인데도 옛 편차가 남아 있다"
+    # 고르게 일한 17대는 편차가 0, 안 나간 4대만 왼쪽으로 뻗는다.
+    # 편차는 풍선과 값 글자에 한 번씩 나오므로 **값 글자만** 센다.
+    import re
+    labels = re.findall(r'class="viz-value"[^>]*>([^<]+)<', fixed)
+    assert labels.count("+0.0분") == 17
+    assert labels.count("-340.0분") == 4
+
+
 def test_빈_자료에도_죽지_않는다():
     assert "그릴 자료가 없습니다" in charts.deviation_hbar([], [], title="시험")

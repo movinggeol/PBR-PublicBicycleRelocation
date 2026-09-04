@@ -158,3 +158,56 @@ def test_세_지도가_모두_mapviz를_쓴다():
         code = sources[step].read_text(encoding="utf-8")
         assert "'darkred'" not in code and '"darkred"' not in code, \
             f"{step}에 옛 팔레트가 남아 있다"
+
+
+def test_크기_눈금은_하한을_감추지_않는다():
+    """크기로 값을 말했으면 **말할 수 없는 것도** 말해야 한다.
+
+    불균형 지도의 마커 반지름은 `max(3, improvement)`라 3에서 막힌다.
+    그래서 1대짜리도, 0도, 계획이 오히려 악화시킨 곳(음수)도 전부 같은
+    크기다. 눈금이 그것을 그냥 "3대"라고 적으면 **거짓 주장**이 된다 —
+    작은 원을 전부 3대로 읽게 만든다.
+    """
+    code = (PROJECT_ROOT / "step4_metrics" / "imbalance.py").read_text(encoding="utf-8")
+    # 주석은 옛 낱말을 **인용해 설명한다** — 코드만 본다.
+    body = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("#"))
+
+    # 하한이 아직 있다면(있어야 한다 — 0이면 점이 사라진다) 눈금도 그렇게 적혀야 한다.
+    assert "max(3, row['improvement'])" in body, "반지름 하한이 사라졌다면 이 시험을 고쳐라"
+    assert '"3대"' not in body, "하한에 걸리는 값을 '3대'라고 단언하고 있다"
+    assert "≤3대" in body, "눈금이 하한을 밝히지 않는다"
+
+    # 악화된 곳은 크기로 구분할 수 없으므로 다른 수단이 있어야 한다.
+    assert "worsened" in body, "악화된 대여소를 구분하지 않는다"
+    assert "dash_array" in body, "악화 표시가 크기 말고는 없다"
+
+
+def test_점선_배지는_테두리로만_말한다():
+    """색은 이미 싣기/내리기를 뜻한다 — 뜻을 하나 더 실을 수 없어
+    모양(점선)으로 가른다."""
+    badge = mapviz.swatch_circle_dashed()
+    assert "dashed" in badge
+    assert "transparent" in badge, "채우면 채운 마커와 헷갈린다"
+
+
+def test_세_지도가_같은_낱말을_쓴다():
+    """한 개념에 어휘가 여러 벌이면 기사가 화면을 오갈 때마다 번역해야 한다.
+    step3만 "Pick (회수)"/"Drop (분배)"라는 **세 번째 어휘**를 쓰고 있었다."""
+    for step, path in (("step3", PROJECT_ROOT / "step3_map" / "main.py"),
+                       ("step4", PROJECT_ROOT / "step4_metrics" / "imbalance.py")):
+        code = path.read_text(encoding="utf-8")
+        # 주석에서 옛 낱말을 인용하는 것은 괜찮다 — 코드에 남아 있으면 안 된다.
+        lines = [l for l in code.splitlines()
+                 if not l.lstrip().startswith("#")]
+        body = "\n".join(lines)
+        assert 'action_txt = "Pick' not in body, f"{step}에 영어 낱말이 남아 있다"
+        assert "status = '싣기'" not in body, f"{step}이 낱말을 따로 박아 두었다"
+
+
+def test_쓰지_않는_색_변수를_두지_않는다():
+    """`base_color = "blue"/"orange"`가 정의만 되고 어디에도 안 쓰였다.
+    읽는 사람은 색이 작업 종류를 뜻한다고 오해하는데, 정작 마커는 전부
+    보라 원이다."""
+    code = (PROJECT_ROOT / "step3_map" / "main.py").read_text(encoding="utf-8")
+    body = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("#"))
+    assert "base_color" not in body, "쓰지 않는 색 변수가 남아 있다"

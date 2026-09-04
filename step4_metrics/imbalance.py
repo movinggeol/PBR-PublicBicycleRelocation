@@ -8,8 +8,9 @@ import numpy as np
 import pandas as pd
 
 import db
-from mapviz import (DROP_COLOR, DROP_LABEL, PICK_COLOR, PICK_LABEL,
-                    legend_html, swatch_circle, swatch_size_scale)
+from mapviz import (DROP_COLOR, DROP_LABEL, DROP_WORD, PICK_COLOR, PICK_LABEL,
+                    PICK_WORD, legend_html, swatch_circle, swatch_circle_dashed,
+                    swatch_size_scale)
 from project_config import (
     MAP_TILES, PICK_HARM_WARN_SHARE, PROJECT_ROOT, TIME_BUDGET_MINUTES,
     VEHICLE_CAPACITY, duration_hours, duration_list, ensure_output_dirs,
@@ -553,14 +554,25 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
             # 반대 작업**을 뜻했다(1.26.107). 용어도 한글로 통일한다.
             if row['rebal_qty'] > 0:
                 color = DROP_COLOR
-                status = '내리기'
+                status = DROP_WORD
             else:
                 color = PICK_COLOR
-                status = '싣기'
-            
+                status = PICK_WORD
+
             # 작업 후 불균형 '개선률(improvement_rate)' 기반 마커
+            #
+            # ⚠️ **반지름은 3에서 막힌다.** 그리지 않으면 개선량이 작은 점이
+            #    사라져 ‘대여소가 어디 있는지’조차 안 보이기 때문이다. 문제는
+            #    `improvement`가 **0이거나 음수**일 수 있다는 것이다
+            #    (`bf_imbalance - af_imbalance`라 계획이 오히려 악화시킨 대여소가
+            #    여기 온다). 그럴 땐 악화된 점과 3대 해소한 점이 **픽셀까지
+            #    똑같아진다** — 범례가 그것을 "3대"라고 단언하면 거짓말이 된다.
+            #    크기로는 구분할 수 없으니 **테두리로** 구분하고, 범례에도 적는다.
+            worsened = row['improvement'] < 0
             radius = max(3, row['improvement'])
-            opacity = (0.2 + 0.5*row['improvement_rate'])
+            # 개선률이 음수면 불투명도가 0 아래로 내려가 folium이 무시한다 —
+            # 보이는 범위로 잡아 둔다.
+            opacity = min(0.7, max(0.15, 0.2 + 0.5*row['improvement_rate']))
 
             # 커서를 대면 뜨는 요약. **목표 재고는 소수점 첫째 자리까지만** 쓴다
             # (수정안 38) — mu + z*sigma라 자릿수가 길게 나온다.
@@ -596,6 +608,10 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
                 color=color,
                 weight=2,
                 opacity=1.0,
+                # 악화된 대여소는 하한(3)에 걸려 크기로는 구분이 안 되므로
+                # 점선 테두리로 표시한다. 색은 그대로 둔다 — 색은 이미
+                # 싣기/내리기를 뜻하고 있어서 뜻을 겹쳐 실을 수 없다.
+                dash_array='4,3' if worsened else None,
 
                 fill=True,
                 fill_color=color,
@@ -616,8 +632,16 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
          (swatch_circle(PICK_COLOR), PICK_LABEL),
          # 크기로 값을 말했으면 **눈금도 줘야** 읽을 수 있다. 마커 반지름이
          # 곧 해소 대수(max(3, improvement))라 눈금도 같은 수를 쓴다.
-         (swatch_size_scale([3, 7, 12], ["3대", "7대", "12대"]), "")],
+         #
+         # ⚠️ 가장 작은 눈금은 "3대"가 아니라 **"3대 이하"** 다. 반지름이 3에서
+         #    막히므로 1대짜리도, 0도, 계획이 오히려 악화시킨 곳(음수)도 모두
+         #    같은 크기로 그려진다. 눈금이 "3대"라고 단언하면 그 점들을 전부
+         #    3대라고 잘못 읽게 된다 — 크기가 말할 수 있는 것까지만 말한다.
+         (swatch_size_scale([3, 7, 12], ["≤3대", "7대", "12대"]), ""),
+         (swatch_circle_dashed(), "점선 = 오히려 나빠진 곳")],
         note="원 크기는 불균형 해소량, 원이 진할수록 개선률이 높습니다.<br>"
+             "가장 작은 원은 <b>3대 이하가 모두 같은 크기</b>입니다 — 정확한 값은 "
+             "점을 눌러 '개선량'에서 보세요.<br>"
              "점에 커서를 대면 자세한 값이 뜹니다.")))
 
     # ⚠️ 레이어 컨트롤은 지도 **위에** 겹쳐 뜬다. 펴 두면 군집 수만큼

@@ -339,3 +339,40 @@ def test_snapshot_labels_skips_half_finished_runs(tmp_path, monkeypatch):
 
     assert project_config.snapshot_labels() == ("온전한",)
 
+
+def test_지도_다시_그리기가_실패를_종료_코드로_말한다(monkeypatch, capsys):
+    """도구가 **실패했는데 0으로 끝나면** 부르는 쪽이 성공으로 읽는다.
+
+    `tools/redraw_maps.py`는 회차마다 예외를 잡아 "건너뜁니다"만 찍고 넘어간
+    뒤, 마지막에 늘 0을 돌려주었다. 12쌍이 전부 깨져도 "지도 0장을 다시
+    그렸습니다."에 `$?`=0이라, 화면을 읽는 사람에게만 경고가 보이고
+    CI·래퍼·`&&` 사슬에는 성공으로 보였다.
+    """
+    import tools.redraw_maps as redraw_maps
+
+    if not redraw_maps.available():
+        pytest.skip("다시 그릴 산출물이 없다")
+
+    # 자식이 전부 실패하는 상황
+    def 늘_실패(*args, **kwargs):
+        raise RuntimeError("흉내 낸 실패")
+
+    monkeypatch.setattr(redraw_maps, "redraw", 늘_실패)
+    monkeypatch.setattr(sys, "argv", ["redraw_maps.py", "--all"])
+
+    code = redraw_maps.main()
+    out = capsys.readouterr().out
+
+    assert code != 0, "전부 실패했는데 성공(0)으로 끝난다"
+    assert "실패했습니다" in out, "무엇이 실패했는지 안 적는다"
+
+
+def test_지도_다시_그리기_dry_run은_성공이다(monkeypatch):
+    """세어만 보는 것은 실패가 아니다 — 위 시험이 0을 무조건 막지 않는지 함께 본다."""
+    import tools.redraw_maps as redraw_maps
+
+    if not redraw_maps.available():
+        pytest.skip("다시 그릴 산출물이 없다")
+
+    monkeypatch.setattr(sys, "argv", ["redraw_maps.py", "--all", "--dry-run"])
+    assert redraw_maps.main() == 0

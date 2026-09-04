@@ -185,17 +185,35 @@ def main() -> int:
 
     ensure_output_dirs()
     total = 0
+    failed = []
     for run_label, duration, candidates in targets:
         print(f"\n[{run_label} {duration}]")
         try:
+            drawn = 0
             for path in redraw(run_label, duration, candidates):
                 print(f"  ✓ {Path(path).name}")
                 total += 1
+                drawn += 1
+            if not drawn:
+                # 예외 없이 **한 장도 안 나온** 경우도 실패다. 자식이 조용히
+                # 죽으면 여기로 온다 — 성공과 구분하지 않으면 종료 코드가
+                # 거짓말을 한다.
+                print("  ⚠ 그려진 파일이 없습니다.")
+                failed.append(f"{run_label} {duration}")
         except Exception as err:                      # noqa: BLE001
             # 한 회차가 실패해도 나머지는 그린다 — 옛 산출물은 컬럼이 다를 수 있다.
             print(f"  ⚠ 건너뜁니다: {type(err).__name__}: {err}")
+            failed.append(f"{run_label} {duration}")
 
     print(f"\n지도 {total}장을 다시 그렸습니다.")
+
+    # ⚠️ **실패를 종료 코드로 말한다.** 예전에는 열두 쌍이 전부 깨져도
+    #    "지도 0장을 다시 그렸습니다."를 찍고 0으로 끝났다 — 화면을 읽는
+    #    사람에게는 경고가 보이지만, `$?`만 보는 CI·래퍼·`&&` 사슬에는
+    #    성공으로 읽힌다. 실패가 한 건이라도 있으면 0이 아니어야 한다.
+    if failed:
+        print(f"⚠️ {len(failed)}쌍이 실패했습니다: {', '.join(failed)}")
+        return 1
     return 0
 
 

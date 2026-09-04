@@ -764,15 +764,19 @@ def vehicles_page(request: Request, run_label: Optional[str] = None):
     workload = store.vehicle_workload()
     assignments = store.vehicle_assignments(run_label=run_label)
 
+    # ⚠️ 최소·최대·차이는 **출동한 차량끼리** 잰다. 한 번도 안 나간 차량의
+    #    0분을 섞으면 "가장 적게 일한 차량 0분"이 되어 차이가 곧 최대값이 된다
+    #    — 로테이션이 고른지를 묻는 자리에서 답이 "안 나간 차가 있다"로 바뀐다.
+    #    그것은 바로 옆 '출동한 차량' 타일이 이미 말하고 있다.
     balance = None
     if not workload.empty and workload["rounds"].sum() > 0:
         worked = workload[workload["rounds"] > 0]
         balance = {
             "used": len(worked),
             "idle": int((workload["rounds"] == 0).sum()),
-            "min_minutes": float(workload["minutes"].min()),
-            "max_minutes": float(workload["minutes"].max()),
-            "gap_minutes": round(float(workload["minutes"].max() - workload["minutes"].min()), 1),
+            "min_minutes": float(worked["minutes"].min()),
+            "max_minutes": float(worked["minutes"].max()),
+            "gap_minutes": round(float(worked["minutes"].max() - worked["minutes"].min()), 1),
         }
 
     # 시간 예산 준수율 — 회차 단위로 본다(차량 누적이 아니라 한 번의 작업 기준).
@@ -808,11 +812,23 @@ def vehicles_page(request: Request, run_label: Optional[str] = None):
     #    (1.26.107). 값이 339~402분이라 폭이 16%뿐이라서, 1000px를 쓰고도
     #    바로 위 타일의 "차이 63.1분"보다 못 알려 줬다. 묻는 것이 *"얼마인가"*
     #    가 아니라 *"고른가"* 라면 기준은 0이 아니라 **고른 상태(평균)** 다.
+    #
+    # ⚠️ 기준선의 평균에서 **한 번도 안 나간 차량은 뺀다.** `vehicle_workload`는
+    #    출동한 적 없는 차량도 0분으로 함께 준다(그래서 바로 위 타일이 "한 번도
+    #    나가지 않은 차량 N대"를 셀 수 있다). 그 0을 평균에 넣으면 기준선이
+    #    통째로 내려앉아 **일한 차량이 전부 평균 위**로 그려진다 — 21대 중
+    #    4대가 놀고 17대가 340분씩이면 기준이 275.2분이 되고 17대가 모두
+    #    `+64.8분`이다. "누구에게 몰렸나"에 "일한 사람은 다 평균 이상"이라고
+    #    답하는 그림이라 뜻이 없다. 막대는 21대를 다 그리되(0분도 사실이다)
+    #    기준만 일한 차량 쪽으로 옮긴다.
     workload_svg = None
     if balance:
+        worked_minutes = sorted_wl.loc[sorted_wl["rounds"] > 0, "minutes"]
         workload_svg = charts.deviation_hbar(
             sorted_wl["vehicle_id"].tolist(), sorted_wl["minutes"].tolist(),
-            title="차량별 누적 작업 시간 — 평균과의 차이", unit="분")
+            title="차량별 누적 작업 시간 — 출동한 차량 평균과의 차이", unit="분",
+            baseline=float(worked_minutes.mean()),
+            baseline_label="출동한 차량 평균")
 
     # 배정 이력은 실행을 거듭할수록 무한히 쌓이므로 상한을 둔다. 다만
     # **자른 것은 반드시 말한다** — 예전에는 86건 중 60건만 조용히 보여

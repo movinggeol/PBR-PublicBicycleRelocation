@@ -68,6 +68,11 @@ DROP_COLOR = "#D55E00"   # 내리기 — 자전거가 모자란 곳에 내린다
 PICK_LABEL = "싣기 (과잉 해소)"
 DROP_LABEL = "내리기 (부족 해소)"
 
+# 범례 밖에서 쓰는 **짧은 낱말**. 풍선·창의 '작업 유형 : ___'처럼 괄호 설명이
+# 군더더기가 되는 자리다. 괄호만 뗀 같은 말이라 화면끼리 어긋나지 않는다.
+PICK_WORD = "싣기"
+DROP_WORD = "내리기"
+
 
 def cluster_color(index: int) -> str:
     """군집 번호 -> 색.
@@ -116,6 +121,21 @@ def swatch_circle(color: str, label_inside: str = "") -> str:
         f'border-radius:50%;background:{color};color:#fff;font-size:9px;'
         f'font-weight:700;text-align:center;line-height:15px;'
         f'vertical-align:-3px;">{label_inside}</span>'
+    )
+
+
+def swatch_circle_dashed(color: str = "#8a8a8f") -> str:
+    """점선 테두리 원 배지. **크기가 말하지 못하는 것**을 표시할 때 쓴다.
+
+    불균형 지도의 마커 반지름은 `max(3, improvement)`라 3에서 막힌다. 그래서
+    계획이 오히려 악화시킨 대여소(improvement < 0)가 3대 해소한 곳과 픽셀까지
+    같아진다 — 크기로는 영영 구분되지 않는다. 색은 이미 싣기/내리기를 뜻하고
+    있어 뜻을 하나 더 실을 수 없으므로, 테두리 모양으로 가른다.
+    """
+    return (
+        f'<span style="display:inline-block;width:15px;height:15px;'
+        f'border-radius:50%;background:transparent;'
+        f'border:2px dashed {color};vertical-align:-3px;"></span>'
     )
 
 

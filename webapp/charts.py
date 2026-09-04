@@ -175,6 +175,7 @@ def hbar(labels: Sequence[str], values: Sequence[float], *,
 
 def deviation_hbar(labels: Sequence[str], values: Sequence[float], *,
                    title: str, unit: str = "", baseline_label: str = "평균",
+                   baseline: Optional[float] = None,
                    width: int = 640, bar_h: int = 18, gap: int = 7) -> str:
     """**평균에서 얼마나 떨어졌는가**를 좌우로 그리는 가로 막대.
 
@@ -193,12 +194,25 @@ def deviation_hbar(labels: Sequence[str], values: Sequence[float], *,
 
     막대 길이는 `값 − 평균`이고 눈금도 그렇게 읽는다. 절대값은 커서 풍선과
     바로 아래 표에 그대로 있다 — 어느 쪽도 잃지 않는다.
+
+    ## `baseline` — 기준을 부르는 쪽이 정한다
+
+    ⚠️ **어느 값이 기준에 들어갈지는 이 함수가 판단할 수 없다.** 차량 누적
+    시간에서 `0분`은 "일이 없었다"가 아니라 **"아직 한 번도 안 나갔다"** 인데,
+    그 0을 평균에 넣으면 기준선이 통째로 끌려 내려온다. 21대 중 4대가 놀고
+    17대가 340분씩 일한 자료로 재 보면 기준선이 *"평균 275.2분"* 으로 뜨고
+    **일한 차량 17대가 전부 `+64.8분`** — 오른쪽으로만 뻗는다. 물은 것은
+    "누구에게 몰렸나"인데 그림은 "일한 사람은 다 평균 이상"이라고 답한다.
+
+    그래서 기준을 인자로 뺐다. 주지 않으면 받은 값 전체의 평균을 쓴다(그것이
+    옳은 자리도 있다). 걸러야 할 값이 있는 쪽은 **거른 뒤의 평균을 직접 넘긴다**
+    — 막대는 여전히 전부 그리되 기준만 옮긴다.
     """
     n = len(labels)
     if n == 0:
         return '<p class="empty">그릴 자료가 없습니다.</p>'
 
-    mean = sum(values) / n
+    mean = sum(values) / n if baseline is None else float(baseline)
     devs = [v - mean for v in values]
     # 좌우 대칭이라야 "왼쪽이 더 길다"가 눈대중으로 성립한다.
     reach = max((abs(d) for d in devs), default=0) or 1

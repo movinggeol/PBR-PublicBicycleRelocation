@@ -1269,6 +1269,40 @@ def test_지도_iframe이_안_뜨면_안내문으로_바뀐다():
     assert "frame.hidden = true" in base_js and "fallback.hidden = false" in base_js
 
 
+def test_지도_안내문을_찾는_길이_감싸는_요소에_기대지_않는다():
+    """**자리를 가정하면 마크업이 바뀔 때 조용히 죽는다.**
+
+    예전 스크립트는 `frame.nextElementSibling`이 안내문이라고 가정했다.
+    그 뒤 /maps가 iframe을 `<figure>`로 감싸면서 바로 다음 형제가
+    `<figcaption>`이 되었고, 검사에서 조용히 빠져나가 **안내가 한 번도
+    뜨지 않았다** — 인터넷이 끊기면 흰 상자 세 개만 남았다. 같은 파일을
+    /view로 열면 정상이라 더 안 보였다.
+
+    두 화면 모두 iframe과 안내문을 짝으로 갖고 있어야 하고, 스크립트는
+    형제 자리가 아니라 **찾아서** 짝을 지어야 한다.
+    """
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    templates = Path(webapp_app.__file__).parent / "templates"
+    base_js = (templates / "base.html").read_text(encoding="utf-8")
+
+    # 두 화면 다 짝이 있어야 한다 — maps.html이 빠져 있어서 놓쳤다.
+    for name in ("view.html", "maps.html"):
+        html = (templates / name).read_text(encoding="utf-8")
+        assert "data-map-frame" in html, f"{name}에 판정 대상 iframe이 없다"
+        assert "data-map-fallback" in html, f"{name}에 안내문이 없다"
+
+    # 인접 형제만 보고 포기하면 안 된다.
+    assert "querySelector" in base_js, (
+        "안내문을 형제 자리로만 찾고 있다 — 감싸는 요소가 바뀌면 죽는다")
+    idx = base_js.index("data-map-frame")
+    scope = base_js[idx:idx + 900]
+    assert "closest(" in scope or "querySelector" in scope, (
+        "지도 안내문을 찾는 자리에서 탐색이 아니라 자리 가정을 쓰고 있다")
+
+
 # ───────────────────── 싣기·내리기 색 (1.26.107) ─────────────────────
 
 def test_싣기_내리기_색이_두_테마_모두에서_읽힌다():
