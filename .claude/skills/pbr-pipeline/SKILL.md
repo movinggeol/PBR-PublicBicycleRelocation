@@ -18,7 +18,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 622개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 627개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -263,6 +263,13 @@ python experiments/params/road_time_model.py  # 이동시간 모형 재추정 (E
   `run_label` 컬럼**이고, 라벨을 생략하면 최신 실행분이 나온다.
 - **각 단계는 CSV를 저장한 뒤 `db.save_output(...)`을 부른다.** 새 산출물을 만드는
   단계를 추가하면 이 호출도 함께 넣어라(테스트가 누락을 잡는다).
+- **실행 종류(`runs.kind`)는 띄우는 쪽이 선언한다** — `plan`·`experiment`·`probe`.
+  step 스크립트는 자기가 계획인지 실험인지 **알 수 없다**(같은 파이프라인이 둘 다
+  만든다 — 실험은 `--now`에 실험 라벨을 줄 뿐이다). `run_pipeline --run-kind`가
+  `PBR_RUN_KIND`로 내려보내고 `db.ensure_run()`이 읽는다. **웹 실행 폼은 언제나
+  `plan`을 붙인다.** ⚠️ **기본값을 `plan`으로 만들지 마라** — 선언을 잊은 실험이
+  계획으로 확정되면 라벨 짐작(`classify_run_label`, `obs-cmp-*`를 실험으로 맞힌다)
+  보다 나빠진다. 선언이 없으면 NULL로 두고 짐작에 맡기는 것이 지금 설계다(1.26.114).
 - **CSV가 아직 정본이다.** `save_output()`은 DB 실패 시 경고만 남기고 파이프라인을
   멈추지 않는다. 이 동작을 예외로 바꾸지 마라 — 전환기 설계다 (DB_PLAN 2단계).
 - 새 테이블을 추가할 때는 `db.TABLES`에 스코프·컬럼 변환을 등록하고 `SCHEMA`에
@@ -299,7 +306,7 @@ python experiments/params/road_time_model.py  # 이동시간 모형 재추정 (E
 ## 테스트
 
 ```powershell
-python -m pytest                 # 622개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 627개, 약 100초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

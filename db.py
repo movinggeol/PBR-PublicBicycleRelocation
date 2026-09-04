@@ -694,6 +694,15 @@ def ensure_run(conn: sqlite3.Connection, run_label: str, period: Optional[str] =
         " VALUES (?, datetime('now', 'localtime'))",
         (run_label,),
     )
+    # 부르는 쪽이 종류를 말하지 않았으면 **띄운 쪽이 선언한 것**을 쓴다.
+    # step 스크립트는 자기가 계획인지 실험인지 알 수 없다 — 같은 파이프라인이
+    # 둘 다 만들기 때문이다(실험은 `--now`에 실험 라벨을 주고 돌린다). 아는 것은
+    # 띄우는 쪽뿐이라 run_pipeline이 `PBR_RUN_KIND`로 내려보낸다(1.26.114).
+    # 선언이 없으면 예전처럼 NULL로 두고 `list_runs()`의 라벨 짐작에 맡긴다 —
+    # 여기서 'plan'을 기본값으로 박으면 **선언을 잊은 실험이 계획으로 확정**되어
+    # 짐작보다 나빠진다(짐작은 obs-cmp-*를 실험으로 맞힌다).
+    if kind is None:
+        kind = declared_run_kind()
     # day_type만 인자가 우선이다(COALESCE의 순서가 반대인 것에 주의).
     # 나머지는 '먼저 기록된 값을 지킨다'가 맞지만, day_type은 **산출물의 성격을
     # 규정**한다 — 같은 라벨을 다른 요일 구분으로 다시 돌리면 산출물이 덮어써지므로
@@ -748,6 +757,28 @@ def save_output(table: str, df: pd.DataFrame, run_label: Optional[str] = None,
 # `obs-cmp-1520`이 첫 화면 헤드라인에 "마지막 계획"으로 경고 없이 올라왔고,
 # `roadprobe-*`는 계획 필터에 계획인 척 섞여 눌러도 빈 표만 나왔다.
 RUN_KINDS = ("plan", "experiment", "probe")
+
+
+def declared_run_kind() -> Optional[str]:
+    """띄운 쪽이 선언한 실행 종류(`PBR_RUN_KIND`). 선언이 없으면 None.
+
+    **step 스크립트는 자기가 계획인지 실험인지 알 수 없다.** 같은 파이프라인이
+    둘 다 만들기 때문이다 — 실험은 `--now`에 실험 라벨을 주고 돌린 것일 뿐,
+    코드 경로는 똑같다. 아는 것은 **띄우는 쪽**뿐이라 그쪽이 선언하게 하고
+    (`run_pipeline.py --run-kind`, 웹 실행 폼은 언제나 plan), 여기서는 그 선언을
+    읽기만 한다.
+
+    모르는 값이 들어오면 **조용히 넘기지 않고** 예외를 낸다. 오타로 선언한 종류가
+    NULL로 떨어지면 짐작으로 되돌아가는데, 그 되돌아감이 보이지 않는다.
+    """
+    declared = os.getenv("PBR_RUN_KIND", "").strip()
+    if not declared:
+        return None
+    if declared not in RUN_KINDS:
+        raise ValueError(
+            f"PBR_RUN_KIND는 {' · '.join(RUN_KINDS)} 중 하나여야 합니다"
+            f" (받은 값: {declared!r}).")
+    return declared
 
 # 컬럼이 생기기 **전에** 쌓인 행을 위한 짐작. 앞으로 만드는 실행은 kind를
 # 직접 넣으므로 여기 기대지 않는다 — 목록을 늘려 가며 버티는 것이 원래 문제였다.

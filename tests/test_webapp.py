@@ -72,6 +72,23 @@ def test_vehicle_counts_are_passed_to_pipeline(client, monkeypatch):
     assert args[args.index("--vehicles-per-round") + 1] == "6"
 
 
+def test_웹에서_띄운_실행은_계획으로_못박힌다(client, monkeypatch):
+    """실행 화면에서 띄운 것은 **틀림없이 운영 계획**이므로 종류를 선언한다.
+
+    선언하지 않으면 `runs.kind`가 NULL로 남고 화면이 라벨로 짐작하는데, 그
+    짐작은 새 이름 규칙이 생길 때마다 틀린다 — `obs-cmp-1520`이 첫 화면
+    헤드라인에 '마지막 계획'으로 올라온 것이 그 사고였다(1.26.107).
+    파이프라인 자신은 계획인지 실험인지 알 수 없다. **띄우는 쪽만 안다.**
+    """
+    captured = _capture_start(monkeypatch)
+    res = client.post("/runs", data={"now": "2026-09-04 09"}, follow_redirects=False)
+
+    assert res.status_code == 303
+    args = captured[0]
+    assert args[args.index("--run-kind") + 1] == "plan", \
+        "웹 실행이 종류를 선언하지 않으면 화면이 다시 짐작에 기댄다"
+
+
 def _reject_start(monkeypatch) -> None:
     def fail(args):
         raise AssertionError("잘못된 입력으로 파이프라인이 실행되면 안 된다")

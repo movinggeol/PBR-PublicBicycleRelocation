@@ -31,6 +31,10 @@ from project_config import (
     snapshot_labels, snapshot_paths,
 )
 
+# 실행 종류의 정본은 db.py다 — 여기서 목록을 또 적으면 갈린다. 이 파일은 단계를
+# subprocess로 띄우기만 하지 DB를 직접 쓰지 않으므로, 필요한 것은 이름 하나뿐이다.
+from db import RUN_KINDS
+
 
 # 이 파일이 있는 디렉터리가 프로젝트 루트입니다.
 # 단계 파일들은 data/... 상대 경로를 사용하므로 모든 subprocess의
@@ -93,6 +97,20 @@ def parse_args() -> argparse.Namespace:
                              " auto는 --target-date를 달력으로 판정")
     parser.add_argument("--target-date",
                         help="계획 대상일(YYYY-MM-DD, 기본 오늘). auto 판정의 기준")
+
+    # 이 실행이 운영 계획인지 실험인지는 **띄우는 쪽만 안다.** 같은 파이프라인이
+    # 둘 다 만들기 때문이다(실험은 --now에 실험 라벨을 주고 돌린 것뿐이다).
+    # 선언하면 DB의 runs.kind에 못박혀 화면이 짐작하지 않는다.
+    #
+    # ⚠️ **기본값을 plan으로 두지 않는다.** 선언을 잊은 실험이 '계획'으로
+    # 확정되면 라벨 짐작(obs-cmp-*를 실험으로 맞힌다)보다 나빠진다. 선언이
+    # 없으면 예전처럼 NULL로 두고 짐작에 맡긴다.
+    parser.add_argument(
+        "--run-kind", choices=RUN_KINDS,
+        help="이 실행의 종류. 웹 실행 폼은 언제나 plan으로 띄운다."
+             " 실험 격자를 돌릴 때 experiment를 주면 계획 화면에서 갈린다."
+             " 주지 않으면 라벨로 짐작한다(옛 동작)",
+    )
 
     # 계절 수준 보정(warmup). project_config가 정의한 인자를 그대로 받아 하위 단계에
     # 넘긴다 — 여기서 받지 않으면 argparse가 '알 수 없는 인자'로 거절해 버린다.
@@ -208,6 +226,10 @@ def build_env(args: argparse.Namespace) -> dict:
         env["PBR_ENFORCE_TIME_BUDGET"] = "1"
     if getattr(args, "seed", None) is not None:
         env["PBR_CLUSTER_SEED"] = str(args.seed)
+    # 실행 종류도 같은 방식으로 내려보낸다 — db.ensure_run()이 이것을 읽어
+    # runs.kind에 못박는다. 선언이 없으면 심지 않는다(짐작에 맡긴다).
+    if getattr(args, "run_kind", None):
+        env["PBR_RUN_KIND"] = args.run_kind
     return env
 
 

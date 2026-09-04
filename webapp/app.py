@@ -412,7 +412,12 @@ def create_run(
     skip_api: Optional[str] = Form(None),
     skip_eda: Optional[str] = Form(None),
 ):
-    args = []
+    # 🔴 **이 화면에서 띄운 실행은 운영 계획이다.** 종류를 여기서 못박아야
+    # `runs.kind`가 채워지고, 화면이 라벨 짐작(`classify_run_label`)에 기대지
+    # 않게 된다 — 짐작은 새 이름 규칙이 생길 때마다 틀리고, 틀리면 실험이
+    # 첫 화면 헤드라인에 '마지막 계획'으로 올라온다(1.26.107이 그 사고였다).
+    # 실험 격자는 CLI에서 `--run-kind experiment`로 띄운다.
+    args = ["--run-kind", "plan"]
     for flag, value in (("--now", now), ("--raw-file", raw_file)):
         value = value.strip()
         if value:

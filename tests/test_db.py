@@ -411,3 +411,52 @@ def test_backtest_leaves_unmeasured_columns_null(conn):
     out = db.load_backtest(conn)
     assert pd.isna(out["rmse"].iloc[0]) and pd.isna(out["z_for_95"].iloc[0])
 
+
+
+def test_띄운_쪽이_선언한_실행_종류를_읽는다(conn, monkeypatch):
+    """`PBR_RUN_KIND`가 있으면 그 값이 `runs.kind`에 못박힌다.
+
+    step 스크립트는 자기가 계획인지 실험인지 **알 수 없다** — 같은 파이프라인이
+    둘 다 만들기 때문이다(실험은 `--now`에 실험 라벨을 주고 돌린 것뿐이다).
+    아는 것은 띄우는 쪽뿐이라 `run_pipeline --run-kind`가 환경변수로 내려보낸다.
+    """
+    monkeypatch.setenv("PBR_RUN_KIND", "experiment")
+    db.ensure_run(conn, "2026-09-04 09", period="25년 11월")
+
+    kind = conn.execute("SELECT kind FROM runs WHERE run_label = ?",
+                        ("2026-09-04 09",)).fetchone()[0]
+    assert kind == "experiment"
+
+
+def test_선언이_없으면_짐작에_맡긴다(conn, monkeypatch):
+    """🔴 **기본값을 plan으로 박지 않는다.**
+
+    선언을 잊은 실험이 '계획'으로 확정되면 라벨 짐작보다 **나빠진다** —
+    짐작은 `obs-cmp-*`를 실험으로 맞히는데, 확정된 'plan'은 그 짐작을 이겨
+    실험이 계획 화면 헤드라인에 올라온다. 선언이 없으면 NULL로 두는 것이 옳다.
+    """
+    monkeypatch.delenv("PBR_RUN_KIND", raising=False)
+    db.ensure_run(conn, "obs-cmp-1520", period="25년 11월")
+
+    assert conn.execute("SELECT kind FROM runs WHERE run_label = ?",
+                        ("obs-cmp-1520",)).fetchone()[0] is None
+    # 짐작은 그대로 살아 있다 — 화면에서는 실험으로 보인다.
+    runs = db.list_runs(conn)
+    assert runs.set_index("run_label")["kind"]["obs-cmp-1520"] == "experiment"
+
+
+def test_인자로_준_종류가_선언을_이긴다(conn, monkeypatch):
+    """수집기는 자기가 probe인 것을 안다 — 환경 선언보다 그쪽이 구체적이다."""
+    monkeypatch.setenv("PBR_RUN_KIND", "plan")
+    db.ensure_run(conn, "roadprobe-2026-09-04", kind="probe")
+
+    assert conn.execute("SELECT kind FROM runs WHERE run_label = ?",
+                        ("roadprobe-2026-09-04",)).fetchone()[0] == "probe"
+
+
+def test_모르는_종류를_선언하면_조용히_넘기지_않는다(monkeypatch):
+    """오타로 선언한 종류가 NULL로 떨어지면 짐작으로 되돌아가는데, **그
+    되돌아감이 보이지 않는다.** 그래서 읽는 자리에서 막는다."""
+    monkeypatch.setenv("PBR_RUN_KIND", "plaan")
+    with pytest.raises(ValueError):
+        db.declared_run_kind()
