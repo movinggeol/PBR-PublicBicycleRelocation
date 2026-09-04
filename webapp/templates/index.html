@@ -210,7 +210,8 @@
   <table data-sortable class="m-cards">
     <thead><tr>
       <th scope="col">실행 이름</th>
-      <th scope="col"><span class="tip" data-tip="운영 계획 · 실험(견줘 보려고 돌린 것) · 수집(계획이 아닌 기록). 수집은 결과 화면의 계획 목록에 뜨지 않습니다.">종류</span></th>
+      {# 낱말은 kind_labels 한 벌에서 온다 — 여기 또 적으면 고르는 목록과 갈린다. #}
+      <th scope="col"><span class="tip" data-tip="{{ kind_labels.plan }} · {{ kind_labels.experiment }}(견줘 보려고 돌린 것) · {{ kind_labels.probe }}(계획이 아닌 기록). {{ kind_labels.probe }}은 결과 화면의 계획 목록에 뜨지 않습니다.">종류</span></th>
       <th scope="col">순수요 기간</th><th scope="col">시간대</th><th scope="col">요일</th><th scope="col">기록 시각</th>
       <th scope="col" data-nosort>바로 보기</th>
     </tr></thead>
@@ -223,7 +224,7 @@
       <td data-label="종류">
         <form method="post" action="/runs/{{ run.run_label | urlencode }}/kind" class="kind-form">
           <select name="kind" aria-label="{{ run.run_label }} 실행 종류" onchange="this.form.submit()">
-            {% for value, text in [("plan", "운영 계획"), ("experiment", "실험"), ("probe", "수집")] %}
+            {% for value, text in kind_labels.items() %}
             <option value="{{ value }}" {% if run.kind == value %}selected{% endif %}>{{ text }}</option>
             {% endfor %}
           </select>

@@ -1381,7 +1381,35 @@ def test_실행_종류를_라벨_하드코딩으로_짐작하지_않는다():
     src = Path(webapp_app.__file__).read_text(encoding="utf-8")
     assert '"g3000"' not in src and '"z199"' not in src, \
         "라우트에 라벨 하드코딩 목록이 남아 있다"
-    assert "_run_kind(" in src, "실행 종류를 DB에서 안 읽는다"
+    assert "store.run_kind(" in src, "실행 종류를 저장소 계층에서 안 읽는다"
+
+
+def test_웹이_db를_직접_열지_않는다():
+    """`webapp/`에서 `db.py`를 아는 곳은 `store.py` 하나여야 한다 —
+    "새 데이터 API는 store.load()를 써라"(pbr-pipeline 규약). 라우트가
+    직접 `db.session()`을 열면 그 계층이 있는 이유가 없어진다(1.26.110)."""
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    # ⚠️ `kpi_view.py`는 **알려진 예외**다. 1.19.3(2026-08-24)부터 `db.load_backtest`·
+    #    `db.load_frame`을 직접 부르는데, `store.py`에 대응하는 조회가 없어서
+    #    옮기려면 저장소 계층에 함수를 새로 내야 한다. 이번(1.26.110)은 **새로
+    #    생긴 위반만** 되돌렸고 옛것은 손대지 않았다 — 목록에 남겨 두는 이유는
+    #    "재 보고 남겨 둔 것"과 "못 본 것"을 구분하기 위해서다(TODO P3).
+    KNOWN = {"store.py", "kpi_view.py"}
+
+    webapp_dir = Path(webapp_app.__file__).parent
+    offenders = []
+    for path in sorted(webapp_dir.glob("*.py")):
+        if path.name in KNOWN:
+            continue
+        for num, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            code = line.split("#", 1)[0]     # 주석 속 `db.py` 언급은 봐준다
+            if re.search(r"(^|\s)import db(\s|$)", code) or "db.session(" in code:
+                offenders.append(f"{path.name}:{num}: {line.strip()}")
+
+    assert not offenders, "store.py 말고도 db를 직접 쓰는 곳이 있다:\n" + "\n".join(offenders)
 
 
 def test_계획이_아닌_실행은_계획_필터에_안_뜬다():
@@ -1415,3 +1443,70 @@ def test_실행_종류는_못박으면_짐작을_이긴다():
 
         # 짐작이라면 'plan'이 나왔을 이름이다 — 폴백이 이기면 안 된다.
         assert db.classify_run_label("아무이름-없는규칙") == "plan"
+
+
+# ───────────── 작업지시서 차량 필터 — 잘못된 값의 안내 (2026-09-04) ─────────────
+
+def _fake_sheets():
+    return [
+        {"vehicle_id": "V01", "cluster": 1, "stops": []},
+        {"vehicle_id": "V02", "cluster": 2, "stops": []},
+    ]
+
+
+def test_없는_차량으로_고르면_그_이름으로_빈_상태를_말한다(monkeypatch):
+    """`vehicle=`이 그 실행에 없는 이름(오타·재배정·옛 QR코드)이면 sheets는
+    비지만, 그렇다고 '계획이 아예 없다'고 말하면 안 된다 — 실제로는 다른
+    차량 지시서가 있다. `selected_vehicle`을 무효화하지 않고 그대로 넘겨야
+    orders.html이 '\"{vehicle}\"의 지시서가 없습니다 · 전체 보기'를 고를 수
+    있다. 예전에는 `vehicle in names`로 걸러 None으로 떨어뜨렸다가, 화면이
+    '경로가 없습니다 — 계획을 끝까지 실행하세요'라는 틀린 안내를 냈다."""
+    from webapp import app as app_module, orders, store
+
+    monkeypatch.setattr(store, "plan_targets", lambda: __import__("pandas").DataFrame())
+    monkeypatch.setattr(orders, "build", lambda *a, **k: _fake_sheets())
+
+    ctx = app_module._orders_context("obs-cmp-1520", "_15_20", "V99없는차량")
+    assert ctx["selected_vehicle"] == "V99없는차량", (
+        "유효하지 않다고 selected_vehicle을 지우면 안 된다 — 화면이 판단한다")
+    assert ctx["sheets"] == [], "없는 차량인데 다른 차량 지시서가 섞여 나온다"
+    assert ctx["sheet_names"] == ["V01", "V02"], "차량 목록 자체는 그대로 있어야 한다"
+
+
+def test_없는_차량_안내_문구가_화면에_실제로_뜬다(monkeypatch):
+    """위 컨텍스트가 실제로 orders.html에서 어떤 문장으로 렌더링되는지까지 본다."""
+    from webapp import app as app_module, orders, store
+    from webapp.app import templates
+
+    monkeypatch.setattr(store, "plan_targets", lambda: __import__("pandas").DataFrame())
+    monkeypatch.setattr(orders, "build", lambda *a, **k: _fake_sheets())
+
+    ctx = app_module._orders_context("obs-cmp-1520", "_15_20", "V99없는차량")
+    html = templates.get_template("orders.html").render(
+        request=_FakeRequest(), job_labels={}, **ctx)
+
+    assert "V99없는차량”의 지시서가 없습니다" in html or \
+        "“V99없는차량”의 지시서가 없습니다" in html, \
+        "없는 차량 이름으로 된 안내가 화면에 없다"
+    assert "경로가 없습니다" not in html, (
+        "여전히 '계획이 아예 없다'는 틀린 안내가 뜬다")
+
+
+def test_있는_차량으로_고르면_그_한_장만_남는다(monkeypatch):
+    """정상 경로도 같이 지킨다 — 있는 차량이면 그 한 장만 남고 이름이 그대로다."""
+    from webapp import app as app_module, orders, store
+
+    monkeypatch.setattr(store, "plan_targets", lambda: __import__("pandas").DataFrame())
+    monkeypatch.setattr(orders, "build", lambda *a, **k: _fake_sheets())
+
+    ctx = app_module._orders_context("obs-cmp-1520", "_15_20", "V01")
+    assert ctx["selected_vehicle"] == "V01"
+    assert [s["vehicle_id"] for s in ctx["sheets"]] == ["V01"]
+
+
+class _FakeRequest:
+    """템플릿의 `request.url.path`만 읽는 최소 스텁."""
+    class _URL:
+        path = "/orders"
+    url = _URL()
+    headers = {}

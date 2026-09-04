@@ -119,6 +119,41 @@ def run_labels() -> pd.DataFrame:
         return pd.DataFrame()
 
 
+# 실행 종류(plan/experiment/probe) 판정·확정. `webapp/`에서 `db.py`를
+# 직접 import하는 곳은 여기 하나여야 한다 — 예전에는 `app.py`가 함수 안에서
+# `import db`를 두 번(폴백 판정·POST 라우트) 따로 했는데, 그러면 "새 데이터
+# API는 store.load()를 써라"는 이 계층의 존재 이유가 갈린다(1.26.110).
+RUN_KINDS = db.RUN_KINDS
+classify_run_label = db.classify_run_label
+
+
+def run_kind(run_label: str, runs: Optional[pd.DataFrame] = None) -> str:
+    """실행 종류. `runs`에 행이 없어도 라벨로 짐작해 돌려준다.
+
+    `runs`를 미리 읽어 뒀으면(예: 이미 `run_labels()`를 부른 호출 쪽) 다시
+    쿼리하지 않고 넘겨받는다 — 홈 화면 하나가 뜰 때마다 같은 표를 두 번
+    읽을 이유가 없다.
+    """
+    if runs is None:
+        runs = run_labels()
+    if not runs.empty and "kind" in runs:
+        row = runs.loc[runs["run_label"] == run_label, "kind"]
+        if len(row) and pd.notna(row.iloc[0]):
+            return str(row.iloc[0])
+    return classify_run_label(run_label)
+
+
+def set_run_kind(run_label: str, kind: str) -> None:
+    """실행 종류를 사람이 못박는다. 실행 행이 없으면 만들어 두고 붙인다.
+
+    `kind`가 `RUN_KINDS`에 없으면 `db.set_run_kind`가 `ValueError`를 낸다 —
+    여기서 다시 검사하지 않는다(부르는 쪽 라우트가 HTTP 400으로 먼저 거른다).
+    """
+    with db.session() as conn:
+        db.ensure_run(conn, run_label)
+        db.set_run_kind(conn, run_label, kind)
+
+
 def plan_runs() -> pd.DataFrame:
     """계획 화면의 필터가 쓸 실행 목록 — **계획이 아닌 실행을 뺀다.**
 

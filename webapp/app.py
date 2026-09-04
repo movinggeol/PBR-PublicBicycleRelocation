@@ -100,6 +100,16 @@ JOB_STATUS_LABELS = {
 }
 templates.env.globals["job_labels"] = JOB_STATUS_LABELS
 
+# 실행 종류도 같은 방식으로 둔다. 예전에는 이 세 낱말을 index.html 안에
+# **두 번**(고르는 목록과 설명 풍선) 적어 뒀는데, `db.RUN_KINDS`와 갈리면
+# 화면과 저장값이 어긋난다(1.26.110). 순서가 곧 목록의 순서다.
+RUN_KIND_LABELS = {
+    "plan": "운영 계획",
+    "experiment": "실험",
+    "probe": "수집",
+}
+templates.env.globals["kind_labels"] = RUN_KIND_LABELS
+
 # ---------------- 진행 단계 ----------------
 
 # 단계 파일 이름을 사람이 읽는 말로. run_pipeline.STAGES와 짝을 이룬다.
@@ -264,21 +274,17 @@ def _index_context(error: Optional[str] = None) -> dict:
 
 
 def _run_kind(run_label: str) -> str:
-    """실행 종류(`plan`·`experiment`·`probe`). 판정 규칙은 db.py 한 곳에 있다.
+    """실행 종류(`plan`·`experiment`·`probe`).
+
+    판정은 `store.run_kind()`가 한다 — `webapp/`에서 `db.py`를 직접 아는 곳은
+    `store.py` 하나여야 한다(1.26.110). 여기 남겨 둔 것은 화면이 부르는
+    이름을 바꾸지 않기 위한 얇은 껍데기다.
 
     `runs`에 행이 없어도 **모른다고 넘기지 않는다.** 지표만 남고 실행 행이
     없는 경우가 있는데(옛 자료·부분 기록), 그때 '모름'을 운영 계획으로 취급
-    하면 화면이 조용히 거짓말한다 — 그것이 1.26.107에서 고친 바로 그 결함
-    이다. 라벨 짐작이라도 붙인다.
+    하면 화면이 조용히 거짓말한다 — 그것이 1.26.107에서 고친 바로 그 결함이다.
     """
-    import db
-
-    runs = store.run_labels()
-    if not runs.empty and "kind" in runs:
-        row = runs.loc[runs["run_label"] == run_label, "kind"]
-        if len(row) and pd.notna(row.iloc[0]):
-            return str(row.iloc[0])
-    return db.classify_run_label(run_label)
+    return store.run_kind(run_label)
 
 
 def _home_context() -> dict:
@@ -486,16 +492,12 @@ def set_run_kind(run_label: str, kind: str = Form(...)):
     행을 걷어내야 하고, 되돌릴 수 없다. 그 일은 `tools/forget_run.py`가
     `--dry-run`과 함께 맡는다 — 웹 화면에서 한 번의 클릭으로 할 일이 아니다.
     """
-    import db
-
-    if kind not in db.RUN_KINDS:
+    if kind not in store.RUN_KINDS:
         raise HTTPException(status_code=400, detail="모르는 실행 종류입니다.")
     try:
-        with db.session() as conn:
-            # 실행 행이 없으면 만들어 두고 못박는다 — 지표만 있고 runs 행이
-            # 없는 옛 자료에도 종류를 붙일 수 있어야 한다.
-            db.ensure_run(conn, run_label)
-            db.set_run_kind(conn, run_label, kind)
+        # 실행 행이 없으면 만들어 두고 못박는 것까지 store가 맡는다 — 라우트가
+        # DB 연결을 직접 여는 자리가 아니다(1.26.110).
+        store.set_run_kind(run_label, kind)
     except Exception as err:                          # noqa: BLE001
         raise HTTPException(status_code=500,
                             detail=f"실행 종류를 바꾸지 못했습니다: {err}") from err
@@ -572,7 +574,14 @@ def _orders_context(run_label: Optional[str], duration: Optional[str],
         "duration": duration,
         "sheets": sheets,
         "sheet_names": names,
-        "selected_vehicle": vehicle if vehicle in names else None,
+        # ⚠️ **유효한 값일 때만 넘기면 안 된다.** `vehicle in names`가 아닐
+        # 때(오타·재배정으로 번호가 바뀜·옛 QR코드) None으로 떨어뜨리면
+        # sheets는 이미 위에서 걸러져 비어 있는데 selected_vehicle만 없어져,
+        # 빈 상태가 "'{{ vehicle }}'의 지시서가 없습니다"가 아니라 "경로가
+        # 없습니다 — 계획을 끝까지 실행하세요"로 뜬다. 실제로는 그 회차에
+        # 지시서가 17장 있는데 계획이 아예 없다고 말하는 것이다(실측 확인).
+        # 유효성 검사가 아니라 **그대로 전달**이 맞다 — 화면이 판단한다.
+        "selected_vehicle": vehicle,
         "capacity": VEHICLE_CAPACITY,
         "depot_name": DEPOT_NAME,
         "upper_ratio": TARGET_QTY_UPPER_RATIO,
