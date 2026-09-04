@@ -309,10 +309,16 @@
     }
     .global-nav .util:hover { opacity: 1; text-decoration: none; }
     .global-nav .util.here { opacity: 1; font-weight: 600; box-shadow: inset 0 -1px 0 currentColor; }
+    /* ⚠️ `white-space: nowrap`이 옆의 `.util`에는 있고 여기에는 없었다.
+       내비가 320px(1280px을 400% 확대한 폭)이 되면 이 단추만 눌려 라벨
+       "넓게"가 **한 글자씩 세로로** 섰다 — 폭 13px, 두 줄. 자리가 모자라서가
+       아니다(자식 합 176px / 320px): 글자가 접히니 상자가 44 → 54px로 커져
+       내비 한 줄의 높이까지 어긋났다. 접히지 않게 두고 줄지도 않게 한다. */
     .theme-toggle {
       background: transparent; border: 0; color: var(--on-dark);
       font-size: 13px; cursor: pointer; padding: 4px; line-height: 1;
       opacity: .85; border-radius: var(--r-sm);
+      white-space: nowrap; flex-shrink: 0;
     }
     .theme-toggle:hover { opacity: 1; }
     .theme-toggle:active { transform: scale(.95); }
@@ -526,7 +532,11 @@
       white-space: normal; word-break: keep-all; vertical-align: top; line-height: 1.55;
     }
     .table-prose th:first-child, .table-prose td:first-child { width: 11rem; }
-    .table-prose code { word-break: break-all; }
+    /* 긴 코드 문자열이 열을 넘치지 않게 하되, **넘치지 않을 때는 끊지 않는다.**
+       `break-all`은 다음 줄에 통째로 들어갈 토큰도 글자 단위로 갈랐다 —
+       400% 확대(320px)에서 `_05_10`·`--day-type`이 두 동강 났다(실측).
+       `anywhere`는 먼저 토큰째 다음 줄로 내리고, 그래도 안 맞을 때만 쪼갠다. */
+    .table-prose code { overflow-wrap: anywhere; word-break: normal; }
     .card.flush table th:first-child, .card.flush table td:first-child { padding-left: var(--sp-lg); }
     .card.flush table th:last-child, .card.flush table td:last-child { padding-right: var(--sp-lg); }
     tr.over-budget td { background: var(--critical-soft); }

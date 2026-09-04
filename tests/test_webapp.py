@@ -1320,6 +1320,54 @@ def test_지도_안내문을_찾는_길이_감싸는_요소에_기대지_않는�
         "지도 안내문을 찾는 자리에서 탐색이 아니라 자리 가정을 쓰고 있다")
 
 
+# ─────────── 400% 확대에서 낱말이 쪼개지지 않는지 (1.26.114) ───────────
+
+def test_내비_단추_라벨이_접히지_않는다():
+    """`white-space: nowrap`이 옆의 `.util` 링크에는 있고 단추에는 없었다.
+
+    1280px을 **400% 확대**하면 CSS 폭이 320px이 된다(WCAG 1.4.10이 보는 폭).
+    거기서 이 단추만 눌려 라벨 "넓게"가 **한 글자씩 세로로** 섰다 — 폭 13px,
+    두 줄. 자리가 모자라서가 아니었다(내비 자식 합 176px / 320px): 글자가
+    접히니 상자가 44 → 54px로 커져 내비 한 줄의 높이까지 어긋났다.
+
+    가로 스크롤 검사로는 못 잡는다 — 줄바꿈이 넘침을 흡수해 버리기 때문이다.
+    """
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    css = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    block = css[css.index(".theme-toggle {"):]
+    block = block[:block.index("}")]
+    assert "white-space: nowrap" in block, (
+        "내비 단추가 접힐 수 있다 — 좁은 폭에서 라벨이 글자 단위로 세로로 선다")
+    assert "flex-shrink: 0" in block, (
+        "flex가 단추를 글자 폭 아래로 줄일 수 있다")
+
+
+def test_설명표_코드가_필요할_때만_끊긴다():
+    """`word-break: break-all`은 **다음 줄에 통째로 들어갈 토큰도** 갈랐다.
+
+    400% 확대(320px)에서 `_05_10`·`--day-type`이 두 동강 났다(실측).
+    `overflow-wrap: anywhere`는 먼저 토큰째 다음 줄로 내리고, 그래도 안
+    맞을 때만 쪼갠다 — 넘침은 여전히 막으면서 멀쩡한 토큰은 살린다.
+    """
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    css = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    i = css.index(".table-prose code {")
+    rule = css[i:css.index("}", i)]
+    assert "overflow-wrap: anywhere" in rule, "긴 코드가 열을 넘칠 수 있다"
+    assert "break-all" not in rule, (
+        "break-all은 다음 줄에 들어갈 토큰까지 글자 단위로 가른다")
+
+
 # ───────────────────── 싣기·내리기 색 (1.26.107) ─────────────────────
 
 def test_싣기_내리기_색이_두_테마_모두에서_읽힌다():
