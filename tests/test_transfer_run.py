@@ -195,3 +195,37 @@ def test_cli_roundtrip(tmp_path, monkeypatch):
         stock = conn.execute(
             "SELECT stock FROM station_info WHERE run_label = '라벨'").fetchone()[0]
     assert stock == 42
+
+
+def test_새_스코프_테이블이_이관에서_조용히_빠지지_않는다(tool, tmp_path, monkeypatch):
+    """`RUN_TABLES`는 **손으로 적은 목록**이라 새 테이블이 늘면 빠뜨린다.
+
+    `tools/forget_run.py`는 DB에 물어보는데(동적) 이쪽만 하드코딩이라, 규칙이
+    갈리면 '지우기'는 새 테이블을 알고 '이관'만 모르는 상태가 된다 — 옮긴
+    실행이 소리 없이 한 조각을 잃고, 행 수를 손으로 견주기 전에는 아무도
+    모른다. 여기서 지키는 것은 *"목록이 맞나"* 가 아니라 **"새 테이블이
+    생겼을 때 사람이 고르도록 강제되나"** 다.
+
+    빠뜨린 것이면 `RUN_TABLES`에, 일부러 뺀 것이면 `EXCLUDED_TABLES`에 넣고
+    **왜 빼는지 주석을 남겨라**(road_leg가 그 예다).
+    """
+    import db
+
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "scope.db"))
+    with db.session() as conn:
+        scoped = set()
+        for (table,) in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"):
+            columns = {row[1] for row in conn.execute(f'PRAGMA table_info("{table}")')}
+            if "run_label" in columns:
+                scoped.add(table)
+
+    covered = set(tool.RUN_TABLES) | set(tool.EXCLUDED_TABLES)
+    missing = scoped - covered
+    assert not missing, (
+        f"run_label 스코프 테이블 {sorted(missing)}이(가) transfer_run의 목록에 "
+        f"없습니다 — 이관하려면 RUN_TABLES에, 일부러 빼려면 EXCLUDED_TABLES에 "
+        f"이유와 함께 넣으십시오.")
+    assert not (covered - scoped - {"runs"}), (
+        f"이제 존재하지 않는 테이블이 목록에 남아 있습니다: "
+        f"{sorted(covered - scoped - {'runs'})}")

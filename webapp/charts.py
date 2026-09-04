@@ -213,7 +213,11 @@ def deviation_hbar(labels: Sequence[str], values: Sequence[float], *,
         return '<p class="empty">그릴 자료가 없습니다.</p>'
 
     mean = sum(values) / n if baseline is None else float(baseline)
-    devs = [v - mean for v in values]
+    # ⚠️ **표시 자리에서 반올림한 뒤 0을 붙인다.** 값이 다 같아도 평균에는
+    # 부동소수점 오차가 남아(예: 0.1 셋의 편차가 -1.4e-17) `{:+.1f}`가
+    # `-0.0분`으로 찍힌다 — 평균과 똑같은 차를 "평균보다 적게 일했다"고
+    # 말하는 셈이고, 하필 이 그래프의 존재 이유가 *"고른가"* 다(1.26.113).
+    devs = [round(v - mean, 1) + 0.0 for v in values]
     # 좌우 대칭이라야 "왼쪽이 더 길다"가 눈대중으로 성립한다.
     reach = max((abs(d) for d in devs), default=0) or 1
 

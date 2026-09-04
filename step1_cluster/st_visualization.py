@@ -9,7 +9,8 @@ from folium.plugins import FeatureGroupSubGroup
 import pandas as pd
 import numpy as np
 
-from mapviz import cluster_color, legend_html, swatch_circle
+from mapviz import (DROP_LABEL, PICK_LABEL, cluster_color, legend_html,
+                    swatch_circle)
 from project_config import (
     MAP_TILES, PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config,
 )
@@ -76,11 +77,15 @@ def make_clustered_map(durations: list):
             cluster = row['cluster']
             rebal = row['rebal_qty']
             
+            # 낱말은 mapviz.py 한 벌에서 온다. 예전에는 같은 문구를 여기에
+            # 손으로 적어 두었는데, mapviz의 주석은 그 상수가 **step1 툴팁과
+            # 같은 말을 쓰려고** 있다고 말하면서 정작 잇지는 않았다 — 한쪽만
+            # 고치면 지도와 범례가 다른 말을 하게 된다(1.26.113).
             if rebal > 0:
-                status = '내리기 (부족 해소)'
+                status = DROP_LABEL
                 layer = layer_dict[(cluster, 'drop')]
             else:
-                status = '싣기 (과잉 해소)'
+                status = PICK_LABEL
                 layer = layer_dict[(cluster, 'pick')]
             
             radius = max(5, abs(rebal)*0.3)
