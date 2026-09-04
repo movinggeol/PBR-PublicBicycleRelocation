@@ -1196,9 +1196,9 @@ def save_assignments(conn: sqlite3.Connection, run_label: str, duration: str,
     return len(rows)
 
 
-def assignment_history(conn: sqlite3.Connection, vehicle_id: Optional[str] = None,
-                       run_label: Optional[str] = None) -> pd.DataFrame:
-    """배정 이력(최신순). 차량이나 실행으로 좁힐 수 있다."""
+def _assignment_filter(vehicle_id: Optional[str], run_label: Optional[str]) -> tuple:
+    """배정 이력을 좁히는 조건. 세는 쪽과 읽는 쪽이 **같은 조건**을 써야 한다 —
+    갈리면 '몇 건 더 있다'가 실제 쪽 수와 어긋난다."""
     conditions, params = [], []
     if vehicle_id:
         conditions.append("vehicle_id = ?")
@@ -1206,10 +1206,44 @@ def assignment_history(conn: sqlite3.Connection, vehicle_id: Optional[str] = Non
     if run_label:
         conditions.append("run_label = ?")
         params.append(run_label)
-    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    return (f"WHERE {' AND '.join(conditions)}" if conditions else ""), params
+
+
+def count_assignments(conn: sqlite3.Connection, vehicle_id: Optional[str] = None,
+                      run_label: Optional[str] = None) -> int:
+    """조건에 맞는 배정 이력 **전체 건수**. 쪽 수를 셀 때 쓴다.
+
+    행을 다 읽어 `len()`을 재면 상한을 두는 뜻이 없어진다 — 세는 것은 DB가 한다.
+    """
+    where, params = _assignment_filter(vehicle_id, run_label)
+    return conn.execute(
+        f"SELECT COUNT(*) FROM vehicle_assignment {where}", params).fetchone()[0]
+
+
+def assignment_history(conn: sqlite3.Connection, vehicle_id: Optional[str] = None,
+                       run_label: Optional[str] = None, limit: Optional[int] = None,
+                       offset: int = 0) -> pd.DataFrame:
+    """배정 이력. 차량이나 실행으로 좁히고, `limit`/`offset`으로 쪽을 끊는다.
+
+    ⚠️ **상한은 SQL에 건다.** 예전에는 표 전체를 DataFrame으로 읽어 온 뒤
+    화면단에서 앞 200행만 잘랐는데, 그러면 실행이 쌓일수록 읽는 양이 계속 늘고
+    잘린 나머지는 **닿을 길이 없었다.** 상한을 올리는 것은 미루기일 뿐이다
+    (실측: 실행 1건이 평균 17.2행이라 200은 12회 실행분이다, 1.26.116).
+
+    ⚠️ **정렬은 `run_label` 사전순이다.** `created_at`이 아니다 — 이 저장소는
+    `list_runs()`부터 같은 규약을 쓰므로 여기만 바꾸면 화면끼리 순서가 갈린다.
+    다만 사전순이라 `obs-cmp-*`가 `2026-*`보다 앞에 온다는 것은 알고 있어야
+    한다(쪽 나눔은 전부를 훑으므로 빠지는 행은 없다).
+    """
+    where, params = _assignment_filter(vehicle_id, run_label)
+    window = ""
+    if limit is not None:
+        window = " LIMIT ? OFFSET ?"
+        params = params + [int(limit), int(offset)]
     return pd.read_sql(
         f"SELECT * FROM vehicle_assignment {where}"
-        " ORDER BY run_label DESC, duration ASC, vehicle_id ASC", conn, params=params)
+        " ORDER BY run_label DESC, duration ASC, vehicle_id ASC" + window,
+        conn, params=params)
 
 
 # ---------------- 대여이력 (대용량 원천 데이터) ----------------

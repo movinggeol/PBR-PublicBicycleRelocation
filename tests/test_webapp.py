@@ -1461,18 +1461,26 @@ def test_문턱을_넘은_타일_값에_색_규칙이_있다():
 
 def test_배정_이력을_말없이_자르지_않는다():
     """상한을 두는 것은 맞다(실행마다 쌓인다). 자른 것을 **안 말하는 것**이
-    틀렸다 — 86건 중 60건만 보여 주고 표가 그냥 끝났다(1.26.107)."""
+    틀렸다 — 86건 중 60건만 보여 주고 표가 그냥 끝났다(1.26.107).
+
+    ⚠️ **말하는 것만으로는 모자랐다**(1.26.116). 200건에서 자르고 "N건 더
+    있습니다"라고만 적으니, 실행이 12건만 쌓여도 그 안내가 늘 참이 되고
+    나머지에는 닿을 길이 없었다. 지금 지키는 것은 *"잘렸다고 말하는가"* 가
+    아니라 **"나머지로 가는 길이 있는가"** 다.
+    """
     from pathlib import Path
 
     from webapp import app as webapp_app
 
     src = Path(webapp_app.__file__).read_text(encoding="utf-8")
-    assert "assignments_hidden" in src, "라우트가 자른 건수를 안 넘긴다"
-    assert ".head(60)" not in src, "옛 상한이 남아 있다"
+    assert ".head(60)" not in src and ".head(ASSIGNMENT_LIMIT)" not in src, \
+        "옛 상한이 남아 있다"
+    assert "ASSIGNMENTS_PER_PAGE" in src, "라우트가 쪽 크기를 안 정한다"
 
     html = _css("vehicles.html")
-    assert "assignments_hidden" in html and "건이 더 있습니다" in html, \
-        "화면이 잘렸다는 말을 안 한다"
+    assert "전체 {{ assignments_total }}건" in html, "전체가 몇 건인지 안 말한다"
+    assert "page={{ page + 1 }}" in html and "page={{ page - 1 }}" in html, \
+        "나머지로 가는 길(쪽 넘기기)이 없다"
 
 
 def test_실행_종류를_라벨_하드코딩으로_짐작하지_않는다():
@@ -1614,3 +1622,50 @@ class _FakeRequest:
         path = "/orders"
     url = _URL()
     headers = {}
+
+
+def test_배정_이력_쪽_넘기기가_전부에_닿는다(client, monkeypatch):
+    """자르고 "N건 더 있습니다"라고만 적으면 나머지에 닿을 길이 없다.
+
+    실행이 12건만 쌓여도 그 안내가 **늘 참**이 되던 자리다(1.26.116).
+    상한을 올리는 것은 미루기이므로 쪽으로 끊어 전부에 닿게 했다.
+    """
+    import pandas as pd
+
+    from webapp import app as app_module
+    from webapp import store
+
+    rows = [{"run_label": f"2026-09-{r + 1:02d} 09", "duration": "_05_10",
+             "vehicle_id": f"V{i:02d}", "cluster": i, "stations": 5, "bikes": 30,
+             "distance_km": 12.0, "minutes": 90.0}
+            for r in range(4) for i in range(20)]
+
+    def fake_count(vehicle_id=None, run_label=None):
+        return len(rows)
+
+    def fake_history(vehicle_id=None, run_label=None, limit=None, offset=0):
+        chunk = rows[offset:offset + limit] if limit else rows
+        return pd.DataFrame(chunk)
+
+    monkeypatch.setattr(store, "vehicle_assignment_count", fake_count)
+    monkeypatch.setattr(store, "vehicle_assignments", fake_history)
+
+    per_page = app_module.ASSIGNMENTS_PER_PAGE
+    pages = -(-len(rows) // per_page)
+    assert pages > 1, "쪽이 하나뿐이면 이 시험이 아무것도 안 지킨다"
+
+    seen = 0
+    for page in range(1, pages + 1):
+        res = client.get(f"/vehicles?page={page}")
+        assert res.status_code == 200
+        seen += res.text.count('data-label="회차"')
+        if page < pages:
+            assert f"page={page + 1}" in res.text, "다음 쪽으로 가는 길이 없다"
+    assert seen == len(rows), "쪽을 다 넘겼는데 못 본 행이 있다"
+
+
+def test_범위를_벗어난_쪽은_오류_대신_접힌다(client, monkeypatch):
+    """주소창의 숫자를 손으로 고치는 사람이 있다. 500을 주지 않는다."""
+    for page in ("0", "-3", "9999"):
+        res = client.get(f"/vehicles?page={page}")
+        assert res.status_code == 200

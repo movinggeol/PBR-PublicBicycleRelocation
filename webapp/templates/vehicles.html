@@ -160,11 +160,26 @@
   </table>
   </div>
   {# 자른 것은 말한다. 표가 그냥 끝나면 사람은 그것이 전부인 줄 안다 —
-     예전에는 86건 중 60건만 조용히 보여 주고 있었다(1.26.107). #}
-  {% if assignments_hidden %}
-  <p class="hint" style="padding:0 var(--sp-lg) var(--sp-md)">
-    최근 {{ assignments | length }}건만 보이고 <b>{{ assignments_hidden }}건이 더 있습니다.</b>
-    위에서 실행을 고르면 그 실행의 배정만 볼 수 있습니다.</p>
+     예전에는 86건 중 60건만 조용히 보여 주고 있었다(1.26.107).
+     ⚠️ **말하는 것만으로는 모자랐다.** 200건에서 자르고 "N건 더 있습니다"라고만
+     적어 두니 실행이 쌓이자 그 안내가 늘 참이 되고 나머지에 닿을 길이 없었다.
+     지금은 쪽으로 끊어 전부에 닿는다(1.26.116). 여기 쪽 나눔이 화면단
+     `[data-pager]`가 아니라 서버 쪽인 것은, 이 표만 **DB에서 무한히 자라기**
+     때문이다 — 파일 목록과 달리 다 읽어 놓고 끊을 수가 없다. #}
+  {% if pages > 1 %}
+  <nav class="pager" aria-label="배정 이력 쪽 넘기기"
+       style="padding:0 var(--sp-lg) var(--sp-md)">
+    {% set base = "/vehicles?run_label=" ~ (selected_run | urlencode) ~ "&" if selected_run else "/vehicles?" %}
+    {% if page > 1 %}
+    <a class="btn ghost sm" href="{{ base }}page={{ page - 1 }}" rel="prev">← 이전</a>
+    {% endif %}
+    <span class="hint">{{ page }} / {{ pages }} 쪽
+      (전체 {{ assignments_total }}건 중
+      {{ (page - 1) * per_page + 1 }}–{{ (page - 1) * per_page + assignments | length }}번째)</span>
+    {% if page < pages %}
+    <a class="btn ghost sm" href="{{ base }}page={{ page + 1 }}" rel="next">다음 →</a>
+    {% endif %}
+  </nav>
   {% endif %}
   {% else %}
   {# 실행을 고른 상태라면 '실행하세요'가 틀린 안내다 — 이력은 있는데 그 실행에만

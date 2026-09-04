@@ -99,14 +99,28 @@ def vehicle_workload() -> pd.DataFrame:
 
 
 def vehicle_assignments(vehicle_id: Optional[str] = None,
-                        run_label: Optional[str] = None) -> pd.DataFrame:
-    """회차별 차량 배정 이력."""
+                        run_label: Optional[str] = None,
+                        limit: Optional[int] = None,
+                        offset: int = 0) -> pd.DataFrame:
+    """회차별 차량 배정 이력. `limit`을 주면 그 쪽만 읽는다."""
     try:
         with db.session() as conn:
-            return db.assignment_history(conn, vehicle_id=vehicle_id, run_label=run_label)
+            return db.assignment_history(conn, vehicle_id=vehicle_id,
+                                         run_label=run_label, limit=limit, offset=offset)
     except Exception as err:
         print(f"[경고] 배정 이력 조회 실패: {type(err).__name__}: {err}")
         return pd.DataFrame()
+
+
+def vehicle_assignment_count(vehicle_id: Optional[str] = None,
+                             run_label: Optional[str] = None) -> int:
+    """배정 이력 전체 건수(쪽 수 계산용). 실패하면 0 — 화면은 떠야 한다."""
+    try:
+        with db.session() as conn:
+            return db.count_assignments(conn, vehicle_id=vehicle_id, run_label=run_label)
+    except Exception as err:
+        print(f"[경고] 배정 이력 건수 조회 실패: {type(err).__name__}: {err}")
+        return 0
 
 
 def run_labels() -> pd.DataFrame:

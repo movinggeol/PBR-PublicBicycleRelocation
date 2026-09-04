@@ -110,6 +110,14 @@ RUN_KIND_LABELS = {
 }
 templates.env.globals["kind_labels"] = RUN_KIND_LABELS
 
+# 배정 이력 한 쪽에 실을 건수. 실행 1건이 평균 17.2행이므로(실측, 1.26.116)
+# 50이면 대략 3회 실행분이 한 쪽에 들어온다.
+#
+# ⚠️ **상한을 올리는 것으로는 풀리지 않는다.** 예전에는 200행에서 잘라 내고
+# "N건이 더 있습니다"라고만 적었는데, 실행이 12건만 쌓여도 그 안내가 **늘 참**이
+# 되고 나머지에는 닿을 길이 없었다. 자른다면 나머지로 가는 길이 함께 있어야 한다.
+ASSIGNMENTS_PER_PAGE = 50
+
 # ---------------- 진행 단계 ----------------
 
 # 단계 파일 이름을 사람이 읽는 말로. run_pipeline.STAGES와 짝을 이룬다.
@@ -764,10 +772,18 @@ def api_kpi(run_label: Optional[str] = None, duration: Optional[str] = None):
 
 
 @app.get("/vehicles")
-def vehicles_page(request: Request, run_label: Optional[str] = None):
+def vehicles_page(request: Request, run_label: Optional[str] = None, page: int = 1):
     """차량별 누적 작업량과 회차 배정 이력 (docs/구현/FLEET.md)."""
     workload = store.vehicle_workload()
-    assignments = store.vehicle_assignments(run_label=run_label)
+
+    # 배정 이력은 실행을 거듭할수록 무한히 쌓인다. 한 쪽만 읽고 나머지는
+    # 쪽으로 닿게 한다 — 상세는 아래 '쪽 나눔' 주석.
+    assignments_total = store.vehicle_assignment_count(run_label=run_label)
+    pages = max(1, -(-assignments_total // ASSIGNMENTS_PER_PAGE))   # 올림
+    page = min(max(1, page), pages)
+    assignments = store.vehicle_assignments(
+        run_label=run_label, limit=ASSIGNMENTS_PER_PAGE,
+        offset=(page - 1) * ASSIGNMENTS_PER_PAGE)
 
     # ⚠️ 최소·최대·차이는 **출동한 차량끼리** 잰다. 한 번도 안 나간 차량의
     #    0분을 섞으면 "가장 적게 일한 차량 0분"이 되어 차이가 곧 최대값이 된다
@@ -835,24 +851,17 @@ def vehicles_page(request: Request, run_label: Optional[str] = None):
             baseline=float(worked_minutes.mean()),
             baseline_label="출동한 차량 평균")
 
-    # 배정 이력은 실행을 거듭할수록 무한히 쌓이므로 상한을 둔다. 다만
-    # **자른 것은 반드시 말한다** — 예전에는 86건 중 60건만 조용히 보여
-    # 주고 있었다(1.26.107). 표가 끝난 자리에서 멈추면 사람은 그것이 전부인
-    # 줄 안다. 상한은 넉넉히 두되(200), 걸리면 몇 건이 남았는지 적고
-    # 실행을 골라 좁히는 길을 알려 준다.
-    ASSIGNMENT_LIMIT = 200
-    assignments_total = len(assignments)
-    assignments_shown = min(assignments_total, ASSIGNMENT_LIMIT)
-
     return templates.TemplateResponse(request, "vehicles.html", {
         "fleet_size": fleet_size,
         "per_round": min(VEHICLES_PER_ROUND, fleet_size),
         "time_budget": TIME_BUDGET_MINUTES,
         "workload": store.records(sorted_wl),
         "workload_svg": workload_svg,
-        "assignments": store.records(assignments.head(ASSIGNMENT_LIMIT)),
+        "assignments": store.records(assignments),
         "assignments_total": assignments_total,
-        "assignments_hidden": assignments_total - assignments_shown,
+        "page": page,
+        "pages": pages,
+        "per_page": ASSIGNMENTS_PER_PAGE,
         "balance": balance,
         "budget": budget,
         "selected_run": run_label,

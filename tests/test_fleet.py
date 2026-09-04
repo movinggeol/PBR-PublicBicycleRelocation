@@ -173,3 +173,55 @@ def test_assignment_history_filters(conn):
     assert len(db.assignment_history(conn)) == 3
     assert len(db.assignment_history(conn, run_label="R1")) == 2
     assert set(db.assignment_history(conn, run_label="R2")["run_label"]) == {"R2"}
+
+
+def test_배정_이력은_한_쪽만_읽는다(conn):
+    """이력은 실행을 거듭할수록 무한히 쌓인다 — **읽는 양이 따라 늘면 안 된다.**
+
+    예전에는 표 전체를 DataFrame으로 읽어 온 뒤 화면단에서 앞 200행만 잘랐다.
+    잘린 나머지는 닿을 길이 없었고, 상한을 올리는 것은 미루기일 뿐이었다
+    (실측: 실행 1건이 평균 17.2행이라 200은 12회 실행분이다).
+    """
+    for r in range(6):
+        _round(conn, f"2026-09-{r + 1:02d} 09", "_05_10",
+               {c: 90.0 for c in range(10)})
+
+    total = db.count_assignments(conn)
+    assert total == 60, "6회차 x 10대"
+
+    page = db.assignment_history(conn, limit=25)
+    assert len(page) == 25, "상한을 SQL에 걸어 그만큼만 읽어야 한다"
+
+    second = db.assignment_history(conn, limit=25, offset=25)
+    assert len(second) == 25
+    # 쪽이 겹치지 않아야 한다 — 겹치면 어떤 행은 두 번, 어떤 행은 한 번도 안 보인다.
+    first_keys = {(r.run_label, r.duration, r.vehicle_id) for r in page.itertuples()}
+    second_keys = {(r.run_label, r.duration, r.vehicle_id) for r in second.itertuples()}
+    assert not (first_keys & second_keys)
+
+
+def test_쪽을_모두_넘기면_한_행도_빠지지_않는다(conn):
+    """쪽 나눔의 값어치는 **전부에 닿는 것**이다. 자르고 '더 있습니다'라고만
+    적으면 나머지는 영영 못 본다(그것이 고치기 전 동작이었다)."""
+    for r in range(4):
+        _round(conn, f"2026-09-{r + 1:02d} 09", "_05_10",
+               {c: 90.0 for c in range(7)})
+
+    total = db.count_assignments(conn)
+    seen = set()
+    per_page = 10
+    for page in range(-(-total // per_page)):
+        rows = db.assignment_history(conn, limit=per_page, offset=page * per_page)
+        seen |= {(r.run_label, r.duration, r.vehicle_id) for r in rows.itertuples()}
+
+    assert len(seen) == total, "쪽을 다 넘겼는데 못 본 행이 있다"
+
+
+def test_건수는_같은_조건으로_센다(conn):
+    """세는 쪽과 읽는 쪽의 조건이 갈리면 쪽 수가 실제와 어긋난다."""
+    _round(conn, "2026-09-01 09", "_05_10", {c: 90.0 for c in range(5)})
+    _round(conn, "2026-09-02 09", "_05_10", {c: 90.0 for c in range(5)})
+
+    assert db.count_assignments(conn) == 10
+    assert db.count_assignments(conn, run_label="2026-09-01 09") == 5
+    assert len(db.assignment_history(conn, run_label="2026-09-01 09")) == 5
