@@ -63,10 +63,28 @@ def station_points(run_label: str) -> dict:
     return {r.station_id: (r.lat, r.lon) for r in info.itertuples()}
 
 
+def check_stations_known(plan: pd.DataFrame, points: dict) -> None:
+    """모든 대여소가 좌표를 갖고 있는지 미리 확인한다 — `run_vrp_plan()`과 같은 규약
+    (step2_optimize/vrp.py:250-255).
+
+    🔴 **예전에는 없었다 — 없으면 `build_nodes()`가 `points[sid]`에서 어느
+    대여소 탓인지 안 보이는 `KeyError`로 죽었다(1.26.127에서 발견).** 실측
+    (2026-09-07, 현재 DB의 ilp_plan·station_info 6개 조합)으로는 걸리는 대여소가
+    없었지만, 죽더라도 **무엇이 빠졌는지는 밝히고 죽어야** 한다.
+    """
+    missing = ({*plan["pick_station_id"], *plan["drop_station_id"]} - set(points))
+    if missing:
+        raise SystemExit(
+            f"ILP 계획의 대여소가 좌표(station_info)에 없습니다: "
+            f"{sorted(missing)[:5]} … ({len(missing)}곳). "
+            f"station_info의 run_label이 ilp_plan과 같은지 확인하세요.")
+
+
 def build_nodes(cluster_plan: pd.DataFrame, points: dict) -> dict:
     """run_vrp_plan()과 **같은 방식**으로 노드를 만든다.
 
-    측정 코드가 제 방식대로 만들면 비교가 성립하지 않는다.
+    측정 코드가 제 방식대로 만들면 비교가 성립하지 않는다. 좌표 결측은 여기서
+    걸러지지 않는다 — 호출 측이 먼저 `check_stations_known()`으로 확인해 둔다.
     """
     nodes = {}
     for sid, qty in cluster_plan.groupby("pick_station_id")["qty"].sum().items():
@@ -128,6 +146,7 @@ def stockout_compare(label: str, durations: list, budget_sec: float) -> None:
         if plan.empty:
             continue
         points = station_points(label)
+        check_stations_known(plan, points)
         hours = kpi_mod.duration_hours(duration)
 
         values = []
@@ -181,6 +200,7 @@ def main() -> int:
             continue
         planned = int(plan["qty"].sum())
         points = station_points(label)
+        check_stations_known(plan, points)
 
         for name, budget in (("현행(무제한)", None), ("예산 강제", args.budget * 60)):
             summary = summarize(run(plan, points, budget), planned)

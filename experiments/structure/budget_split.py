@@ -103,18 +103,39 @@ def station_points(run_label: str) -> dict:
     return {r.station_id: (r.lat, r.lon) for r in info.itertuples()}
 
 
+def check_stations_known(plan: pd.DataFrame, points: dict) -> None:
+    """모든 대여소가 좌표를 갖고 있는지 미리 확인한다 — `run_vrp_plan()`과 같은 규약
+    (step2_optimize/vrp.py:250-255).
+
+    🔴 **예전에는 `build_nodes()`가 없는 대여소를 조용히 걸렀다(1.26.127에서 발견).**
+    그러면 그 대여소만 빠진 채 측정이 지나가고, 표에는 아무 흔적도 안 남는다.
+    실측(2026-09-07, 현재 DB의 ilp_plan·station_info 6개 조합)으로는 걸리는
+    대여소가 **없었다** — `station_info`는 run_label당 대여소 전수(1361곳)를 담고
+    `ilp_plan`은 그 전수의 부분집합만 쓰므로 구조상 빠질 일이 없다. 다만 그것이
+    항상 참이라는 보장은 없으므로, 이제는 **조용히 거르지 않고 무엇이 빠졌는지
+    밝히고 멈춘다** — `moved_bikes()`가 서로 다른 조각 수를 비교하는 자리라,
+    조용한 결측은 '쪼개서 버린 것'과 '애초에 못 잰 것'을 구분 못 하게 만든다.
+    """
+    missing = ({*plan["pick_station_id"], *plan["drop_station_id"]} - set(points))
+    if missing:
+        raise SystemExit(
+            f"ILP 계획의 대여소가 좌표(station_info)에 없습니다: "
+            f"{sorted(missing)[:5]} … ({len(missing)}곳). "
+            f"station_info의 run_label이 ilp_plan과 같은지 확인하세요.")
+
+
 def build_nodes(cluster_plan: pd.DataFrame, points: dict) -> dict:
     """`run_vrp_plan()`과 **같은 방식**으로 노드를 만든다 — 제 방식대로 만들면
-    비교가 성립하지 않는다(budget_enforce.py와 같은 규약)."""
+    비교가 성립하지 않는다(budget_enforce.py와 같은 규약).
+
+    좌표 결측은 여기서 조용히 거르지 않는다 — 호출 측이 먼저
+    `check_stations_known()`으로 확인해 둔다.
+    """
     nodes = {}
     for sid, qty in cluster_plan.groupby("pick_station_id")["qty"].sum().items():
-        if sid not in points:
-            continue
         lat, lon = points[sid]
         nodes[(sid, "pick")] = {"qty": int(qty), "lat": lat, "lon": lon}
     for sid, qty in cluster_plan.groupby("drop_station_id")["qty"].sum().items():
-        if sid not in points:
-            continue
         lat, lon = points[sid]
         nodes[(sid, "drop")] = {"qty": int(qty), "lat": lat, "lon": lon}
     return nodes
@@ -254,6 +275,7 @@ def measure(label: str, duration: str, road_factor: float,
     if plan.empty:
         return {}
     points = station_points(label)
+    check_stations_known(plan, points)
 
     before_over = before_max = 0.0
     before_km = 0.0
