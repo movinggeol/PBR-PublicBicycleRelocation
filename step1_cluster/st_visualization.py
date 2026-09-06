@@ -10,9 +10,10 @@ import pandas as pd
 import numpy as np
 
 from mapviz import (DROP_LABEL, PICK_LABEL, cluster_color, legend_html,
-                    swatch_circle)
+                    qty_radius, swatch_circle, swatch_size_scale)
 from project_config import (
-    MAP_TILES, PROJECT_ROOT, duration_list, ensure_output_dirs, get_runtime_config,
+    MAP_TILES, PROJECT_ROOT, VEHICLE_CAPACITY,
+    duration_list, ensure_output_dirs, get_runtime_config,
 )
 
 # read_csv
@@ -88,7 +89,9 @@ def make_clustered_map(durations: list):
                 status = PICK_LABEL
                 layer = layer_dict[(cluster, 'pick')]
             
-            radius = max(5, abs(rebal)*0.3)
+            # 크기 규칙도 mapviz 한 벌에서 온다 — 아래 범례의 눈금과 **같은
+            # 함수**로 그려야 눈금이 실제 마커와 맞는다(1.26.129).
+            radius = qty_radius(rebal, VEHICLE_CAPACITY)
 
             tooltip = f"""
             <b>{row['station_name']}</b><br>
@@ -134,8 +137,15 @@ def make_clustered_map(durations: list):
             [(swatch_circle(cluster_color(c), str(c)), f"군집 {c}")
              for c in unique_clusters],
             collapse_after=0, collapse_label="군집",
-            note="원 크기는 재배치 수량입니다.<br>"
-                 "점에 커서를 대면 자세한 값이 뜹니다.")))
+            # ⚠️ 크기로 값을 말하면 **눈금을 함께 낸다** (1.26.107이 step4에
+            # 세운 규칙인데 이 지도만 빠져 있었다). 눈금이 없으면 "저것보다
+            # 크다"까지만 읽히고, 정작 묻고 싶은 "몇 대인가"는 점을 하나씩
+            # 눌러 봐야 한다.
+            note="원 크기는 재배치 수량입니다."
+                 + swatch_size_scale(
+                     [qty_radius(q, VEHICLE_CAPACITY) for q in (3, 6, 9)],
+                     ["3대", "6대", "9대"])
+                 + "<br>점에 커서를 대면 자세한 값이 뜹니다.")))
 
         # ⚠️ 레이어 컨트롤은 지도 **위에** 겹쳐 뜬다. 펴 두면 군집 수만큼
         # 줄이 서서 지도 오른쪽을 위에서 아래까지 덮는다 — 군집 19개짜리

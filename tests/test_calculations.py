@@ -112,7 +112,6 @@ def test_rebal_qty_is_bounded_by_vehicle_capacity(target_qty):
     """재배치량은 tanh로 적재 용량(10대)까지만 잡힌다.
 
     한 대여소에 작업이 몰려 차량 한 대로 감당 못 하는 계획이 나오지 않게 하는 장치다.
-    `10·tanh(x/10)`은 10에 점근하므로 **한 대여소 최대치는 정확히 10대**(꽉 찬 한 차)다.
     """
     frame = target_qty.compute_rebal_qty(
         _stats(mu=[999.0, 0.0], sigma=[0.0, 0.0],
@@ -120,6 +119,64 @@ def test_rebal_qty_is_bounded_by_vehicle_capacity(target_qty):
 
     assert frame["rebal_qty"].abs().max() <= VEHICLE_CAPACITY
     assert frame["rebal_qty"].tolist() == [VEHICLE_CAPACITY, -VEHICLE_CAPACITY]
+
+
+def test_rebal_qty_never_fills_a_van_in_the_real_range(target_qty):
+    """⚠️ 위 시험은 **실무에 없는 규모**(999대)로 잰다 — 그래서 통과한다.
+
+    `10·tanh(x/10)`은 10에 점근할 뿐이라, floor를 거쳐 10이 나오려면
+    float64에서 tanh가 정확히 1.0이 되는 지점, 곧 원값이 **190대 이상**이어야
+    한다. 실산출물 10,740행의 |target−stock| 최댓값은 55.6대이고 문턱을 넘은
+    대여소는 **0곳**이다 — 실제 |rebal_qty|는 정확히 9에서 끊긴다
+    (분포 {4:25, 5:135, 6:129, 7:70, 8:66, 9:99}).
+
+    즉 `VEHICLE_CAPACITY = 10`을 읽고 "한 대여소에서 10대까지 계획된다"고
+    이해하면 틀린다. 위 시험만 있으면 그 오해가 **검사를 통과한 상태로**
+    남는다(1.26.129에서 구역 B 검토가 잡았다).
+
+    하드캡(clip)으로 바꾸면 계획 작업량이 12.9% 늘어난다 — 관제센터 확인이
+    "통상 7대, 많이 실어야 10대"이므로 바꾸지 않는다. 여기서 지키는 것은
+    **그 사실이 코드와 로그에 드러나 있는가**다.
+    """
+    현실적_최대_필요량 = 56.0        # 실산출물 관측 최댓값(55.6)보다 살짝 위
+    frame = target_qty.compute_rebal_qty(
+        _stats(mu=[현실적_최대_필요량, 0.0], sigma=[0.0, 0.0],
+               stock=[0, 현실적_최대_필요량], parking_lot=[9999, 9999]), z=0.0)
+
+    assert frame["rebal_qty"].abs().max() == VEHICLE_CAPACITY - 1, \
+        "실무 범위에서 용량을 꽉 채우게 됐다면 tanh를 바꾼 것이다 — 문서와 로그도 함께 고쳐라"
+
+
+def test_실효_최댓값을_로그로_알린다():
+    """문서를 읽어야만 피할 수 있는 함정은 도구가 스스로 알리게 한다.
+
+    `VEHICLE_CAPACITY`만 보고 10을 기대하지 않도록, 저장할 때마다 그 실행에서
+    실제로 나온 한 대여소 최대 계획량을 찍는다.
+    """
+    path = PROJECT_ROOT / "step0_collect" / "calculate_target_qty.py"
+    body = "\n".join(l for l in path.read_text(encoding="utf-8").splitlines()
+                     if not l.lstrip().startswith("#"))
+    assert "한 대여소 최대 계획량" in body, "실효 최댓값을 알리지 않는다"
+    assert "닿지 않습니다" in body, "용량에 닿지 못한다는 사실을 말하지 않는다"
+
+
+def test_rebal_qty_is_target_minus_stock_in_every_case(target_qty):
+    """작업량은 `target_qty − stock` 하나다 — 부호가 pick/drop을 말한다.
+
+    1.26.129까지 `cond_pos × pick_mask`로 네 갈래를 갈라 놓고 **네 갈래가 전부
+    같은 식**을 쓰고 있었다(12줄). 주석만 pick/drop으로 갈라져 있어서, 읽는
+    사람은 경우마다 다른 계산을 한다고 오해한다.
+    """
+    frame = target_qty.compute_rebal_qty(
+        # mu 양수/음수 × 재고 과잉/부족 네 경우를 모두 담는다.
+        _stats(mu=[4.0, 4.0, -4.0, -4.0], sigma=[0.0, 0.0, 0.0, 0.0],
+               stock=[0, 20, 2, 30], parking_lot=[100, 100, 100, 100]), z=0.0)
+
+    # 경우를 가르지 않고 한 식으로 다시 계산해 본다 (차이 → tanh 포화 → 0 방향 정수화).
+    직접 = (frame["target_qty"] - frame["stock"]).to_numpy()
+    눌린 = VEHICLE_CAPACITY * np.tanh(직접 / VEHICLE_CAPACITY)
+    기대 = np.where(눌린 >= 0, np.floor(눌린), np.ceil(눌린)).astype(int)
+    assert frame["rebal_qty"].tolist() == 기대.tolist()
 
 
 def test_rebal_qty_rounds_toward_zero(target_qty):

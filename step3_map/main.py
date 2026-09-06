@@ -154,7 +154,14 @@ def _road_legs(cluster: int, route_pts: list, elapsed_sec: list,
         return []
 
     rows = []
-    for i in range(min(len(route_pts), len(elapsed_sec)) - 1):
+    # ⚠️ **leg 0은 버린다** (1.26.129). TMAP 요청의 출발점은 차고지가 아니라
+    # 차고지에서 남쪽으로 0.005도(약 555m) 민 자리다 — 출발지와 도착지가
+    # 같으면 경유지 최적화가 성립하지 않아서 벌려 둔 것이다(아래 `start` 참고).
+    # 그래서 첫 구간은 직선거리도 도로 소요도 **있지도 않은 지점**을 기준으로
+    # 잰 값이다. 이 표는 이동시간 모형을 적합하는 정답표이므로 섞이면 안 된다.
+    # (실측: 1,705구간 중 29건이 그랬고, 빼고 다시 적합하면 고정비 332.9→332.3초,
+    #  거리계수 113.3→112.4 s/km — 결론을 바꿀 크기는 아니었지만 거짓은 거짓이다.)
+    for i in range(1, min(len(route_pts), len(elapsed_sec)) - 1):
         here, nxt = elapsed_sec[i], elapsed_sec[i + 1]
         if here is None or nxt is None:
             continue
@@ -209,7 +216,7 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
     station_map = pick_drop.set_index('station_id').to_dict('index')
     
 
-    for idx, c in enumerate(unique_clusters):
+    for c in unique_clusters:
 
         station_visits = {}
         
@@ -220,16 +227,26 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
 
         current_load = 0
 
-        color = cluster_color(idx)
+        # ⚠️ **군집 번호로 색을 정한다 — 목록의 자리(idx)가 아니다** (1.26.129).
+        # ILP가 이동을 못 만든 군집은 VRP 계획에서 빠지므로 자리와 번호가
+        # 어긋난다. 실산출물 11쌍 중 3쌍(27%)에서 실제로 갈렸고
+        # (obs-cmp-1520 _15_20은 군집 5·11이 빠져 6번부터 14개가 밀렸다),
+        # 그러면 step1의 군집 지도와 이 경로 지도가 **같은 군집을 다른 색으로**
+        # 그린다 — 두 화면을 나란히 놓고 보는 사람에게는 다른 군집이 된다.
+        color = cluster_color(c)
 
         # --------- 경로 구성 ----------
         route_pts = []
 
-        # depot 시작
+        # depot 시작. **좌표는 실제 차고지 그대로 둔다** (1.26.129).
+        # 예전에는 여기에 `depot["lat"] - 0.005`(약 555m 남쪽)를 박아 뒀는데,
+        # 그 자리가 지도에도 그대로 그려져(한도 초과 시 직선 대체 경로) 차고지에서
+        # 뻗어 나가는 555m짜리 헛선이 생겼다. TMAP에 출발·도착을 벌려 보내야 하는
+        # 사정은 아래 `start`에서만 처리한다.
         route_pts.append({
             "id": depot["id"],
             "name": depot["name"],
-            "lat": depot["lat"] - 0.005,
+            "lat": depot["lat"],
             "lon": depot["lon"]
         })
         
@@ -266,10 +283,15 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
         })
 
         # --------- Tmap 요청 ----------
+        # ⚠️ 출발점만 남쪽으로 조금 민다. 차량은 차고지에서 나와 차고지로 돌아오는데
+        # TMAP 경유지 최적화는 출발지와 도착지가 **같은 좌표면 성립하지 않는다**.
+        # 이 어긋남이 실측 표(road_leg)에 새지 않도록 `_road_legs()`가 leg 0을
+        # 버린다 — 지도에 그리는 경로(route_pts)에는 진짜 차고지가 들어간다.
+        TMAP_START_OFFSET_DEG = 0.005          # 약 555m
         start = {
             "name": route_pts[0]["name"],
             "X": str(route_pts[0]["lon"]),
-            "Y": str(route_pts[0]["lat"])
+            "Y": str(route_pts[0]["lat"] - TMAP_START_OFFSET_DEG)
         }
 
         end = {
@@ -511,8 +533,9 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
     ]
     # 군집 경로 색은 접어 둔다. 18개를 한 줄씩 세우면 범례가 688px까지
     # 늘어나 지도를 가린다(실측). 앞의 넷은 늘 보인다.
-    legend_rows += [(swatch_line(cluster_color(i)), f"군집 {c} 경로")
-                    for i, c in enumerate(unique_clusters)]
+    # 색은 위와 **같은 인자**(군집 번호)로 뽑아야 범례와 선이 맞는다.
+    legend_rows += [(swatch_line(cluster_color(c)), f"군집 {c} 경로")
+                    for c in unique_clusters]
     m.get_root().html.add_child(folium.Element(legend_html(
         "범례 — 경로", legend_rows,
         collapse_after=4, collapse_label="군집",
@@ -591,15 +614,23 @@ if __name__ == "__main__":
     ensure_output_dirs()
 
     for duration in duration_list(config):
-        vrp_plan = pd.read_csv(
-            vrp_plan_file.format(duration=duration, now=now),
-            encoding="utf-8"
-        )
+        # 앞 단계(step1·step2)가 '대상 없음'으로 건너뛴 시간대는 여기서도
+        # 건너뛴다 (1.26.129). 예전에는 확인 없이 바로 읽어 FileNotFoundError로
+        # **파이프라인 전체가 죽었다** — 지도는 산출물일 뿐이고 뒤에 지표(step4)가
+        # 남아 있는데도. ilp.py·vrp.py는 이미 같은 가드를 갖고 있었다.
+        plan_path = Path(vrp_plan_file.format(duration=duration, now=now))
+        candidates = Path(clustered_file.format(duration=duration, now=now))
+        missing = [p.name for p in (plan_path, candidates) if not p.is_file()]
+        if missing:
+            print(f"\n[건너뜀] {duration}: 입력이 없습니다 ({', '.join(missing)})")
+            continue
 
-        pick_drop = pd.read_csv(
-            clustered_file.format(duration=duration, now=now),
-            encoding="utf-8"
-        )
+        vrp_plan = pd.read_csv(plan_path, encoding="utf-8")
+        if vrp_plan.empty:
+            print(f"\n[건너뜀] {duration}: VRP 계획이 비어 있습니다(그릴 경로 없음)")
+            continue
+
+        pick_drop = pd.read_csv(candidates, encoding="utf-8")
 
         make_vrp_map(depot, pick_drop, vrp_plan, duration, HEADERS, TMAP_URL)
 

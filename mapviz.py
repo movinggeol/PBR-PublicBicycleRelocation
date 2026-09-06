@@ -170,6 +170,32 @@ def swatch_size_scale(radii: Sequence[float], labels: Sequence[str],
             'margin-top:4px;">' + "".join(cells) + "</span>")
 
 
+# 재배치 수량을 원 크기로 말할 때의 반지름 범위(px).
+# 하한은 "점이 사라지지 않을 만큼", 상한은 "촘촘한 도심에서 서로 덮지 않을 만큼".
+QTY_RADIUS_MIN = 5.0
+QTY_RADIUS_MAX = 11.0
+
+
+def qty_radius(qty, capacity: float) -> float:
+    """재배치 수량(대) → 마커 반지름(px). **적재 용량을 가득 채우면 최대**다.
+
+    ⚠️ **크기로 값을 말했으면 실제로 변해야 한다.** step1의 군집 지도는
+    범례에 *"원 크기는 재배치 수량입니다"* 라고 적어 놓고 반지름을
+    `max(5, abs(rebal) * 0.3)`으로 잡고 있었다 — `rebal_qty`는 tanh 포화로
+    절댓값이 9를 넘지 못하는데 9 × 0.3 = 2.7이라 **하한 5에 언제나 먹혔다.**
+    실산출물 524행을 재 보니 반지름의 서로 다른 값이 `[5]` 하나였다.
+    지금까지 그린 모든 군집 지도에서 그 범례는 거짓이었다(1.26.129).
+
+    용량을 기준으로 잡으므로 `VEHICLE_CAPACITY`를 바꾸면 눈금이 따라온다.
+    눈금은 `swatch_size_scale()`로 **함께 내야 한다** — 크기 인코딩은 눈금
+    없이는 "저것보다 크다"까지만 읽힌다.
+    """
+    if capacity <= 0:
+        return QTY_RADIUS_MIN
+    share = min(abs(float(qty)) / float(capacity), 1.0)
+    return QTY_RADIUS_MIN + (QTY_RADIUS_MAX - QTY_RADIUS_MIN) * share
+
+
 def swatch_line(color: str, dashed: bool = False) -> str:
     """범례용 짧은 선분 배지. 경로(PolyLine) 색을 설명할 때 쓴다."""
     style = "3px dashed" if dashed else "3px solid"

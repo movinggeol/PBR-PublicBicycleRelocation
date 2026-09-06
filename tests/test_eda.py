@@ -181,3 +181,77 @@ def test_EDA_산출물_폴더가_규약에_등록됐다():
     import project_config
 
     assert '"EDA"' in inspect.getsource(project_config.ensure_output_dirs)
+
+
+# ── 이상치 제거가 원본을 깎던 문제 (구역 B 검토, 1.26.129) ────────
+#
+# `concat_1year_file.preprocessing()`이 읽은 파일에 그대로 다시 썼다.
+# IQR은 **잘라 낸 뒤 다시 재면 좁아지므로 멱등이 아니다** — 같은 파일에
+# 반복 적용하면 계속 깎인다(50만 행 표본에서 4회에 15%). 그런데 이 단계는
+# `--skip-eda` 없이 `python run_pipeline.py`를 치면 매번 실행되고, 대상은
+# 1.5GB짜리 원천 이력이며 백업이 없다.
+
+
+def _concat_module():
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[1] / "step0_eda" / "concat_1year_file.py"
+    spec = importlib.util.spec_from_file_location("_concat_1year_file", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _skewed_frame(n: int = 4000) -> pd.DataFrame:
+    """꼬리가 두꺼운 이용시간·이용거리. IQR 울타리가 실제로 무언가를 자른다."""
+    import numpy as np
+
+    rng = np.random.default_rng(20260906)
+    minutes = rng.lognormal(mean=2.6, sigma=0.9, size=n)
+    km = rng.lognormal(mean=0.7, sigma=0.8, size=n)
+    return pd.DataFrame({"이용시간(분)": minutes, "이용거리(km)": km})
+
+
+def test_이상치_제거가_원본을_건드리지_않는다(tmp_path):
+    module = _concat_module()
+
+    source = tmp_path / "원본.csv"
+    cleaned = tmp_path / "정리본.csv"
+    _skewed_frame().to_csv(source, index=False, encoding="utf-8")
+    원본_바이트 = source.read_bytes()
+
+    module.preprocessing(str(source), str(cleaned))
+
+    assert source.read_bytes() == 원본_바이트, "이상치 제거가 원본을 덮어썼다"
+    assert cleaned.exists(), "정리 결과를 남기지 않았다"
+    assert len(pd.read_csv(cleaned)) < len(pd.read_csv(source)), \
+        "아무것도 자르지 않았다면 이 시험이 무엇을 지키는지 알 수 없다"
+
+
+def test_여러_번_돌려도_같은_결과가_나온다(tmp_path):
+    """멱등성. 원본이 그대로 남으므로 입력이 늘 같고, 결과도 같아야 한다."""
+    module = _concat_module()
+
+    source = tmp_path / "원본.csv"
+    _skewed_frame().to_csv(source, index=False, encoding="utf-8")
+
+    행수 = []
+    for i in range(3):
+        out = tmp_path / f"정리본{i}.csv"
+        module.preprocessing(str(source), str(out))
+        행수.append(len(pd.read_csv(out)))
+
+    assert len(set(행수)) == 1, f"돌릴 때마다 결과가 달라진다: {행수}"
+
+
+def test_입력과_같은_파일에_쓰려_하면_멈춘다(tmp_path):
+    """멱등을 깨는 유일한 방법이므로 **큰 소리로** 막는다."""
+    module = _concat_module()
+
+    source = tmp_path / "원본.csv"
+    _skewed_frame(200).to_csv(source, index=False, encoding="utf-8")
+
+    with pytest.raises(SystemExit) as err:
+        module.preprocessing(str(source), str(source))
+    assert "같은 파일" in str(err.value)
+    assert len(pd.read_csv(source)) == 200, "막았는데도 원본이 바뀌었다"

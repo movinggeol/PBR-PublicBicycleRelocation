@@ -283,7 +283,7 @@ def test_산출물_지문_캐시가_파일_변경을_따라온다(tmp_path):
     `mapviz.source_stamp()`의 캐시는 걷어냈다 — 거기는 열쇠(모듈 경로)가
     내용이 바뀌어도 그대로라 옛 값이 굳었기 때문이다. 여기도 한때
     "mtime·크기만으로 충분하다"고 여겼는데, Windows에서 두 번 연속 쓰기가
-    **크기는 같고 mtime_ns 눈금까지 같은** 경우가 실측 80%였다(1.26.128) —
+    **크기는 같고 mtime_ns 눈금까지 같은** 경우가 실측 80%였다(1.26.129) —
     이 테스트가 실제로 26%(200회 중 52회) 확률로 그 자리에서 깨졌다. 머리
     내용의 해시까지 열쇠에 넣어야 굳지 않는다. 굳으면 다시 그린 지도가
     계속 "낡음"으로 남는다.
@@ -309,7 +309,7 @@ def test_산출물_지문_캐시가_파일_변경을_따라온다(tmp_path):
 def test_mtime와_크기가_같아도_머리_내용이_다르면_열쇠가_갈린다(tmp_path, monkeypatch):
     """(경로, mtime_ns, 크기)만으로는 안 된다는 것을 **강제로** 만들어 확인한다.
 
-    실제 콜리전은 Windows에서만·확률적으로 일어난다(1.26.128 실측: 300회 중
+    실제 콜리전은 Windows에서만·확률적으로 일어난다(1.26.129 실측: 300회 중
     239회, 80%). 이 환경·이 순간에 항상 재현되는 건 아니므로, 두 번째
     `stat()`이 첫 번째와 **똑같은 mtime_ns·크기**를 내놓도록 강제해 콜리전을
     직접 만든다 — 머리 해시가 열쇠에 없었다면 반드시 깨졌을 조건이다.
@@ -339,3 +339,99 @@ def test_mtime와_크기가_같아도_머리_내용이_다르면_열쇠가_갈�
     f.write_text('<div data-mapviz="bbbbbbbbbbbb"></div>', encoding="utf-8")
     assert catalog._stamp_of_file(f) == "bbbbbbbbbbbb", (
         "mtime·크기가 (강제로) 같아도 머리 내용이 다르면 열쇠도 달라야 한다")
+
+
+# ── 구역 B 검토(1.26.129)가 잡은 것들 ────────────────────────────
+#
+# 세 가지가 같은 자리에서 어긋나 있었다: **코드가 하는 일과 사람이 보는
+# 화면이 다르다.** 색은 두 지도가 갈렸고, 크기는 변하지도 않으면서 변한다고
+# 적혀 있었다. 둘 다 예외를 내지 않으므로 사람이 눈으로 볼 때까지 남는다.
+
+
+def test_원_크기가_수량을_따라_실제로_변한다():
+    """크기로 값을 말했으면 **값마다 크기가 달라야 한다.**
+
+    옛 식 `max(5, abs(rebal) * 0.3)`은 실산출물 524행 전부에서 5였다 —
+    `rebal_qty`가 tanh 포화로 9를 넘지 못하는데 9 × 0.3 = 2.7이라 하한에
+    늘 먹혔기 때문이다. 그런데 범례는 *"원 크기는 재배치 수량입니다"* 라고
+    말하고 있었다. step4의 `test_크기_눈금은_하한을_감추지_않는다`가 지키는
+    것과 같은 규약인데 이 지도만 빠져 있었다.
+    """
+    capacity = 10
+    # 실제로 나오는 범위(REBAL_MIN_QTY=2 초과 ~ tanh 실효 상한 9)
+    radii = [mapviz.qty_radius(q, capacity) for q in range(3, 10)]
+    assert len(set(radii)) == len(radii), \
+        f"수량이 달라도 반지름이 같다: {radii}"
+    assert radii == sorted(radii), "수량이 늘어도 원이 커지지 않는다"
+    assert radii[0] >= mapviz.QTY_RADIUS_MIN, "가장 작은 원이 사라질 만큼 작다"
+
+    # 부호는 크기가 아니라 색이 말한다 — 싣기(음수)와 내리기(양수)의
+    # 같은 대수는 같은 크기여야 한다.
+    assert mapviz.qty_radius(-7, capacity) == mapviz.qty_radius(7, capacity)
+
+    # 용량을 넘겨도 눈금 밖으로 나가지 않는다.
+    assert mapviz.qty_radius(999, capacity) == mapviz.QTY_RADIUS_MAX
+
+
+def test_크기를_말하는_지도는_눈금을_함께_낸다():
+    """`swatch_size_scale()`의 docstring이 세운 규칙 — 크기 인코딩은 눈금
+    없이는 '저것보다 크다'까지만 읽힌다. 군집 지도는 크기를 주장하면서
+    눈금이 없었다."""
+    code = (PROJECT_ROOT / "step1_cluster" / "st_visualization.py").read_text(
+        encoding="utf-8")
+    body = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("#"))
+    assert "원 크기는 재배치 수량" in body, "크기 주장이 사라졌다면 이 시험을 고쳐라"
+    assert "swatch_size_scale" in body, "크기를 주장하면서 눈금을 내지 않는다"
+    # 그리는 반지름과 눈금이 **같은 함수**에서 나와야 눈금이 마커와 맞는다.
+    assert body.count("qty_radius") >= 2, \
+        "마커와 눈금이 서로 다른 규칙으로 크기를 정하고 있다"
+
+
+def test_두_지도가_같은_군집을_같은_색으로_그린다():
+    """색은 **군집 번호**로 정해야 한다 — 목록에서의 자리가 아니라.
+
+    step3는 `cluster_color(idx)`로, step1은 `cluster_color(cluster)`로
+    정하고 있었다. ILP가 이동을 못 만든 군집은 VRP 계획에서 빠지므로 자리와
+    번호가 어긋나는데, 실산출물 11쌍 중 3쌍(27%)에서 실제로 갈렸다
+    (obs-cmp-1520 _15_20은 군집 5·11이 빠져 6번부터 14개가 밀렸다).
+    두 화면을 나란히 놓고 보는 사람에게는 다른 군집이 된다.
+    """
+    for step, path in (("step1", PROJECT_ROOT / "step1_cluster" / "st_visualization.py"),
+                       ("step3", PROJECT_ROOT / "step3_map" / "main.py")):
+        code = path.read_text(encoding="utf-8")
+        body = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("#"))
+
+        calls = set(re.findall(r"cluster_color\(\s*([A-Za-z_]\w*)\s*\)", body))
+        assert calls, f"{step}이 cluster_color를 쓰지 않는다"
+
+        # `enumerate`가 만든 이름을 색 인자로 쓰면 자리로 색을 정하는 것이다.
+        자리_이름 = set(re.findall(r"for\s+([A-Za-z_]\w*)\s*,\s*\w+\s+in\s+enumerate\(", body))
+        겹침 = calls & 자리_이름
+        assert not 겹침, f"{step}이 군집 번호가 아니라 목록의 자리로 색을 정한다: {sorted(겹침)}"
+
+
+def test_step3도_앞_단계의_건너뜀을_견딘다():
+    """step1·step2는 '대상 없음'이면 건너뛰는데 step3만 확인 없이 읽어
+    FileNotFoundError로 **파이프라인 전체를 죽였다.** 지도는 산출물일 뿐이고
+    뒤에 지표(step4)가 남아 있다."""
+    code = (PROJECT_ROOT / "step3_map" / "main.py").read_text(encoding="utf-8")
+    body = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("#"))
+    assert "is_file()" in body, "입력 존재를 확인하지 않는다"
+    assert "[건너뜀]" in body, "건너뛴 시간대를 알리지 않는다"
+
+
+def test_실측_표에_가짜_출발점이_들어가지_않는다():
+    """TMAP 요청의 출발점은 차고지가 아니라 남쪽으로 약 555m 민 자리다
+    (출발지와 도착지가 같으면 경유지 최적화가 성립하지 않는다). 그 어긋남이
+    이동시간 모형의 정답표(`road_leg`)에 새고 있었다 — 1,705구간 중 29건."""
+    code = (PROJECT_ROOT / "step3_map" / "main.py").read_text(encoding="utf-8")
+    body = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("#"))
+
+    # 지도에 그리는 경로에는 **진짜 차고지**가 들어간다.
+    assert '"lat": depot["lat"] - 0.005' not in body, \
+        "지도에 그리는 출발점이 차고지가 아니다"
+    # 어긋남은 TMAP 요청 쪽에만 있고, 이름이 붙어 있어야 한다.
+    assert "TMAP_START_OFFSET_DEG" in body, "출발점 어긋남에 이름이 없다"
+    # 그리고 첫 구간은 실측 표에서 빠져야 한다.
+    assert "for i in range(1, min(len(route_pts), len(elapsed_sec)) - 1)" in body, \
+        "road_leg가 여전히 첫 구간(leg 0)을 담는다"

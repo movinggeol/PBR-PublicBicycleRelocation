@@ -147,26 +147,26 @@ def compute_rebal_qty(stats: pd.DataFrame, z=None, up_limit=None,
     stats['target_qty'] = stats['target_qty'].clip(lower=0, upper=stats['parking_lot'] * up_limit)
 
     # 2. ---------- rebal_qty 계산 ----------
-    # 목표 재고(target_qty)가 현재 재고(stock)보다 적어, 자전거를 빼내야(pick) 하는 상황인지 판단
-    pick_mask = (stats['target_qty'] < stats['stock'])
+    # 목표 재고에서 현재 재고를 뺀 값이 곧 작업량이다. 음수면 빼내고(pick)
+    # 양수면 채운다(drop) — **부호가 그것을 이미 말한다.**
+    # (1.26.129까지 cond_pos × pick_mask로 네 갈래를 갈라 놓고 네 갈래가 전부
+    #  같은 식을 쓰고 있었다. 주석만 pick/drop으로 갈라져 있었을 뿐이다.)
+    stats['rebal_qty'] = stats['target_qty'] - stats['stock']
 
-    # mu > 0 (순수요가 양수이면서)
-    stats.loc[cond_pos & pick_mask, 'rebal_qty'] = (  # 빼내야(pick) 하는 경우
-        stats.loc[cond_pos & pick_mask, 'target_qty'] - stats.loc[cond_pos & pick_mask, 'stock']
-    )
-    stats.loc[cond_pos & ~pick_mask, 'rebal_qty'] = (  # 채워야(drop) 하는 경우
-        stats.loc[cond_pos & ~pick_mask, 'target_qty'] - stats.loc[cond_pos & ~pick_mask, 'stock']
-    )
-
-    # mu < 0 (순수요가 음수이면서)
-    stats.loc[~cond_pos & ~pick_mask, 'rebal_qty'] = (  # 채워야(drop) 하는 경우
-        stats.loc[~cond_pos & ~pick_mask, 'target_qty'] - stats.loc[~cond_pos & ~pick_mask, 'stock']
-    )
-    stats.loc[~cond_pos & pick_mask, 'rebal_qty'] = (  # 빼내야(pick) 하는 경우
-        stats.loc[~cond_pos & pick_mask, 'target_qty'] - stats.loc[~cond_pos & pick_mask, 'stock']
-    )
-
-    # pick/drop 대수 제한
+    # pick/drop 대수 제한 — **부드러운 포화(tanh)이지 자르기(clip)가 아니다.**
+    #
+    # ⚠️ **실무 범위에서 MAX_CAPACITY에 닿지 않는다.** tanh는 1에 점근하므로
+    #    floor를 거치면 10이 나오려면 float64에서 tanh가 정확히 1.0이 되는
+    #    지점, 즉 원값이 **190대 이상**이어야 한다. 실산출물 10,740행의
+    #    |target−stock| 최댓값은 55.6대이고 문턱을 넘은 대여소는 0곳이라,
+    #    실제 |rebal_qty| 분포는 {4:25, 5:135, 6:129, 7:70, 8:66, 9:99}로
+    #    **정확히 9에서 끊긴다.** 작은 값도 함께 눌린다(5 → 4, 8 → 6).
+    #
+    # 이것을 하드캡(clip)으로 바꾸면 계획 작업량이 **12.9% 늘어난다**(실산출물
+    # 8,020행 실측: 10,260대 → 11,584대). 바꾸지 않는다 — 관제센터 확인이
+    # "통상 7대, 많이 실어야 10대"였으므로(docs/기록/ORIGINS.md 4장) 10을
+    # 통상값처럼 쓰는 쪽이 오히려 현장과 멀어진다. 다만 **읽는 사람이
+    # VEHICLE_CAPACITY만 보고 10을 기대하지 않도록** 아래에서 실제 최댓값을 찍는다.
     stats['rebal_qty'] = (
         MAX_CAPACITY * np.tanh(stats['rebal_qty'] / MAX_CAPACITY)
     )
@@ -194,6 +194,15 @@ def calculate_rebal_qty(stats: pd.DataFrame, duration: str, now: str, z=None,
     방식 = "분위수 모델" if model_target is not None else f"mu + {쓴_z}·sigma"
     print(f"rebal{duration}가 저장되었습니다. ({방식}, 저장 위치 : "
           f"{out_file_path.format(duration=duration, now=now) + '.csv'})")
+
+    # 한 대여소 최대 계획량을 **매번 찍는다**. VEHICLE_CAPACITY만 보고 10을
+    # 기대하면 안 된다 — tanh 포화라 실무 범위에서는 그 값에 닿지 않는다
+    # (1.26.129). 문서를 읽어야만 피할 수 있는 함정은 도구가 스스로 알리게
+    # 하는 편이 낫다.
+    최대 = int(stats['rebal_qty'].abs().max()) if len(stats) else 0
+    꼬리 = (f" — 적재 용량 {MAX_CAPACITY}대에 닿지 않습니다 (tanh 포화)"
+            if 최대 < MAX_CAPACITY else "")
+    print(f"  한 대여소 최대 계획량 {최대}대{꼬리}")
 
     # CSV·DB 이중 기록 (DB_PLAN 2단계). CSV가 아직 정본이다.
     db.save_output("rebalance_plan", stats, run_label=now, duration=duration,

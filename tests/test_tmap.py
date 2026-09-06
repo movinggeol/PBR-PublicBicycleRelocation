@@ -268,18 +268,38 @@ def test_커서_요약은_팝업보다_짧다():
 # 1.23.1에서 vrp_plan.cum_sec을 실측으로 착각해 틀린 결론을 냈다.
 
 def _pts():
+    """첫 점은 **차고지 출발**이다 — `_road_legs`가 버리는 자리(leg 0)."""
     return [{"id": "ST0001", "lat": 36.35, "lon": 127.30},
             {"id": "ST0010", "lat": 36.36, "lon": 127.35},
-            {"id": "ST0020", "lat": 36.37, "lon": 127.40}]
+            {"id": "ST0020", "lat": 36.37, "lon": 127.40},
+            {"id": "ST0030", "lat": 36.38, "lon": 127.45}]
 
 
 def test_누적_소요를_구간별로_풀어_낸다():
     """TMAP은 누적 초를 준다. 앞 값과 빼야 그 구간의 실측이 된다."""
-    rows = load_main()._road_legs(3, _pts(), [0, 300, 900])
+    rows = load_main()._road_legs(3, _pts(), [0, 120, 420, 1020])
 
     assert [r["road_sec"] for r in rows] == [300.0, 600.0]
-    assert [r["leg"] for r in rows] == [0, 1]
-    assert rows[0]["from_id"] == "ST0001" and rows[0]["to_id"] == "ST0010"
+    assert [r["leg"] for r in rows] == [1, 2]
+    assert rows[0]["from_id"] == "ST0010" and rows[0]["to_id"] == "ST0020"
+
+
+def test_첫_구간은_버린다_출발점이_차고지가_아니기_때문이다():
+    """TMAP 요청의 출발점은 차고지에서 남쪽으로 약 555m 민 자리다 —
+    출발지와 도착지가 같으면 경유지 최적화가 성립하지 않아 벌려 둔 것이다.
+
+    그래서 첫 구간의 직선거리도 도로 소요도 **있지도 않은 지점**을 기준으로
+    잰 값이다. 이 표는 이동시간 모형을 적합하는 정답표이므로 섞이면 안 된다
+    (실측: 1,705구간 중 29건이 그랬다 — 1.26.129).
+    """
+    rows = load_main()._road_legs(3, _pts(), [0, 120, 420, 1020])
+
+    assert 0 not in [r["leg"] for r in rows], "가짜 출발점 구간이 정답표에 들어갔다"
+    assert all(r["from_id"] != "ST0001" for r in rows), \
+        "차고지에서 출발한 구간이 남아 있다"
+    # 점이 둘뿐이면 쓸 수 있는 구간이 leg 0 하나이므로 아무것도 안 남는다.
+    두_점 = _pts()[:2]
+    assert load_main()._road_legs(3, 두_점, [0, 300]) == []
 
 
 def test_직선거리를_함께_남긴다():
@@ -288,8 +308,9 @@ def test_직선거리를_함께_남긴다():
     배워야 할 것은 **직선거리 → 실제 도로 소요**의 관계이므로 둘이 같은 행에
     있어야 한다. 직선거리가 없으면 정답표로 쓸 수 없다.
     """
-    rows = load_main()._road_legs(3, _pts(), [0, 300, 900])
+    rows = load_main()._road_legs(3, _pts(), [0, 120, 420, 1020])
 
+    assert rows, "남길 구간이 없으면 검사할 것이 없다"
     assert all(r["straight_km"] > 0 for r in rows)
     assert all(r["road_sec"] > 0 for r in rows)
 
@@ -307,7 +328,7 @@ def test_실측이_없으면_아무것도_남기지_않는다():
 
 def test_같은_자리를_두_번_들러도_0초_구간은_버린다():
     """누적이 그대로면 이동이 없었던 것이다 — 0km/h 표본이 되면 안 된다."""
-    rows = load_main()._road_legs(3, _pts(), [0, 300, 300])
+    rows = load_main()._road_legs(3, _pts(), [0, 120, 420, 420])
     assert [r["road_sec"] for r in rows] == [300.0]
 
 
