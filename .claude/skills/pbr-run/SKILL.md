@@ -266,6 +266,60 @@ ms = page.evaluate("""(sel) => new Promise(res => {
 기준(INP): 200ms 이하 좋음 · 500ms 넘으면 나쁨. 6배 느린 CPU에서 이 저장소는
 42~173ms였다.
 
+### 자동 스캐너(axe-core) — 사람이 안 본 것을 도구가 본다 (1.26.126)
+
+위 400%·저사양·겹침 검사는 전부 **사람이 Playwright로 눈으로 본 것**이다.
+축이 다른 확인 하나가 남는다 — WCAG 규칙 자체를 기계로 스캔하는 것.
+`axe-core`는 `requirements.txt`에도 없고 설치도 필요 없다 — CDN에서 그때그때 받아
+쓰고 버린다.
+
+```python
+import os
+from playwright.sync_api import sync_playwright
+
+BASE = "http://127.0.0.1:8000"
+PAGES = ["/", "/run", "/kpi", "/vehicles", "/orders", "/maps", "/guide", "/api"]
+
+# 고정 버전으로 받는다 — 최신을 그때그때 받으면 결과가 날짜마다 달라진다.
+os.system(
+    'curl -s -o axe.min.js '
+    'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.9.1/axe.min.js'
+)
+AXE_JS = open("axe.min.js", encoding="utf-8").read()
+
+with sync_playwright() as p:
+    b = p.chromium.launch()
+    for vp in [{"width": 1400, "height": 1000}, {"width": 375, "height": 812}]:
+        page = b.new_page(viewport=vp)
+        page.add_init_script(AXE_JS)     # 페이지 로드마다 axe가 함께 실린다
+        for path in PAGES:
+            page.goto(BASE + path, wait_until="load")
+            page.wait_for_timeout(400)
+            res = page.evaluate("""async () => axe.run(document, {
+                runOnly: {type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa']}
+            })""")
+            for v in res["violations"]:
+                print(path, v["id"], len(v["nodes"]), v["help"])
+        page.close()
+    b.close()
+```
+
+⚠️ **`document-title`·`html-has-lang`·`meta-viewport`는 지도 HTML을 file://로
+단독 열었을 때만 뜬다** — folium 산출물 자체엔 `<html lang>`이 없지만, `/maps`
+안에서는 `<iframe>`으로 감싸여 있고 axe의 그 세 규칙은 **최상위 문서에만
+적용된다.** iframe 안의 진짜 문제(`aria-command-name` 등)는 그대로 잡힌다 —
+1.26.126에서 이 방식으로 지도 마커 28개의 이름 없음을 찾았다.
+
+**실제로 이걸로 잡은 것 (1.26.126)**: `#tipbox`가 비어 있을 때도 이름 없는
+툴팁으로 노출됨(8개 화면 전부) · `.muted`/`.hint`/`.empty` 안의 문장 속
+링크가 색만으로 표시됨(5개 화면) · step3 지도의 출발·도착 핀에 이름이
+없음(28개 노드). 셋 다 사람 눈에는 "그냥 그렇게 생긴 것"이라 넘어갔던
+것들이다.
+
+⚠️ **이 스캔은 스크린리더 실주행의 대체가 아니다.** axe는 속성(`aria-label`
+등)의 **유무**만 본다 — 실제로 어떤 순서로 읽히는지, 같은 말이 중복으로
+들리지는 않는지는 사람이 NVDA로 직접 들어야 안다(TODO.md, 아직 미완).
+
 ---
 
 ## 5. 무엇을 볼 것인가 — 화면별
