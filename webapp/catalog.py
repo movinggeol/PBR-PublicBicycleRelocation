@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import sys
 import time
 from pathlib import Path
@@ -85,13 +86,22 @@ def _scan(categories) -> List[Dict]:
     return result
 
 
-# 읽어 둔 산출물의 지문. 열쇠에 **mtime과 크기**가 들어간다.
+# 읽어 둔 산출물의 지문. 열쇠에 **mtime·크기·머리 내용의 해시**가 들어간다.
 #
 # ⚠️ `mapviz.source_stamp()`의 캐시는 걷어냈는데 여기는 두는 이유가 있다.
-#    거기는 열쇠(모듈 경로)가 내용이 바뀌어도 그대로라 옛 값이 굳었다. 여기는
-#    **파일이 바뀌면 열쇠가 바뀐다** — 굳을 수가 없다. 도장 이전에 그린
-#    산출물은 지문이 없어 매번 파일 전체를 읽게 되는데(지금 39장 중 37장이
-#    그렇다), 그것을 화면을 열 때마다 되풀이할 이유는 없다.
+#    거기는 열쇠(모듈 경로)가 내용이 바뀌어도 그대로라 옛 값이 굳었다. 여기서도
+#    한때 **"파일이 바뀌면 열쇠가 바뀐다 — 굳을 수가 없다"** 고 적어 뒀는데
+#    그 전제가 틀렸다(1.26.128에서 실측). Windows에서 두 번 연속 쓰기가
+#    **크기는 같고 mtime_ns 눈금도 같은** 경우가 300회 중 239회(80%)였다
+#    (관측된 최소 증가분 0.34ms) — `(경로, mtime_ns, 크기)`만으로는 내용이
+#    바뀌어도 열쇠가 안 바뀔 수 있다. 실제로 테스트가 같은 순서(쓰기→읽기
+#    반복)로 200회 중 52회(26%) 이 자리에서 깨졌다.
+#
+#    머리(`_HEAD_BYTES`)는 **이미 읽고 있으므로** 그 해시를 열쇠에 얹는 데
+#    추가 I/O가 들지 않는다. 캐시가 정말 아끼려던 것은 **지문이 없는 파일의
+#    전체 읽기**(지금 39장 중 37장, 도장 이전 산출물이라 매번 끝까지 읽어야
+#    한다)이고, 그 이득은 그대로 남는다 — 달라지는 것은 머리가 바뀌면
+#    옛 결과를 안 돌려준다는 것뿐이다.
 _FILE_STAMPS: Dict[tuple, Optional[str]] = {}
 
 
@@ -99,27 +109,30 @@ def _stamp_of_file(path: Path) -> Optional[str]:
     """저장된 지도에서 지문을 읽는다. 머리부터 보고 없을 때만 전부 읽는다."""
     try:
         stat = path.stat()
+        with path.open("rb") as fh:
+            head_bytes = fh.read(_HEAD_BYTES)
     except OSError:
         return None
 
-    key = (str(path), stat.st_mtime_ns, stat.st_size)
+    key = (str(path), stat.st_mtime_ns, stat.st_size,
+           hashlib.sha256(head_bytes).digest())
     if key in _FILE_STAMPS:
         return _FILE_STAMPS[key]
 
-    try:
-        with path.open("rb") as fh:
-            head = fh.read(_HEAD_BYTES).decode("utf-8", "ignore")
-        found = mapviz.stamp_in(head)
-        if found is None and stat.st_size > _HEAD_BYTES:
-            # 앞쪽에 없으면 자리가 바뀐 것일 수 있다 — 놓치면 낡음을 영영
-            # 모르므로, 확인만은 끝까지 한다(그 결과를 여기 남긴다).
+    head = head_bytes.decode("utf-8", "ignore")
+    found = mapviz.stamp_in(head)
+    if found is None and stat.st_size > _HEAD_BYTES:
+        # 앞쪽에 없으면 자리가 바뀐 것일 수 있다 — 놓치면 낡음을 영영
+        # 모르므로, 확인만은 끝까지 한다(그 결과를 여기 남긴다).
+        try:
             found = mapviz.stamp_in(
                 path.read_text(encoding="utf-8", errors="ignore"))
-    except OSError:
-        return None
+        except OSError:
+            return None
 
-    # 열쇠가 파일마다·판마다 다르므로 무한히 자라지는 않지만, 실행이 쌓이면
-    # 옛 판의 열쇠가 남는다. 넉넉한 상한에서 통째로 비운다 — 다시 읽으면 된다.
+    # 열쇠가 파일마다·판마다·머리 내용마다 다르므로 무한히 자라지는 않지만,
+    # 실행이 쌓이면 옛 판의 열쇠가 남는다. 넉넉한 상한에서 통째로 비운다 —
+    # 다시 읽으면 된다.
     if len(_FILE_STAMPS) > 512:
         _FILE_STAMPS.clear()
     _FILE_STAMPS[key] = found

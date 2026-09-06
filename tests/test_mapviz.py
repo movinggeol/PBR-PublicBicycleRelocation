@@ -278,12 +278,15 @@ def test_지도_분류마다_그리는_모듈이_적혀_있다():
 
 
 def test_산출물_지문_캐시가_파일_변경을_따라온다(tmp_path):
-    """파일 지문은 캐시하되 **열쇠에 mtime과 크기를 넣는다.**
+    """파일 지문은 캐시하되 **열쇠에 mtime·크기·머리 내용의 해시를 넣는다.**
 
     `mapviz.source_stamp()`의 캐시는 걷어냈다 — 거기는 열쇠(모듈 경로)가
-    내용이 바뀌어도 그대로라 옛 값이 굳었기 때문이다. 여기는 파일이 바뀌면
-    열쇠가 바뀌므로 굳을 수 없어야 한다. 굳으면 다시 그린 지도가 계속
-    "낡음"으로 남는다.
+    내용이 바뀌어도 그대로라 옛 값이 굳었기 때문이다. 여기도 한때
+    "mtime·크기만으로 충분하다"고 여겼는데, Windows에서 두 번 연속 쓰기가
+    **크기는 같고 mtime_ns 눈금까지 같은** 경우가 실측 80%였다(1.26.128) —
+    이 테스트가 실제로 26%(200회 중 52회) 확률로 그 자리에서 깨졌다. 머리
+    내용의 해시까지 열쇠에 넣어야 굳지 않는다. 굳으면 다시 그린 지도가
+    계속 "낡음"으로 남는다.
     """
     import sys
     if str(PROJECT_ROOT) not in sys.path:
@@ -301,3 +304,38 @@ def test_산출물_지문_캐시가_파일_변경을_따라온다(tmp_path):
     # 지문이 없는 산출물은 None (도장 이전 파일) — 모른다고 말한다
     f.write_text("<div>도장 없음</div>", encoding="utf-8")
     assert catalog._stamp_of_file(f) is None
+
+
+def test_mtime와_크기가_같아도_머리_내용이_다르면_열쇠가_갈린다(tmp_path, monkeypatch):
+    """(경로, mtime_ns, 크기)만으로는 안 된다는 것을 **강제로** 만들어 확인한다.
+
+    실제 콜리전은 Windows에서만·확률적으로 일어난다(1.26.128 실측: 300회 중
+    239회, 80%). 이 환경·이 순간에 항상 재현되는 건 아니므로, 두 번째
+    `stat()`이 첫 번째와 **똑같은 mtime_ns·크기**를 내놓도록 강제해 콜리전을
+    직접 만든다 — 머리 해시가 열쇠에 없었다면 반드시 깨졌을 조건이다.
+    """
+    from webapp import catalog
+
+    f = tmp_path / "map.html"
+    f.write_text('<div data-mapviz="aaaaaaaaaaaa"></div>', encoding="utf-8")
+    frozen_mtime_ns = f.stat().st_mtime_ns
+    frozen_size = f.stat().st_size
+
+    class FrozenStat:
+        st_mtime_ns = frozen_mtime_ns
+        st_size = frozen_size
+
+    real_stat = Path.stat
+
+    def fake_stat(self, *args, **kwargs):
+        return FrozenStat() if self == f else real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+
+    assert catalog._stamp_of_file(f) == "aaaaaaaaaaaa"
+
+    # 내용은 바뀌었는데 stat()은 (강제로) 똑같은 mtime_ns·크기를 답한다 —
+    # 열쇠에 머리 해시가 없으면 이 자리에서 무조건 옛 지문이 나온다.
+    f.write_text('<div data-mapviz="bbbbbbbbbbbb"></div>', encoding="utf-8")
+    assert catalog._stamp_of_file(f) == "bbbbbbbbbbbb", (
+        "mtime·크기가 (강제로) 같아도 머리 내용이 다르면 열쇠도 달라야 한다")
