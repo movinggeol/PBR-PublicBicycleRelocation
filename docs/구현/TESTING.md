@@ -1,11 +1,11 @@
 # 테스트
 
 이 프로젝트는 처음에 테스트가 하나도 없었고, **의존성이 전부 깨진 상태**로
-파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 651개 테스트입니다.
+파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 652개 테스트입니다.
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 651개 (약 100초)
+python -m pytest              # 전체 652개 (약 100초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -17,7 +17,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 
 | 파일 | 개수 | 무엇을 지키는가 |
 | --- | --- | --- |
-| [tests/test_webapp.py](../../tests/test_webapp.py) | 114 | 웹 라우트가 통째로 깨지는 사고 방지, 실행 폼 입력 검증(기간·시간대 목록 포함), 파일 목록 쪽 나눔, **표 정렬을 건 표/걸지 않은 표**, 표 열·행 접기와 그 상태 기억, 빈 상태 규약, **파일명용 잘림 규칙을 문장에 쓰지 않는지**, **명암비 AA**(토큰 값으로 직접 계산), **인쇄가 접은 것을 펴는지**, **지도 안내문을 형제 자리로 가정하지 않는지**(iframe을 `<figure>`로 감싸자 안내가 한 번도 안 떴다), **400% 확대(320px)에서 낱말이 세로로 쪼개지지 않는지**(내비 단추 라벨이 한 글자씩 섰다) ([DESIGN.md](DESIGN.md) · [WEBAPP.md](WEBAPP.md)) |
+| [tests/test_webapp.py](../../tests/test_webapp.py) | 115 | 웹 라우트가 통째로 깨지는 사고 방지, 실행 폼 입력 검증(기간·시간대 목록 포함), 파일 목록 쪽 나눔, **표 정렬을 건 표/걸지 않은 표**, 표 열·행 접기와 그 상태 기억, 빈 상태 규약, **파일명용 잘림 규칙을 문장에 쓰지 않는지**, **명암비 AA**(토큰 값으로 직접 계산), **인쇄가 접은 것을 펴는지**, **지도 안내문을 형제 자리로 가정하지 않는지**(iframe을 `<figure>`로 감싸자 안내가 한 번도 안 떴다), **400% 확대(320px)에서 낱말이 세로로 쪼개지지 않는지**(내비 단추 라벨이 한 글자씩 섰다) ([DESIGN.md](DESIGN.md) · [WEBAPP.md](WEBAPP.md)) |
 | [tests/test_calculations.py](../../tests/test_calculations.py) | 71 | **계산 자체** — 목표재고 공식·군집 목적함수·VRP 적재/시간 제약·ILP 수급 제약·집행 기준 결품·**솔버 값 반올림/입력 방어** ([FORMULATION.md](../분석/FORMULATION.md)) |
 | [tests/test_weather.py](../../tests/test_weather.py) | 43 | **날씨 원천** — 빈칸의 뜻이 컬럼마다 다른지(강수는 0, 기온은 보간), 겨울 3시간 누적 강수를 펴는지, 창 접기(합·평균·최대)와 자정을 넘긴 창, 자료가 없어도 죽지 않는지, API 결측(-9)을 값으로 읽지 않는지 ([WEATHER.md](../분석/WEATHER.md)) |
 | [tests/test_day_type.py](../../tests/test_day_type.py) | 36 | 평일/휴일 분리·공휴일 판정·수요 모델 폴백·계절 보정, **평가도 같은 구분을 쓰는지** ([steps/step0_raw.md](steps/step0_raw.md)) |
@@ -42,7 +42,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_eda.py](../../tests/test_eda.py) | 7 | **EDA 그래프** — `plt.show()`가 들어오면 subprocess가 창을 띄운 채 파이프라인 전체를 멈춘다. 글꼴 경로를 하드코딩하지 않는지, 자료가 없어도 죽지 않는지 |
 | [tests/test_reproduce.py](../../tests/test_reproduce.py) | 7 | **재현 절차가 정말 합성 데이터로 도는지** — README 절차가 합성 대여소 90곳을 만들어 놓고 실데이터 1,361곳을 돌리고 있었다(2026-08-31). 오류가 없어 아무도 눈치채지 못했다 |
 | [tests/test_stockout_map.py](../../tests/test_stockout_map.py) | 4 | **결품 지도** — '늘 빔'(재배치로 못 고치는 곳)을 섞어 세지 않는지, 관측이 없는 시간을 '결품 없음'으로 읽지 않는지 |
-| **합계** | **651** | 25개 파일 · 약 120초 (`python -m pytest`) |
+| **합계** | **652** | 25개 파일 · 약 120초 (`python -m pytest`) |
 
 > **이 합계는 손으로 세지 마세요.** 1.26.88이 손으로 세어 548이라 적었는데
 > 실측은 555였습니다 — `test_version_log.py` 한 파일을 통째로 빠뜨린 것입니다.
@@ -81,11 +81,25 @@ DB로 한 번 계산해 결과가 **완전히 같은지** 봅니다. 저장소�
 | --- | --- | --- |
 | `isolate_db` (autouse) | [tests/conftest.py](../../tests/conftest.py) | 모든 테스트에 `PBR_DB_PATH`를 임시 경로로 강제 |
 | `isolate_csv_fallback` (autouse) | [tests/test_webapp_db.py](../../tests/test_webapp_db.py) | `catalog.PP_ROOT`를 **빈** 임시 폴더로. 실데이터가 있으면 *'산출물이 없을 때 404'* 검사가 폴백에서 진짜 파일을 찾아 200을 돌려주며 실패한다 |
-| 고유 실행 라벨 | `tests/test_pipeline.py` | `now`/`period`를 `smoketest-{PID}`로 두고, 끝나면 그 라벨 파일만 삭제 |
+| 고유 실행 라벨 | `tests/test_pipeline.py` · `test_day_type.py` · `test_rentals.py` | `now`/`period`를 `smoketest-{PID}` 같은 라벨로 두고, 끝나면 그 라벨 파일만 삭제 |
 
 `isolate_db`가 **autouse**인 것이 핵심입니다. 웹 API가 DB를 조회하게 되면서
 라우트를 한 번 부르기만 해도 실제 `data/bike_system.db`가 생성되기 때문에,
 개별 테스트가 깜빡해도 자동으로 막히도록 했습니다.
+
+> 🔴 **세 번째 장치는 실패했을 때 작동하지 않았습니다** (1.26.124에 고침).
+> 라벨 정리는 fixture의 `yield` **뒤**에 있는데 `pytest.fail()`이 `yield`
+> **앞**에 있어서, 단계가 하나라도 실패하면 teardown에 도달하지 못했습니다.
+> **정리가 필요한 때는 바로 일이 잘못됐을 때인데** 그때만 안 된 것입니다.
+> 실제로 잔여물 63개를 찾아 치웠고, 그중 4개 범주는 **테스트 파일이 그 폴더의
+> 최신 산출물**이라 대시보드의 '최신 산출물'에 잡히고 있었습니다.
+> 지금은 `try/finally`로 감쌉니다.
+
+⚠️ **이 세 겹으로도 '쓰기 자체'는 못 막습니다.** 테스트는 여전히 실제
+`data/pp_data`에 산출물을 씁니다. `PBR_DB_PATH` 같은 재정의를 `PP_ROOT`에
+두려 했지만 **작동하지 않습니다** — step 스크립트가 경로를
+`PROJECT_ROOT / "data/..."`로 직접 조립하기 때문입니다(19개 파일 41곳).
+`PP_ROOT`는 아직 경로의 정본이 아닙니다([TODO.md](../기록/TODO.md)).
 
 ---
 

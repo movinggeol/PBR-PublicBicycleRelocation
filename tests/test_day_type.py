@@ -105,20 +105,23 @@ def prepared(tmp_path_factory):
     env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8",
                PBR_DB_PATH=str(tmp_path_factory.mktemp("db") / "daytype.db"))
 
-    for script in PREP:
-        done = subprocess.run(
-            [sys.executable, str(script), "--now", LABEL, "--period", LABEL,
-             "--duration", DURATION, "--raw-file", str(raw_path)],
-            cwd=PROJECT_ROOT, env=env, capture_output=True, text=True,
-            encoding="utf-8", errors="replace")
-        if done.returncode != 0:
-            pytest.fail(f"{script} 실패\n{done.stdout[-1500:]}\n{done.stderr[-1500:]}")
+    # `try`로 감싼다 — `pytest.fail()`이 `yield` 앞이라 준비 단계가 실패하면
+    # teardown에 못 가고, 실제 `data/pp_data`에 잔여물이 남는다(1.26.124).
+    try:
+        for script in PREP:
+            done = subprocess.run(
+                [sys.executable, str(script), "--now", LABEL, "--period", LABEL,
+                 "--duration", DURATION, "--raw-file", str(raw_path)],
+                cwd=PROJECT_ROOT, env=env, capture_output=True, text=True,
+                encoding="utf-8", errors="replace")
+            if done.returncode != 0:
+                pytest.fail(f"{script} 실패\n{done.stdout[-1500:]}\n{done.stderr[-1500:]}")
 
-    yield env
-
-    for path in PP_ROOT.rglob(f"*{LABEL}*"):
-        if path.is_file():
-            path.unlink()
+        yield env
+    finally:
+        for path in PP_ROOT.rglob(f"*{LABEL}*"):
+            if path.is_file():
+                path.unlink()
 
 
 def _rebal(env, day_type: str) -> pd.DataFrame:

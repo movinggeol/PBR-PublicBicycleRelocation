@@ -129,8 +129,36 @@ def test_data_tables_are_sortable(client, path):
     body = html.split("</style>", 1)[1]      # CSS 안의 선택자는 세지 않는다
     if "<table" not in body:
         # 산출물이 없는 환경(빈 DB·빈 data/)에서는 표 자체가 안 그려진다.
+        # ⚠️ `/kpi`는 **자료를 심어** 따로 검사한다 — 아래
+        # `test_kpi_table_is_sortable_when_there_are_runs`. 이 건너뛰기에만
+        # 기대면 그 화면은 어디서도 검사되지 않는다(실제로 그랬다, 1.26.124).
         pytest.skip(f"{path}에 아직 표가 없다")
     assert "data-sortable" in body, f"{path}의 표에 정렬이 안 걸려 있다"
+
+
+def test_kpi_table_is_sortable_when_there_are_runs(client, monkeypatch):
+    """`/kpi`는 실행이 없으면 표가 없어 위 검사가 **늘 건너뛴다.**
+
+    로컬에서도 CI에서도 건너뛰었으므로, *"속성이 빠지면 조용히 기능만 사라진다"* 는
+    그 보호가 이 화면에는 없었다. 자료를 심어 표가 그려지는 상태로 만들어 잰다.
+    """
+    import pandas as pd
+
+    import db
+    from webapp import store
+
+    # 열을 손으로 나열하지 않는다 — 지표가 늘면 그 목록이 낡고, 라우트는
+    # `stations` 같은 열이 없으면 KeyError로 죽는다(실제로 겪었다).
+    row = {field: 1.0 for field in db.KPI_FIELDS}
+    row.update({"run_label": "2026-08-24 17", "duration": "_05_10",
+                "computed_at": "2026-08-24 17:12:14"})
+    monkeypatch.setattr(store, "kpi", lambda *a, **k: pd.DataFrame([row]))
+
+    body = client.get("/kpi").text.split("</style>", 1)[1]
+
+    assert "<table" in body, "자료를 심었는데도 표가 없다 — 이 검사가 다시 공허해졌다"
+    assert 'id="kpi-runs-table"' in body, "실행 목록 표가 그려지지 않았다"
+    assert "data-sortable" in body, "/kpi의 표에 정렬이 안 걸려 있다"
 
 
 def test_grouped_output_table_is_not_sortable(client):

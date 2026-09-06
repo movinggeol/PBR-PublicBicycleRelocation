@@ -95,10 +95,18 @@ def test_input_examples_match_the_real_format(client):
     """
     import re
 
+    # ⚠️ **틀린 것이 없다고 통과시키면 안 된다.** 예시가 하나도 없어도 아래
+    # 반복문은 그냥 지나가서, 예시를 통째로 지워도 이 검사는 조용히 통과한다.
+    # 그러면 "예시가 실제로 통하는 값인지 지킨다"는 이 시험의 약속이 빈다 —
+    # 검사가 공허해지는 것과 결함이 없는 것은 다르다(1.26.119에서 겪었다).
+    seen = 0
     for path in ("/", "/guide", "/kpi"):
         html = client.get(path).text
         for shown in re.findall(r"(?<![\w_])(\d{2}_\d{2})(?!\w)", html):
             pytest.fail(f"{path}의 시간대 예시 '{shown}'에 맨 앞 밑줄이 빠졌다")
+        seen += len(re.findall(r"(?<!\w)_\d{2}_\d{2}(?!\w)", html))
+
+    assert seen, "세 화면 어디에도 시간대 예시가 없다 — 검사할 것이 없으면 검사가 아니다"
 
 
 def test_period_example_matches_the_real_format(client):

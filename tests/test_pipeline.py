@@ -55,28 +55,37 @@ def pipeline_run(tmp_path_factory, smoke_db):
                PBR_DB_PATH=str(smoke_db))
     results = []
 
-    for script in STAGES:
-        completed = subprocess.run(
-            [sys.executable, str(script),
-             "--now", LABEL, "--period", LABEL,
-             "--duration", DURATION, "--raw-file", str(raw_path)],
-            cwd=PROJECT_ROOT, env=env,
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-        )
-        results.append((script, completed))
-        if completed.returncode != 0:
-            pytest.fail(
-                f"{script} 실패 (exit {completed.returncode})\n"
-                f"--- stdout ---\n{completed.stdout[-2000:]}\n"
-                f"--- stderr ---\n{completed.stderr[-2000:]}"
+    # ⚠️ **`try`로 감싸는 것이 요점이다.** 아래 `pytest.fail()`은 `yield` 앞이라,
+    # 단계가 하나라도 실패하면 teardown에 도달하지 못한다 — 그러면 이 실행이
+    # 실제 `data/pp_data`에 만든 산출물이 **그대로 남는다.** 스텝 스크립트는
+    # 경로를 `PROJECT_ROOT / "data/..."`로 직접 조립해서 임시 경로로 돌릴 수도
+    # 없다. 실제로 잔여물 63개를 찾아 치웠다(1.26.124).
+    #
+    # **정리가 필요한 때는 바로 일이 잘못됐을 때다.** 잘 끝난 실행은 어차피
+    # 스스로 치운다.
+    try:
+        for script in STAGES:
+            completed = subprocess.run(
+                [sys.executable, str(script),
+                 "--now", LABEL, "--period", LABEL,
+                 "--duration", DURATION, "--raw-file", str(raw_path)],
+                cwd=PROJECT_ROOT, env=env,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
             )
+            results.append((script, completed))
+            if completed.returncode != 0:
+                pytest.fail(
+                    f"{script} 실패 (exit {completed.returncode})\n"
+                    f"--- stdout ---\n{completed.stdout[-2000:]}\n"
+                    f"--- stderr ---\n{completed.stderr[-2000:]}"
+                )
 
-    yield results
-
-    # 이 실행이 만든 파일만 정리한다.
-    for path in PP_ROOT.rglob(f"*{LABEL}*"):
-        if path.is_file():
-            path.unlink()
+        yield results
+    finally:
+        # 이 실행이 만든 파일만 정리한다.
+        for path in PP_ROOT.rglob(f"*{LABEL}*"):
+            if path.is_file():
+                path.unlink()
 
 
 def test_all_stages_succeed(pipeline_run):
