@@ -159,17 +159,23 @@ def main() -> int:
 
     limits = [int(v) for v in args.limits.split(",") if v.strip()]
     with db.session() as conn:
-        label = args.run_label or conn.execute(
-            "SELECT MAX(run_label) FROM rebalance_plan").fetchone()[0]
+        # 사전순 MAX를 쓰지 않는다 — 실험 라벨이 날짜 라벨을 이긴다(1.26.127).
+        label = args.run_label or db.latest_label(conn, "rebalance_plan",
+                                                  kinds=("plan",))
     if not label:
         print("rebalance_plan이 비어 있습니다.")
         return 1
 
-    print(f"실행 '{label}' · 현행 상한 50 · 문턱 {REBAL_MIN_QTY}\n")
-    rows = []
+    print(f"실행 '{label}' · 현행 상한 50 · 문턱 {REBAL_MIN_QTY}")
+    import imbalance as kpi_mod                     # noqa: E402  (step4)
+    kpi_mod.use_run_day_type(label)                 # 오늘 달력이 아니라 그 실행의 요일로
+    print()
+
+    rows, 빈회차 = [], []
     for duration in WINDOWS:
         plan = load_all(label, duration)
         if plan.empty:
+            빈회차.append(duration)      # 말없이 건너뛰지 않는다
             continue
         for limit in limits:
             candidates = select(plan, limit)
@@ -179,7 +185,16 @@ def main() -> int:
                          "결품h": stockout(plan, candidates, duration)})
 
     if not rows:
-        print("비교할 자료가 없습니다.")
+        print(f"이 실행에는 {', '.join(WINDOWS)} 자료가 없습니다.")
+        with db.session() as conn:
+            pairs = conn.execute(
+                "SELECT duration, run_label FROM rebalance_plan"
+                f" WHERE duration IN ({','.join('?' * len(WINDOWS))})"
+                " GROUP BY duration, run_label ORDER BY duration", WINDOWS).fetchall()
+        if pairs:
+            print("\n이 회차를 가진 실행:")
+            for duration, run_label in pairs:
+                print(f"  {duration}  --run-label \"{run_label}\"")
         return 1
 
     frame = pd.DataFrame(rows)
@@ -197,6 +212,11 @@ def main() -> int:
         print()
 
     capacity_check(frame)
+
+    if 빈회차:
+        print(f"⚠️  이 실행에 자료가 없는 회차: {', '.join(빈회차)}")
+        print(f"    위 표는 {len(WINDOWS) - len(빈회차)}/{len(WINDOWS)} 회차만 봤습니다 —"
+              " **한 회차만 보고 판단하지 마십시오.**\n")
 
     print("판정")
     print("  결품이 가장 낮은 상한이 있으면  → 그쪽으로 옮길 근거가 된다.")

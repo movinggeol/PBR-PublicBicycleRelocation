@@ -836,6 +836,22 @@ def classify_run_label(run_label: str) -> str:
     return "plan"
 
 
+def run_day_type(conn: sqlite3.Connection, run_label: str) -> Optional[str]:
+    """그 실행이 **어느 요일 구분으로 계획됐는지**. 기록이 없으면 None.
+
+    분석 쪽이 이것을 안 읽으면 `get_runtime_config()`의 기본값을 쓰는데, 그
+    기본값은 `auto` — **오늘 달력**이다. 그래서 일요일에 돌린 문턱 스윕이
+    평일 계획을 **휴일 순수요로 채점하고** 있었다(1.26.127). 같은 스크립트가
+    월요일에는 다른 답을 냈다.
+
+    `step4_metrics/imbalance.py`의 `load_net_demand()`가 *"계획과 같은 요일
+    구분만 남긴다"* 고 적어 둔 바로 그 실패다 — 정답은 여기 저장돼 있었다.
+    """
+    row = conn.execute("SELECT day_type FROM runs WHERE run_label = ?",
+                       (run_label,)).fetchone()
+    return row[0] if row and row[0] else None
+
+
 def set_run_kind(conn: sqlite3.Connection, run_label: str, kind: str) -> None:
     """실행 종류를 못박는다. 라벨 규칙에 기대지 않는 유일한 방법이다."""
     if kind not in RUN_KINDS:

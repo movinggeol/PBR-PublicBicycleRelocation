@@ -159,21 +159,25 @@ def main() -> int:
     args, _ = parser.parse_known_args()
 
     with db.session() as conn:
-        label = args.run_label or conn.execute(
-            "SELECT MAX(run_label) FROM ilp_plan").fetchone()[0]
+        # 사전순 MAX를 쓰지 않는다 — 실험 라벨이 날짜 라벨을 이긴다(1.26.127).
+        label = args.run_label or db.latest_label(conn, "ilp_plan", kinds=("plan",))
     if not label:
         print("ilp_plan이 비어 있습니다. 파이프라인을 한 번 돌리세요.")
         return 1
 
     durations = [args.duration] if args.duration else list(WINDOWS)
-    print(f"실행 '{label}' · 예산 {args.budget:.0f}분\n")
+    print(f"실행 '{label}' · 예산 {args.budget:.0f}분")
+    import imbalance as kpi_mod                     # noqa: E402  (step4)
+    kpi_mod.use_run_day_type(label)                 # 오늘 달력이 아니라 그 실행의 요일로
+    print()
 
     print(f"{'시간대':8} {'구분':10} {'군집':>4} {'최장분':>7} {'초과':>4} "
           f"{'옮긴대수':>8} {'미집행':>7} {'거리km':>8}")
-    rows = []
+    rows, 빈회차 = [], []
     for duration in durations:
         plan = load_plan(label, duration)
         if plan.empty:
+            빈회차.append(duration)      # 말없이 건너뛰지 않는다
             continue
         planned = int(plan["qty"].sum())
         points = station_points(label)
@@ -188,10 +192,23 @@ def main() -> int:
                   f"{summary['거리km']:8.1f}")
 
     if not rows:
-        print("  비교할 자료가 없습니다.")
+        print(f"\n이 실행에는 {', '.join(durations)} 자료가 없습니다.")
+        with db.session() as conn:
+            pairs = conn.execute(
+                "SELECT duration, run_label FROM ilp_plan"
+                " GROUP BY duration, run_label ORDER BY duration").fetchall()
+        if pairs:
+            print("\n회차를 가진 실행:")
+            for duration, run_label in pairs:
+                print(f"  {duration}  --run-label \"{run_label}\"")
         return 1
 
     stockout_compare(label, durations, args.budget * 60)
+
+    if 빈회차:
+        print(f"\n⚠️  이 실행에 자료가 없는 회차: {', '.join(빈회차)}")
+        print(f"    위 표는 {len(durations) - len(빈회차)}/{len(durations)} 회차만 봤습니다 —"
+              " **한 회차만 보고 판단하지 마십시오.**")
 
     frame = pd.DataFrame(rows)
     before = frame[frame["구분"] == "현행(무제한)"]

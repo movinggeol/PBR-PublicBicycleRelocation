@@ -125,17 +125,27 @@ def main() -> int:
 
     thresholds = [int(t) for t in args.thresholds.split(",") if t.strip()]
     with db.session() as conn:
-        label = args.run_label or conn.execute(
-            "SELECT MAX(run_label) FROM rebalance_plan").fetchone()[0]
+        # **사전순 MAX를 쓰지 않는다** — 실험 라벨(`obs-cmp-…`)이 `'o' > '2'`라
+        # 어떤 날짜 라벨도 이겨서, 계획 대신 실험을 말없이 집었다(1.26.127).
+        label = args.run_label or db.latest_label(conn, "rebalance_plan",
+                                                  kinds=("plan",))
     if not label:
         print("rebalance_plan이 비어 있습니다. 파이프라인을 돌리세요.")
         return 1
 
-    print(f"실행 '{label}' · 현행 문턱 2\n")
-    rows = []
+    print(f"실행 '{label}' · 현행 문턱 2")
+    import imbalance as kpi_mod                     # noqa: E402  (step4)
+    kpi_mod.use_run_day_type(label)                 # 오늘 달력이 아니라 그 실행의 요일로
+    print()
+
+    rows, 빈회차 = [], []
     for duration in WINDOWS:
         plan = load_plan(label, duration)
         if plan.empty:
+            # **말없이 건너뛰지 않는다.** 한 실행이 세 회차를 다 갖고 있는 일은
+            # 드물어서, 조용히 넘기면 회차 하나짜리 표를 보고 판정하게 된다 —
+            # *"한 회차만 보고 판단하지 말 것"* 이 이 저장소의 규약이다.
+            빈회차.append(duration)
             continue
         for threshold in thresholds:
             candidates = select_candidates(plan, threshold)
@@ -146,7 +156,20 @@ def main() -> int:
                          "결품h": stockout(plan, candidates, duration)})
 
     if not rows:
-        print("비교할 자료가 없습니다.")
+        # **없다고만 말하면 다음 수를 둘 수 없다.** 어느 회차가 비었고 어느
+        # 실행에 그 회차가 있는지 함께 보여 준다(1.26.39에서 배운 것).
+        print(f"이 실행에는 {', '.join(WINDOWS)} 자료가 없습니다.")
+        with db.session() as conn:
+            pairs = conn.execute(
+                "SELECT duration, run_label FROM rebalance_plan"
+                f" WHERE duration IN ({','.join('?' * len(WINDOWS))})"
+                " GROUP BY duration, run_label ORDER BY duration", WINDOWS).fetchall()
+        if pairs:
+            print("\n이 회차를 가진 실행:")
+            for duration, run_label in pairs:
+                print(f"  {duration}  --run-label \"{run_label}\"")
+        else:
+            print("어느 실행에도 없습니다 — 그 회차로 파이프라인을 먼저 돌리십시오.")
         return 1
 
     frame = pd.DataFrame(rows)
@@ -161,6 +184,12 @@ def main() -> int:
         print()
 
     diagnose(label)
+
+    if 빈회차:
+        print(f"⚠️  이 실행에 자료가 없는 회차: {', '.join(빈회차)}")
+        print(f"    위 표는 {len(WINDOWS) - len(빈회차)}/{len(WINDOWS)} 회차만 봤습니다 —"
+              " **한 회차만 보고 판단하지 마십시오.**")
+        print("    다른 회차를 보려면 그 회차를 돌린 실행을 --run-label로 주십시오.\n")
 
     print("판정")
     print("  문턱을 올려 결품이 거의 안 나빠지면  → 올릴 만하다(차량·시간이 준다).")

@@ -353,6 +353,59 @@ def test_머리기사는_회차별로_말하고_창이_모자라면_밝힌다(ob
     assert "(창 일부)" in summary and "_10_15 3일(창 일부)" not in summary
 
 
+# ----------------------------------------- 어느 요일 구분으로 채점했는가
+
+def load_imbalance():
+    """step4의 `imbalance`를 싣는다 (실험들이 채점에 쓰는 그 모듈)."""
+    for path in (PROJECT_ROOT, PROJECT_ROOT / "step4_metrics"):
+        if str(path) not in sys.path:
+            sys.path.insert(0, str(path))
+    spec = importlib.util.spec_from_file_location(
+        "imbalance", PROJECT_ROOT / "step4_metrics" / "imbalance.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_실행의_요일_구분을_읽어_맞춘다(capsys):
+    """**오늘 달력으로 채점하면 안 된다.**
+
+    실험 스크립트는 `get_runtime_config()`의 기본값(`auto` → 오늘)을 쓴다.
+    그래서 **일요일에 돌린 문턱 스윕이 평일 계획을 휴일 순수요로** 재고
+    있었다(1.26.127 실측: 결품 1.810 → 평일로 고치니 1.858). 같은 스크립트가
+    월요일에는 다른 답을 냈다는 뜻이다. 정답은 `runs.day_type`에 있다.
+    """
+    import dataclasses
+
+    import db
+
+    kpi = load_imbalance()
+    kpi.config = dataclasses.replace(kpi.config, day_type="holiday")
+    with db.session() as conn:
+        conn.execute("INSERT INTO runs (run_label, day_type, created_at)"
+                     " VALUES (?, ?, ?)", ("계획-평일", "weekday", "2026-08-27 23:13:43"))
+
+    got = kpi.use_run_day_type("계획-평일")
+
+    assert got == "weekday"
+    assert kpi.config.day_type == "weekday"
+    assert "평일" in capsys.readouterr().out, "무엇으로 맞췄는지 말해야 한다"
+
+
+def test_요일_기록이_없으면_조용히_넘어가지_않는다(capsys):
+    """모르면 모른다고 말한다 — 조용히 오늘 달력을 쓰면 처음 그 실패와 같다."""
+    import dataclasses
+
+    kpi = load_imbalance()
+    kpi.config = dataclasses.replace(kpi.config, day_type="holiday")
+
+    got = kpi.use_run_day_type("기록에-없는-라벨")
+
+    assert got == "holiday", "모르면 지금 설정을 그대로 쓴다"
+    out = capsys.readouterr().out
+    assert "기록에 없습니다" in out and "휴일" in out
+
+
 def test_관측시간을_함께_내야_두_평균의_차이가_설명된다(obs):
     """본표는 반쪽짜리 날을 섞고 비교표는 안 섞는다. 같은 대여소·같은 회차인데
     값이 다른 이유가 **분모**이므로, 분모를 낼 수 있어야 한다.

@@ -11,8 +11,11 @@ import db
 from mapviz import (DROP_COLOR, DROP_LABEL, DROP_WORD, PICK_COLOR, PICK_LABEL,
                     PICK_WORD, legend_html, swatch_circle, swatch_circle_dashed,
                     swatch_size_scale)
+from dataclasses import replace
+
 from project_config import (
-    MAP_TILES, PICK_HARM_WARN_SHARE, PROJECT_ROOT, TIME_BUDGET_MINUTES,
+    DAY_TYPE_LABELS, MAP_TILES, PICK_HARM_WARN_SHARE, PROJECT_ROOT,
+    TIME_BUDGET_MINUTES,
     VEHICLE_CAPACITY, duration_hours, duration_list, ensure_output_dirs,
     get_runtime_config,
     require_columns, select_day_type,
@@ -29,6 +32,31 @@ map_file_path = str(PROJECT_ROOT / "data/pp_data/성능 지표/visualization/imb
 
 config = get_runtime_config()
 now = config.now
+
+
+def use_run_day_type(run_label: str) -> str:
+    """분석 대상 **실행의 요일 구분**으로 맞춘다. 실제로 쓸 값을 돌려준다.
+
+    파이프라인이 부를 때는 `config`가 이미 그 실행의 값이라 아무 일도 안 한다.
+    문제는 **실험 스크립트**다 — 그쪽은 `get_runtime_config()`의 기본값
+    (`auto` → **오늘 달력**)을 쓰므로, 일요일에 돌리면 평일 계획을 휴일
+    순수요로 채점한다(1.26.127에서 실측). 대여소의 33~37%가 두 구분에서
+    부호가 반대라 결과가 실제와 달라진다.
+
+    **고르지 않고 밝힌다** — 기록이 없으면 지금 설정을 그대로 쓰되 그렇다고
+    말한다. 조용히 넘어가면 처음 그 실패와 같아진다.
+    """
+    global config
+    with db.session() as conn:
+        stored = db.run_day_type(conn, run_label)
+    if stored and stored != config.day_type:
+        print(f"[안내] 실행 '{run_label}'은 {DAY_TYPE_LABELS.get(stored, stored)}"
+              f" 계획입니다 — 지금 설정({config.day_label}) 대신 그쪽으로 맞춥니다.")
+        config = replace(config, day_type=stored)
+    elif not stored:
+        print(f"[주의] 실행 '{run_label}'의 요일 구분이 기록에 없습니다 —"
+              f" 지금 설정({config.day_label})으로 잽니다.")
+    return config.day_type
 
 def demand_satisfaction(reloc: pd.DataFrame):
     '''
