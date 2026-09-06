@@ -624,18 +624,24 @@ def save_frame(conn: sqlite3.Connection, table: str, df: pd.DataFrame,
 
 def load_frame(conn: sqlite3.Connection, table: str,
                run_label: Optional[str] = None, period: Optional[str] = None,
-               duration: Optional[str] = None) -> pd.DataFrame:
+               duration: Optional[str] = None,
+               kinds: Optional[Sequence[str]] = None) -> pd.DataFrame:
     """테이블을 읽는다.
 
     run_label/period를 생략하면 가장 최근 실행분을 돌려준다.
-    (파일 수정시각 휴리스틱 대신 라벨 정렬을 쓴다.)
+    `kinds`를 주면 그 종류의 실행 중에서 고른다(`latest_label` 참고) — 운영
+    화면이 실험 결과를 계획으로 내놓지 않게 하는 장치다.
+
+    **여기서 종류를 받는 이유**는 스코프 컬럼(`run_label` 대 `period`)을 고르는
+    곳이 여기 하나이기 때문이다. 부르는 쪽에서 라벨을 미리 정해 넘기면 기간
+    스코프 테이블에 실행 라벨을 넘기는 실수를 하기 쉽다.
     """
     spec = _spec(table)
     label_column = "period" if "period" in spec.scope else "run_label"
     label_value = period if label_column == "period" else run_label
 
     if label_value is None:
-        label_value = latest_label(conn, table)
+        label_value = latest_label(conn, table, kinds=kinds)
         if label_value is None:
             return pd.DataFrame()
 
@@ -649,12 +655,43 @@ def load_frame(conn: sqlite3.Connection, table: str,
     return pd.read_sql(query, conn, params=params)
 
 
-def latest_label(conn: sqlite3.Connection, table: str) -> Optional[str]:
-    """해당 테이블에 저장된 가장 최근 run_label(또는 period)."""
+def latest_label(conn: sqlite3.Connection, table: str,
+                 kinds: Optional[Sequence[str]] = None) -> Optional[str]:
+    """해당 테이블에 저장된 가장 최근 run_label(또는 period).
+
+    **run_label은 `runs.created_at`으로 고른다 — 사전순 MAX가 아니다.**
+    이 저장소는 *"문자열 정렬이 곧 최신순"* 을 규약으로 삼아 왔는데(라벨이
+    `2026-08-27 23` 꼴이면 성립한다), **실험 라벨이 그 규약 밖에 있다** —
+    `obs-cmp-…`는 `'o' > '2'`라 어떤 날짜 라벨도 이긴다. 그래서 실험을 한 번
+    돌리고 나면 그 뒤로 계획을 아무리 돌려도 `MAX(run_label)`은 영영 실험을
+    가리킨다(1.26.125에서 실측했다 — 여섯 테이블이 그 상태였다).
+
+    라벨이 `runs`에 없으면(옛 자료) 시각을 모르므로 가장 오래된 것으로 친다.
+    전부 모르면 사전순 tiebreak이 남아 **예전 동작 그대로**다.
+
+    `kinds`를 주면 **그 종류의 실행 중에서** 고른다. 저장된 `runs.kind`가 없으면
+    (선언 없이 돈 실행 — 1.26.114) `classify_run_label()`로 짐작해 판정한다.
+    맞는 것이 하나도 없으면 **조용히 비우지 않고** 종류를 무시한 최신을 준다 —
+    자료가 있는데 없다고 답하는 쪽이 더 나쁘다.
+
+    기간(period) 스코프 테이블에는 종류가 없으므로 `kinds`를 무시한다.
+    """
     spec = _spec(table)
-    column = "period" if "period" in spec.scope else "run_label"
-    row = conn.execute(f"SELECT MAX({column}) FROM {table}").fetchone()
-    return row[0] if row else None
+    if "period" in spec.scope:
+        row = conn.execute(f"SELECT MAX(period) FROM {table}").fetchone()
+        return row[0] if row else None
+
+    rows = conn.execute(
+        f"SELECT t.run_label, r.kind FROM (SELECT DISTINCT run_label FROM {table}) t"
+        " LEFT JOIN runs r ON r.run_label = t.run_label"
+        " ORDER BY COALESCE(r.created_at, '') DESC, t.run_label DESC").fetchall()
+    if not rows:
+        return None
+    if kinds:
+        for label, kind in rows:
+            if (kind or classify_run_label(label)) in kinds:
+                return label
+    return rows[0][0]
 
 
 def record_run(conn: sqlite3.Connection, run_label: str, period: Optional[str] = None,

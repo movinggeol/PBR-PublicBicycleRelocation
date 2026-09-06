@@ -242,3 +242,97 @@ def test_unknown_duration_does_not_fall_back_to_csv(tmp_path, monkeypatch):
         # 시간대를 지정하면 폴백하지 않는다
         assert c.get("/api/metrics", params={"duration": "없는시간대"}).status_code == 404
         assert c.get("/api/plans/vrp", params={"duration": "_10_15"}).status_code == 404
+
+
+# ------------------------------------------- 실험이 계획 자리에 오면 안 된다
+
+EXPERIMENT = "obs-cmp-1520"      # 실험 라벨. 사전순으로 어떤 날짜 라벨도 이긴다
+
+
+def _record(conn, run_label: str, created_at: str, kind=None) -> None:
+    conn.execute("INSERT INTO runs (run_label, duration, created_at, kind)"
+                 " VALUES (?, ?, ?, ?)", (run_label, DURATION, created_at, kind))
+
+
+def _two_runs(conn):
+    """계획을 먼저, 실험을 **나중에** 돌린 상태. 시각순으로도 실험이 최신이다."""
+    db.save_frame(conn, "pick_drop", _pick_drop(4), run_label=NEW, duration=DURATION)
+    db.save_frame(conn, "pick_drop", _pick_drop(2), run_label=EXPERIMENT, duration=DURATION)
+    _record(conn, NEW, "2026-08-27 23:13:43")            # kind 미선언 → 짐작
+    _record(conn, EXPERIMENT, "2026-09-01 19:00:17")     # kind 미선언 → 짐작
+
+
+def test_라벨을_안_주면_실험이_아니라_계획을_준다(tmp_path, monkeypatch):
+    """실험도 같은 테이블에 쌓인다. 운영 화면이 그것을 계획으로 내놓으면,
+    라벨 없이 연 `/orders`가 **실험을 현장 지시서로** 낸다(1.26.125에서 실측).
+
+    ⚠️ 시각순 정렬만으로는 안 걸린다 — 실험이 정말로 더 나중에 돌았기 때문이다.
+    """
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "kinds.db"))
+    from webapp import store
+
+    with db.session() as conn:
+        _two_runs(conn)
+
+    frame, source = store.load("pick_drop")
+
+    assert source == "db"
+    assert set(frame["run_label"]) == {NEW}, "실험을 계획으로 내놓았다"
+
+
+def test_실험을_콕_집으면_그대로_보여_준다(tmp_path, monkeypatch):
+    """거르는 것은 **기본값일 때**뿐이다. 실험 회차를 들여다보는 길을 막으면 안 된다."""
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "kinds2.db"))
+    from webapp import store
+
+    with db.session() as conn:
+        _two_runs(conn)
+
+    frame, _ = store.load("pick_drop", run_label=EXPERIMENT)
+
+    assert set(frame["run_label"]) == {EXPERIMENT}
+
+
+def test_계획이_하나도_없으면_실험이라도_준다(tmp_path, monkeypatch):
+    """자료가 있는데 없다고 답하는 쪽이 더 나쁘다."""
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "kinds3.db"))
+    from webapp import store
+
+    with db.session() as conn:
+        db.save_frame(conn, "pick_drop", _pick_drop(2),
+                      run_label=EXPERIMENT, duration=DURATION)
+        _record(conn, EXPERIMENT, "2026-09-01 19:00:17")
+
+    frame, _ = store.load("pick_drop")
+
+    assert set(frame["run_label"]) == {EXPERIMENT}
+
+
+def test_작업지시서_목록은_계획을_앞에_두되_실험을_지우지_않는다(tmp_path, monkeypatch):
+    """화면은 `targets[0]`을 기본값으로 쓴다 — 그 자리가 계획이어야 한다.
+
+    그렇다고 실험을 목록에서 빼면 실험 회차의 지시서를 열어 볼 길이 막힌다.
+    """
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "kinds4.db"))
+    from webapp import store
+
+    plan = pd.DataFrame({
+        "cluster": [0], "from_id": ["ST0001"],
+        "from_lat": [36.4], "from_lon": [127.3],
+        "to_id": ["ST0002"], "to_lat": [36.3], "to_lon": [127.3],
+        "action": ["pick"], "qty": [5],
+        "distance_km": [1.0], "travel_sec": [120.0],
+        "work_sec": [150.0], "cum_sec": [270.0],
+    })
+    with db.session() as conn:
+        db.save_frame(conn, "vrp_plan", plan, run_label=NEW, duration=DURATION)
+        db.save_frame(conn, "vrp_plan", plan, run_label=EXPERIMENT, duration=DURATION)
+        _record(conn, NEW, "2026-08-27 23:13:43")
+        _record(conn, EXPERIMENT, "2026-09-01 19:00:17")
+
+    targets = store.plan_targets()
+
+    assert targets.iloc[0]["run_label"] == NEW, "기본값이 실험이면 현장에 나간다"
+    assert EXPERIMENT in set(targets["run_label"]), "실험을 목록에서 지우면 안 된다"
+    # 저장된 kind가 없어도 짐작이 걸려야 한다 (NaN은 참이라 `or`로 쓰면 안 걸린다)
+    assert targets.set_index("run_label").loc[EXPERIMENT, "kind"] == "experiment"

@@ -41,7 +41,12 @@ def load(table: str, run_label: Optional[str] = None,
     """
     try:
         with db.session() as conn:
-            frame = db.load_frame(conn, table, run_label=run_label, duration=duration)
+            # 라벨을 안 주면 **계획** 중에서 최신을 고른다. 실험도 같은 테이블에
+            # 쌓이는데(`obs-cmp-…`), 운영 화면이 그것을 계획으로 내놓으면 안 된다 —
+            # 라벨 없이 연 `/orders`가 실험을 **현장 지시서**로 내고 있었다(1.26.125).
+            # 계획이 하나도 없으면 예전처럼 최신을 준다(비우지 않는다).
+            frame = db.load_frame(conn, table, run_label=run_label,
+                                  duration=duration, kinds=("plan",))
         if not frame.empty:
             return frame, "db"
     except Exception as err:      # DB가 없거나 손상돼도 CSV로 응답할 수 있게 한다
@@ -189,13 +194,19 @@ def plan_targets() -> pd.DataFrame:
 
     최근 실행이 앞에 오게 `runs.created_at`으로 정렬한다. `run_label`은 사람이
     붙이는 이름이라 사전순으로 줄 세우면 시간 순서와 어긋난다.
+
+    **계획을 실험보다 앞에 둔다** (1.26.125). 화면은 `targets[0]`을 기본값으로
+    쓰는데, 실험이 계획보다 나중에 돌면 그것이 **현장 지시서**가 됐다 — 실측에서
+    `obs-cmp-1520`(실험)이 기본값이었다. 목록에서 **지우지는 않는다**: 실험 회차의
+    지시서를 열어 보는 것은 정당한 용도이고, 지우면 그 길이 막힌다.
     """
     try:
         with db.session() as conn:
-            return pd.read_sql(
+            frame = pd.read_sql(
                 "SELECT v.run_label, v.duration,"
                 "       COUNT(DISTINCT v.cluster) AS clusters,"
-                "       MAX(r.created_at) AS created_at"
+                "       MAX(r.created_at) AS created_at,"
+                "       MAX(r.kind) AS kind"
                 "  FROM vrp_plan v"
                 "  LEFT JOIN runs r"
                 "    ON r.run_label = v.run_label AND r.duration = v.duration"
@@ -205,6 +216,20 @@ def plan_targets() -> pd.DataFrame:
     except Exception as err:
         print(f"[경고] 경로 목록 조회 실패: {type(err).__name__}: {err}")
         return pd.DataFrame()
+
+    if frame.empty:
+        return frame
+    # 저장된 종류가 없으면 짐작한다 — 판정 규칙은 `db.classify_run_label()`
+    # 하나만 쓴다(SQL에 같은 규칙을 다시 적으면 두 곳이 갈린다).
+    # ⚠️ `row["kind"] or ...` 로 쓰면 안 된다 — 빈 칸은 `NaN`이고 **NaN은 참**이라
+    # 짐작이 한 번도 안 걸린다(실제로 그렇게 썼다가 순서가 안 바뀌었다).
+    kind = frame.apply(
+        lambda row: row["kind"] if pd.notna(row["kind"])
+        else db.classify_run_label(row["run_label"]), axis=1)
+    frame = frame.assign(kind=kind)
+    # 안정 정렬이라 계획끼리·실험끼리는 위의 시각 순서가 그대로 남는다.
+    order = (kind != "plan").astype(int).sort_values(kind="stable").index
+    return frame.loc[order].reset_index(drop=True)
 
 
 def records(frame: pd.DataFrame) -> list:

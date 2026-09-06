@@ -97,6 +97,52 @@ def test_load_without_label_returns_latest(conn):
     assert set(db.load_frame(conn, "pick_drop")["run_label"]) == {"2026-05-21 18"}
 
 
+def _record_at(conn, run_label: str, created_at: str) -> None:
+    """기록 시각을 못박아 실행을 남긴다. `record_run()`은 `datetime('now')`라
+    같은 초에 두 건을 넣으면 선후가 안 갈린다."""
+    conn.execute("INSERT INTO runs (run_label, created_at) VALUES (?, ?)",
+                 (run_label, created_at))
+
+
+def test_최신_실행은_사전순이_아니라_기록시각으로_고른다(conn):
+    """**실험 라벨은 어떤 날짜 라벨도 사전순으로 이긴다** — `'o' > '2'`.
+
+    그래서 실험을 한 번 돌리고 나면 그 뒤로 계획을 아무리 돌려도 `MAX(run_label)`
+    은 영영 실험을 가리킨다. 실측에서 여섯 테이블이 그 상태였고, 라벨 없이 연
+    `/orders`가 **실험을 현장 지시서로** 내고 있었다(1.26.125).
+    """
+    db.save_frame(conn, "pick_drop", _pick_drop(n=3),
+                  run_label="obs-cmp-1520", duration="_05_10")
+    db.save_frame(conn, "pick_drop", _pick_drop(n=2),
+                  run_label="2026-09-05 10", duration="_05_10")
+    _record_at(conn, "obs-cmp-1520", "2026-09-01 19:00:17")
+    _record_at(conn, "2026-09-05 10", "2026-09-05 10:22:03")   # 나중에 돈 계획
+
+    assert db.latest_label(conn, "pick_drop") == "2026-09-05 10"
+    assert set(db.load_frame(conn, "pick_drop")["run_label"]) == {"2026-09-05 10"}
+
+
+def test_기록이_없는_라벨은_사전순으로_물러난다(conn):
+    """`runs`에 없는 옛 자료뿐이면 예전 동작 그대로여야 한다 — 조용히 비면 안 된다."""
+    db.save_frame(conn, "pick_drop", _pick_drop(n=3),
+                  run_label="2026-01-01 09", duration="_05_10")
+    db.save_frame(conn, "pick_drop", _pick_drop(n=2),
+                  run_label="2026-05-21 18", duration="_05_10")
+
+    assert db.latest_label(conn, "pick_drop") == "2026-05-21 18"
+
+
+def test_기록이_있는_라벨이_없는_라벨보다_최신이다(conn):
+    """시각을 모르는 것을 최신으로 치면 옛 자료가 새 실행을 밀어낸다."""
+    db.save_frame(conn, "pick_drop", _pick_drop(n=3),
+                  run_label="zzz-옛자료", duration="_05_10")
+    db.save_frame(conn, "pick_drop", _pick_drop(n=2),
+                  run_label="2026-09-05 10", duration="_05_10")
+    _record_at(conn, "2026-09-05 10", "2026-09-05 10:22:03")
+
+    assert db.latest_label(conn, "pick_drop") == "2026-09-05 10"
+
+
 def test_load_empty_table_returns_empty_frame(conn):
     assert db.load_frame(conn, "pick_drop").empty
 
