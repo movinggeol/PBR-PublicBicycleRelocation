@@ -94,6 +94,7 @@ python -m fontTools.subset PretendardVariable.woff2 \
 | 예산 초과 행 | 붉은 배경 + `⚠` + 왼쪽 굵은 선 |
 | 증감 | `▲` / `▼` 기호 |
 | 진행 단계 | `✓` `●` `✕` 표시 + 오른쪽에 "완료/진행 중/실패" |
+| 문장 속 링크(`.muted`·`.hint`·`.empty`) | 평소에도 밑줄(다른 `a`는 `:hover`에서만) — hover 전에는 색맹이면 옆 글자와 안 갈렸다(axe `link-in-text-block`, 1.26.126) |
 
 > 클래스 이름은 **방향이 아니라 뜻**을 담습니다. 증감은 `.delta.good` / `.delta.bad`이지
 > `.up` / `.down`이 아닙니다 — 결품 시간은 내려가는 것이 좋은 값이라 `▼`가 초록입니다.
@@ -190,6 +191,11 @@ python -m fontTools.subset PretendardVariable.woff2 \
   `overflow: auto`가 걸린 표 안에서 잘립니다.
 - **터치에서는 뜨지 않습니다.** 그래서 풍선에는 **보조 설명만** 담습니다. 없으면 곤란한
   정보는 본문이나 `.hint`에 적습니다.
+- **비어 있을 때는 `aria-hidden`으로 감춥니다.** 풍선 상자는 하나뿐이라
+  `role="tooltip"`인 채 `opacity: 0`으로만 숨는데(`display: none`이 아니다),
+  그러면 뜨기 전에도 **이름 없는 빈 툴팁**으로 계속 노출됩니다(axe
+  `aria-tooltip-name`, 1.26.126). `show()`/`hide()`가 `aria-hidden`을 함께
+  켜고 끕니다 — 떠 있을 때만 이름이 있습니다.
 
 화면 밖으로 나갈 것 같으면 위로 접어 넣고, 스크롤이 시작되면 닫습니다.
 

@@ -21,6 +21,16 @@ VRP 경로를 TMAP Routes API로 실제 도로 경로로 변환해 Folium 지도
   ⚠️ 🟢·🔴은 원 배지가 아니라 **이모지 그대로** 둡니다. 차고지 마커는
   `CircleMarker`가 아니라 `folium.Icon`(핀 모양)이라, 원으로 그리면 범례와
   지도의 모양이 어긋납니다.
+  🔴 그 `folium.Icon` 핀은 Leaflet이 키보드 접근성으로 `role="button"`을
+  자동으로 붙이는데, AwesomeMarkers가 아이콘을 `<div>`로 그려서 **이름이
+  없었습니다**(축소·색칠용 FontAwesome 글리프뿐이라 텍스트가 비어 있습니다,
+  axe `aria-command-name`, 1.26.126). `Marker(alt=...)`를 줘도 소용없습니다 —
+  Leaflet은 `<img>`에만 `alt`를 적용합니다(실측). 이미 붙여 둔 tooltip 글을
+  그대로 `aria-label`로 옮기는 스크립트를 지도 끝에 심었고, `window`의
+  `load`를 기다립니다(`m.get_root().script`에 바로 붙이면 마커보다 **먼저**
+  실행돼 `eachLayer`가 `undefined`를 읽습니다 — 실측). 방문 순서 원
+  (`DivIcon`)은 안에 숫자가 그대로 보여 이미 이름이 있으므로 건드리지
+  않습니다.
 
 ### `module.py`
 - `seconds_to_hms()`: 초 → HH:MM:SS

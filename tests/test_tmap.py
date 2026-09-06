@@ -13,6 +13,7 @@
 import importlib.util
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "step3_map" / "module.py"
@@ -410,3 +411,50 @@ def test_속도는_보내지_않는다(monkeypatch):
     keys = {k.lower() for k in box["payload"]}
     assert not any("speed" in k for k in keys), \
         f"속도를 보내고 있다: {box['payload'].keys()}"
+
+
+# ── 출발·도착 핀의 이름 없는 마커 (axe aria-command-name, 1.26.126) ──────
+#
+# Leaflet은 마커에 키보드 접근성으로 role="button"을 자동으로 붙이는데,
+# folium.Icon(출발·도착 핀)의 아이콘은 AwesomeMarkers가 <div>로 그려서
+# Leaflet의 alt 옵션이 못 붙는다(<img>에서만 먹는다 — 실측, Marker(alt=...)를
+# 줘도 DOM에 안 나타났다). 방문 순서 원(DivIcon)은 안에 숫자가 그대로 보여
+# 이름이 있으므로 겪지 않는다. 이미 붙여 둔 tooltip 글을 aria-label로 옮기는
+# 스크립트를 make_vrp_map()이 심어 두는지 여기서 본다 — 실제로 브라우저에서
+# 읽히는지는 axe-core로 따로 확인했다(문서 참고).
+
+def test_출발_도착_핀에_이름을_붙이는_스크립트가_심긴다(tmp_path):
+    """awesome-marker 핀은 글자 없는 아이콘뿐이라 이름이 비어 있었다.
+
+    tooltip 글을 그대로 aria-label로 옮기면 화면에 보이는 것과 다른 말을
+    지어내지 않으면서 이름이 생긴다.
+    """
+    main = load_main()
+    main.call_tmap_chunked = lambda *a, **k: (_ for _ in ()).throw(
+        RuntimeError("테스트에는 TMAP이 없다"))
+    main.now = "pytest-map-test"
+    main.result_path = str(tmp_path / "map{duration} ({now}).html")
+
+    pick_drop = pd.DataFrame([
+        {"station_id": "ST0001", "lat": 36.36, "lon": 127.35, "station_name": "테스트대여소"},
+    ])
+    vrp_plan = pd.DataFrame([
+        {"cluster": 1, "from_id": "DEPOT", "from_lat": 36.35, "from_lon": 127.30,
+         "to_id": "ST0001", "to_lat": 36.36, "to_lon": 127.35, "action": "pick", "qty": 3},
+        {"cluster": 1, "from_id": "ST0001", "from_lat": 36.36, "from_lon": 127.35,
+         "to_id": "DEPOT", "to_lat": 36.35, "to_lon": 127.30, "action": "return", "qty": 0},
+    ])
+    depot = {"id": "DEPOT", "name": "테스트 차고지", "lat": 36.35, "lon": 127.30}
+
+    main.make_vrp_map(depot, pick_drop, vrp_plan, "_test",
+                      {"appKey": "fake"}, "http://fake")
+
+    saved = Path(main.result_path.format(duration="_test", now=main.now))
+    html = saved.read_text(encoding="utf-8")
+
+    assert "window.addEventListener('load'" in html, \
+        "마커보다 앞서 실행되면 eachLayer가 undefined를 읽는다(실측) — load를 기다려야 한다"
+    assert "role') !== 'button'" in html
+    assert "getTooltip" in html, "화면에 없는 말을 짓지 않고 이미 붙은 풍선 글을 그대로 쓴다"
+    assert "el.textContent.trim()" in html, \
+        "방문 순서 원(DivIcon)은 이미 숫자가 보여 이름이 있다 — 덮어쓰면 안 된다"

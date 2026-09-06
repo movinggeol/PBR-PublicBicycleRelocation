@@ -524,6 +524,34 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
     # 뜻인지는 이제 **범례**가 말하고, 컨트롤은 걸러 보는 도구다.
     folium.LayerControl(collapsed=True).add_to(m)
 
+    # ⚠️ folium.Icon(출발·도착 핀)은 Leaflet이 키보드 접근성으로 role="button"을
+    #    자동으로 붙이는데, 그 안의 글자 없는 FontAwesome 아이콘(::before로
+    #    그려진다)만으로는 이름이 없다 — Marker(alt=...)를 줘 봐도 소용없다
+    #    (Leaflet은 <img>에만 alt를 적용하는데 AwesomeMarkers 아이콘은 <div>다,
+    #    실측). 방문 순서 원(DivIcon)은 안에 숫자가 그대로 보여 이름이 있으므로
+    #    건드리지 않는다 — 글자가 이미 있는 마커까지 덮어써 화면에 보이는 것과
+    #    다른 말을 지어내지 않으려는 것이다(axe aria-command-name, 1.26.123).
+    #    이미 붙여 둔 풍선(tooltip) 글을 그대로 이름으로 쓴다.
+    #
+    #    ⚠️ `m.get_root().script`에 바로 붙이면 **마커보다 앞선 자리**에
+    #    나온다 — folium은 루트의 script 자식을 지도·마커(각자 `.add_to(m)`로
+    #    붙은 것들)보다 먼저 렌더링한다(실측: eachLayer가 undefined를 읽어
+    #    콘솔 오류, 마커 0개). `window`의 `load`를 기다리면 소스 안에서
+    #    어디 있든 실제 실행은 모든 마커가 생긴 뒤가 된다.
+    m.get_root().script.add_child(folium.Element(f"""
+        window.addEventListener('load', function () {{
+            {m.get_name()}.eachLayer(function walk(layer) {{
+                if (layer.eachLayer) {{ layer.eachLayer(walk); return; }}
+                var el = layer.getElement && layer.getElement();
+                if (!el || el.getAttribute('role') !== 'button') return;
+                if (el.hasAttribute('aria-label') || el.textContent.trim()) return;
+                var tip = layer.getTooltip && layer.getTooltip();
+                var text = tip ? String(tip.getContent()).replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim() : '';
+                if (text) el.setAttribute('aria-label', text);
+            }});
+        }});
+    """))
+
     m.save(result_path.format(duration=duration, now=now))
 
     # TMAP 실측을 DB에 남긴다. CSV는 만들지 않는다 — 산출물이 아니라 **측정치**이고,

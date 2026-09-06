@@ -401,6 +401,12 @@
     .section-lead { color: var(--ink-3); font-size: var(--fs-ui); margin: -6px 0 var(--sp-sm); max-width: 70ch; }
     .muted { color: var(--ink-3); }
     .hint { color: var(--ink-4); font-size: var(--fs-fine); line-height: 1.5; }
+    /* 문장 속에 섞인 링크는 평범한 글과 색만 다르다 — 밑줄은 :hover에서만
+       붙는다(위의 기본 a 규칙). 표 안 단독 링크("보기" 등)는 옆에 비교할 글이
+       없어 문제가 안 되지만, 이 세 곳(.muted·.hint·.empty)은 설명문 한가운데
+       링크가 박혀 있어 색맹이면 hover 전까지 못 알아본다(axe link-in-text-block).
+       평소에도 밑줄을 둔다. */
+    .muted a, .hint a, .empty a { text-decoration: underline; text-underline-offset: 2px; }
 
     /* ════════ 카드 — 1px 헤어라인만. 그림자 없음 ════════ */
     .card {
@@ -1313,7 +1319,10 @@
   </div>
 </footer>
 
-<div id="tipbox" role="tooltip"></div>
+<!-- 비어 있는 동안에는 aria-hidden으로 감춘다 — role="tooltip"인 채 늘 DOM에
+     남아 있어서(opacity:0일 뿐 display:none이 아니다), 뜨기 전에는 이름 없는
+     빈 툴팁으로 보조기기에 노출됐다(axe aria-tooltip-name). show()/hide()가 켠다. -->
+<div id="tipbox" role="tooltip" aria-hidden="true"></div>
 <script>
   /* 모바일 모드 (TODO 20).
 
@@ -1431,12 +1440,14 @@
       current = el;
       body.textContent = text;
       box.setAttribute("data-show", "");
+      box.removeAttribute("aria-hidden");
       place(el);
     }
     function hide() {
       current = null; pinned = false;
       box.removeAttribute("data-show");
       box.removeAttribute("data-pinned");
+      box.setAttribute("aria-hidden", "true");
     }
 
     document.addEventListener("mouseover", function (e) {

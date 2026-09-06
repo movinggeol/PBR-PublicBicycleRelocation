@@ -1396,6 +1396,53 @@ def test_설명표_코드가_필요할_때만_끊긴다():
         "break-all은 다음 줄에 들어갈 토큰까지 글자 단위로 가른다")
 
 
+# ─────────── axe-core 자동 스캔이 잡은 것 (1.26.126) ───────────
+#
+# 8개 화면·데스크톱/모바일 양쪽을 axe-core(wcag2a/aa·wcag21aa)로 훑어 나온
+# 것이다. 이전 접근성 축(넘침·터치 타깃·명암비·400% 확대)은 전부 사람이
+# Playwright로 눈으로 본 것이었고, 도구로 자동 스캔한 것은 이번이 처음이다.
+
+def test_풍선이_비어_있을_때는_보조기기에서_숨는다():
+    """`#tipbox`는 role="tooltip"인 채 **늘 DOM에 있다**(opacity:0일 뿐
+
+    display:none이 아니다). 뜨기 전에는 이름 없는 빈 툴팁으로 노출됐다
+    (axe aria-tooltip-name). show()/hide()가 aria-hidden을 켜고 끈다.
+    """
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    html = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    i = html.index('<div id="tipbox"')
+    tag = html[i:html.index(">", i)]
+    assert 'aria-hidden="true"' in tag, "빈 채로 시작할 때도 보조기기에 노출된다"
+
+    assert 'box.removeAttribute("aria-hidden")' in html, "떠 있을 때 다시 보이게 해야 한다"
+    assert 'box.setAttribute("aria-hidden", "true")' in html, "닫힐 때 다시 감춰야 한다"
+
+
+def test_문장_속_링크는_색만으로_말하지_않는다():
+    """`.muted`·`.hint`·`.empty`는 설명문 한가운데 링크가 섞여 있다.
+
+    기본 `a`는 :hover에서만 밑줄이 붙는데(옆의 평범한 글과 색만 다르다), 이
+    세 곳은 문장 속 인라인 링크라 hover 전에는 색맹이면 못 알아본다
+    (axe link-in-text-block). /run·/kpi·/guide·/api·/maps(figcaption)에
+    실제로 이런 링크가 있다.
+    """
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    css = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    i = css.index(".muted a, .hint a, .empty a")
+    rule = css[i:css.index("}", i)]
+    assert "text-decoration: underline" in rule
+
+
 # ───────────────────── 싣기·내리기 색 (1.26.107) ─────────────────────
 
 def test_싣기_내리기_색이_두_테마_모두에서_읽힌다():
