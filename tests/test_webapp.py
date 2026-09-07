@@ -8,6 +8,8 @@
 "500이 아닐 것"까지만 검증한다.
 """
 import re
+import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -309,6 +311,98 @@ def test_typical_elapsed_is_the_median_of_successful_runs(monkeypatch):
 
     monkeypatch.setattr(jobs, "list_jobs", lambda: [])
     assert jobs.typical_elapsed() is None, "기록이 없으면 지어내지 않는다"
+
+
+def test_감시_스레드가_사용자의_실행_이력에_쓰지_않는다(monkeypatch):
+    """테스트가 사용자 데이터를 건드리면 안 된다 (1.26.149).
+
+    🔴 실제로 샜다. `start_job()`이 띄우는 감시 스레드는 **테스트보다 오래
+    산다** — monkeypatch가 `_save_registry`를 원복한 뒤 그 스레드가 깨어나
+    *진짜* 함수를 부르고, 사용자의 `data/webapp/runs.json`에 인자도 로그도 없는
+    0초짜리 가짜 작업이 박힌다. 실측으로 기록 15건 중 **11건이 가짜**였고,
+    그것이 `typical_elapsed()`를 0으로 만들어 화면 안내까지 망가뜨렸다.
+
+    여기서 지키는 것은 **격리가 실제로 걸려 있는가**다 — `conftest.py`의
+    `isolate_job_registry`가 경로를 tmp로 돌려놨는지 본다.
+    """
+    real = Path(__file__).resolve().parents[1] / "data" / "webapp"
+    assert not str(jobs.REGISTRY_FILE).startswith(str(real)), (
+        f"실행 이력이 실제 경로를 가리킨다: {jobs.REGISTRY_FILE}")
+    assert not str(jobs.LOG_DIR).startswith(str(real)), (
+        f"로그가 실제 경로를 가리킨다: {jobs.LOG_DIR}")
+
+    class FakeProc:
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(jobs.subprocess, "Popen", lambda command, **kw: FakeProc())
+    job = jobs.start_job([])
+    for _ in range(50):                      # 감시 스레드가 저장할 때까지
+        if not job.is_running:
+            break
+        time.sleep(0.02)
+
+    assert jobs.REGISTRY_FILE.exists(), "임시 경로에는 써야 한다(격리는 벙어리가 아니다)"
+    assert not (real / "runs.json").read_text(encoding="utf-8").count(job.id), \
+        "사용자의 실행 이력에 테스트 작업이 들어갔다"
+
+
+def test_예상_소요는_0분이어도_숨지_않는다(client, monkeypatch):
+    """0은 거짓이 아니다 — `{% if %}`로 거르면 조용히 하드코딩 문구로 돌아간다.
+
+    🔴 이것이 위 누수의 **두 번째 증상**이었다. 가짜 11건이 전부 0초라
+    `typical_elapsed()`가 0.0을 냈고, 템플릿의 `{% if typical_minutes %}`에서
+    0이 거짓이라 화면은 말없이 *"보통 2~4분"* 으로 되돌아갔다 — `home.html`이
+    *"예상 소요는 사람이 적지 않는다"* 고 적어 둔 그 장치가 무력해진 것이다.
+
+    이력을 고쳐도 이 자리는 따로 고쳐야 한다. 안 그러면 다음에 0이 나올 때
+    같은 방식으로 또 숨는다.
+    """
+    monkeypatch.setattr(jobs, "typical_elapsed", lambda limit=20: 0.0)
+
+    body = client.get("/guide").text
+    assert "보통 0.0분" in body, "0분이 하드코딩 문구에 가려졌다"
+    assert "보통 2~4분" not in body, "기록이 있는데 하드코딩 문구가 나온다"
+
+
+def test_끝난_실행의_사라진_로그를_아직이라고_말하지_않는다(tmp_path):
+    """'아직'은 곧 온다는 뜻이다 — 9일 전 끝난 실행에는 거짓말이다 (1.26.149).
+
+    `_prune()`이 오래된 로그를 지우므로 **끝난 실행의 로그는 없을 수 있다.**
+    그런데 문구가 하나뿐이라 성공한 실행도 *"로그가 아직 없습니다"* 라고 답했다.
+    `interrupted`는 더 나쁘다 — 화면이 *"아래 로그로 판단하세요"* 라고 안내한다.
+    """
+    돌는중 = jobs.Job(id="달리는중", status="running")
+    끝난것 = jobs.Job(id="끝난것", status="success")
+
+    assert "아직" in jobs.read_log_tail(돌는중), "실행 중이면 곧 생기는 게 맞다"
+    끝난_문구 = jobs.read_log_tail(끝난것)
+    assert "아직" not in 끝난_문구, f"끝난 실행에 '아직'이라고 말한다: {끝난_문구}"
+    assert "정리" in 끝난_문구, "왜 없는지 밝혀야 한다"
+
+
+def test_이력에서_잘린_실행의_로그도_함께_지운다(tmp_path, monkeypatch):
+    """레코드만 자르면 로그가 무한히 쌓인다 (1.26.149).
+
+    실측 건당 약 360KB라 100건이면 35MB가 **이력에서 열 수도 없는** 파일로
+    남는다. 이력에서 사라진 로그는 지워도 잃을 것이 없다.
+    """
+    monkeypatch.setattr(jobs, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(jobs, "MAX_HISTORY", 3)
+    jobs._jobs.clear()
+
+    for i in range(5):
+        job = jobs.Job(id=f"2026090{i}-000000-000", status="success")
+        jobs._jobs[job.id] = job
+        job.log_path.write_text("로그" * 10, encoding="utf-8")
+
+    jobs._prune()
+
+    남은_이력 = set(jobs._jobs)
+    남은_로그 = {p.stem.replace("run_", "") for p in tmp_path.glob("*.log")}
+    assert len(남은_이력) == 3
+    assert 남은_로그 == 남은_이력, (
+        f"이력과 로그가 어긋난다 — 이력 {sorted(남은_이력)} / 로그 {sorted(남은_로그)}")
 
 
 def test_favicon_no_content(client):

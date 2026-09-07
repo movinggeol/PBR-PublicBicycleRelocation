@@ -128,7 +128,7 @@
           <input id="f-round" type="number" name="vehicles_per_round" min="1"
                  max="{{ max_fleet_size }}" step="1" value="{{ defaults.vehicles_per_round }}">
           <span class="hint">상한입니다 — 실제 대수는 일감이 정합니다.
-            {% if typical_vehicles %}지난 실행 기준 회차당 {{ typical_vehicles }}대.{% endif %}</span>
+            {% if typical_vehicles is not none %}지난 실행 기준 회차당 {{ typical_vehicles }}대.{% endif %}</span>
         </div>
 
         <div class="field wide">
@@ -151,7 +151,7 @@
 
       <div class="form-foot">
         <button class="btn" type="submit">계획 실행</button>
-        <p class="hint" style="margin:var(--sp-sm) 0 0">{% if typical_minutes %}지난 실행 기준
+        <p class="hint" style="margin:var(--sp-sm) 0 0">{% if typical_minutes is not none %}지난 실행 기준
           <b>보통 {{ typical_minutes }}분</b>{% else %}시간대 하나면 <b>2분 남짓</b>{% endif %}
           걸립니다. 대여소를 묶는 단계가 대부분이고, 시간대를 여러 개 고르면 그만큼 늘어납니다.
           누르면 진행 상황 화면으로 넘어갑니다.</p>

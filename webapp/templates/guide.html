@@ -45,7 +45,7 @@
         <span class="step-note">
           <b>대여소를 묶는 단계</b>가 전체 시간의 3분의 2 이상을 차지합니다.
           화면은 3초마다 저절로 새로고침됩니다.
-          {% if typical_minutes %}
+          {% if typical_minutes is not none %}
             옆의 숫자는 이 서버에서 <b>지난 실행들이 실제로 걸린 시간</b>의 중앙값입니다.
           {% else %}
             시간대 하나면 <b>2분 남짓</b>, 세 개를 함께 고르면 <b>4분 안팎</b>입니다
@@ -53,7 +53,7 @@
             시간대마다 다시 계산하기 때문에 고른 만큼 늘어납니다.
           {% endif %}</span>
       </span>
-      <span class="step-state">{% if typical_minutes %}보통 {{ typical_minutes }}분{% else %}보통 2~4분{% endif %}</span>
+      <span class="step-state">{% if typical_minutes is not none %}보통 {{ typical_minutes }}분{% else %}보통 2~4분{% endif %}</span>
     </li>
     <li class="step">
       <span class="step-mark" aria-hidden="true">3</span>
@@ -112,7 +112,7 @@
           차량 한 대가 한 덩어리를 맡습니다. 가까운 것끼리, 일감이 고르게 나뉘도록 묶습니다.
           <b>몇 덩어리로 나눌지는 그 회차의 일감이 정합니다</b> — 옮길 자전거가 많고
           들를 대여소가 흩어져 있으면 더 많은 차가 나갑니다.
-          {% if typical_vehicles %}지난 실행에서는 회차당 <b>{{ typical_vehicles }}대</b>가
+          {% if typical_vehicles is not none %}지난 실행에서는 회차당 <b>{{ typical_vehicles }}대</b>가
           나갔습니다(중앙값).{% endif %}</span>
       </span>
     </li>
@@ -135,7 +135,7 @@
         <tbody>
           <tr><th scope="row">보유 차량</th><td class="num">{{ fleet_size }}대</td></tr>
           <tr><th scope="row">한 회차 투입 상한</th><td class="num">최대 {{ per_round }}대</td></tr>
-          {% if typical_vehicles %}
+          {% if typical_vehicles is not none %}
           <tr><th scope="row">실제로 나간 대수</th><td class="num">회차당 {{ typical_vehicles }}대</td></tr>
           {% endif %}
           <tr><th scope="row">한 대 적재 용량</th><td class="num">{{ capacity }}대</td></tr>

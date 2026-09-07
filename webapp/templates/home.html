@@ -18,7 +18,7 @@
 
 {% if running %}
 <div class="alert"><span><b>계획을 계산하고 있습니다</b> — {{ running.label }}
-  (보통 {{ typical_minutes or '5~10' }}분).
+  (보통 {% if typical_minutes is not none %}{{ typical_minutes }}{% else %}5~10{% endif %}분).
   <a href="/runs/{{ running.id }}">진행 상황 보기</a></span></div>
 {% endif %}
 
@@ -131,7 +131,7 @@
       순수요는 <b>{{ period }}</b> 자료를 기본으로 씁니다.
       {# 예상 소요는 사람이 적지 않는다 — **지난 실행이 실제로 걸린 시간**이다.
          옛 안내의 '보통 5~10분'은 실측과 어긋났다(수정안 4). #}
-      {% if typical_minutes %}회차 하나에 보통 <b>{{ typical_minutes }}분</b> 걸립니다.{% endif %}</p>
+      {% if typical_minutes is not none %}회차 하나에 보통 <b>{{ typical_minutes }}분</b> 걸립니다.{% endif %}</p>
   </a>
   <a class="card link" href="/kpi">
     <h3><span class="step-no">2</span> 결과</h3>

@@ -78,13 +78,25 @@ def _new_job_id() -> str:
 
 
 def _prune() -> None:
-    """최근 MAX_HISTORY건만 남긴다. 실행 중인 작업은 예외 없이 보존."""
+    """최근 MAX_HISTORY건만 남긴다. 실행 중인 작업은 예외 없이 보존.
+
+    **레코드를 버릴 때 로그 파일도 함께 지운다** (1.26.149). 예전에는 레코드만
+    잘라서, 이력에서 사라진 실행의 로그가 `data/webapp/logs/`에 영영 남았다 —
+    실측 건당 약 360KB라 100건이면 35MB가 아무도 찾지 않는 파일로 쌓인다.
+    이력에서 못 여는 로그는 지워도 잃을 것이 없다.
+    """
     if len(_jobs) <= MAX_HISTORY:
         return
     keep = {job.id for job in sorted(_jobs.values(), key=lambda j: j.id, reverse=True)[:MAX_HISTORY]}
     keep |= {job.id for job in _jobs.values() if job.is_running}
     for job_id in [j for j in _jobs if j not in keep]:
-        _jobs.pop(job_id, None)
+        job = _jobs.pop(job_id, None)
+        if job is None:
+            continue
+        try:
+            job.log_path.unlink(missing_ok=True)
+        except OSError:
+            pass       # 지우지 못해도 이력 정리는 계속한다
 
 
 def _save_registry() -> None:
@@ -185,9 +197,19 @@ def read_log(job: Job) -> str:
 
 
 def read_log_tail(job: Job, max_lines: int = 300) -> str:
-    """로그 파일의 마지막 max_lines 줄을 반환한다."""
+    """로그 파일의 마지막 max_lines 줄을 반환한다.
+
+    ⚠️ **'아직'과 '이제 없다'를 가른다** (1.26.149). 예전에는 파일이 없으면
+    무조건 *"로그가 아직 없습니다"* 라고 답했다. 그래서 9일 전에 **성공으로
+    끝난** 실행이 오지 않을 것을 기다리라고 말하고 있었다(실측: 이력 15건 중
+    11건의 로그가 이미 없었다). `interrupted` 상태에서는 화면이 *"실제로
+    끝까지 돌았는지는 아래 로그로 판단하세요"* 라고 안내하므로 더 나쁘다 —
+    없는 증거를 보라고 시키는 셈이다.
+    """
     if not job.log_path.exists():
-        return "(로그가 아직 없습니다)"
+        if job.is_running:
+            return "(로그가 아직 없습니다)"
+        return "(로그가 남아 있지 않습니다 — 오래된 실행이라 정리되었습니다)"
     try:
         text = job.log_path.read_text(encoding="utf-8", errors="replace")
     except OSError as err:
