@@ -41,15 +41,16 @@ import pulp
 
 ROOT = Path(__file__).resolve().parents[2]      # experiments/<분류>/ 아래에 있다
 sys.path.insert(0, str(ROOT))
-for _folder in ("step0_collect", "step1_cluster",
-                "step2_optimize", "step4_metrics"):
-    sys.path.insert(0, str(ROOT / _folder))
 
-import db                                   # noqa: E402
-import calculate_target_qty as target_mod   # noqa: E402  (step0)
-import ilp as ilp_mod                       # noqa: E402  (step2)
-import vrp as vrp_mod                       # noqa: E402  (step2)
-import imbalance as kpi_mod                 # noqa: E402  (step4)
+# step 폴더를 sys.path에 밀어 넣지 않는다 — **폴더 이름으로 부른다**(1.26.154).
+# 예전에는 네 폴더를 각각 sys.path에 넣고 `import ilp`처럼 맨 이름으로 불렀다.
+# 그래야만 했던 이유는 `vrp.py`·`top_st_clustering.py`가 형제 모듈을 맨 이름으로
+# 부르고 있어서였고, 그 두 줄을 고치자 이 우회가 필요 없어졌다.
+import db                                                      # noqa: E402
+from step0_collect import calculate_target_qty as target_mod    # noqa: E402
+from step2_optimize import ilp as ilp_mod                       # noqa: E402
+from step2_optimize import vrp as vrp_mod                       # noqa: E402
+from step4_metrics import imbalance as kpi_mod                  # noqa: E402
 from project_config import (                # noqa: E402
     DEFAULT_PERIOD, DEFAULT_WARMUP_DAYS, TIME_BUDGET_MINUTES, VEHICLES_PER_ROUND,
     normalize_day_type, select_day_type,

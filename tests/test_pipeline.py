@@ -385,3 +385,58 @@ def test_지도_다시_그리기_dry_run은_성공이다(monkeypatch):
 
     monkeypatch.setattr(sys, "argv", ["redraw_maps.py", "--all", "--dry-run"])
     assert redraw_maps.main() == 0
+
+
+# ───────── step 모듈을 패키지로 import할 수 있는가 (1.26.154) ─────────
+
+STEP_MODULES = [
+    "step0_collect.calculate_target_qty",
+    "step0_collect.raw_to_net",
+    "step1_cluster.top_st_clustering",
+    "step2_optimize.ilp",
+    "step2_optimize.vrp",
+    "step4_metrics.imbalance",
+]
+
+
+@pytest.mark.parametrize("module", STEP_MODULES)
+def test_step_모듈을_폴더_이름으로_import할_수_있다(module):
+    """`from step2_optimize import vrp`가 되는가 (1.26.154).
+
+    실험 **48개**가 `sys.path`에 step 폴더를 밀어 넣는 여섯 줄을 각자 이고
+    있다. 이유는 단 둘이었다 — `vrp.py`가 `from ilp import ...`, 그리고
+    `top_st_clustering.py`가 `from adjust_module import ...`로 **형제 모듈을
+    맨 이름으로** 부른다. 그러면 그 폴더가 `sys.path`에 있을 때만 import된다.
+
+    step 폴더에는 `__init__.py`가 없지만 파이썬 3.3+의 네임스페이스 패키지라
+    **폴더 이름으로 부르는 것 자체는 원래 됐다** — 위 두 줄만 막고 있었다.
+
+    ⚠️ **직접 실행도 계속 돼야 한다.** `run_pipeline.py`는 이 파일들을
+    `python step2_optimize/vrp.py`로 띄운다(스크립트 경로). 그때는 폴더가
+    `sys.path[0]`이라 맨 이름 import가 맞고, 패키지 경로는 없다. 그래서
+    둘 다 되게 두고 어느 쪽이 실패하든 다른 쪽으로 넘어가게 했다.
+    """
+    import importlib
+
+    mod = importlib.import_module(module)
+    assert mod is not None
+
+
+def test_step_모듈은_직접_실행도_된다():
+    """파이프라인이 부르는 방식(스크립트 경로)이 안 깨졌는지 본다.
+
+    위 테스트를 통과시키려고 맨 이름 import를 지우면 이쪽이 깨진다 —
+    `run_pipeline.py`가 쓰는 것은 이 경로다. 둘은 함께 지켜야 한다.
+    """
+    for script in ("step2_optimize/vrp.py", "step1_cluster/top_st_clustering.py"):
+        # run_pipeline.py와 **같은 형태**로 부른다: `python <경로>`. 이때
+        # 파이썬이 그 폴더를 sys.path[0]에 놓으므로 맨 이름 import가 성립한다.
+        # `--help`로 세워 둔다 — 실제 계산까지 돌리면 자료가 있어야 한다.
+        result = subprocess.run(
+            [sys.executable, str(PROJECT_ROOT / script), "--help"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            cwd=str(PROJECT_ROOT), timeout=180,
+        )
+        assert result.returncode == 0, (
+            f"{script}를 스크립트로 띄울 수 없다 — 파이프라인이 이 경로를 쓴다:\n"
+            f"{(result.stderr or '')[-600:]}")

@@ -8,8 +8,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from kmedoids import KMedoids
 import pandas as pd
 import numpy as np
-from adjust_module import compute_medoids, compute_objective, select_cluster_candidates, \
-                            make_cluster_pairs, get_movable_nodes, check_size_constraint, try_move_node
+# 형제 모듈. 두 경로를 다 연다 — 자세한 이유는 step2_optimize/vrp.py 참고(1.26.154).
+try:
+    from adjust_module import (
+        compute_medoids, compute_objective, select_cluster_candidates,
+        make_cluster_pairs, get_movable_nodes, check_size_constraint, try_move_node)
+except ModuleNotFoundError:                      # 패키지 경로로 불렸다
+    from step1_cluster.adjust_module import (
+        compute_medoids, compute_objective, select_cluster_candidates,
+        make_cluster_pairs, get_movable_nodes, check_size_constraint, try_move_node)
 
 import db
 import project_config

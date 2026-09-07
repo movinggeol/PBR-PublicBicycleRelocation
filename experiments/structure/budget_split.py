@@ -60,11 +60,10 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-for _folder in ("step2_optimize", "step4_metrics"):
-    sys.path.insert(0, str(ROOT / _folder))
+# step 폴더를 sys.path에 밀어 넣지 않는다 — 폴더 이름으로 부른다(1.26.154).
 
 import db                                          # noqa: E402
-import vrp as vrp_mod                              # noqa: E402  (step2)
+from step2_optimize import vrp as vrp_mod                              # noqa: E402  (step2)
 from project_config import (                       # noqa: E402
     TIME_BUDGET_MINUTES, VEHICLES_PER_ROUND,
 )
