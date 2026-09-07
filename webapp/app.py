@@ -355,6 +355,25 @@ def _runs_newest_first(rows) -> list:
     return order
 
 
+def _kpi_labels_newest_first(rows) -> list:
+    """지표 표의 실행 라벨을 **최신순**으로 (1.26.146).
+
+    `db.load_kpi()`는 `ORDER BY run_label DESC`로 준다. 그런데 `run_label`은
+    사람이 `--now`에 적는 이름이라 **정렬 기준이 못 된다** — 사전순으로는
+    `sweep-z-01`이 `2026-08-27 23`보다 위라, 오늘 돌린 계획이 있는데도 옛
+    실험이 '최신'으로 헤드라인에 오른다.
+
+    같은 함정을 `_runs_newest_first()`는 이미 알고 `computed_at`을 쓴다.
+    /kpi만 안 쓰고 있었다 — 화면마다 다른 기준으로 '최신'을 고르면 화면마다
+    다른 답이 나온다.
+
+    📌 지금 자료에서는 두 순서가 **우연히 같다.** 그래서 이 값은 눈으로는
+    안 보였다. 다만 `2026-05-21 18`이 실제로는 08-25에 계산된 것처럼 라벨과
+    시각이 갈리는 자료가 이미 있어, 우연에 기대 둘 자리가 아니다.
+    """
+    return _runs_newest_first(rows)
+
+
 def _sum(frame, column: str) -> float:
     return float(pd.to_numeric(frame[column], errors="coerce").sum()) if column in frame else 0.0
 
@@ -612,13 +631,19 @@ def orders_page(request: Request, run_label: Optional[str] = None,
 
 @app.get("/orders/live")
 def orders_live(request: Request, run_label: Optional[str] = None,
-                duration: Optional[str] = None):
+                duration: Optional[str] = None, vehicle: Optional[str] = None):
     """계획 대상 대여소만 타슈 API로 다시 조회해 집행 가능한지 대조한다.
 
     **사용자가 눌렀을 때만 부른다.** 화면을 열 때마다 외부 API를 때리면
     출발 직전에 정작 필요할 때 제한에 걸릴 수 있다.
+
+    ⚠️ **보던 차량을 그대로 들고 온다**(1.26.146). 예전에는 `vehicle`을 아예
+    받지 않아, 한 대만 보던 기사가 '지금 재고와 대조하기'를 누르면 지시서가
+    14장으로 되돌아갔다 — 1.26.107이 *"한 회차 17대면 세로 39,000px,
+    휴대폰에서 47화면"* 이라며 서버 필터를 넣은 바로 그 자리인데, 뒤에 붙은
+    이 화면만 따라가지 않았다.
     """
-    context = _orders_context(run_label, duration)
+    context = _orders_context(run_label, duration, vehicle)
     planned = orders.planned_work(context["run_label"], context["duration"])
 
     try:
@@ -628,8 +653,16 @@ def orders_live(request: Request, run_label: Optional[str] = None,
         return templates.TemplateResponse(request, "orders.html", context)
 
     compared = orders.compare_stock(planned, live)
-    context["compared_sheets"] = orders.build_live(
+    live_sheets = orders.build_live(
         context["run_label"], context["duration"], compared)
+    # ⚠️ **대조 지시서에도 같은 필터를 건다.** `build_live()`는 `build()`를
+    #    스스로 불러 전 차량을 만들므로, 라우트가 `vehicle`을 받는 것만으로는
+    #    화면이 안 좁혀진다 — 실제로 그리는 것은 `sheets`가 아니라 이쪽이다.
+    #    거르는 규칙은 `_orders_context()`와 **같은 `_sheet_name()`** 이어야
+    #    두 목록이 어긋나지 않는다.
+    if vehicle:
+        live_sheets = [s for s in live_sheets if _sheet_name(s) == vehicle]
+    context["compared_sheets"] = live_sheets
     context["live_summary"] = orders.summarize(compared)
     context["checked_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
     return templates.TemplateResponse(request, "orders.html", context)
@@ -657,7 +690,8 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
     latest = None
     previous = None
     if not rows.empty:
-        labels = rows["run_label"].drop_duplicates().tolist()
+        # 라벨 사전순이 아니라 **기록 시각순**이다 — 위 헬퍼의 설명 참고.
+        labels = _kpi_labels_newest_first(rows)
         latest = rows[rows["run_label"] == labels[0]]
         if len(labels) > 1:
             previous = rows[rows["run_label"] == labels[1]]
@@ -801,15 +835,27 @@ def vehicles_page(request: Request, run_label: Optional[str] = None, page: int =
         }
 
     # 시간 예산 준수율 — 회차 단위로 본다(차량 누적이 아니라 한 번의 작업 기준).
+    #
+    # 🔴 **한 쪽이 아니라 전체를 센다**(1.26.146). 예전에는 바로 위에서 읽은
+    #    `assignments`(한 쪽, 50건)로 셌는데, 화면은 그 값을 *"전체 실행"* 이라
+    #    밝히고 있었다. 실측: 전체 86회차 중 9건 초과인데 1쪽은 "50회차 중
+    #    45회차 · 5건 초과", 2쪽은 "36회차 중 32회차 · 4건 초과"라 답했고
+    #    준수율도 90% → 89%로 흔들렸다. 바로 옆 두 타일(`balance`)은 전체를
+    #    쓰므로, 한 줄에 선 타일 셋의 기준이 서로 달랐다. 1.26.116이 이 표에
+    #    쪽 나눔을 넣을 때 요약 타일을 함께 옮기지 않은 자리다.
+    #
+    # ⚠️ 쪽 나눔은 **표**를 위한 것이지 요약을 위한 것이 아니다. 요약은 늘
+    #    전체를 봐야 하므로 여기서 한 번 더 읽는다(limit 없이).
     budget = None
-    if not assignments.empty:
-        within = int((assignments["minutes"] <= TIME_BUDGET_MINUTES).sum())
+    all_assignments = store.vehicle_assignments(run_label=run_label)
+    if not all_assignments.empty:
+        within = int((all_assignments["minutes"] <= TIME_BUDGET_MINUTES).sum())
         budget = {
             "limit": TIME_BUDGET_MINUTES,
             "within": within,
-            "total": len(assignments),
-            "rate": round(within / len(assignments) * 100),
-            "over": len(assignments) - within,
+            "total": len(all_assignments),
+            "rate": round(within / len(all_assignments) * 100),
+            "over": len(all_assignments) - within,
         }
 
     # 보유 대수는 실행마다 바뀔 수 있으므로(웹 실행 폼의 '차량 대수') 설정 상수가

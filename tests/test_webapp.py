@@ -1759,3 +1759,145 @@ def test_범위를_벗어난_쪽은_오류_대신_접힌다(client, monkeypatch)
     for page in ("0", "-3", "9999"):
         res = client.get(f"/vehicles?page={page}")
         assert res.status_code == 200
+
+
+# ───────── 구역 C 검토 (1.26.146) — 화면이 말하는 범위와 실제 범위 ─────────
+
+def test_대조_화면도_보던_차량_한_대를_그대로_본다(monkeypatch):
+    """한 대만 보다가 '지금 재고와 대조하기'를 누르면 그 한 대여야 한다.
+
+    🔴 `/orders`는 `vehicle=`을 받는데 `/orders/live`는 **안 받았다.** 그래서
+    V01 한 장을 보던 기사가 대조를 누르면 14장이 통째로 돌아왔다 — 1.26.107이
+    *"한 회차 17대면 세로 39,000px·휴대폰 47화면"* 이라며 서버 필터를 넣은
+    바로 그 자리인데, 뒤에 붙은 `/orders/live`만 따라가지 않았다.
+
+    덤으로 외부 API도 필요한 만큼만 부른다: 실측(2026-08-27 23 계획)에서
+    V01에 필요한 대여소는 7곳인데 82곳을 조회하고 있었다(12배). 이 화면의
+    주석이 *"출발 직전에 정작 필요할 때 제한에 걸릴 수 있다"* 고 경계하는
+    바로 그 호출이다.
+    """
+    from webapp import app as app_module, orders, store
+    import pandas as pd
+
+    monkeypatch.setattr(store, "plan_targets", lambda: pd.DataFrame())
+    monkeypatch.setattr(orders, "build", lambda *a, **k: _fake_sheets())
+
+    ctx = app_module._orders_context("실행1", "_05_10", "V01")
+    assert len(ctx["sheets"]) == 1, "필터가 걸린 상태를 먼저 확인한다"
+
+    # 라우트가 vehicle을 받아 넘기는가 — 함수 시그니처로 못박는다.
+    import inspect
+    params = inspect.signature(app_module.orders_live).parameters
+    assert "vehicle" in params, (
+        "/orders/live가 vehicle을 안 받는다 — 한 대만 보다 대조를 누르면 "
+        "전체로 되돌아간다")
+
+
+def test_대조_링크가_보던_차량을_달고_간다():
+    """컨텍스트만 맞아도 소용없다 — **화면의 링크**가 차량을 달고 가야 한다.
+
+    사람이 누르는 것은 링크지 함수가 아니다. 필터를 켠 채 렌더링해서
+    `/orders/live` 링크에 `vehicle=`이 실제로 붙는지 본다.
+    """
+    from webapp.app import templates
+
+    ctx = {
+        "targets": [], "run_label": "실행1", "duration": "_05_10",
+        "sheets": _fake_sheets()[:1], "sheet_names": ["V01", "V02"],
+        "selected_vehicle": "V01", "capacity": 10, "depot_name": "차고지",
+        "upper_ratio": 0.9, "min_qty": 3,
+    }
+    html = templates.get_template("orders.html").render(
+        request=_FakeRequest(), job_labels={}, **ctx)
+
+    live_links = [line for line in html.splitlines() if "/orders/live" in line]
+    assert live_links, "대조 링크 자체가 없다"
+    assert all("vehicle=" in l for l in live_links), (
+        "대조 링크가 vehicle을 안 달고 간다 — 누르면 전체 14장으로 되돌아간다:\n"
+        + "\n".join(l.strip()[:100] for l in live_links if "vehicle=" not in l))
+
+
+def test_예산_타일은_전체_실행을_센다(monkeypatch):
+    """*"전체 실행"* 이라 적었으면 전체를 세야 한다 (1.26.146).
+
+    🔴 `budget`을 **한 쪽**(50건)으로 계산해 놓고 화면은 "전체 실행"이라
+    밝히고 있었다. 실측: 전체 86회차 중 9건 초과인데, 1쪽은 *"50회차 중
+    45회차가 완료 · 5건 초과"*, 2쪽은 *"36회차 중 32회차 · 4건 초과"* 라
+    답했다. 준수율도 쪽을 넘기면 90% → 89%로 바뀐다.
+
+    바로 옆 두 타일(출동한 차량·작업량 차이)은 전체를 쓴다 — 한 줄에 선
+    타일 셋의 기준이 서로 달랐다. 1.26.116이 이 표에 쪽 나눔을 넣을 때
+    요약 타일을 함께 옮기지 않은 자리다.
+
+    여기서 지키는 것은 **쪽을 넘겨도 타일이 안 흔들리는가**다.
+    """
+    import pandas as pd
+    from webapp import app as app_module, store
+
+    # 86건 중 9건 초과 — 실제 자료와 같은 모양으로 만든다.
+    총 = 86
+    초과 = 9
+    분 = [130.0] * 초과 + [90.0] * (총 - 초과)
+    전체 = pd.DataFrame({
+        "run_label": ["실행1"] * 총,
+        "vehicle_id": [f"V{i%14:02d}" for i in range(총)],
+        "minutes": 분,
+    })
+
+    def fake_assignments(run_label=None, limit=None, offset=0, **kw):
+        part = 전체 if limit is None else 전체.iloc[offset:offset + limit]
+        return part.reset_index(drop=True)
+
+    monkeypatch.setattr(store, "vehicle_assignments", fake_assignments)
+    monkeypatch.setattr(store, "vehicle_assignment_count", lambda **kw: 총)
+    monkeypatch.setattr(store, "vehicle_workload", lambda: pd.DataFrame())
+    monkeypatch.setattr(store, "plan_runs", lambda: pd.DataFrame())
+    monkeypatch.setattr(store, "records", lambda f: [])
+
+    from fastapi.testclient import TestClient
+    from webapp.app import app as fastapi_app
+
+    with TestClient(fastapi_app) as c:
+        본 = []
+        for page in (1, 2):
+            res = c.get(f"/vehicles?page={page}")
+            assert res.status_code == 200
+            m = re.search(r"(\d+)회차 중 (\d+)회차가", res.text)
+            assert m, f"{page}쪽에서 예산 문구를 못 찾았다"
+            본.append((int(m.group(1)), int(m.group(2))))
+
+    assert 본[0] == 본[1], (
+        f"쪽을 넘기니 예산 타일이 바뀐다: 1쪽 {본[0]}, 2쪽 {본[1]} — "
+        "화면은 '전체 실행'이라고 적어 두었다")
+    assert 본[0][0] == 총, (
+        f"'전체 실행'이라 적고 {본[0][0]}회차만 세고 있다 (전체는 {총}회차)")
+
+
+def test_kpi의_최신은_라벨이_아니라_시각으로_고른다():
+    """`run_label`은 사람이 적는 이름이라 정렬 기준이 못 된다 (1.26.146).
+
+    `db.load_kpi`가 `ORDER BY run_label DESC`라, 화면의 '최신'이 사전순
+    맨 위였다. 같은 함정을 `_runs_newest_first()`는 이미 알고 `computed_at`을
+    쓰는데 `/kpi`만 안 쓰고 있었다.
+
+    ⚠️ **지금 자료에서는 두 순서가 우연히 같다** — 그래서 화면은 맞게
+    보인다. 하지만 `2026-05-21 18`은 라벨이 5월인데 실제 계산은 08-25로,
+    **라벨과 시각이 갈리는 자료가 이미 있다.** 라벨이 `sweep-`으로 시작하면
+    숫자 라벨보다 위로 가서 옛 실험이 헤드라인에 오른다.
+
+    여기서 잡는 것은 그 경우다 — 우연에 기대지 않게 만든다.
+    """
+    import pandas as pd
+    from webapp import app as app_module
+
+    rows = pd.DataFrame({
+        "run_label": ["2026-08-27 23", "sweep-z-01"],
+        "duration": ["_05_10", "_05_10"],
+        # 계획이 실험보다 엿새 뒤에 돌았다
+        "computed_at": ["2026-09-07 10:00:00", "2026-09-01 09:00:00"],
+    })
+
+    최신 = app_module._kpi_labels_newest_first(rows)
+    assert 최신[0] == "2026-08-27 23", (
+        f"'{최신[0]}'을 최신이라 골랐다 — 라벨 사전순으로는 sweep-가 위지만 "
+        "실제로 나중에 돌린 것은 2026-08-27 23이다")

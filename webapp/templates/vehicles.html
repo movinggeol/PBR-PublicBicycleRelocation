@@ -47,7 +47,9 @@
 <div class="alert bad">
   <span><b>{{ budget.over }}건이 시간 예산을 넘었습니다.</b>
   작업이 늦어지면 계획이 겨냥한 시간대가 이미 지나가 버려 효과가 줄어듭니다.
-  아래 표에서 붉은 배경에 ⚠가 붙은 행입니다.</span>
+  아래 표에서 붉은 배경에 ⚠가 붙은 행입니다{% if pages > 1 %} —
+  <span class="muted">이 수는 전체 {{ assignments_total }}건을 센 것이라,
+    {{ pages }}쪽에 나뉘어 있습니다</span>{% endif %}.</span>
 </div>
 {% elif budget %}
 <div class="alert ok"><span>모든 작업이 시간 예산 안에서 끝납니다.</span></div>

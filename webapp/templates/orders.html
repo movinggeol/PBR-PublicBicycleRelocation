@@ -153,7 +153,7 @@
   <div class="actions">
     <button class="btn" type="button" onclick="window.print()">인쇄</button>
     {% if run_label %}
-    <a class="btn ghost" href="/orders/live?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}">
+    <a class="btn ghost" href="/orders/live?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}{% if selected_vehicle %}&vehicle={{ selected_vehicle | urlencode }}{% endif %}">
       {% if compared_sheets %}지금 재고 다시 조회{% else %}지금 재고와 대조하기{% endif %}</a>
     {% if compared_sheets %}
     {# 대조를 끄려고 다른 계획을 눌렀다 돌아올 필요가 없게, 같은 계획으로 되돌아온다. #}
@@ -187,12 +187,15 @@
 {% if sheet_names | length > 1 %}
 <details class="m-fold no-print" open>
   <summary>차량 고르기 <span class="hint">({{ sheet_names | length }}대)</span></summary>
+  {# 대조를 켠 채 차량을 바꾸면 대조가 켜진 채로 남는다 — /orders로 돌려보내면
+     누른 사람은 차량만 바꿨는데 방금 조회한 재고가 말없이 사라진다. #}
+  {% set 화면 = "/orders/live" if compared_sheets else "/orders" %}
   <div class="filterbar">
     <span class="label">차량</span>
-    <a class="chip" href="/orders?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}"
+    <a class="chip" href="{{ 화면 }}?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}"
        {% if not selected_vehicle %}aria-current="true"{% endif %}>전체</a>
     {% for name in sheet_names %}
-    <a class="chip" href="/orders?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}&vehicle={{ name | urlencode }}"
+    <a class="chip" href="{{ 화면 }}?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}&vehicle={{ name | urlencode }}"
        {% if selected_vehicle == name %}aria-current="true"{% endif %}>{{ name }}</a>
     {% endfor %}
   </div>
@@ -221,7 +224,7 @@
 {% if compared_sheets %}
 <h2>지금 재고와 대조 <span class="hint">{{ checked_at }} 조회</span></h2>
 <div class="actions no-print" style="margin-bottom:var(--sp-sm)">
-  <a class="btn ghost" href="/orders/live?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}">
+  <a class="btn ghost" href="/orders/live?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}{% if selected_vehicle %}&vehicle={{ selected_vehicle | urlencode }}{% endif %}">
     다시 조회</a>
   <a class="btn ghost" href="/orders?run_label={{ run_label | urlencode }}&duration={{ duration | urlencode }}">
     대조 끄기</a>
