@@ -1,6 +1,6 @@
 name: tests
 
-# 테스트 705개는 합성 데이터로 step0~step4를 실제로 돌린다(원천 CSV·API 키 불필요).
+# 테스트 706개는 합성 데이터로 step0~step4를 실제로 돌린다(원천 CSV·API 키 불필요).
 # 그래서 CI에서 그대로 돌릴 수 있다 — docs/구현/TESTING.md 참고.
 
 on:

@@ -700,6 +700,66 @@ def check_links() -> list[str]:
     return problems
 
 
+# 고쳐 놓고 문서만 안 따라간 규약. **문서가 옛 동작을 현재형으로 가르치면**
+# 읽는 사람이 안심하고 그대로 따라 한다 — 낡은 숫자보다 나쁘다.
+#
+# `문구`가 문서에 있는데 `증거`가 코드에 함께 없으면 낡은 것으로 본다.
+# 코드가 진실의 출처이므로, 규약이 또 바뀌면 이 표가 아니라 **코드가 먼저**
+# 바뀌고 검사가 그때 운다.
+STALE_CLAIMS = [
+    {
+        "이름": "최신 판단 기준",
+        "문구": re.compile(r"`run_label`\*{0,2}\s*최대값|MAX\(run_label\)"),
+        "증거": ("db.py", "created_at"),
+        # ⚠️ **파일 단위로 면제하지 않는다.** WEBAPP·DB_PLAN이 바로 이 버그를
+        # 가졌던 문서라, 통째로 빼면 정작 지켜야 할 자리가 빈다. 대신 아래
+        # `정정표시`가 붙은 **줄만** 넘긴다 — 옛 규약을 *인용해서 부정하는* 글이다.
+        "면제": (
+            "docs/기록/",                 # 이력은 그때의 기록이다
+            # 실험 기록도 마찬가지다 — *"그때 이렇게 재고 있었다"* 를 과거형으로
+            # 남긴 자리라, 현재 동작으로 고치면 그 실험을 왜 다시 쟀는지가 사라진다.
+            "docs/분석/EXPERIMENTS.md",
+        ),
+        "안내": "`latest_label()`은 1.26.125부터 `runs.created_at`으로 고른다",
+    },
+]
+
+# 옛 규약을 **인용해서 부정하는** 줄. 이것이 붙어 있으면 낡은 것이 아니라
+# 정정문이다 — 이 표시를 지우면 검사가 그 줄을 다시 문다.
+_정정표시 = re.compile(r"아닙니다|아니다|버그였|고쳤|고쳐졌|이(?:었|였)고|까지는|였습니다")
+
+
+def check_stale_claims() -> list[str]:
+    """고친 규약을 문서가 아직 현재 동작으로 가르치지 않는지 본다 (1.26.151).
+
+    🔴 실제로 났다. `WEBAPP.md`가 *"최신 = `run_label` 최대값 · 취약점 없음"* 이라고
+    **1.26.125에서 고친 바로 그 버그**를 현재 동작으로 적어 두었고, 같은 표가
+    `DB_PLAN.md`에도 있었다. `DB_SCHEMA.md`만 따라가 고쳐져 **한 저장소가 두 말을
+    하고 있었다.** 숫자가 아니라 산문이라 값 검사도 링크 검사도 못 잡았다.
+    """
+    problems: list[str] = []
+    for claim in STALE_CLAIMS:
+        evidence_file, evidence = claim["증거"]
+        src = ROOT / evidence_file
+        if not src.exists() or evidence not in src.read_text(encoding="utf-8"):
+            continue          # 코드가 그 규약을 안 쓴다 — 문서가 맞을 수도 있다
+        for path in sorted(ROOT.glob("docs/**/*.md")):
+            rel = path.relative_to(ROOT).as_posix()
+            if any(rel.startswith(x) for x in claim["면제"]):
+                continue
+            for lineno, line in enumerate(
+                    path.read_text(encoding="utf-8").splitlines(), 1):
+                # 인용문(`>`)은 옛 규약을 **설명하는** 자리다 — `check_derived()`도
+                # 같은 이유로 머리말을 건너뛴다.
+                if line.lstrip().startswith(">"):
+                    continue
+                if claim["문구"].search(line) and not _정정표시.search(line):
+                    problems.append(
+                        f"[낡은 규약] {rel}:{lineno} — {claim['이름']}: "
+                        f"{claim['안내']}\n      {line.strip()[:110]}")
+    return problems
+
+
 CHECKS = {
     "값": check_values,
     "링크": check_links,
@@ -708,6 +768,7 @@ CHECKS = {
     "커밋": check_commit_prefix,
     "논문": check_thesis,
     "파생": check_derived,
+    "규약": check_stale_claims,
 }
 
 

@@ -343,3 +343,50 @@ def test_면제_목록이_없는_파일을_가리키지_않는다(checker):
     없는것 = [d for d in checker.HISTORY_DOCS if not (checker.ROOT / d).exists()]
     assert not 없는것, (
         f"면제 목록이 없는 파일을 가리킨다(옮겼거나 지웠다): {없는것}")
+
+
+def test_고친_규약을_문서가_현재형으로_가르치지_않는지_본다(checker, tmp_path):
+    """산문으로 적힌 낡은 규약은 값 검사도 링크 검사도 못 잡는다 (1.26.151).
+
+    🔴 실제로 났다. `WEBAPP.md`가 *"최신 = `run_label` 최대값 · 취약점 없음"* 이라고
+    **1.26.125에서 고친 바로 그 버그**를 현재 동작으로 적어 두었고, 같은 표가
+    `DB_PLAN.md`에도 있었다. `DB_SCHEMA.md`만 따라가 고쳐져 **한 저장소가 두 말을
+    하고 있었다.** 숫자가 아니라 산문이라 기존 검사 어디에도 안 걸렸다.
+
+    ⚠️ 낡은 숫자보다 나쁘다 — 취약점을 *"없음"* 이라 적어 두면 읽는 사람이
+    **안심하고** 옛 규약을 따라 한다.
+
+    여기서 지키는 것은 둘이다: **지금 문서가 통과하는가**, 그리고
+    **정말 걸러 내는가**(통과만 하는 검사는 규칙이 없는 것과 같다).
+    """
+    assert checker.check_stale_claims() == [], "현행 문서가 낡은 규약을 가르친다"
+
+    # 면제 목록이 실재하는 파일을 가리키는지 — 옮기면 면제가 조용히 헛돈다.
+    for claim in checker.STALE_CLAIMS:
+        for 면제 in claim["면제"]:
+            assert (checker.ROOT / 면제).exists(), f"면제 대상이 없다: {면제}"
+        증거파일, _ = claim["증거"]
+        assert (checker.ROOT / 증거파일).exists(), f"증거 파일이 없다: {증거파일}"
+
+    # 그리고 **정말 잡는가.** 네 줄을 심어 둘만 물어야 한다 —
+    # 다 물면 정정문까지 잡는 것이고, 하나도 안 물면 규칙이 없는 것과 같다.
+    원래 = checker.ROOT
+    (tmp_path / "docs" / "구현").mkdir(parents=True)
+    (tmp_path / "db.py").write_text("created_at", encoding="utf-8")
+    (tmp_path / "docs" / "구현" / "아무거나.md").write_text(
+        "기준은 DB의 **`run_label`** 최대값입니다.\n"          # ← 물어야 한다
+        "최신은 `MAX(run_label)`으로 고릅니다.\n"               # ← 물어야 한다
+        "🔴 **`MAX(run_label)`이 아닙니다.** 지금은 시각으로 고릅니다.\n"  # 정정문
+        "> `MAX(run_label)`은 영영 실험을 가리켰습니다.\n",     # 인용(옛 설명)
+        encoding="utf-8")
+    checker.ROOT = tmp_path
+    try:
+        문제 = checker.check_stale_claims()
+        assert len(문제) == 2, (
+            f"낡은 줄 둘·정정문 둘을 심었는데 {len(문제)}건 잡는다:\n"
+            + "\n".join(문제))
+        붙잡힌_줄 = " ".join(문제)
+        assert "아닙니다" not in 붙잡힌_줄, "정정문을 낡은 것으로 잡는다"
+        assert "영영" not in 붙잡힌_줄, "인용문을 낡은 것으로 잡는다"
+    finally:
+        checker.ROOT = 원래
