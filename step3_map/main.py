@@ -24,7 +24,7 @@ from module import (
 from mapviz import (DROP_WORD, PICK_WORD, cluster_color, legend_html,
                     swatch_circle, swatch_line)
 from project_config import (
-    DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, MAP_TILES, PROJECT_ROOT,
+    DATA_ROOT, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, MAP_TILES, PROJECT_ROOT,
     VEHICLE_CAPACITY,
     duration_list, ensure_output_dirs, get_runtime_config,
 )
@@ -58,10 +58,10 @@ HTML 지도 저장
 '''
 
 # ---------------- 설정 ----------------
-vrp_plan_file = str(PROJECT_ROOT / "data/pp_data/VRP/VRP_plan{duration} ({now}).csv")
-clustered_file = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")
+vrp_plan_file = str(DATA_ROOT / "pp_data/VRP/VRP_plan{duration} ({now}).csv")
+clustered_file = str(DATA_ROOT / "pp_data/ILP/후보/top{duration} ({now}).csv")
 
-result_path = str(PROJECT_ROOT / "data/pp_data/VRP/visualization/vrp_map{duration} ({now}).html")
+result_path = str(DATA_ROOT / "pp_data/VRP/visualization/vrp_map{duration} ({now}).html")
 
 config = get_runtime_config()
 now = config.now

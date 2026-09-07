@@ -12,15 +12,15 @@ import numpy as np
 from mapviz import (DROP_LABEL, PICK_LABEL, cluster_color, legend_html,
                     qty_radius, swatch_circle, swatch_size_scale)
 from project_config import (
-    MAP_TILES, PROJECT_ROOT, VEHICLE_CAPACITY,
+    DATA_ROOT, MAP_TILES, PROJECT_ROOT, VEHICLE_CAPACITY,
     duration_list, ensure_output_dirs, get_runtime_config,
 )
 
 # read_csv
-clustered_file = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")
+clustered_file = str(DATA_ROOT / "pp_data/ILP/후보/top{duration} ({now}).csv")
 
 # to_csv
-clusterd_map = str(PROJECT_ROOT / "data/pp_data/ILP/visualization/clusterd_map{duration} ({now}).html")
+clusterd_map = str(DATA_ROOT / "pp_data/ILP/visualization/clusterd_map{duration} ({now}).html")
 
 config = get_runtime_config()
 now = config.now

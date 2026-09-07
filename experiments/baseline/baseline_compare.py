@@ -109,12 +109,53 @@ def missing_run_message(run_label: str, available: list) -> str:
     ])
 
 
+def _report_snapshot(info, run_label, period, net) -> None:
+    """**어느 스냅샷으로 쟀는지 찍는다.** 논문 숫자가 여기서 나온다 (1.26.130).
+
+    🔴 `--run-label`을 비우면 `latest_label()`이 고르는데, 그것이 **계획이라는
+    보장이 없다.** 실제로 `sweep-10`(차량 10대 파라미터 스윕)을 집고 있었다 —
+    대여소 1,376곳·총재고 2,880으로, 계획 스냅샷(1,368곳·3,214)보다 **재고가
+    10.4% 적다.** 무재배치(B0)의 결품이 2.10 대 2.40으로 갈리는 크기다.
+
+    조용히 고르면 **자료가 쌓일수록 답이 달라진다.** 그래서 라벨과 그 종류,
+    스냅샷의 크기를 함께 찍고, 실험으로 보이면 경고한다. 1.26.125·1.26.127이
+    같은 결함을 `/orders`와 실험 13곳에서 잡았는데 **여기는 안 닿았다.**
+    """
+    label = run_label
+    if not label:
+        with db.session() as conn:
+            label = db.latest_label(conn, "station_info", kinds=("plan",))
+    kind = db.classify_run_label(label)
+    stock = int(info["stock"].sum()) if "stock" in info else -1
+    print(f"[스냅샷] 대여소 정보 = '{label}' ({kind}) · "
+          f"{len(info)}곳 · 총재고 {stock:,}")
+    # 이 시점의 net은 아직 컬럼 이름을 바꾸기 전이라 'date'다.
+    day_col = "날짜" if "날짜" in net.columns else "date"
+    days = net[day_col].nunique() if day_col in net.columns else -1
+    print(f"[스냅샷] 순수요 = {period} · {days}일 (요일 구분 적용 전)")
+    if kind != "plan":
+        print(f"  ⚠️ '{label}'은 계획이 아니라 **{kind}**로 보입니다. "
+              f"논문에 실을 값이라면 `--run-label`로 계획 실행을 못박으세요.")
+    if not run_label:
+        print("  ⚠️ `--run-label`이 비어 있어 **최신 계획 실행**을 골랐습니다 — "
+              "계획을 다시 돌리면 같은 명령이 다른 답을 냅니다. "
+              "논문에 실을 값이라면 라벨을 못박으세요.")
+
+
 def load_inputs(period, run_label, day_type, warmup_days, warmup_period):
     """순수요·대여소 정보를 DB에서 읽는다."""
     with db.session() as conn:
         net = db.load_frame(conn, "net_demand", period=period)
+        # 라벨을 안 주면 **계획 실행 중에서** 최신을 고른다 (1.26.132).
+        # `kinds`를 비우면 `latest_label()`이 종류를 안 가려, 파라미터 스윕
+        # (`sweep-10`)처럼 재고가 10.4% 적은 **실험 스냅샷**을 집는다.
+        # 논문 6.3이 재현되지 않은 원인의 절반이 여기였다(EXPERIMENTS 30·31장).
+        # ⚠️ `db.load_frame`과 `latest_label`은 처음부터 `kinds`를 받고 있었다 —
+        #    **아무도 넘기지 않았을 뿐이다.** 여기 한 곳을 고치면 이 함수를
+        #    쓰는 실험 19개가 함께 고쳐진다.
         info = db.load_frame(conn, "station_info",
-                             **({"run_label": run_label} if run_label else {}))
+                             **({"run_label": run_label} if run_label
+                                else {"kinds": ("plan",)}))
         warmup = pd.DataFrame()
         if warmup_days > 0 and warmup_period and warmup_period != period:
             warmup = db.load_frame(conn, "net_demand", period=warmup_period)
@@ -125,6 +166,8 @@ def load_inputs(period, run_label, day_type, warmup_days, warmup_period):
         raise SystemExit(f"순수요가 없습니다 (기간 {period}). tools/load_rentals.py로 적재하세요.")
     if info.empty:
         raise SystemExit(missing_run_message(run_label, available))
+
+    _report_snapshot(info, run_label, period, net)
 
     net = select_day_type(net.rename(columns={"date": "날짜"}), "날짜", day_type)
     if not warmup.empty:
@@ -232,24 +275,54 @@ def stockout(net, population, delta, duration):
     거기서 나왔다. 같은 모집단에서 다시 재면 B2는 **한 번도 무재배치보다 나쁘지
     않다**(2.00→1.84 등). 근거: docs/분석/EXPERIMENTS.md 14장.
     """
+    pair = simulate_pair(net, population, delta, duration)
+    if pair is None:
+        return None, None
+    return pair["stockout_before"], pair["stockout_after"]
+
+
+def simulate_pair(net, population, delta, duration):
+    """**결품과 포화를 한 번의 궤적에서 함께** 잰다 (1.26.130).
+
+    🔴 **결품만 재면 반쪽이다.** 채우면 결품은 주는데 **반납이 막힌다** —
+    [KPI.md](../../docs/분석/KPI.md) 3-B의 첫 측정에서 포화 시간은 결품의
+    **1/4**인데 막힌 건수는 **2~3배**였다(가득 찬 곳에 반납이 몰린다).
+    그런데 대조군 비교는 `_stockout_hours()`만 불러 **포화를 버리고 있었다.**
+    논문 6장이 결품 하나로만 방법을 판정한 것이 여기서 나왔다.
+
+    `_simulate_stock()`은 처음부터 둘을 함께 세고 있었다(1.26.101). 궤적을
+    두 번 돌 필요가 없다 — **꺼내 쓰지 않았을 뿐이다.**
+
+    ⚠️ **`population`은 방법마다 달라지면 안 된다.** `stockout()`의 주석에
+    적힌 이유가 포화에도 그대로 걸린다 — 분모가 흔들리면 서로 다른 자로 잰
+    값이 된다.
+
+    반환: `stockout_before/after` · `saturation_before/after` (대여소·일 평균),
+    모집단이 비면 `None`.
+    """
     hours = kpi_mod.duration_hours(duration)
     stations = population[["station_id", "stock", "parking_lot"]].copy()
     stations["delta"] = stations["station_id"].map(delta).fillna(0)
 
     merged = net.merge(stations, on="station_id", how="inner")
     if merged.empty:
-        return None, None
+        return None
 
-    before = kpi_mod._stockout_hours(merged, merged["stock"],
+    before = kpi_mod._simulate_stock(merged, merged["stock"],
                                      merged["parking_lot"], hours)
-    after = kpi_mod._stockout_hours(merged, merged["stock"] + merged["delta"],
+    after = kpi_mod._simulate_stock(merged, merged["stock"] + merged["delta"],
                                     merged["parking_lot"], hours)
     days = merged["날짜"].nunique()
     count = merged["station_id"].nunique()
     denominator = max(count * days, 1)
 
     _warn_if_population_moved(duration, count, days)
-    return float(before.sum() / denominator), float(after.sum() / denominator)
+    return {
+        "stockout_before": float(before["stockout"].sum() / denominator),
+        "stockout_after": float(after["stockout"].sum() / denominator),
+        "saturation_before": float(before["saturated"].sum() / denominator),
+        "saturation_after": float(after["saturated"].sum() / denominator),
+    }
 
 
 # 회차별로 **처음 본 분모**를 기억해 둔다. 같은 프로세스가 같은 회차를 다시 재는데
@@ -400,11 +473,15 @@ def run_duration(net, st_info, warmup, duration, args, step1, solver):
                                                     adjust=True, seed=args.seed)
 
         delta = executed_delta(routes)
-        before, after = stockout(net, population, delta, duration)
+        sim = simulate_pair(net, population, delta, duration)
+        if sim is None:
+            print(f"[건너뜀] {name}: 모집단과 겹치는 순수요가 없습니다")
+            continue
+        before, after = sim["stockout_before"], sim["stockout_after"]
         row = {"duration": duration, "method": name, "seed": args.seed,
                "period": args.period, "day_type": args.day_type,
                "stations": int(len(candidates)),
-               "stockout_before": before, "stockout_after": after,
+               **sim,
                **route_stats(routes)}
 
         if args.plan_basis:
@@ -414,7 +491,9 @@ def run_duration(net, st_info, warmup, duration, args, step1, solver):
 
         results.append(row)
         print(f"  {LABELS[name]:<34} 처리 {row['bikes']:>4d}대"
-              f"  결품 {before:.2f}h → {after:.2f}h")
+              f"  결품 {before:.2f}h → {after:.2f}h"
+              f"  포화 {sim['saturation_before']:.2f}h"
+              f" → {sim['saturation_after']:.2f}h")
 
     return results
 
@@ -423,12 +502,16 @@ def show(frame, plan_basis):
     for duration, part in frame.groupby("duration", sort=False):
         base = part[part["method"] == "B0"]
         origin = float(base["stockout_after"].iloc[0]) if not base.empty else None
+        # 포화의 기준선도 B0다. 결품만 기준을 두면 **맞바꿈이 안 보인다.**
+        origin_sat = (float(base["saturation_after"].iloc[0])
+                      if not base.empty and "saturation_after" in base else None)
 
-        print("\n" + "-" * 92)
-        print(f"[{duration}]  대조군 비교 — 판정 기준은 결품 시간 (대여소·일 평균)")
-        print("-" * 92)
+        print("\n" + "-" * 108)
+        print(f"[{duration}]  대조군 비교 — 결품 시간과 **포화 시간을 함께** (대여소·일 평균)")
+        print("-" * 108)
         header = (f"{'방법':<34}{'처리대수':>8}{'이동km':>9}{'최장분':>8}"
-                  f"{'초과':>5}{'결품h':>8}{'감소':>8}{'감소율':>8}")
+                  f"{'초과':>5}{'결품h':>8}{'감소':>8}{'감소율':>8}"
+                  f"{'포화h':>8}{'포화Δ':>8}")
         if plan_basis:
             header += f"{'계획기준':>9}"
         print(header)
@@ -436,9 +519,12 @@ def show(frame, plan_basis):
         for row in part.itertuples():
             drop = origin - row.stockout_after if origin is not None else float("nan")
             rate = (drop / origin * 100) if origin else float("nan")
+            sat = getattr(row, "saturation_after", float("nan"))
+            sat_delta = (sat - origin_sat) if origin_sat is not None else float("nan")
             line = (f"{LABELS[row.method]:<34}{row.bikes:>8d}{row.km:>9.1f}"
                     f"{row.max_min:>8.1f}{row.over:>5d}"
-                    f"{row.stockout_after:>8.2f}{drop:>8.2f}{rate:>7.1f}%")
+                    f"{row.stockout_after:>8.2f}{drop:>8.2f}{rate:>7.1f}%"
+                    f"{sat:>8.2f}{sat_delta:>+8.2f}")
             if plan_basis:
                 plan = getattr(row, "plan_after", float("nan"))
                 line += f"{plan:>9.2f}"
@@ -448,6 +534,9 @@ def show(frame, plan_basis):
     print("읽는 법")
     print("  · 결품h = 재배치 후 대여소·일 평균 결품 시간. **낮을수록 좋다.**")
     print("  · 감소 = B0(무재배치) 대비 줄어든 결품 시간. 이 값이 재배치의 실제 편익이다.")
+    print("  · 포화h = 재고가 거치대 수와 같은 시간(**반납이 막힌다**). 포화Δ는 B0 대비 증감이고,")
+    print("    **+면 결품을 줄인 대가로 반납을 막은 것이다.** 결품만 보면 '채우면 좋다'가 되므로")
+    print("    반드시 함께 본다 — 첫 측정에서 포화 시간은 결품의 1/4인데 막힌 건수는 2~3배였다.")
     print("  · 초과 = 시간 예산을 넘긴 차량 수. P는 예산을 사후 점검만 하므로 초과가 날 수 있고,")
     print("    B1은 예산 안에서 멈추므로 초과가 0인 대신 일을 덜 한다 — 함께 봐야 한다.")
     if plan_basis:

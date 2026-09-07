@@ -14,7 +14,7 @@ from adjust_module import compute_medoids, compute_objective, select_cluster_can
 import db
 import project_config
 from project_config import (
-    ADJUST_BALANCE_LIMIT, ADJUST_BALANCE_OK, ADJUST_MAX_ITER,
+    DATA_ROOT, ADJUST_BALANCE_LIMIT, ADJUST_BALANCE_OK, ADJUST_MAX_ITER,
     CLUSTER_ALPHA, CLUSTER_BETA, CLUSTER_GAMMA, CLUSTER_SEED,
     PROJECT_ROOT, REBAL_MIN_QTY,
     CLUSTER_IMBALANCE_ALLOWANCE, DEPOT_LAT, DEPOT_LON, DROP_TIME_SEC,
@@ -143,11 +143,11 @@ def _estimate_travel_km_per_vehicle(pick_drop: pd.DataFrame, k: int,
     return tour_km / k + 2 * depot_km
 
 # read_csv
-file_path = str(PROJECT_ROOT / "data/pp_data/재배치 정보/rebal_qty{duration} ({now}).csv")
-st_info_file = str(PROJECT_ROOT / "data/pp_data/대여소 정보/st_info ({now}).csv")
+file_path = str(DATA_ROOT / "pp_data/재배치 정보/rebal_qty{duration} ({now}).csv")
+st_info_file = str(DATA_ROOT / "pp_data/대여소 정보/st_info ({now}).csv")
 
 # to_csv
-clustered_file = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")
+clustered_file = str(DATA_ROOT / "pp_data/ILP/후보/top{duration} ({now}).csv")
 
 config = get_runtime_config()
 now = config.now

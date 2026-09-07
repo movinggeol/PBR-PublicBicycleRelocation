@@ -20,7 +20,7 @@ import pandas as pd
 import db
 import demand_model
 from project_config import (
-    PROJECT_ROOT,
+    DATA_ROOT, PROJECT_ROOT,
     TARGET_QTY_UPPER_RATIO, TARGET_Z, VEHICLE_CAPACITY,
     duration_hours,
     duration_list,
@@ -31,11 +31,11 @@ from project_config import (
 )
 
 # read_csv
-st_info_file = str(PROJECT_ROOT / "data/pp_data/대여소 정보/st_info ({now}).csv")
-net_file = str(PROJECT_ROOT / "data/pp_data/순수요/st_net_daily ({period}).csv")
+st_info_file = str(DATA_ROOT / "pp_data/대여소 정보/st_info ({now}).csv")
+net_file = str(DATA_ROOT / "pp_data/순수요/st_net_daily ({period}).csv")
 
 # to_csv
-out_file_path = str(PROJECT_ROOT / "data/pp_data/재배치 정보/rebal_qty{duration} ({now})")  # .csv
+out_file_path = str(DATA_ROOT / "pp_data/재배치 정보/rebal_qty{duration} ({now})")  # .csv
 
 # 한 대여소에서 한 번에 옮길 수 있는 최대 대수 = 차량 적재 용량.
 # **project_config에서 읽는다** — 1.19.7 이전에는 여기 10이 박혀 있어,

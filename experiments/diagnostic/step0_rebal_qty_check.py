@@ -20,10 +20,10 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from project_config import (  # noqa: E402
-    PROJECT_ROOT, REBAL_MIN_QTY, duration_list, get_runtime_config,
+    DATA_ROOT, PROJECT_ROOT, REBAL_MIN_QTY, duration_list, get_runtime_config,
 )
 
-FILE_PATH = str(PROJECT_ROOT / "data/pp_data/재배치 정보/rebal_qty{duration} ({now}).csv")
+FILE_PATH = str(DATA_ROOT / "pp_data/재배치 정보/rebal_qty{duration} ({now}).csv")
 
 
 def main():

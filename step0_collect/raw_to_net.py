@@ -18,11 +18,11 @@ import pandas as pd
 
 import db
 from project_config import (
-    PROJECT_ROOT, ensure_output_dirs, get_runtime_config, holiday_mask,
+    DATA_ROOT, PROJECT_ROOT, ensure_output_dirs, get_runtime_config, holiday_mask,
 )
 
 # to_csv
-out_file_path = str(PROJECT_ROOT / "data/pp_data/순수요/st_net_daily ({period}).csv")
+out_file_path = str(DATA_ROOT / "pp_data/순수요/st_net_daily ({period}).csv")
 
 
 def main() -> None:

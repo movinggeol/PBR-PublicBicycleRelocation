@@ -13,10 +13,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import db
 import tashu
-from project_config import PROJECT_ROOT, ensure_output_dirs, get_runtime_config
+from project_config import DATA_ROOT, PROJECT_ROOT, ensure_output_dirs, get_runtime_config
 
 # to_csv
-out_file_path = str(PROJECT_ROOT / "data/pp_data/대여소별 재고/대여소별_자전거대수 ({now}).csv")
+out_file_path = str(DATA_ROOT / "pp_data/대여소별 재고/대여소별_자전거대수 ({now}).csv")
 
 
 def main() -> None:

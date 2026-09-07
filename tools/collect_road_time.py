@@ -87,7 +87,7 @@ from dotenv import load_dotenv
 
 import db
 from project_config import (
-    DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, DURATIONS, PROJECT_ROOT,
+    DATA_ROOT, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, DURATIONS, PROJECT_ROOT,
 )
 
 sys.path.insert(0, str(ROOT / "step3_map"))
@@ -104,7 +104,7 @@ from module import (                                          # noqa: E402
 PANEL_PATH = PROJECT_ROOT / "tools" / "road_panel.json"
 
 # 1.26.52 이전에 쓰던 자리. 여기에 있으면 옮겨 준다.
-LEGACY_PANEL_PATH = PROJECT_ROOT / "data" / "road_panel.json"
+LEGACY_PANEL_PATH = DATA_ROOT / "road_panel.json"
 
 # 이 수집기가 남기는 run_label의 앞머리. 파이프라인 실행분과 섞이지 않도록
 # 접두어로 가른다 — 분석 스크립트가 이 값으로 골라 낸다.
@@ -393,6 +393,45 @@ def collect(chains: list, durations: list, run_label: str, headers: dict,
 
 # ---------------------------------------------------------------- 현황
 
+def _warn_if_stalled(last_label: str) -> None:
+    """마지막 수집이 오래됐거나 **스케줄이 꺼져 있으면** 알린다 (1.26.140).
+
+    ⚠️ 이 함수가 없을 때 실제로 겪은 일: `PBR도로시간수집` 작업이 `pause`로
+    **비활성화된 채 닷새**(09-03~09-07) 방치됐는데, `--status`는 DB만 보고
+    *"수집 일수 2일"* 만 찍었다. **자료가 안 쌓이는 것과 수집기가 안 도는 것은
+    화면에서 구분되어야 한다** — 전자는 기다리면 되고 후자는 사람이 켜야 한다.
+    재고 수집기가 1.26.121에서 같은 것을 배웠는데 이쪽에는 안 옮겨 왔다.
+    """
+    import datetime as _dt
+    import subprocess
+
+    try:
+        last = _dt.date.fromisoformat(last_label[len(PROBE_PREFIX):])
+    except (ValueError, IndexError):
+        return
+    gap = (_dt.date.today() - last).days
+    if gap >= 2:
+        print(f"\n[!] 마지막 수집이 {last} — {gap}일째 새 자료가 없습니다.")
+
+    # 스케줄러는 윈도우 전용이다. 없거나 못 읽으면 조용히 넘어간다.
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "(Get-ScheduledTask -TaskName 'PBR도로시간수집' -ErrorAction Stop).State"],
+            capture_output=True, text=True, timeout=20, encoding="utf-8")
+    except (OSError, subprocess.SubprocessError):
+        return
+    state = (out.stdout or "").strip()
+    if state == "Disabled":
+        print("    스케줄이 **일시정지(Disabled)** 상태입니다 — 고장이 아니라 꺼져 있습니다.")
+        print("    다시 켜기: .{sep}scripts{sep}road_collector.ps1 resume".format(sep=chr(92)))
+    elif state and state != "Ready":
+        print(f"    스케줄 상태: {state}")
+    elif not state:
+        print("    스케줄이 등록되어 있지 않습니다 — "
+              ".{sep}scripts{sep}road_collector.ps1 install".format(sep=chr(92)))
+
+
 def status() -> int:
     with db.session() as conn:
         frame = pd.read_sql(
@@ -417,6 +456,7 @@ def status() -> int:
         days = frame["run_label"].nunique()
         print(f"\n수집 일수 {days}일 · 총 {int(frame['구간'].sum())}구간")
         print("※ 요일·계절 안정성을 보려면 최소 10일(가급적 서로 다른 요일)이 필요합니다.")
+        _warn_if_stalled(frame["run_label"].max())
 
     print(f"\n파이프라인 실행분(패널 아님): {int(other['n'][0])}구간"
           f" / 실행 {int(other['runs'][0])}건")

@@ -18,7 +18,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 683개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 684개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -71,7 +71,11 @@ step4                   : imbalance
   `if __name__ == '__main__':` + `main()` 아래에 둔다. 순서는 run_pipeline.py가 제어한다.
 - step 폴더의 스크립트는 상단에서 `sys.path.insert(0, str(Path(__file__).resolve().parents[1]))`
   후 project_config를 import한다 — 새 스크립트를 만들 때 같은 패턴을 따르라.
-- 데이터 경로는 `PROJECT_ROOT` 기준으로 만든다: `str(PROJECT_ROOT / "data/pp_data/...")`.
+- **데이터 경로는 `DATA_ROOT` 기준으로 만든다**: `str(DATA_ROOT / "pp_data/...")`.
+  🔴 `PROJECT_ROOT / "data/..."`로 직접 조립하지 마라 — 그러면 `PBR_DATA_ROOT`
+  재정의가 **그 파일에만 안 듣는다.** 1.26.124가 이 관습 때문에 격리 스위치를
+  넣었다가 27개가 깨져 되돌렸고, 1.26.141에서 44곳을 모두 고친 뒤에야 열었다.
+  **반쯤 듣는 격리 스위치는 *지켜 주는 척하는 장치*라 더 나쁘다.**
 - 산출물을 쓰는 스크립트는 저장 전에 `ensure_output_dirs()`를 호출한다.
 
 ## ⚠️ 함정 (반드시 확인)
@@ -306,7 +310,7 @@ python experiments/params/road_time_model.py  # 이동시간 모형 재추정 (E
 ## 테스트
 
 ```powershell
-python -m pytest                 # 683개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 684개, 약 100초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

@@ -425,3 +425,36 @@ def test_관측시간을_함께_내야_두_평균의_차이가_설명된다(obs)
     # 반쪽 날이 섞이면 관측시간이 줄고, 결품시간도 그만큼 낮게 잡힌다
     assert mixed.loc["ST0001", "관측시간"] < full.loc["ST0001", "관측시간"]
     assert mixed.loc["ST0001", "결품시간"] < full.loc["ST0001", "결품시간"]
+
+
+def test_라벨을_안_주면_실험이_아니라_계획_스냅샷을_고른다(tmp_path, monkeypatch):
+    """🔴 **논문 6.3이 재현되지 않은 원인의 절반이 여기였다** (1.26.132).
+
+    `--run-label`을 비우면 `latest_label()`이 종류를 안 가리고 가장 최근 것을
+    골랐다. 그래서 파라미터 스윕(`sweep-10`)의 스냅샷이 잡혔는데, 그쪽은
+    **총재고가 10.4% 적어** 무재배치 결품이 2.10 대 2.40으로 갈렸다
+    ([EXPERIMENTS](../docs/분석/EXPERIMENTS.md) 30·31장).
+
+    `db.load_frame`과 `latest_label`은 처음부터 `kinds`를 받고 있었다 —
+    **아무도 넘기지 않았을 뿐이다.** 여기서 지키는 것은 *넘기고 있는가*다.
+    """
+    import db
+
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "t.db"))
+    with db.session() as conn:
+        # 계획을 먼저, 실험을 **나중에** 넣는다 — 시각순으로도 사전순으로도
+        # 실험이 이기는 배치라야 이 테스트가 의미가 있다.
+        db.record_run(conn, "2026-08-11 real", kind=None)
+        db.record_run(conn, "sweep-10", kind=None)
+        for label, stock in (("2026-08-11 real", 5), ("sweep-10", 1)):
+            db.save_frame(conn, "station_info", pd.DataFrame([{
+                "station_id": "ST0001", "station_name": "가", "lat": 36.0,
+                "lon": 127.0, "stock": stock, "parking_lot": 10,
+            }]), run_label=label)
+
+        assert db.latest_label(conn, "station_info") == "sweep-10", (
+            "전제 확인 — 종류를 안 가리면 실험이 이긴다")
+        assert db.latest_label(conn, "station_info", kinds=("plan",)) == "2026-08-11 real"
+
+        got = db.load_frame(conn, "station_info", kinds=("plan",))
+        assert int(got["stock"].iloc[0]) == 5, "계획 스냅샷의 재고여야 한다"

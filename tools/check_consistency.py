@@ -190,7 +190,10 @@ FACTS = [
     Fact(
         name="DB 테이블 수",
         truth=_table_count,
-        patterns=[r"테이블 (\d+)개", r"(\d+)개 테이블", r"표 (\d+)개"],
+        # ⚠️ 맨 `표 (\d+)개`는 쓰면 안 된다 — 한국어에서 '표'는 **DB의 표**와
+        #    **문서의 표**를 둘 다 뜻한다. THESIS의 "표 131개 · 그림 0장"(논문에
+        #    실린 표를 센 것)을 DB 테이블 수로 잡아 오탐이 났다(1.26.134).
+        patterns=[r"테이블 (\d+)개", r"(\d+)개 테이블", r"표 (\d+)개의 컬럼"],
         allow=[
             # 파이프라인이 지나가는 테이블만 센 것 — 전체 수가 아니다
             "kpi_summary`까지",
@@ -434,10 +437,151 @@ def check_commit_prefix() -> list[str]:
     return problems
 
 
+# ── 논문 검사 ─────────────────────────────────────────────────────────
+# 🔴 **이 검사는 코드가 아니라 정본 절을 진실로 삼는다.** 논문 수치의 출처는
+#    실험 CSV인데 `data/`·`*.csv`는 커밋되지 않으므로 CI에서 읽을 수 없다.
+#    그래서 값을 여기 적어 두고 **정본 파일에 그 값이 실제로 있는지**를 먼저
+#    확인한다 — 정본이 바뀌면 검사기가 먼저 걸리므로 조용히 낡지 않는다.
+#
+# ⚠️ 검사 범위는 **논문 본문뿐**이다(README + 초안). `docs/분석`·`docs/기록`은
+#    날짜가 박힌 **기록**이라 옛 값을 그대로 두는 것이 맞다 — EXPERIMENTS 5장이
+#    아직 2.00을 적고 있는 것은 낡은 것이 아니라 2026-08-26에 그렇게 쟀다는 뜻이다.
+THESIS_SCOPE = ("README.md", "docs/연구/초안/")
+
+
+@dataclass
+class ThesisFact:
+    name: str
+    truth: str
+    source: str          # 이 값의 정본 — 여기 없으면 검사기가 낡은 것이다
+    patterns: list[str]
+    allow: list[str] = field(default_factory=list)
+
+
+# 1.26.134에서 **핵심 결과가 네 판으로 갈려 있던** 것을 사람이 눈으로 찾았다.
+# 같은 일이 다시 나면 여기서 걸린다.
+THESIS_FACTS = [
+    ThesisFact(
+        name="무재배치 결품 (25년 11월 `_05_10`)",
+        truth="2.40",
+        source="docs/연구/초안/6장_실험_성능평가.md",
+        # 6장은 `± 0.00`이 붙고 README는 안 붙는다. 두 모양을 따로 잡되,
+        # `\| 무재배치 \|`는 **앞에 B0가 없는 줄만** 무는다 — 그래야 같은 절의
+        # 포화 표(`| B0 무재배치 | 1.36 |`)를 오탐하지 않는다.
+        patterns=[r"무재배치 \| (\d\.\d\d) ±", r"\| 무재배치 \| (\d\.\d\d) \|"],
+    ),
+    ThesisFact(
+        name="제안 방법 결품 (25년 11월 `_05_10`)",
+        truth="1.05",
+        source="docs/연구/초안/6장_실험_성능평가.md",
+        patterns=[r"P 제안\*{0,2} \| \*\*(\d\.\d\d) ±",
+                  r"\*\*제안 방법\*\* \| \*\*(\d\.\d\d)\*\*"],
+    ),
+    ThesisFact(
+        name="반복 실험의 씨앗 수",
+        truth="3",
+        source="docs/연구/초안/6장_실험_성능평가.md",
+        patterns=[r"12개월 × 씨앗 (\d+)개"],
+    ),
+    ThesisFact(
+        name="대여소 스냅샷 지문",
+        truth="9e4c0d5c",
+        source="docs/연구/초안/6장_실험_성능평가.md",
+        patterns=[r"지문 `([0-9a-f]{8})`"],
+    ),
+]
+
+
+def _thesis_targets() -> list[Path]:
+    out = []
+    for path in _scan_targets():
+        rel = path.relative_to(ROOT).as_posix()
+        if any(rel == s or rel.startswith(s) for s in THESIS_SCOPE):
+            out.append(path)
+    return out
+
+
+def check_thesis() -> list[str]:
+    """논문 본문이 **한 목소리로** 말하는지 확인한다 (1.26.138).
+
+    코드가 아니라 **정본 절**이 진실이다. 정본에서 그 값이 사라지면 다른 곳을
+    보기 전에 그것부터 알린다 — 그러지 않으면 이 검사기 자체가 낡은 값을
+    지키는 다섯 번째 판이 된다.
+    """
+    problems: list[str] = []
+    targets = _thesis_targets()
+    for fact in THESIS_FACTS:
+        source = ROOT / fact.source
+        text = source.read_text(encoding="utf-8") if source.exists() else ""
+        if not any(re.search(p, line) and re.search(p, line).group(1) == fact.truth
+                   for line in text.splitlines() for p in fact.patterns):
+            problems.append(
+                f"[{fact.name}] 정본({fact.source})에 '{fact.truth}'이(가) 없습니다 — "
+                f"정본이 바뀌었다면 `tools/check_consistency.py`의 값을 함께 고치십시오"
+            )
+            continue
+        for path in targets:
+            rel = path.relative_to(ROOT).as_posix()
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()
+            except (UnicodeDecodeError, OSError):
+                continue
+            for lineno, line in enumerate(lines, 1):
+                if any(a in line for a in fact.allow):
+                    continue
+                for pattern in fact.patterns:
+                    for m in re.finditer(pattern, line):
+                        if m.group(1) != fact.truth:
+                            problems.append(
+                                f"[{fact.name}] {rel}:{lineno} — "
+                                f"문서 {m.group(1)}, 정본 {fact.truth}\n"
+                                f"      {line.strip()[:110]}"
+                            )
+    return problems
+
+
+# 🔴 **결론과 초록은 새 수치를 만들면 안 된다.** 둘 다 앞 장을 압축한 글이라
+#    거기 처음 나오는 숫자는 **근거 없는 숫자**다. 실제로 1.26.137의 9장 초안이
+#    6.3의 `374.7~458.5km`를 `375~459km`로 반올림해 **6장에 없는 범위를**
+#    만들었다(1.26.139에서 잡음).
+DERIVED_DOCS = {
+    "docs/연구/초안/9장_결론.md": "docs/연구/초안/6장_실험_성능평가.md",
+    "docs/연구/초안/초록.md": "docs/연구/초안/6장_실험_성능평가.md",
+}
+# 장 번호(6.3)·연도(2026)·표본 크기처럼 **압축한 글이 당연히 새로 쓰는** 수는 뺀다.
+_DERIVED_SKIP = re.compile(r"^(?:\d{1,2}|\d{4}|\d\.\d|\d\.\d\.\d)$")
+
+
+def check_derived() -> list[str]:
+    """결론·초록이 원본 장에 없는 수치를 만들지 않았는지 본다 (1.26.139)."""
+    problems: list[str] = []
+    num = re.compile(r"\d+(?:\.\d+)?")
+    for doc, src in DERIVED_DOCS.items():
+        dp, sp = ROOT / doc, ROOT / src
+        if not (dp.exists() and sp.exists()):
+            continue
+        source = sp.read_text(encoding="utf-8")
+        for lineno, line in enumerate(dp.read_text(encoding="utf-8").splitlines(), 1):
+            if line.lstrip().startswith((">", "|")) or "](" in line:
+                continue          # 머리말·표·링크는 원본을 가리키는 글이다
+            for m in num.finditer(line):
+                v = m.group(0)
+                if _DERIVED_SKIP.match(v) or v in source:
+                    continue
+                problems.append(
+                    f"[파생 문서] {doc}:{lineno} — '{v}'이(가) 원본({Path(src).name})에 "
+                    f"없습니다. 반올림했거나 새로 만든 수치입니다\n"
+                    f"      {line.strip()[:110]}"
+                )
+    return problems
+
+
 CHECKS = {
     "값": check_values,
     "버전": check_version_numbers,
     "커밋": check_commit_prefix,
+    "논문": check_thesis,
+    "파생": check_derived,
 }
 
 

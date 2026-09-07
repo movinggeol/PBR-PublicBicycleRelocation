@@ -48,10 +48,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import pandas as pd
 
-from project_config import ensure_output_dirs
+from project_config import DATA_ROOT, ensure_output_dirs
 
 # 두 지도가 함께 읽는 입력. step1 후보 파일 하나로 둘 다 그릴 수 있다.
-CANDIDATE_DIR = PROJECT_ROOT / "data/pp_data/ILP/후보"
+CANDIDATE_DIR = DATA_ROOT / "pp_data/ILP/후보"
 CANDIDATE_RE = re.compile(r"^top(_\d+_\d+) \((.+)\)\.csv$")
 
 # 두 지도의 산출 경로. step 모듈의 상수와 **같은 문자열이라야** 한다 —
