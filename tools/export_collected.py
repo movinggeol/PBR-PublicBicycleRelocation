@@ -56,7 +56,10 @@ import db
 
 def summarize(conn) -> None:
     """무엇이 얼마나 쌓여 있는지 — 내보내기 전에 확인용."""
-    print(f"DB: {db.db_path() if hasattr(db, 'db_path') else 'data/bike_system.db'}")
+    # ⚠️ 예전에는 `db.db_path()`가 있으면 그것을, 없으면 문자열 'data/bike_system.db'를
+    #    찍었다. **`db.db_path`는 존재한 적이 없어** 폴백이 언제나 탔다 — 즉
+    #    PBR_DB_PATH가 없어도 사실이 아니라 짐작을 찍고 있었다(1.26.143).
+    print(f"DB: {db.active_db_path()}")
     row = conn.execute(
         "SELECT COUNT(*), MIN(date(observed_at)), MAX(date(observed_at))"
         " FROM stock_history").fetchone()
@@ -92,9 +95,11 @@ def export(conn, out_path: Path, date_from: str, date_to: str,
 
     stock = pd.read_sql(f"SELECT * FROM stock_history{clause}", conn, params=params)
     if stock.empty:
+        # 기간을 준 경우에만 그 범위를 밝힌다. 예전에는 여는 쪽 표시가 'ˆ'
+        # (U+02C6)라 사용자에게 `(ˆ ~ ∞)`로 보였다 — 오타다(1.26.143).
+        span = f" ({date_from or '처음'} ~ {date_to or '끝'})" if where else ""
         raise SystemExit(
-            f"내보낼 재고 시계열이 없습니다"
-            f"{f' ({date_from or 'ˆ'} ~ {date_to or '∞'})' if where else ''}."
+            f"내보낼 재고 시계열이 없습니다{span}."
             " --list 로 쌓인 기간을 확인하십시오.")
 
     # 마스터를 함께 담는다 — 재고만 옮기면 받는 PC에서 이름·좌표가 빈다.

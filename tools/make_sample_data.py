@@ -164,7 +164,12 @@ def main() -> None:
     parser.add_argument("--now", default=DEFAULT_NOW, help="분석 시점 라벨")
     parser.add_argument("--period", default=DEFAULT_PERIOD, help="순수요 기간 라벨")
     parser.add_argument("--stations", type=int, default=90, help="대여소 수")
-    parser.add_argument("--days", type=int, default=20, help="평일 수")
+    # ⚠️ **달력 일수다 — 평일 수가 아니다.** `generate()`가 `date_range`로 세므로
+    # 주말·공휴일이 그 안에 들어간다(20일 → 평일 15 + 휴일 5). 도움말이 "평일 수"라
+    # 적혀 있었고 기본값도 `generate()`의 28과 달라, 손으로 부르면 휴일 경로의
+    # 표본이 조용히 줄었다(1.26.143). 기본값을 `generate()`와 맞춘다.
+    parser.add_argument("--days", type=int, default=28,
+                        help="합성 기간(달력 일수, 평일 수가 아님). 기본 28 = 평일 20 + 휴일 8")
     parser.add_argument("--raw-file", default=None, help="대여이력 CSV 저장 경로")
     args = parser.parse_args()
 

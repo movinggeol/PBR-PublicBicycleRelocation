@@ -451,6 +451,26 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _given_options(argv: Optional[Sequence[str]]) -> set:
+    """사용자가 **실제로 준** 옵션 이름. `--window 09:00` 과 `--window=09:00` 둘 다.
+
+    ⚠️ 예전에는 `set(argv)`에 `"--window"`가 있는지만 봤다. 그래서 등호 형
+    (`--window=12:00-13:00`)은 통째로 감지되지 않았고, 아래에서 **등록된 작업의
+    창이 사용자의 값을 덮었다** — 12:00~13:00으로 세 달라고 했는데 07:00~22:00
+    기준의 표가 나왔다(실측 1.26.143).
+
+    짝인 `scripts/collector.ps1`의 `Get-RegisteredArgs`는
+    `$PSBoundParameters.ContainsKey('Window')`를 쓰므로 표기 형식과 무관하게
+    맞는다. `registered_args()` 주석이 *"두 경로가 다른 답을 내면 어느 쪽을
+    믿어야 할지 알 수 없다"* 고 적어 뒀는데, 바로 여기서 갈리고 있었다.
+    """
+    names = set()
+    for token in (argv if argv is not None else sys.argv[1:]):
+        if token.startswith("--"):
+            names.add(token.split("=", 1)[0])
+    return names
+
+
 def resolve_window(args, argv: Optional[Sequence[str]]) -> Tuple[str, int, str]:
     """`--status`가 쓸 창·간격을 정한다. (창, 간격, 출처) 를 돌려준다.
 
@@ -458,7 +478,7 @@ def resolve_window(args, argv: Optional[Sequence[str]]) -> Tuple[str, int, str]:
     떨어졌으면 그 사실을 말해야 한다 — 틀린 기준으로 센 결측을 맞는 것처럼
     보여 주는 것이 가장 나쁘다.
     """
-    given = set(argv if argv is not None else sys.argv[1:])
+    given = _given_options(argv)
     gave_window = "--window" in given
     gave_interval = "--interval" in given
     if gave_window and gave_interval:

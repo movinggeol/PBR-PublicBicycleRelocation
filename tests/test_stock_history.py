@@ -395,6 +395,45 @@ def test_explicit_arguments_beat_the_registered_task(monkeypatch):
     assert source == "직접 지정"
 
 
+def test_등호로_준_값도_직접_지정으로_친다(monkeypatch):
+    """`--window=09:00-17:00`은 `--window 09:00-17:00`과 **같은 뜻**이다.
+
+    🔴 1.26.143까지 `resolve_window()`가 `set(argv)`에 `"--window"`가 있는지만
+    봤다. 등호 형은 한 토큰(`--window=09:00-17:00`)이라 감지되지 않았고,
+    **등록된 작업의 창이 사용자가 준 값을 덮었다** — 09~17시로 세 달라고 했는데
+    07~22시 기준의 표가 나왔다. argparse는 두 형식을 똑같이 받으므로 사람은
+    무엇이 틀렸는지 알 방법이 없다.
+
+    짝인 `scripts/collector.ps1`의 `Get-RegisteredArgs`는
+    `$PSBoundParameters.ContainsKey('Window')`를 써서 형식과 무관하게 맞는다.
+    바로 위 시험의 docstring이 *"두 경로가 다른 답을 내면 어느 쪽을 믿어야 할지
+    알 수 없다"* 고 적어 뒀는데, 여기서 실제로 갈리고 있었다.
+    """
+    monkeypatch.setattr(collector, "registered_args",
+                        lambda: {"window": "07:00-22:00", "interval": 10})
+
+    for argv in (["--status", "--window=09:00-17:00", "--interval=10"],
+                 ["--status", "--window", "09:00-17:00", "--interval=10"],
+                 ["--status", "--window=09:00-17:00", "--interval", "10"]):
+        args = collector.build_parser().parse_args(argv)
+        window, interval, source = collector.resolve_window(args, argv)
+        assert window == "09:00-17:00", f"{argv} 에서 사용자 값이 무시됐다"
+        assert interval == 10
+        assert source == "직접 지정", f"{argv} 에서 등록된 작업이 사용자 값을 덮었다"
+
+
+def test_한쪽만_주면_나머지는_등록된_값을_쓴다(monkeypatch):
+    """창만 주고 간격을 안 줬으면 간격은 등록된 것을 쓴다 — 등호 형도 같다."""
+    monkeypatch.setattr(collector, "registered_args",
+                        lambda: {"window": "07:00-22:00", "interval": 30})
+    argv = ["--status", "--window=09:00-17:00"]
+    args = collector.build_parser().parse_args(argv)
+    window, interval, source = collector.resolve_window(args, argv)
+    assert window == "09:00-17:00"     # 사용자가 준 것
+    assert interval == 30              # 등록된 것
+    assert "등록된 작업" in source
+
+
 def test_missing_task_says_it_fell_back_to_defaults(monkeypatch):
     """기본값으로 떨어졌으면 **그 사실을 말해야 한다** — 조용히 틀린 기준으로 세면 안 된다."""
     monkeypatch.setattr(collector, "registered_args", lambda: None)

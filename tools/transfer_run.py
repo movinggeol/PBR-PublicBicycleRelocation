@@ -48,7 +48,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -91,15 +90,10 @@ RUN_TABLES = (
 )
 
 
-def active_db_path() -> Path:
-    """지금 실제로 열리는 DB 경로.
-
-    `db.DB_PATH`는 import 시점에 굳는 **기본값**이라, `PBR_DB_PATH`로 다른 DB를
-    쓰고 있어도 그대로 기본 경로를 가리킨다. 그것을 그대로 찍으면 **어디에
-    넣었는지 거짓말하는 안내문**이 된다(실제로 그랬다). `db.connect()`와 같은
-    우선순위로 다시 푼다.
-    """
-    return Path(os.getenv("PBR_DB_PATH") or db.DB_PATH)
+# 지금 실제로 열리는 DB 경로. **정본은 db.py에 있다** — 1.26.143까지 이 파일에만
+# 사본이 있어서, 같은 거짓말을 하던 `csv_to_db`·`load_rentals`·`export_collected`
+# 셋은 고쳐지지 않았다. 한 곳에 두면 다음 도구도 자동으로 맞는다.
+active_db_path = db.active_db_path
 
 
 def available_labels(conn) -> pd.DataFrame:

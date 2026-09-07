@@ -7,6 +7,8 @@
 
 실데이터를 건드리지 않도록 모든 테스트가 tmp_path의 별도 DB 파일을 쓴다.
 """
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -506,3 +508,56 @@ def test_모르는_종류를_선언하면_조용히_넘기지_않는다(monkeypa
     monkeypatch.setenv("PBR_RUN_KIND", "plaan")
     with pytest.raises(ValueError):
         db.declared_run_kind()
+
+
+# ── 지금 열린 DB 경로를 사람에게 보여줄 때 (구역 D 검토, 1.26.143) ──
+
+
+def test_열린_DB_경로를_한_곳에서_푼다(monkeypatch, tmp_path):
+    """`DB_PATH`는 import 시점에 굳는 **기본값**이라 `PBR_DB_PATH`를 모른다.
+
+    그것을 화면에 찍으면 **어디에 넣었는지 거짓말하는 안내문**이 된다. 1.26.51에
+    실제로 겪어 `transfer_run.py`가 자기 안에 같은 함수를 만들어 막았는데,
+    `csv_to_db`·`load_rentals`·`export_collected` 셋은 그대로 남아 있었다 —
+    한 도구가 배운 것이 옆 도구에 닿지 않으면 같은 거짓말이 계속 남는다.
+    """
+    target = tmp_path / "다른.db"
+    monkeypatch.setenv("PBR_DB_PATH", str(target))
+
+    assert db.active_db_path() == target
+    assert db.active_db_path() != db.DB_PATH, "기본값을 그대로 돌려주고 있다"
+
+    # `connect()`가 실제로 여는 곳과 **같아야** 한다 — 다르면 안내문이 또 거짓이 된다.
+    conn = db.connect()
+    try:
+        opened = conn.execute("PRAGMA database_list").fetchone()[2]
+    finally:
+        conn.close()
+    assert Path(opened) == db.active_db_path()
+
+    # 인자로 준 경로가 환경변수를 이긴다 (connect()와 같은 우선순위).
+    직접 = tmp_path / "직접.db"
+    assert db.active_db_path(직접) == 직접
+
+
+def test_환경변수가_없으면_기본값이다(monkeypatch):
+    monkeypatch.delenv("PBR_DB_PATH", raising=False)
+    assert db.active_db_path() == db.DB_PATH
+
+
+def test_도구들이_DB_경로를_짐작하지_않는다():
+    """세 도구가 `db.DB_PATH`나 하드코딩 문자열을 찍고 있었다.
+
+    특히 `export_collected.py`는 `db.db_path() if hasattr(db, 'db_path') else
+    'data/bike_system.db'`였는데 **`db.db_path`는 존재한 적이 없어** 폴백이
+    언제나 탔다 — `PBR_DB_PATH`가 없어도 사실이 아니라 짐작을 찍고 있었다.
+    """
+    root = Path(__file__).resolve().parents[1]
+    for name in ("csv_to_db.py", "load_rentals.py", "export_collected.py",
+                 "transfer_run.py"):
+        code = (root / "tools" / name).read_text(encoding="utf-8")
+        body = "\n".join(l for l in code.splitlines()
+                         if not l.lstrip().startswith("#"))
+        assert "db.DB_PATH" not in body, f"{name}이 import 시점 기본값을 찍는다"
+        assert "hasattr(db, 'db_path')" not in body, f"{name}에 없는 함수를 보는 폴백이 남아 있다"
+        assert "active_db_path" in body, f"{name}이 열린 DB 경로를 쓰지 않는다"

@@ -462,13 +462,28 @@ CREATE INDEX IF NOT EXISTS idx_stock_history_station ON stock_history(station_id
 """
 
 
+def active_db_path(db_path: Optional[Path] = None) -> Path:
+    """**지금 실제로 열리는** DB 경로. 사람에게 보여줄 때는 반드시 이것을 쓴다.
+
+    ⚠️ `DB_PATH`는 import 시점에 굳는 **기본값**이라, `PBR_DB_PATH`로 다른 DB를
+    쓰고 있어도 그대로 기본 경로를 가리킨다. 그것을 화면에 찍으면 **어디에
+    넣었는지 거짓말하는 안내문**이 된다 — 실제로 그랬고(1.26.51),
+    `transfer_run.py`가 자기 안에 같은 함수를 만들어 막았다. 그런데 `csv_to_db`·
+    `load_rentals`·`export_collected` 셋은 그대로 남아 있었다(1.26.143).
+    한 도구가 배운 것이 옆 도구에 닿지 않으면 같은 거짓말이 계속 남는다.
+
+    우선순위는 `connect()`와 **같아야 한다** — 아래에서 이 함수를 그대로 쓴다.
+    """
+    return Path(db_path or os.getenv("PBR_DB_PATH") or DB_PATH)
+
+
 def connect(db_path: Optional[Path] = None) -> sqlite3.Connection:
     """DB에 연결한다. 다른 DB로 옮길 때 교체할 지점은 이 함수 하나다.
 
     경로 우선순위: 인자 → 환경변수 PBR_DB_PATH → 기본값(data/bike_system.db).
     WAL 모드를 켜면 파이프라인이 쓰는 중에도 웹 대시보드가 읽을 수 있다.
     """
-    path = Path(db_path or os.getenv("PBR_DB_PATH") or DB_PATH)
+    path = active_db_path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     conn = sqlite3.connect(path)

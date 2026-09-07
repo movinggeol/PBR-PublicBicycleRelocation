@@ -371,11 +371,30 @@ def check_version_numbers() -> list[str]:
     return problems
 
 
+# 이미 푸시돼 **고칠 수 없는** 접두사 어긋남. 히스토리를 다시 쓰지 않기로 한 것들이다.
+#
+# 🔴 **이 목록은 면죄부가 아니라 처리 완료 표시다** — `ALLOWED_DUPES`와 같은
+# 성격이다. 새로 어긋난 커밋은 여기 넣지 말고 **커밋 직후에 제목을 고쳐라**
+# (아직 푸시 전이면 `git commit --amend`로 끝난다).
+#
+# 왜 필요한가: 이 검사기는 이력 전체를 훑으므로 못 고치는 한 건이 **매 실행마다**
+# 뜬다. 늘 빨간 검사기는 사람이 "아 그거"라며 넘기기 시작하고, 그때부터
+# **진짜 어긋남이 섞여도 안 보인다** — 이 저장소가 *"통과만 하고 아무것도 못
+# 잡는 검사기는 규칙이 없는 것과 같다"* 고 적은 것의 뒷면이다(1.26.143).
+ALLOWED_PREFIX_MISMATCH = {
+    # 260830으로 적었으나 실제 커밋일은 260831. 푸시된 뒤에 발견했다.
+    "b9a6544": "260830 군집 연쇄 주행을 쟀다 (1.26.38) — 푸시 후 발견, 되돌리지 않음",
+}
+
+
 def check_commit_prefix() -> list[str]:
     """커밋 제목의 `YYMMDD` 접두사가 실제 커밋 날짜와 같은지 본다.
 
     긴 세션이 자정을 넘기면 앞 커밋의 날짜를 그대로 이어 쓰게 된다.
     실제로 네 번 났다(260810 · 260811 · 260826 · 260830).
+
+    이미 푸시돼 고칠 수 없는 것은 `ALLOWED_PREFIX_MISMATCH`에 사유와 함께
+    적어 두고 넘긴다 — 위 주석 참고.
     """
     try:
         out = subprocess.run(
@@ -398,11 +417,20 @@ def check_commit_prefix() -> list[str]:
         m = re.match(r"^(\d{6}) ", subject)
         if not m:
             continue
-        if m.group(1) != when:
-            problems.append(
-                f"[커밋 접두사] {sha} — 제목 {m.group(1)}, 실제 {when}\n"
-                f"      {subject[:100]}"
-            )
+        if m.group(1) == when:
+            continue
+        if sha in ALLOWED_PREFIX_MISMATCH:
+            continue
+        problems.append(
+            f"[커밋 접두사] {sha} — 제목 {m.group(1)}, 실제 {when}\n"
+            f"      {subject[:100]}"
+        )
+
+    # 넘긴 것을 **한 줄로 밝힌다.** 조용히 빼면 목록이 늘어나도 아무도 모르고,
+    # 그러면 면죄부 목록이 되어 버린다.
+    if ALLOWED_PREFIX_MISMATCH:
+        print(f"  (고칠 수 없어 넘긴 커밋 {len(ALLOWED_PREFIX_MISMATCH)}건: "
+              + ", ".join(sorted(ALLOWED_PREFIX_MISMATCH)) + ")")
     return problems
 
 

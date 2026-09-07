@@ -70,10 +70,13 @@ def read_csv_dir(source: Path) -> Tuple[pd.DataFrame, List[Path]]:
     return pd.concat(frames, ignore_index=True), paths
 
 
-def read_db_file(source: Path) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """다른 PC의 DB에서 재고 시계열과 마스터를 읽는다.
+def read_db_file(source: Path) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """다른 PC의 DB에서 (재고 시계열, 마스터, TMAP 고정 패널)을 읽는다.
 
     읽기 전용으로 연다(`mode=ro`) — 옮겨온 원본은 증거물이라 손대지 않는다.
+
+    (1.26.62에 `road_leg`가 늘었는데 반환값이 셋이 된 것을 힌트와 설명에는
+    옮기지 않아, 읽는 사람에게는 둘로 보였다 — 1.26.143에서 맞췄다.)
     """
     try:
         conn = sqlite3.connect(f"file:{source.as_posix()}?mode=ro", uri=True)

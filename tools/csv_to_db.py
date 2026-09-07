@@ -95,7 +95,8 @@ def main() -> int:
             print(f"확인 경로: {PP_ROOT}")
             return 1
 
-        print(f"DB: {db.DB_PATH}")
+        # 지금 실제로 열린 DB를 찍는다 — db.DB_PATH는 PBR_DB_PATH를 모른다(1.26.143).
+        print(f"DB: {db.active_db_path()}")
         print(f"실행 라벨: {config.now}  (period={config.period}, duration={','.join(durations)})")
         for name, rows in loaded.items():
             print(f"  {name:28s} {rows:>7,} 행")

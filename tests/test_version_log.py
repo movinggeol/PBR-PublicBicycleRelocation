@@ -108,3 +108,41 @@ def test_예외가_낀_자리의_정렬은_넘어간다(checker, tmp_path):
             "## 1.26.47 - 둘\n\n> 번호 겹침: 설명\n")
 
     assert _problems(checker, text, tmp_path) == []
+
+
+def test_고칠_수_없는_커밋을_넘기되_조용히_넘기지_않는다(checker):
+    """검사기가 **늘 빨간 상태**가 되면 사람이 무시하기 시작한다 (1.26.143).
+
+    `check_commit_prefix()`는 이력 전체를 훑으므로, 이미 푸시돼 고칠 수 없는
+    한 건이 **매 실행마다** 뜬다. 이 저장소가 *"통과만 하고 아무것도 못 잡는
+    검사기는 규칙이 없는 것과 같다"* 고 적은 것의 뒷면이다 — 늘 빨간 검사기도
+    같은 자리로 간다.
+
+    버전 겹침에는 이미 `ALLOWED_DUPES`라는 같은 장치가 있었다. 커밋 쪽에만
+    없었다.
+
+    ⚠️ 여기서 지키는 것은 **면죄부가 되지 않는가**다: 넘긴 것은 사유와 함께
+    적혀 있어야 하고, 검사기가 몇 건을 넘겼는지 말해야 한다.
+    """
+    import io
+    import contextlib
+
+    assert hasattr(checker, "ALLOWED_PREFIX_MISMATCH"), "넘김 목록이 없다"
+    allowed = checker.ALLOWED_PREFIX_MISMATCH
+    assert allowed, "목록이 비었다면 이 시험이 무엇을 지키는지 알 수 없다"
+
+    for sha, reason in allowed.items():
+        assert len(sha) >= 7, f"{sha}: 커밋 해시가 아니다"
+        assert reason.strip(), f"{sha}: 왜 넘기는지 적혀 있지 않다"
+
+    # 넘긴 건수를 **소리 내어** 말해야 한다. 조용히 빼면 목록이 늘어도 아무도 모른다.
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        problems = checker.check_commit_prefix()
+    printed = buffer.getvalue()
+    assert "넘긴 커밋" in printed, "무엇을 넘겼는지 밝히지 않는다"
+    assert str(len(allowed)) in printed
+
+    # 그리고 그 커밋들이 실제로 걸러졌는지 — 보고에 남아 있으면 안 된다.
+    for sha in allowed:
+        assert not any(sha in p for p in problems), f"{sha}를 넘긴다고 해 놓고 보고한다"

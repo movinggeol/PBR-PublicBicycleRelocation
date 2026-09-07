@@ -163,12 +163,12 @@ def main() -> int:
     if risk.empty:
         print("  관측이 모자랍니다.")
     else:
+        # 이름 바꾸기는 **출력용 사본**에서만 한다 — `risk`에는 계속 `결품비율`뿐이다.
+        # (예전에는 `if "결품%" in risk`로 갈랐는데 늘 거짓이라 죽은 분기였다, 1.26.143.)
         print(risk.rename(columns={"결품비율": "결품%"}).to_string(index=False))
-        worst = risk.loc[risk["결품%"].idxmax()] if "결품%" in risk else None
-        if worst is None:
-            worst = risk.loc[risk["결품비율"].idxmax()]
+        worst = risk.loc[risk["결품비율"].idxmax()]
         print("\n  가장 나쁜 시각: %d시 (결품 %.1f%%)"
-              % (int(worst["hour"]), float(worst.get("결품%", worst.get("결품비율")))))
+              % (int(worst["hour"]), float(worst["결품비율"])))
 
     print("\n=== 4. '늘 빔'으로 분류된 곳 (재배치 대상이 아니다) ===")
     always = stat[stat["구분"] == "늘 빔"]
