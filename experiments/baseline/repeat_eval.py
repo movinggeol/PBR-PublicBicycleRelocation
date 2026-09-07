@@ -64,38 +64,65 @@ def collect(args):
 
 
 def summarize(frame, reference="B0"):
-    """방법·시간대별 평균 ± 표준편차. 편익은 무재배치 대비 결품 감소로 잰다."""
-    base = (frame[frame["method"] == reference]
-            .set_index(["period", "seed", "duration"])["stockout_after"])
+    """방법·시간대별 평균 ± 표준편차.
+
+    편익은 무재배치 대비 **결품 감소**, 대가는 **포화 증가**로 잰다 (1.26.131).
+
+    🔴 **한쪽만 요약하면 맞바꿈이 사라진다.** 원자료에는 1.26.130부터 포화가
+    함께 실려 있었는데 이 함수가 결품만 집계해, 5개월 반복 결과에서는 대가가
+    보이지 않았다. 단일 달에서 제안 방법이 포화를 +0.19 ~ +0.44시간 늘리는
+    것을 확인했으므로(EXPERIMENTS 30장), 분포로도 그런지 봐야 한다.
+    """
+    keys = ["period", "seed", "duration"]
+    ref = frame[frame["method"] == reference].set_index(keys)
+    base = ref["stockout_after"]
+    base_sat = (ref["saturation_after"] if "saturation_after" in ref
+                else pd.Series(dtype=float))
     frame = frame.copy()
     frame["benefit"] = frame.apply(
         lambda r: base.get((r["period"], r["seed"], r["duration"]), float("nan"))
         - r["stockout_after"], axis=1)
+    # 부호를 뒤집지 않는다 — **양수면 나빠진 것**이다.
+    frame["sat_cost"] = frame.apply(
+        lambda r: r.get("saturation_after", float("nan"))
+        - base_sat.get((r["period"], r["seed"], r["duration"]), float("nan")),
+        axis=1)
 
-    summary = (frame.groupby(["duration", "method"])
-               .agg(n=("stockout_after", "size"),
-                    결품_평균=("stockout_after", "mean"),
-                    결품_표준편차=("stockout_after", "std"),
-                    감소_평균=("benefit", "mean"),
-                    감소_표준편차=("benefit", "std"),
-                    처리대수=("bikes", "mean"),
-                    이동km=("km", "mean"),
-                    최장분=("max_min", "mean"),
-                    초과=("over", "mean"))
-               .reset_index())
+    agg = dict(n=("stockout_after", "size"),
+               결품_평균=("stockout_after", "mean"),
+               결품_표준편차=("stockout_after", "std"),
+               감소_평균=("benefit", "mean"),
+               감소_표준편차=("benefit", "std"),
+               처리대수=("bikes", "mean"),
+               이동km=("km", "mean"),
+               최장분=("max_min", "mean"),
+               초과=("over", "mean"))
+    if "saturation_after" in frame.columns:
+        agg.update(포화_평균=("saturation_after", "mean"),
+                   포화_표준편차=("saturation_after", "std"),
+                   포화증가_평균=("sat_cost", "mean"),
+                   포화증가_표준편차=("sat_cost", "std"))
+
+    summary = frame.groupby(["duration", "method"]).agg(**agg).reset_index()
     return frame, summary
 
 
-def wilcoxon(frame, left, right):
-    """두 방법의 결품 시간을 짝지어 비교한다 (같은 기간·씨앗·시간대)."""
+def wilcoxon(frame, left, right, column="stockout_after"):
+    """두 방법을 짝지어 비교한다 (같은 기간·씨앗·시간대).
+
+    `column`으로 무엇을 비교할지 고른다 — 결품(`stockout_after`)과
+    **포화(`saturation_after`)를 같은 자로** 재기 위해서다 (1.26.131).
+    """
+    if column not in frame.columns:
+        return None
     try:
         from scipy.stats import wilcoxon as test
     except ImportError:
         return None
 
     keys = ["period", "seed", "duration"]
-    a = frame[frame["method"] == left].set_index(keys)["stockout_after"]
-    b = frame[frame["method"] == right].set_index(keys)["stockout_after"]
+    a = frame[frame["method"] == left].set_index(keys)[column]
+    b = frame[frame["method"] == right].set_index(keys)[column]
     paired = pd.concat([a.rename("a"), b.rename("b")], axis=1).dropna()
     if len(paired) < 5:
         return {"n": len(paired), "p": None}
@@ -113,21 +140,32 @@ def show(frame, summary, args):
           f" ({args.day_type})")
     print("=" * 100)
 
+    has_sat = "포화_평균" in summary.columns
     for duration, part in summary.groupby("duration", sort=False):
-        print(f"\n[{duration}]  결품 시간 (대여소·일 평균) — 낮을수록 좋다")
-        print(f"{'방법':<34}{'n':>4}{'결품h 평균±표준편차':>22}"
-              f"{'감소 평균±표준편차':>22}{'처리':>7}{'이동km':>9}{'최장분':>8}")
+        print(f"\n[{duration}]  결품 시간 ↓ 좋음 · 포화 시간 ↑ **나쁨**(반납 막힘)")
+        header = (f"{'방법':<34}{'n':>4}{'결품h 평균±표준편차':>22}"
+                  f"{'감소 평균±표준편차':>22}")
+        if has_sat:
+            header += f"{'포화h 평균±표준편차':>22}{'포화증가':>10}"
+        header += f"{'처리':>7}{'이동km':>9}{'최장분':>8}"
+        print(header)
         for row in part.itertuples():
             label = bc.LABELS.get(row.method, row.method)
             결품 = f"{row.결품_평균:.2f} ± {0 if pd.isna(row.결품_표준편차) else row.결품_표준편차:.2f}"
             감소 = f"{row.감소_평균:.2f} ± {0 if pd.isna(row.감소_표준편차) else row.감소_표준편차:.2f}"
-            print(f"{label:<34}{row.n:>4d}{결품:>22}{감소:>22}"
-                  f"{row.처리대수:>7.0f}{row.이동km:>9.1f}{row.최장분:>8.1f}")
+            line = f"{label:<34}{row.n:>4d}{결품:>22}{감소:>22}"
+            if has_sat:
+                sd = getattr(row, "포화_표준편차", float("nan"))
+                포화 = f"{row.포화_평균:.2f} ± {0 if pd.isna(sd) else sd:.2f}"
+                line += f"{포화:>22}{getattr(row, '포화증가_평균', float('nan')):>+10.2f}"
+            line += f"{row.처리대수:>7.0f}{row.이동km:>9.1f}{row.최장분:>8.1f}"
+            print(line)
 
     if "P" in args.methods:
         print("\n" + "-" * 100)
-        print("유의성 검정 (Wilcoxon 부호순위, 짝은 같은 기간·씨앗·시간대의 결품 시간)")
+        print("유의성 검정 (Wilcoxon 부호순위, 짝은 같은 기간·씨앗·시간대)")
         print("-" * 100)
+        print("[결품 시간] 중앙값 차가 **양수면 P가 낫다**")
         for other in [m for m in args.methods if m != "P"]:
             result = wilcoxon(frame, other, "P")
             label = bc.LABELS.get(other, other)
@@ -138,6 +176,19 @@ def show(frame, summary, args):
             elif result["p"] is None:
                 print(f"  {label:<34} n={result['n']:<3d} 표본이 5쌍 미만이라 검정 생략")
             else:
+                mark = "유의" if result["p"] < 0.05 else "유의하지 않음"
+                print(f"  {label:<34} n={result['n']:<3d}"
+                      f" 중앙값 차 {result['median_diff']:+.2f}h"
+                      f"  p = {result['p']:.4f}  ({mark}, α=0.05)")
+
+        if "saturation_after" in frame.columns:
+            print("\n[포화 시간] 중앙값 차가 **음수면 P가 더 막는다** — 대가다")
+            for other in [m for m in args.methods if m != "P"]:
+                result = wilcoxon(frame, other, "P", column="saturation_after")
+                label = bc.LABELS.get(other, other)
+                if result is None or result.get("identical") or result["p"] is None:
+                    print(f"  {label:<34} 검정 생략")
+                    continue
                 mark = "유의" if result["p"] < 0.05 else "유의하지 않음"
                 print(f"  {label:<34} n={result['n']:<3d}"
                       f" 중앙값 차 {result['median_diff']:+.2f}h"
