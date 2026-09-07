@@ -10,6 +10,7 @@
 """
 import importlib.util
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -177,3 +178,48 @@ def test_설정_상수를_어떤_표기로_적든_읽어_낸다(checker, tmp_pat
         assert checker._config_value("ALIASED") == "21"              # 별칭
     finally:
         checker.ROOT = original
+
+
+def test_테스트_개수를_어떤_표기로_적든_잡는다(checker, tmp_path):
+    """숫자와 낱말 사이에 무엇이 끼어도 잡는가 (1.26.145).
+
+    `test_설정_상수를_어떤_표기로_적든_읽어_낸다`가 **코드 쪽**에 세운 것을
+    여기서는 **문서 쪽**에 세운다. 값 검사는 문서를 정규식으로 읽으므로,
+    같은 사실을 다른 표기로 적으면 틀렸다고 답하는 게 아니라 **아무 말도
+    하지 않는다** — 그 자리는 검사되고 있다고 착각되는 만큼 더 오래 낡는다.
+
+    실제로 났다: 1.26.144가 개수를 691로 올릴 때 문서 14줄이 따라갔는데
+    목차 표의 *"**테스트** — 684개가 무엇을 지키는지"* 한 줄만 남았고,
+    굵게 표시와 줄표가 사이에 끼었다는 이유로 검사기는 **0건**이라 답했다.
+
+    지키는 것은 **지금 쓰는 표기를 다 읽는가**다. 표기를 늘리려거든
+    여기 한 줄을 먼저 늘려라.
+    """
+    쓰임 = [
+        "테스트 111개 통과",                    # 붙여 쓴 것
+        "**테스트** — 111개가 무엇을 지키는지",  # 굵게 표시 + 줄표 (놓쳤던 것)
+        "테스트는 111개다",                     # 조사가 붙은 것
+        "| **테스트** | 111개 |",               # 표 칸
+        "pytest 111개",
+    ]
+    doc = tmp_path / "아무문서.md"
+    doc.write_text("\n".join(쓰임), encoding="utf-8")
+
+    원래_ROOT, 원래_FACTS = checker.ROOT, checker.FACTS
+    개수 = next(f for f in checker.FACTS if f.name == "테스트 개수")
+    checker.ROOT = tmp_path
+    # 진실을 111로 물려 둔다 — 실제 스위트를 수집하면 느리고, 개수가 늘 때마다
+    # 이 테스트가 같이 흔들린다. 여기서 묻는 것은 개수가 아니라 **표기**다.
+    checker.FACTS = [replace(개수, truth=lambda: "111")]
+    try:
+        assert checker.check_values() == [], "지금 쓰는 표기인데 못 읽는다"
+
+        # 그리고 **정말 걸러 내는가.** 통과만 하는 검사는 규칙이 없는 것과 같다.
+        doc.write_text("\n".join(s.replace("111", "222") for s in 쓰임),
+                       encoding="utf-8")
+        problems = checker.check_values()
+        assert len(problems) == len(쓰임), (
+            f"{len(쓰임)}줄이 다 틀렸는데 {len(problems)}건만 잡는다:\n"
+            + "\n".join(problems))
+    finally:
+        checker.ROOT, checker.FACTS = 원래_ROOT, 원래_FACTS
