@@ -93,7 +93,8 @@ def main() -> int:
     durations = [args.duration] if args.duration else DURATIONS
 
     with db.session() as conn:
-        info = (db.load_frame(conn, "station_info")
+        # 좌표·거치대만 쓰지만 스냅샷은 계획 쪽으로 고정한다 (1.26.132)
+        info = (db.load_frame(conn, "station_info", kinds=("plan",))
                 .drop_duplicates("station_id", keep="last")
                 .set_index("station_id")[["lat", "lon", "parking_lot"]])
         periods = [r[0] for r in conn.execute(

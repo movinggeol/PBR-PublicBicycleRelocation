@@ -124,7 +124,7 @@ def _report_snapshot(info, run_label, period, net) -> None:
     label = run_label
     if not label:
         with db.session() as conn:
-            label = db.latest_label(conn, "station_info")
+            label = db.latest_label(conn, "station_info", kinds=("plan",))
     kind = db.classify_run_label(label)
     stock = int(info["stock"].sum()) if "stock" in info else -1
     print(f"[스냅샷] 대여소 정보 = '{label}' ({kind}) · "
@@ -137,16 +137,25 @@ def _report_snapshot(info, run_label, period, net) -> None:
         print(f"  ⚠️ '{label}'은 계획이 아니라 **{kind}**로 보입니다. "
               f"논문에 실을 값이라면 `--run-label`로 계획 실행을 못박으세요.")
     if not run_label:
-        print("  ⚠️ `--run-label`이 비어 있어 **최신 실행**을 골랐습니다 — "
-              "자료가 쌓이면 같은 명령이 다른 답을 냅니다.")
+        print("  ⚠️ `--run-label`이 비어 있어 **최신 계획 실행**을 골랐습니다 — "
+              "계획을 다시 돌리면 같은 명령이 다른 답을 냅니다. "
+              "논문에 실을 값이라면 라벨을 못박으세요.")
 
 
 def load_inputs(period, run_label, day_type, warmup_days, warmup_period):
     """순수요·대여소 정보를 DB에서 읽는다."""
     with db.session() as conn:
         net = db.load_frame(conn, "net_demand", period=period)
+        # 라벨을 안 주면 **계획 실행 중에서** 최신을 고른다 (1.26.132).
+        # `kinds`를 비우면 `latest_label()`이 종류를 안 가려, 파라미터 스윕
+        # (`sweep-10`)처럼 재고가 10.4% 적은 **실험 스냅샷**을 집는다.
+        # 논문 6.3이 재현되지 않은 원인의 절반이 여기였다(EXPERIMENTS 30·31장).
+        # ⚠️ `db.load_frame`과 `latest_label`은 처음부터 `kinds`를 받고 있었다 —
+        #    **아무도 넘기지 않았을 뿐이다.** 여기 한 곳을 고치면 이 함수를
+        #    쓰는 실험 19개가 함께 고쳐진다.
         info = db.load_frame(conn, "station_info",
-                             **({"run_label": run_label} if run_label else {}))
+                             **({"run_label": run_label} if run_label
+                                else {"kinds": ("plan",)}))
         warmup = pd.DataFrame()
         if warmup_days > 0 and warmup_period and warmup_period != period:
             warmup = db.load_frame(conn, "net_demand", period=warmup_period)

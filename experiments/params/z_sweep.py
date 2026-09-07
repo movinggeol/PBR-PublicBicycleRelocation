@@ -125,7 +125,11 @@ def load_station_stats(conn, period: str, duration: str, run_label: str,
 
     stats = net.groupby("station_id")["window"].agg(mu="mean", sigma="std").fillna(0).reset_index()
 
-    info = db.load_frame(conn, "station_info", run_label=run_label)
+    # 라벨을 안 주면 **계획 실행 중에서** 고른다 — 종류를 안 가리면 파라미터
+    # 스윕 스냅샷(`sweep-10`, 재고 −10.4%)을 집는다 (1.26.132).
+    info = db.load_frame(conn, "station_info",
+                         **({"run_label": run_label} if run_label
+                            else {"kinds": ("plan",)}))
     if info.empty:
         # 예전에는 없는 라벨이어도 빈 병합이 통과해 **비용 표가 통째로 0**으로
         # 나왔다(1.26.39에서 발견). 조용히 틀린 답을 내느니 멈춘다.
