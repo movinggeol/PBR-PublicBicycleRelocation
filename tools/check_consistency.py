@@ -142,6 +142,17 @@ def _pytest_counts() -> dict[str, str]:
     files = {str(getattr(item, "path", None) or item.fspath) for item in hook.items}
     _TEST_COUNTS["tests"] = str(len(hook.items))
     _TEST_COUNTS["files"] = str(len(files))
+    # 파일별 개수도 함께 센다 — 문서가 파일마다 숫자를 싣기 때문이다
+    # (check_test_counts 참고). 저장소 기준 상대 경로를 열쇠로 쓴다.
+    per_file: dict = {}
+    for item in hook.items:
+        path = Path(str(getattr(item, "path", None) or item.fspath))
+        try:
+            key = path.relative_to(ROOT).as_posix()
+        except ValueError:
+            key = path.name
+        per_file[key] = per_file.get(key, 0) + 1
+    _TEST_COUNTS["per_file"] = per_file
     return _TEST_COUNTS
 
 
@@ -594,8 +605,59 @@ def check_derived() -> list[str]:
     return problems
 
 
+# 문서가 파일별 테스트 개수를 싣는 두 표기.
+#   README      - `tests/test_webapp.py` (121) — 설명
+#   TESTING.md  | [tests/test_webapp.py](../../tests/test_webapp.py) | 121 | 설명
+_PER_FILE_PATTERNS = [
+    re.compile(r"`(tests/[\w.]+\.py)`\s*\((\d+)\)"),
+    re.compile(r"\[(tests/[\w.]+\.py)\]\([^)]*\)\s*\|\s*(\d+)\s*\|"),
+]
+
+
+def check_test_counts() -> list[str]:
+    """문서가 싣는 **파일별** 테스트 개수를 실제 수집과 대조한다 (1.26.147).
+
+    값 검사는 스위트 **합계**만 본다. 그래서 파일별 숫자는 표기가 달라 어느
+    패턴에도 안 걸린 채 마음대로 낡았다 — 실측으로 README 세 곳이 어긋났고
+    `test_webapp.py`는 37이라 적힌 것이 실제로는 **121**이었다(3.3배).
+
+    🔴 **같은 유형이 세 번째다.** 1.26.119는 *"확인"이 붙은 것만* 잡아
+    `pbr-run`의 "607개 통과가 기준선"을 놓쳤고, 1.26.145는 굵게 표시와 줄표가
+    끼었다는 이유로 README 목차 한 줄을 놓쳤다. 매번 값이 틀린 게 아니라
+    **검사가 그 자리에 닿지 않았다** — 그리고 그 자리는 검사되고 있다고
+    착각되는 만큼 더 오래 틀린 채 남았다.
+    """
+    problems: list[str] = []
+    per_file = _pytest_counts().get("per_file") or {}
+    if not per_file:
+        return ["[파일별 테스트] 파일별 개수를 세지 못했습니다"]
+
+    for path in _scan_targets():
+        rel = path.relative_to(ROOT).as_posix()
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        for lineno, line in enumerate(text.splitlines(), 1):
+            for pattern in _PER_FILE_PATTERNS:
+                for m in pattern.finditer(line):
+                    name, said = m.group(1), int(m.group(2))
+                    real = per_file.get(name)
+                    if real is None:
+                        problems.append(
+                            f"[파일별 테스트] {rel}:{lineno} — '{name}'은(는) "
+                            "수집되지 않는 파일입니다(이름이 바뀌었거나 지워졌습니다)")
+                    elif real != said:
+                        problems.append(
+                            f"[파일별 테스트] {rel}:{lineno} — {name} "
+                            f"문서 {said}, 실제 {real}\n"
+                            f"      {line.strip()[:110]}")
+    return problems
+
+
 CHECKS = {
     "값": check_values,
+    "파일별": check_test_counts,
     "버전": check_version_numbers,
     "커밋": check_commit_prefix,
     "논문": check_thesis,

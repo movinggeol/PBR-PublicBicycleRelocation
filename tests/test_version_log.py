@@ -223,3 +223,62 @@ def test_테스트_개수를_어떤_표기로_적든_잡는다(checker, tmp_path
             + "\n".join(problems))
     finally:
         checker.ROOT, checker.FACTS = 원래_ROOT, 원래_FACTS
+
+
+def test_파일별_테스트_개수도_대조한다(checker, tmp_path):
+    """합계만 보면 **파일별 숫자는 마음대로 낡는다** (1.26.147).
+
+    값 검사는 스위트 **합계**(696)만 본다. 그런데 README와 TESTING.md는
+    파일별 개수도 싣는데, 그 표기가 달라 어느 패턴에도 안 걸렸다:
+
+        README      `tests/test_webapp.py` (37)   <- '개'가 없다
+        TESTING.md  | [tests/test_webapp.py](…) | 121 |   <- 칸 안의 맨 숫자
+
+    실측으로 README 3곳이 낡아 있었고 `test_webapp.py`는 **37 → 121**,
+    3.3배였다. 합계는 늘 맞았으므로 검사기는 0건이라 답했다.
+
+    📌 **같은 유형이 세 번째다.** 1.26.119는 *"확인"이 붙은 것만* 잡아
+    `pbr-run`의 "607개 통과가 기준선"을 놓쳤고, 1.26.145는 굵게 표시와
+    줄표가 끼었다는 이유로 README 목차 한 줄을 놓쳤다. 매번 값이 틀린 게
+    아니라 **검사가 그 자리에 닿지 않았다.**
+
+    여기서 지키는 것은 **파일별 숫자가 실제 수집과 같은가**다.
+    """
+    문서 = tmp_path / "안내.md"
+    문서.write_text(
+        "- `tests/test_alpha.py` (2) — 설명\n"
+        "| [tests/test_beta.py](../../tests/test_beta.py) | 3 | 설명 |\n",
+        encoding="utf-8")
+
+    원래_ROOT = checker.ROOT
+    원래_계산 = checker._pytest_counts
+    checker.ROOT = tmp_path
+    # 진실을 물려 둔다 — 실제 스위트를 수집하면 느리고, 파일이 자랄 때마다
+    # 이 테스트가 함께 흔들린다. 묻는 것은 개수가 아니라 **대조하는가**다.
+    checker._pytest_counts = lambda: {
+        "tests": "5", "files": "2",
+        "per_file": {"tests/test_alpha.py": 2, "tests/test_beta.py": 3},
+    }
+    try:
+        assert checker.check_test_counts() == [], "맞는데 틀렸다고 한다"
+
+        # 그리고 **정말 걸러 내는가.** 두 표기를 각각 어긋나게 해 본다.
+        문서.write_text(
+            "- `tests/test_alpha.py` (99) — 설명\n"
+            "| [tests/test_beta.py](../../tests/test_beta.py) | 77 | 설명 |\n",
+            encoding="utf-8")
+        problems = checker.check_test_counts()
+        assert len(problems) == 2, (
+            f"두 표기가 다 어긋났는데 {len(problems)}건만 잡는다:\n"
+            + "\n".join(problems))
+        붙은글 = "\n".join(problems)
+        assert "test_alpha" in 붙은글 and "test_beta" in 붙은글, (
+            "어느 파일이 어긋났는지 말해 주지 않는다")
+    finally:
+        checker.ROOT = 원래_ROOT
+        checker._pytest_counts = 원래_계산
+
+
+def test_지금_문서의_파일별_개수는_맞다(checker):
+    """현행 문서가 실제로 통과하는지 — 회귀 감지용."""
+    assert checker.check_test_counts() == []
