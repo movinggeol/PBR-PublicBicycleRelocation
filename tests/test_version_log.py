@@ -282,3 +282,64 @@ def test_파일별_테스트_개수도_대조한다(checker, tmp_path):
 def test_지금_문서의_파일별_개수는_맞다(checker):
     """현행 문서가 실제로 통과하는지 — 회귀 감지용."""
     assert checker.check_test_counts() == []
+
+
+def test_문서끼리_건_링크가_살아_있는지_본다(checker, tmp_path):
+    """상대 링크가 실제 파일을 가리키는지 본다 (1.26.148).
+
+    문서 58개가 서로를 촘촘히 가리킨다. 파일이 폴더를 옮기면 링크는 **조용히
+    죽는다** — 오류가 안 나고, 누른 사람만 404를 본다. 실제로 버전관리.md의
+    `[GLOSSARY](GLOSSARY.md)`가 그랬다(정본은 `docs/GLOSSARY.md`라 `../`가
+    필요한데 빠져 있었다). 같은 문서 다른 두 곳은 `../GLOSSARY.md`로 맞게
+    적혀 있어, **한 문서 안에서도 갈려 있었다.**
+
+    ⚠️ **코드 담장(```) 안은 보지 않는다.** 표기법을 설명하려고 링크 모양을
+    그대로 인용하는 자리가 있어서(1.26.147의 `| [tests/…](…) | 121 |`),
+    그것까지 링크로 세면 검사기가 오탐만 늘어놓는다.
+    """
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "있다.md").write_text("본문", encoding="utf-8")
+    좋은글 = ("[이웃](있다.md) · [바깥](../밖.md)\n"
+              "```\n"
+              "[모양만](…) 코드 담장 안이라 안 센다\n"
+              "```\n")
+    (tmp_path / "밖.md").write_text("본문", encoding="utf-8")
+    (tmp_path / "docs" / "글.md").write_text(좋은글, encoding="utf-8")
+
+    원래 = checker.ROOT
+    checker.ROOT = tmp_path
+    try:
+        assert checker.check_links() == [], "멀쩡한 링크를 깨졌다고 한다"
+
+        # 그리고 **정말 걸러 내는가.**
+        (tmp_path / "docs" / "글.md").write_text(
+            "[없다](없는파일.md) · [폴더가틀림](GLOSSARY.md)\n", encoding="utf-8")
+        problems = checker.check_links()
+        assert len(problems) == 2, (
+            f"둘 다 깨졌는데 {len(problems)}건만 잡는다:\n" + "\n".join(problems))
+        붙임 = "\n".join(problems)
+        assert "없는파일.md" in 붙임 and "GLOSSARY.md" in 붙임, (
+            "어느 링크가 깨졌는지 말해 주지 않는다")
+    finally:
+        checker.ROOT = 원래
+
+
+def test_지금_문서의_링크는_다_살아_있다(checker):
+    """현행 문서가 실제로 통과하는지 — 회귀 감지용."""
+    assert checker.check_links() == []
+
+
+def test_면제_목록이_없는_파일을_가리키지_않는다(checker):
+    """`HISTORY_DOCS`가 **실재하는 문서**를 가리키는지 본다 (1.26.148).
+
+    이 목록은 *"이 문서는 옛 값을 싣는 게 정상이니 값 검사에서 빼라"* 는
+    뜻이다. 그런데 파일이 폴더를 옮기면 목록만 옛 경로로 남고, **면제는
+    조용히 죽는다** — 그 문서는 이제 검사 대상인데 아무도 모른다.
+
+    실제로 `docs/기록/두_PC_작업.md`가 1.26.121에서 `docs/구현/`으로 옮겨져
+    면제가 죽어 있었다. 지금은 그 문서에 검사 대상 값이 없어 탈이 안 났을
+    뿐이다 — 값이 하나 들어오는 순간 이유 없이 빨간 줄이 뜬다.
+    """
+    없는것 = [d for d in checker.HISTORY_DOCS if not (checker.ROOT / d).exists()]
+    assert not 없는것, (
+        f"면제 목록이 없는 파일을 가리킨다(옮겼거나 지웠다): {없는것}")

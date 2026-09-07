@@ -55,7 +55,7 @@ HISTORY_DOCS = {
     "docs/기록/버전관리.md",
     "docs/기록/메모.md",
     "docs/기록/ORIGINS.md",
-    "docs/기록/두_PC_작업.md",
+    "docs/구현/두_PC_작업.md",   # 1.26.121에 기록/ → 구현/으로 옮겼다
     "docs/기록/RETROSPECTIVE.md",  # "0개 → 548개" 같은 전후 대비를 싣는다
 }
 
@@ -655,8 +655,54 @@ def check_test_counts() -> list[str]:
     return problems
 
 
+_LINK_RE = re.compile(r"\[([^\]]{1,80})\]\(([^)]+)\)")
+_FENCE_RE = re.compile(r"^\s*(```|~~~)")
+
+
+def check_links() -> list[str]:
+    """문서끼리 건 상대 링크가 **실제 파일을 가리키는지** 본다 (1.26.148).
+
+    문서 58개가 서로를 촘촘히 가리킨다. 파일이 폴더를 옮기면 링크는 조용히
+    죽는다 — 오류가 나지 않고, 누른 사람만 404를 본다. 실제로 버전관리.md의
+    `[GLOSSARY](GLOSSARY.md)`가 그랬다(정본이 `docs/GLOSSARY.md`라 `../`가
+    필요했다). **같은 문서 다른 두 곳은 맞게 적혀 있었다** — 한 문서 안에서도
+    갈렸다는 뜻이라, 사람 눈으로 지킬 수 있는 종류가 아니다.
+
+    ⚠️ 코드 담장(``` / ~~~) 안은 세지 않는다. 표기법을 설명하려고 링크 모양을
+    그대로 인용하는 자리가 있어서(1.26.147), 그것까지 세면 오탐만 늘어난다.
+    """
+    problems: list[str] = []
+    for path in sorted(ROOT.rglob("*.md")):
+        if any(part in SKIP_DIRS for part in path.parts):
+            continue
+        rel = path.relative_to(ROOT).as_posix()
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        fence = False
+        for lineno, line in enumerate(text.splitlines(), 1):
+            if _FENCE_RE.match(line):
+                fence = not fence
+                continue
+            if fence:
+                continue
+            for m in _LINK_RE.finditer(line):
+                target = m.group(2).split("#")[0].strip()
+                if not target or target.startswith(
+                        ("http://", "https://", "mailto:", "<")):
+                    continue
+                if (path.parent / target).exists():
+                    continue
+                problems.append(
+                    f"[링크] {rel}:{lineno} — '{target}'이(가) 없습니다"
+                    f"\n      [{m.group(1)[:40]}]({target})")
+    return problems
+
+
 CHECKS = {
     "값": check_values,
+    "링크": check_links,
     "파일별": check_test_counts,
     "버전": check_version_numbers,
     "커밋": check_commit_prefix,
