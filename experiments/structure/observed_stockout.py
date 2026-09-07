@@ -37,13 +37,16 @@ from project_config import DURATIONS, REBAL_MIN_QTY, duration_hours
 # 수집 간격(분). 한 틱이 대표하는 시간이 곧 결품 시간의 단위다.
 TICK_MINUTES = 10
 
-# 하루가 '온전하다'고 볼 기준 — **그날 실제로 관측된 시간 폭에서 구한다.**
+# 그 날(또는 그 회차)이 '촘촘하다'고 볼 기준 — **잰 창의 비율로 판정한다.**
 #
 # ⚠️ 예전에는 `MIN_TICKS_PER_DAY = 40`으로 박아 두었다. 09~17시(49틱) 기준의
 # 82%였는데, 1.25.1에서 수집 창이 07~22시(91틱)로 넓어지자 **44%가 됐다** —
-# 반나절만 모인 날이 '온전한 날'로 통과한다. 아래 `complete_days()`가 그러면
-# 안 된다고 적어 둔 바로 그 상황이다("반쪽짜리 날을 섞으면 시간이 과소 집계된다").
-# 창은 앞으로도 바뀔 수 있으므로 **상수 대신 비율로 판정한다.**
+# 반나절만 모인 날이 통과했다. 창은 앞으로도 바뀌므로 **상수 대신 비율**이다.
+#
+# 🔴 비율로 바꾼 뒤에도 함정이 하나 남아 있었다(1.26.153에서 제거). 분모를
+# **가장 넓게 모인 하루**에서 구해 모든 날에 들이댔더니, 넓은 날이 하나
+# 들어올 때마다 좁은 창의 촘촘한 날들이 **소급해 탈락**했다. 이제 분모는
+# 언제나 **재는 대상 자신의 창**이다 — 날은 그날의 창, 회차는 그 회차의 시간대.
 COMPLETE_DAY_RATIO = 0.8
 
 # 창을 못 읽었을 때의 최소 안전선(틱). 하루에 이만큼도 없으면 어떤 비율이든 볼 것이 없다.
@@ -64,42 +67,36 @@ def load(day_type: str) -> pd.DataFrame:
     return frame.merge(parking, on="station_id", how="left")
 
 
-def expected_ticks(frame: pd.DataFrame) -> int:
-    """관측된 자료에서 **하루에 기대되는 틱 수**를 되짚는다.
+def dense_days(frame: pd.DataFrame) -> list:
+    """**자기 창 안에서** 촘촘히 모인 날만 고른다 (1.26.153).
 
-    수집 창을 여기 박아 두지 않는 이유는 창이 실제로 바뀌었기 때문이다
-    (09~17 → 07~22, 1.25.1). 가장 많이 모인 날의 첫 틱~끝 틱 폭을 그날의 창으로
-    보고 계산한다 — 하루라도 온전히 돈 날이 있으면 그게 곧 창이다.
+    ⚠️ **하루 전체를 판정하지 않는다.** 예전 `complete_days()`는 *가장 넓게
+    모인 하루*로 잣대를 세워 **모든 날에 그 잣대를 들이댔다.** 그래서 잣대가
+    자료를 더하면 움직였다 — 실측에서 8/31(07~22시)이 들어오자 기대가
+    49 → 91틱으로 뛰며 8/25~28이 **소급해서 탈락**했다(4일 → 1일). 그 네 날은
+    반쪽짜리가 아니다. 09~17시 창 안에서 **결측 0으로 100% 촘촘하다.**
+
+    그래서 각 날을 **그날 실제로 돈 창**에 대고 잰다. 이 판정은 나중에 더 넓은
+    날이 들어와도 뒤집히지 않는다. 대신 *"하루가 온전한가"* 는 더 이상 묻지
+    않는다 — 그 물음은 **회차 단위**(`duration_complete_days()`)가 답하고,
+    수집 창 자체의 결손은 `tools/collect_stock.py --status`가 **등록된 창**에
+    대고 답한다(둘은 다른 물음이다, COLLECTOR.md 6장).
     """
     if frame.empty:
-        return 0
-    span = frame.groupby("날짜")["관측"].agg(["min", "max", "nunique"])
-    best = span.loc[span["nunique"].idxmax()]
-    minutes = (best["max"] - best["min"]).total_seconds() / 60
-    return int(minutes // TICK_MINUTES) + 1
-
-
-def complete_days(frame: pd.DataFrame) -> list:
-    """틱이 충분히 모인 날만 고른다. **반쪽짜리 날을 섞으면 시간이 과소 집계된다.**"""
-    if frame.empty:
         return []
-    threshold = max(int(expected_ticks(frame) * COMPLETE_DAY_RATIO), MIN_TICKS_FLOOR)
-    ticks = frame.groupby("날짜")["관측"].nunique()
-    return sorted(ticks[ticks >= threshold].index)
+    span = frame.groupby("날짜")["관측"].agg(["min", "max", "nunique"])
+    minutes = (span["max"] - span["min"]).dt.total_seconds() / 60
+    expected = (minutes // TICK_MINUTES).astype(int) + 1
+    need = (expected * COMPLETE_DAY_RATIO).astype(int).clip(lower=MIN_TICKS_FLOOR)
+    return sorted(span.index[span["nunique"] >= need])
 
 
 def duration_complete_days(frame: pd.DataFrame, hours: list) -> list:
     """**그 회차를 온전히 덮은 날**만 고른다 (2026-09-01).
 
-    `complete_days()`는 하루 전체로 판정하는데, 수집 창이 날마다 다르면 그것이
-    통하지 않는다. 실제로 8/25~9/01에는 두 종류의 창이 섞여 있었다 —
-    8/31만 07~22시(77틱)이고 나머지는 09~18시대(34~61틱)다. 가장 넓은 날이
-    기준(91틱의 80% = 72틱)을 정하는 바람에 **좁은 창 날이 전부 탈락해
-    온전한 날이 1일**이 됐다. 그런데 그 날들은 반쪽짜리가 아니다 —
-    **자기 창 안에서는 결측 0으로 촘촘하다**(실측 100%).
-
-    회차 비교에 필요한 것은 '하루가 온전한가'가 아니라 **'이 회차의 시간대가
-    다 덮였는가'** 이므로, 여기서는 회차 단위로 판정한다.
+    날이 촘촘한 것(`dense_days()`)과 **그 회차가 덮인 것**은 다른 물음이다.
+    09~17시에 결측 0으로 모은 날은 촘촘하지만 `_15_20`은 한 시간도 못 덮는다.
+    회차 비교에 필요한 것은 뒤쪽이므로 여기서는 **그 회차의 시간대만** 본다.
     """
     if frame.empty or not hours:
         return []
@@ -116,9 +113,9 @@ def usable_by_duration(frame: pd.DataFrame, durations: list, window) -> dict:
     """회차마다 **쓸 수 있는 날**과 창이 회차를 통째로 덮는지를 돌려준다.
 
     `{회차: (날 목록, 창이_일부인가)}`. 머리기사가 이것을 써야 하는 이유는
-    `complete_days()`의 잣대가 **자료를 더하면 움직이기** 때문이다 —
-    `expected_ticks()`가 가장 넓게 모인 날로 기준을 정하므로, 좁은 창에서
-    촘촘히 모은 날이 나중에 소급해 탈락한다(4일 → 1일이 실제로 났다).
+    날의 촘촘함이 **회차가 덮였는지를 말해 주지 못하기** 때문이다 — 09~17시로
+    촘촘한 날도 `_15_20`은 못 덮는다. 실측에서도 `_10_15`가 6일인데 머리기사는
+    1일이라 적고 있었다(1.26.123에서 옮겼다).
 
     창이 회차를 통째로 덮지 못하면 날이 아무리 많아도 복원과 맞댈 수 없다
     (`compare_with_simulation`이 건너뛴다). 날 수만 적으면 쓸 수 있는 줄 안다.
@@ -321,25 +318,25 @@ def main() -> int:
         print("수집된 재고가 없습니다. scripts/collector.ps1 install 로 수집을 시작하세요.")
         return 1
 
-    days = complete_days(frame)
+    days = dense_days(frame)
     span = f"{frame['날짜'].min()} ~ {frame['날짜'].max()}"
     print(f"수집 {frame['관측'].nunique():,}틱 · 대여소 {frame['station_id'].nunique():,}곳"
           f" · {span} · 요일 {args.day_type}")
-    expected = expected_ticks(frame)
-    threshold = max(int(expected * COMPLETE_DAY_RATIO), MIN_TICKS_FLOOR)
-    print(f"관측된 창: 하루 {expected}틱 기대 · 온전한 날 기준 {threshold}틱 이상")
-    print(f"하루 전체가 온전한 날: {len(days)}일"
+    print(f"자기 창 안에서 촘촘한 날: {len(days)}일"
           f"{' — ' + ', '.join(days) if days else ''}")
+    # ⚠️ **"하루가 온전하다"는 뜻이 아니다.** 좁은 창에서 결측 없이 모은 날도
+    # 여기 든다 — 얼마나 넓게 덮었는지는 아래 회차별 판정이 답하고, 등록된
+    # 창에 견준 결손은 `tools/collect_stock.py --status`가 답한다.
+    print("           ↳ 창의 넓이는 안 봅니다. 회차를 덮었는지는 아래를,")
+    print("             등록된 창 대비 결손은 tools/collect_stock.py --status를 보세요.")
 
     # 수집 창과 겹치는 시간대만 뜻이 있다. 창은 자료에서 읽는다(박아 두지 않는다).
     window = frame["시각"].unique()
     durations = [args.duration] if args.duration else list(DURATIONS)
     targets = target_stations()
 
-    # ⚠️ **위 숫자를 머리기사로 쓰지 않는다** (2026-09-05). 이 잣대는 자료를
-    # 더하면 움직인다 — `expected_ticks()`가 **가장 넓게 모인 날**로 기준을
-    # 정하므로, 좁은 창에서 촘촘히 모은 날이 통째로 탈락한다(실제로 자료를
-    # 늘렸더니 4일 → 1일이 됐다). 분석이 실제로 쓰는 것은 **회차별** 판정이다.
+    # ⚠️ **위 숫자를 머리기사로 쓰지 않는다** (2026-09-05). 분석이 실제로 쓰는
+    # 것은 **회차별** 판정이다 — 회차를 덮었는지는 날의 촘촘함이 답하지 못한다.
     usable = usable_by_duration(frame, durations, window)
     if any(days_ for days_, _ in usable.values()):
         print(f"회차별 쓸 수 있는 날: {format_usable(usable)}")

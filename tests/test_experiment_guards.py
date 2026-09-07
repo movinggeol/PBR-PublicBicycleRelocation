@@ -309,15 +309,41 @@ def _mixed_window_frame(obs):
     return pd.DataFrame(rows)
 
 
-def test_하루_전체_판정은_자료를_더하면_움직인다(obs):
-    """**이것이 결함이다** — 좁은 창 날은 자기 창 안에서 결측 0인데도, 나중에
-    넓은 날이 들어오면 소급해서 탈락한다. 잣대가 자료에 따라 움직인다.
+def test_날_판정은_넓은_날이_들어와도_소급해_뒤집히지_않는다(obs):
+    """**1.26.153에서 고친 결함이다.** 예전 `complete_days()`는 *가장 넓게 모인
+    하루*로 분모를 세워 모든 날에 들이댔다 — 좁은 창 날은 자기 창 안에서 결측
+    0인데도 넓은 날이 하나 들어오면 **소급해서 탈락**했다(실측 4일 → 1일).
+
+    이제 각 날은 **그날의 창**에 대고 잰다. 자료가 늘면 날은 늘기만 한다.
     """
     frame = _mixed_window_frame(obs)
     narrow = frame[frame["날짜"] != "2026-08-31"]
 
-    assert len(obs.complete_days(narrow)) == 2      # 좁은 날끼리는 둘 다 온전
-    assert obs.complete_days(frame) == ["2026-08-31"]   # 넓은 날이 들어오자 탈락
+    before = obs.dense_days(narrow)
+    after = obs.dense_days(frame)
+
+    assert len(before) == 2                     # 좁은 날 둘은 자기 창 안에서 촘촘
+    assert set(before) <= set(after), "넓은 날이 들어오자 좁은 날이 탈락했다"
+    assert "2026-08-31" in after                # 넓은 날도 물론 든다
+    assert len(after) == 3
+
+
+def test_촘촘한_날은_창의_넓이를_묻지_않는다(obs):
+    """`dense_days()`가 답하는 것은 *"그 창을 촘촘히 채웠나"* 뿐이다.
+
+    **"하루가 온전한가"가 아니다** — 반나절만 돈 날도 그 반나절이 빽빽하면
+    든다. 넓이를 묻는 것은 회차 판정(`duration_complete_days()`)과 수집기의
+    `--status`이고, 이 둘은 여기서 답하지 않는다. 이 구분이 흐려지면 같은
+    이름으로 두 가지를 뜻하게 된다(1.26.121에 실제로 그랬다).
+    """
+    frame = _mixed_window_frame(obs)
+    narrow_days = [d for d in obs.dense_days(frame) if d != "2026-08-31"]
+
+    assert narrow_days, "09~17시만 돈 날이 촘촘함 판정에서 빠졌다"
+    # 그 날들은 `_15_20`(15~20시)을 못 덮는다 — 촘촘해도 회차는 못 덮는다.
+    # (넓은 8/31은 덮으므로 "비었다"가 아니라 "좁은 날이 없다"를 물어야 한다.)
+    covered = obs.duration_complete_days(frame, [15, 16, 17, 18, 19])
+    assert not (set(narrow_days) & set(covered)), "09~17시 날이 15~20시를 덮었다고 나왔다"
 
 
 def test_회차_판정은_넓은_날이_들어와도_흔들리지_않는다(obs):
@@ -333,7 +359,7 @@ def test_회차_판정은_넓은_날이_들어와도_흔들리지_않는다(obs)
 
 
 def test_머리기사는_회차별로_말하고_창이_모자라면_밝힌다(obs):
-    """머리기사가 `complete_days()` 하나로 말하면 **근거를 낮춰 말한다** —
+    """머리기사가 날 판정 하나로 말하면 **근거를 낮춰 말한다** —
     실측에서 `_10_15`가 6일인데 "온전한 날 1일"이라고 적고 있었다.
 
     창이 회차를 통째로 덮지 못하면 날 수가 있어도 복원과 맞대지 못하므로
