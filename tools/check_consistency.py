@@ -512,11 +512,48 @@ def check_thesis() -> list[str]:
     return problems
 
 
+# 🔴 **결론과 초록은 새 수치를 만들면 안 된다.** 둘 다 앞 장을 압축한 글이라
+#    거기 처음 나오는 숫자는 **근거 없는 숫자**다. 실제로 1.26.137의 9장 초안이
+#    6.3의 `374.7~458.5km`를 `375~459km`로 반올림해 **6장에 없는 범위를**
+#    만들었다(1.26.139에서 잡음).
+DERIVED_DOCS = {
+    "docs/연구/초안/9장_결론.md": "docs/연구/초안/6장_실험_성능평가.md",
+    "docs/연구/초안/초록.md": "docs/연구/초안/6장_실험_성능평가.md",
+}
+# 장 번호(6.3)·연도(2026)·표본 크기처럼 **압축한 글이 당연히 새로 쓰는** 수는 뺀다.
+_DERIVED_SKIP = re.compile(r"^(?:\d{1,2}|\d{4}|\d\.\d|\d\.\d\.\d)$")
+
+
+def check_derived() -> list[str]:
+    """결론·초록이 원본 장에 없는 수치를 만들지 않았는지 본다 (1.26.139)."""
+    problems: list[str] = []
+    num = re.compile(r"\d+(?:\.\d+)?")
+    for doc, src in DERIVED_DOCS.items():
+        dp, sp = ROOT / doc, ROOT / src
+        if not (dp.exists() and sp.exists()):
+            continue
+        source = sp.read_text(encoding="utf-8")
+        for lineno, line in enumerate(dp.read_text(encoding="utf-8").splitlines(), 1):
+            if line.lstrip().startswith((">", "|")) or "](" in line:
+                continue          # 머리말·표·링크는 원본을 가리키는 글이다
+            for m in num.finditer(line):
+                v = m.group(0)
+                if _DERIVED_SKIP.match(v) or v in source:
+                    continue
+                problems.append(
+                    f"[파생 문서] {doc}:{lineno} — '{v}'이(가) 원본({Path(src).name})에 "
+                    f"없습니다. 반올림했거나 새로 만든 수치입니다\n"
+                    f"      {line.strip()[:110]}"
+                )
+    return problems
+
+
 CHECKS = {
     "값": check_values,
     "버전": check_version_numbers,
     "커밋": check_commit_prefix,
     "논문": check_thesis,
+    "파생": check_derived,
 }
 
 
