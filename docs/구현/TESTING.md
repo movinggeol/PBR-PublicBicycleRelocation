@@ -1,11 +1,11 @@
 # 테스트
 
 이 프로젝트는 처음에 테스트가 하나도 없었고, **의존성이 전부 깨진 상태**로
-파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 714개 테스트입니다.
+파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 721개 테스트입니다.
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 714개 (약 200초)
+python -m pytest              # 전체 721개 (약 200초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -43,7 +43,8 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_reproduce.py](../../tests/test_reproduce.py) | 7 | **재현 절차가 정말 합성 데이터로 도는지** — README 절차가 합성 대여소 90곳을 만들어 놓고 실데이터 1,361곳을 돌리고 있었다(2026-08-31). 오류가 없어 아무도 눈치채지 못했다 |
 | [tests/test_project_config.py](../../tests/test_project_config.py) | 6 | **숫자 환경변수 오류 문구** — `PBR_*` 21곳이 날것으로 파싱해 잘못된 값을 주면 *"invalid literal for int()"* 로 죽었다. **변수 이름이 그 문구에 없어** 스무 개 넘는 것 중 무엇을 잘못 줬는지 알 길이 없었다(1.26.144). 여기서 묻는 것은 *"오류가 나는가"* 가 아니라 **"오류 문구에 변수 이름이 있는가"** 다 |
 | [tests/test_stockout_map.py](../../tests/test_stockout_map.py) | 4 | **결품 지도** — '늘 빔'(재배치로 못 고치는 곳)을 섞어 세지 않는지, 관측이 없는 시간을 '결품 없음'으로 읽지 않는지 |
-| **합계** | **714** | 26개 파일 · 약 200초 (`python -m pytest`) |
+| [tests/test_commit_guard.py](../../tests/test_commit_guard.py) | 7 | **커밋에 남의 변경이 섞이는지** — 세션 둘이 같은 `.git/index`를 쓰는 저장소라, 파일을 이름으로 집어 스테이징하고 `git diff --cached`로 확인해도 **확인과 커밋 사이에 뒤바뀐다**(2026-09-08 실측: 남의 파일 8개가 섞이고 내 파일 4개가 빠졌다). 여기서 묻는 것은 *"판정 함수가 옳은 값을 내는가"* 가 아니라 **"`git commit`이 실제로 멈추는가"** 다 — 임시 저장소에 훅을 놓고 커밋을 시켜 **HEAD가 안 움직였는지**로 잰다. 한글 경로(`core.quotepath`)와 하위 폴더 실행도 함께 본다: 둘 다 실제로 깨졌고 테스트가 잡았다 |
+| **합계** | **721** | 27개 파일 · 약 200초 (`python -m pytest`) |
 
 > **이 합계는 손으로 세지 마세요.** 1.26.88이 손으로 세어 548이라 적었는데
 > 실측은 555였습니다 — `test_version_log.py` 한 파일을 통째로 빠뜨린 것입니다.

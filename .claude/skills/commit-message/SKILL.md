@@ -137,6 +137,23 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 - 여러 논리적 변경(예: 이번 세션 작업 + 이전 세션의 무관한 webapp 수정)을 한 커밋에
   섞는 것 — 파일을 이름으로 콕 집어 스테이징한다(`git add -A` 금지, 이 저장소
   루트 CLAUDE 지침과도 일치).
+
+  🔴 **이름으로 집는 것만으로는 못 막는다** (1.26.155에 실제로 당했다). 세션
+  여럿이 **같은 `.git/index`** 를 써서, `git diff --cached`로 확인한 **뒤에**
+  인덱스가 바뀐다 — 확인은 통과했는데 커밋에는 남의 파일 8개가 섞이고 내 파일
+  4개가 빠졌다. 확인과 커밋 사이의 창은 사람이 못 닫는다. 커밋을 낼 때는:
+
+  ```bash
+  python tools/commit_guard.py --intend <넣을 파일들>   # 의도를 적어 둔다
+  git add <같은 파일들>
+  git commit -m "..."      # 다르면 pre-commit 훅이 막고 무엇이 다른지 말한다
+  ```
+
+  훅이 없으면 `python tools/commit_guard.py --install` 로 한 번만 놓으면 된다.
+  **목록을 안 적으면 아무것도 막지 않으므로** 평소 커밋은 그대로 하면 된다.
+
+  ⚠️ 그래도 **커밋 뒤에 `git show --stat HEAD`로 실제로 들어간 것을 확인하라.**
+  가드를 안 쓴 커밋은 여전히 조용히 섞인다.
 - 과거 트레일러 문구(`Claude Opus 5 (1M context)`)를 사실과 다르게 그대로
   복사하는 것 — 실제로 그 커밋을 작성한 모델 이름을 쓴다.
 
