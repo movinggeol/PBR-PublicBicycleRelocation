@@ -289,7 +289,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 
-python -m pytest              # 684개 통과 확인 (약 100초)
+python -m pytest              # 691개 통과 확인 (약 100초)
 python tools/reproduce.py     # 합성 데이터 생성 → step0~step4 → 결과 표 (약 20초)
 ```
 
@@ -321,7 +321,7 @@ $env:PBR_DB_PATH = "data/재현.db"; python -m webapp   # http://127.0.0.1:8000
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest                 # 684개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 691개, 약 100초 (tests/ 만 수집)
 ```
 
 - `tests/test_pipeline.py` (32) — 합성 데이터로 step0→step1→step2→step4를

@@ -74,6 +74,14 @@ def _config_value(name: str) -> str:
     )
     if env:
         return env.group(1)
+    # env_int("PBR_...", 42) / env_float("PBR_...", 1.99) — 1.26.144에서 스무 곳
+    # 넘는 날것 파싱을 이 헬퍼로 묶었다. 기본값이 **따옴표 없는 숫자**라 위
+    # 정규식에 안 걸린다(실제로 그 판에서 z·γ 검사가 통째로 멈췄다).
+    helper = re.search(
+        rf"^{name}\s*=\s*env_(?:int|float)\([^,]+,\s*([0-9.]+)\s*\)", src, re.M
+    )
+    if helper:
+        return helper.group(1)
     alias = re.search(rf"^{name}\s*=\s*(\w+)\s*$", src, re.M)
     if alias:
         return _config_value(alias.group(1))

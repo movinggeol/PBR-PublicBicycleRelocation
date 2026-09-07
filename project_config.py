@@ -59,6 +59,41 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_ROOT = Path(os.getenv("PBR_DATA_ROOT") or (PROJECT_ROOT / "data")).resolve()
 PP_ROOT = DATA_ROOT / "pp_data"
 
+
+def _env_number(name: str, default, cast, kind: str):
+    """숫자 환경변수를 읽는다 — **어느 변수가 잘못됐는지 밝히고** 죽는다.
+
+    🔴 예전에는 스무 곳이 `int(os.getenv("PBR_...", "42"))`처럼 날것으로 파싱했다
+    (1.26.125에서 발견). `PBR_CLUSTER_SEED=abc`를 주면 이 모듈을 **import 하는
+    순간** `ValueError: invalid literal for int() with base 10: 'abc'`로 죽는데,
+    그 문구에는 **변수 이름이 없다** — 스무 개 중 어느 것을 잘못 줬는지 사용자가
+    알 길이 없었다. `normalize_vehicle_count()`를 거치는 둘만 제대로 된 문구를
+    내고 있었다.
+
+    빈 문자열은 기본값으로 넘기지 않는다 — 값을 주려다 비운 것과 아예 안 준 것을
+    가를 수 없어 조용히 기본값으로 도는 쪽이 더 나쁘다.
+    """
+    raw = os.getenv(name)
+    if raw is None:
+        raw = default
+    try:
+        return cast(str(raw).strip())
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"환경변수 {name}는 {kind}여야 합니다 (입력: {raw!r})."
+        ) from None
+
+
+def env_int(name: str, default) -> int:
+    """정수 환경변수. 잘못된 값이면 변수 이름을 밝히는 ValueError."""
+    return _env_number(name, default, int, "정수")
+
+
+def env_float(name: str, default) -> float:
+    """실수 환경변수. 잘못된 값이면 변수 이름을 밝히는 ValueError."""
+    return _env_number(name, default, float, "실수")
+
+
 DEFAULT_NOW = os.getenv("PBR_NOW", "2026-05-21 18")
 
 # ---- 시간대 (duration) ----
@@ -216,7 +251,7 @@ def period_label(date) -> str:
 # 배율을 대여소별로 추정하지 않는 이유: 며칠치로 나누면 잡음만 커지고, 계절 효과는
 # 도시 전체에 같은 방향으로 오기 때문이다. 근거: docs/분석/EXPERIMENTS.md 3장.
 # 0이면 끈다.
-DEFAULT_WARMUP_DAYS = int(os.getenv("PBR_WARMUP_DAYS", "14"))
+DEFAULT_WARMUP_DAYS = env_int("PBR_WARMUP_DAYS", 14)
 
 DEFAULT_RAW_FILE = os.getenv(
     "PBR_RAW_FILE",
@@ -242,7 +277,7 @@ DEFAULT_WEATHER_FILE = os.getenv(
 # 그래서 '양수면 경고'는 **늘 뜨는 거짓 경보**였다. 실측(26년 03월 `_05_10`):
 # Pick +1h vs Drop -2915h = 0.03%. 그 경고 때문에 target_qty를 의심하고 조사했는데
 # 아무 문제가 없었다(1.19.6). Drop 이득의 5%를 넘을 때만 알린다.
-PICK_HARM_WARN_SHARE = float(os.getenv("PBR_PICK_HARM_WARN_SHARE", "0.05"))
+PICK_HARM_WARN_SHARE = env_float("PBR_PICK_HARM_WARN_SHARE", 0.05)
 
 # ---- 지도 배경 타일 ----
 # **세 지도(군집·경로·재고)가 반드시 같은 값을 써야 한다.** 예전에는 스크립트마다
@@ -268,7 +303,7 @@ VEHICLE_CAPACITY = 10
 # 두 단계가 다른 속도로 계산하면 ILP가 최소 비용이라고 고른 조합이 VRP에서는
 # 최소가 아니게 된다. 1.13.2에서 25로 통일(VRP가 30이었음).
 # 도심 주행·정차를 감안한 보수적 값이며, 현장 실측이 나오면 이 상수만 바꾸면 된다.
-VEHICLE_SPEED_KMPH = float(os.getenv("PBR_VEHICLE_SPEED_KMPH", "25"))
+VEHICLE_SPEED_KMPH = env_float("PBR_VEHICLE_SPEED_KMPH", 25)
 
 # ── 실도로 이동시간 모형 (1.26.7, docs/분석/EXPERIMENTS.md 5-D·5-F장) ──
 #
@@ -291,8 +326,8 @@ VEHICLE_SPEED_KMPH = float(os.getenv("PBR_VEHICLE_SPEED_KMPH", "25"))
 # 켜려면 `PBR_USE_ROAD_MODEL=1`.
 USE_ROAD_MODEL = os.getenv("PBR_USE_ROAD_MODEL", "").strip().lower() in (
     "1", "true", "yes", "on")
-ROAD_FIXED_SEC = float(os.getenv("PBR_ROAD_FIXED_SEC", "275"))
-ROAD_SPEED_KMPH = float(os.getenv("PBR_ROAD_SPEED_KMPH", "27.3"))
+ROAD_FIXED_SEC = env_float("PBR_ROAD_FIXED_SEC", 275)
+ROAD_SPEED_KMPH = env_float("PBR_ROAD_SPEED_KMPH", 27.3)
 
 
 def travel_seconds(km: float, speed_kmph: float = None) -> float:
@@ -317,8 +352,8 @@ def travel_seconds(km: float, speed_kmph: float = None) -> float:
 # (docs/연구/references/참고 자료/논문/1.이용수요 기반의 서울시 공공자전거 재배치전략
 # 도출.pdf, Constraint 3·4). 다만 그 논문도 실측이 아니라 "가정하였다"고 밝힌
 # 값이라 — 이것은 **관행값의 수렴**이지 두 값 다 **실측 검증**은 아니다.
-PICK_TIME_SEC = float(os.getenv("PBR_PICK_TIME_SEC", "30"))
-DROP_TIME_SEC = float(os.getenv("PBR_DROP_TIME_SEC", "30"))
+PICK_TIME_SEC = env_float("PBR_PICK_TIME_SEC", 30)
+DROP_TIME_SEC = env_float("PBR_DROP_TIME_SEC", 30)
 
 # ---- 차량 운용 (docs/구현/FLEET.md) ----
 # 하루 약 3회차를 돌리며, 회차마다 나가는 대수는 **그 회차의 작업량이 정한다**
@@ -395,7 +430,7 @@ VEHICLE_ID_FORMAT = "V{:02d}"                                   # V01 ~ V21
 # (10대)와 성격이 다르다 — 그 둘을 넘으면 **집행이 불가능**하지만, 이 값을 넘긴
 # 계획은 **더 오래 걸릴 뿐 집행은 된다.** 초과를 '실패'로 서술하지 마라.
 # (docs/구현/FLEET.md, docs/분석/KPI.md, docs/기록/ORIGINS.md 4장)
-TIME_BUDGET_MINUTES = float(os.getenv("PBR_TIME_BUDGET_MINUTES", "120"))
+TIME_BUDGET_MINUTES = env_float("PBR_TIME_BUDGET_MINUTES", 120)
 
 # 시간 예산을 **제약으로 걸 것인가**. 켜면 VRP가 예산을 넘기는 작업 앞에서 멈추고
 # depot으로 돌아온다(남은 작업은 미집행으로 남는다).
@@ -436,9 +471,9 @@ ENFORCE_TIME_BUDGET = os.getenv("PBR_ENFORCE_TIME_BUDGET", "").strip().lower() i
 # **γ 선택은 파라미터 조정이 아니라 운영 정책의 선택이다.**
 # 재현: python experiments/params/gamma_sweep.py
 # 근거: docs/분석/EXPERIMENTS.md 4장, docs/구현/steps/step1_clustering.md의 '거리 가중치' 절
-CLUSTER_ALPHA = float(os.getenv("PBR_CLUSTER_ALPHA", "1"))
-CLUSTER_BETA = float(os.getenv("PBR_CLUSTER_BETA", "100"))
-CLUSTER_GAMMA = float(os.getenv("PBR_CLUSTER_GAMMA", "3000"))
+CLUSTER_ALPHA = env_float("PBR_CLUSTER_ALPHA", 1)
+CLUSTER_BETA = env_float("PBR_CLUSTER_BETA", 100)
+CLUSTER_GAMMA = env_float("PBR_CLUSTER_GAMMA", 3000)
 
 # K-Medoids 초기화 씨앗. **결과를 바꾸는 값이 아니라 결과를 검증 가능하게 하는 값이다.**
 #
@@ -450,7 +485,7 @@ CLUSTER_GAMMA = float(os.getenv("PBR_CLUSTER_GAMMA", "3000"))
 #
 # 기본값은 42 그대로다. 이 상수를 넣는 것으로 바뀌는 결과는 없다.
 # 재현: python run_pipeline.py --seed 7
-CLUSTER_SEED = int(os.getenv("PBR_CLUSTER_SEED", "42"))
+CLUSTER_SEED = env_int("PBR_CLUSTER_SEED", 42)
 
 # ---- step1 작업 대상 선정·군집 조정 ----
 # 1.18.8까지 step1 코드에 숫자로 박혀 있던 값들이다. 다른 운영 상수와 달리
@@ -472,7 +507,7 @@ CLUSTER_SEED = int(os.getenv("PBR_CLUSTER_SEED", "42"))
 # 수준)다. 5부터 나빠지고, **8에서는 후보가 2~4곳이라 회차에 따라 계획이 아예
 # 서지 않는다.**
 # 재현: experiments/params/convention_sweep.py --knob REBAL_MIN_QTY
-REBAL_MIN_QTY = int(os.getenv("PBR_REBAL_MIN_QTY", "2"))
+REBAL_MIN_QTY = env_int("PBR_REBAL_MIN_QTY", 2)
 
 # Pick·Drop 각각 상위 몇 곳까지 볼 것인가(작업량 내림차순).
 # 이 컷 뒤에 다시 '적은 쪽까지만' 누적합으로 자르므로 실제 대상은 더 적다.
@@ -490,7 +525,7 @@ REBAL_MIN_QTY = int(os.getenv("PBR_REBAL_MIN_QTY", "2"))
 # 여기서 필요 차량이 보유량 안에 딱 들어온다. 넓히면 계획만 커지고 집행이 안 된다.
 # **결품을 더 줄이려면 상한이 아니라 차량이 병목이다** — 파라미터가 아니라 운영 결정.
 # 재현: experiments/params/top_limit_sweep.py
-TOP_STATION_LIMIT = int(os.getenv("PBR_TOP_STATION_LIMIT", "50"))
+TOP_STATION_LIMIT = env_int("PBR_TOP_STATION_LIMIT", 50)
 
 # ---- 목표 재고 상한 (거치대 대비 배수) ----
 # 목표 재고는 거치대 수를 그대로 상한으로 쓰지 않고 **거치대 x 1.5**까지 허용한다.
@@ -499,7 +534,7 @@ TOP_STATION_LIMIT = int(os.getenv("PBR_TOP_STATION_LIMIT", "50"))
 # ⚠️ **현장 확인이 안 된 값이다.** 얼마까지 세워도 되는지는 운영 규칙에 달렸다.
 # 웹의 실시간 재고 대조도 이 값으로 "더 내려놓을 수 있는가"를 판정한다 —
 # 계획과 집행이 다른 기준을 쓰면 현장에서 어긋난다.
-TARGET_QTY_UPPER_RATIO = float(os.getenv("PBR_TARGET_QTY_UPPER_RATIO", "1.5"))
+TARGET_QTY_UPPER_RATIO = env_float("PBR_TARGET_QTY_UPPER_RATIO", 1.5)
 
 # ---- 회차당 필요 차량 추정 (1.19.1) ----
 # 군집 1개 = 차량 1대이므로, **군집 수는 이번 회차의 작업량이 정한다.**
@@ -516,7 +551,7 @@ TARGET_QTY_UPPER_RATIO = float(os.getenv("PBR_TARGET_QTY_UPPER_RATIO", "1.5"))
 #   이동분/곳 = 10.2 ~ 15.7, 평균 12.5. **K를 바꿔도 거의 변하지 않았다** —
 #   군집을 쪼개면 depot 왕복이 늘지만 군집 안 이동이 그만큼 줄어 상쇄된다
 #   (총 소요 1252분@K=10 -> 1278분@K=12 -> 1426분@K=18).
-TRAVEL_MIN_PER_STATION = float(os.getenv("PBR_TRAVEL_MIN_PER_STATION", "12.5"))
+TRAVEL_MIN_PER_STATION = env_float("PBR_TRAVEL_MIN_PER_STATION", 12.5)
 
 # ── 회차당 필요 차량 추정에 거리를 반영할지 (1.26.10, EXPERIMENTS.md 5-G장) ──
 #
@@ -535,7 +570,7 @@ WANTED_VEHICLES_GEO = os.getenv("PBR_WANTED_VEHICLES_GEO", "").strip().lower() i
 
 # 시간 예산은 평균이 아니라 **가장 오래 걸린 차량**으로 판정한다. 같은 실측에서
 # 최장/평균이 1.28 ~ 1.51이었다. 평균만 맞추면 절반이 예산을 넘는다.
-CLUSTER_IMBALANCE_ALLOWANCE = float(os.getenv("PBR_CLUSTER_IMBALANCE", "1.4"))
+CLUSTER_IMBALANCE_ALLOWANCE = env_float("PBR_CLUSTER_IMBALANCE", 1.4)
 
 # 군집 조정(greedy) 반복 상한과 종료·재조정 기준.
 #   ADJUST_MAX_ITER        : 대여소 이동 시도 횟수 상한
@@ -549,9 +584,9 @@ CLUSTER_IMBALANCE_ALLOWANCE = float(os.getenv("PBR_CLUSTER_IMBALANCE", "1.4"))
 # ⚠️ ADJUST_MAX_ITER는 **100·200·400의 결과가 완전히 같다** — 조정 루프가 100회
 #    전에 수렴한다. 200은 쓰이지 않는 여유값이다(50으로 줄이면 덜 조정된다).
 # 재현: experiments/params/convention_sweep.py
-ADJUST_MAX_ITER = int(os.getenv("PBR_ADJUST_MAX_ITER", "200"))
-ADJUST_BALANCE_OK = int(os.getenv("PBR_ADJUST_BALANCE_OK", "3"))
-ADJUST_BALANCE_LIMIT = int(os.getenv("PBR_ADJUST_BALANCE_LIMIT", "5"))
+ADJUST_MAX_ITER = env_int("PBR_ADJUST_MAX_ITER", 200)
+ADJUST_BALANCE_OK = env_int("PBR_ADJUST_BALANCE_OK", 3)
+ADJUST_BALANCE_LIMIT = env_int("PBR_ADJUST_BALANCE_LIMIT", 5)
 
 # ---- step0 목표 재고 안전계수 ----
 # target_qty = mu + z·sigma 의 z. 값이 클수록 수요가 몰리는 날까지 덮지만
@@ -562,7 +597,7 @@ ADJUST_BALANCE_LIMIT = int(os.getenv("PBR_ADJUST_BALANCE_LIMIT", "5"))
 # z=1.99로 올리면 평균 94.9%가 되고, 대가는 처리 상한 +30%다. 다만 회차마다 대가가
 # 다르다 — pick 가능량이 이미 병목인 _05_10은 작업량이 늘지 않는다(-1.8%).
 # 근거·재현: docs/분석/EXPERIMENTS.md 1장, python experiments/params/z_sweep.py
-TARGET_Z = float(os.getenv("PBR_TARGET_Z", "1.99"))
+TARGET_Z = env_float("PBR_TARGET_Z", 1.99)
 
 
 def vehicle_ids(size: int = None) -> list:

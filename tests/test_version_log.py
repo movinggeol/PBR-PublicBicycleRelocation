@@ -146,3 +146,34 @@ def test_고칠_수_없는_커밋을_넘기되_조용히_넘기지_않는다(che
     # 그리고 그 커밋들이 실제로 걸러졌는지 — 보고에 남아 있으면 안 된다.
     for sha in allowed:
         assert not any(sha in p for p in problems), f"{sha}를 넘긴다고 해 놓고 보고한다"
+
+
+def test_설정_상수를_어떤_표기로_적든_읽어_낸다(checker, tmp_path):
+    """진실의 출처를 **텍스트로** 읽으므로 표기가 바뀌면 조용히 멈춘다 (1.26.144).
+
+    `_config_value()`는 `project_config.py`를 import하지 않고 정규식으로 읽는다.
+    그래서 코드 쪽 표기가 바뀌면 값이 틀리는 게 아니라 **검사 자체가 사라진다** —
+    실제로 21곳을 `env_float(...)`로 묶자 `z`·`γ` 검사가 통째로 멈췄고,
+    "진실의 출처를 읽지 못했습니다"만 남았다.
+
+    여기서 지키는 것은 **지금 쓰는 세 표기를 다 읽는가**다.
+    """
+    fake = tmp_path / "project_config.py"
+    fake.write_text(
+        "DEFAULT_FLEET_SIZE = 21\n"
+        'OLD_STYLE = float(os.getenv("PBR_OLD_STYLE", "1.5"))\n'
+        'TARGET_Z = env_float("PBR_TARGET_Z", 1.99)\n'
+        'CLUSTER_SEED = env_int("PBR_CLUSTER_SEED", 42)\n'
+        "ALIASED = DEFAULT_FLEET_SIZE\n",
+        encoding="utf-8")
+
+    original = checker.ROOT
+    checker.ROOT = tmp_path
+    try:
+        assert checker._config_value("DEFAULT_FLEET_SIZE") == "21"   # 날 숫자
+        assert checker._config_value("OLD_STYLE") == "1.5"           # 옛 표기
+        assert checker._config_value("TARGET_Z") == "1.99"           # 헬퍼(실수)
+        assert checker._config_value("CLUSTER_SEED") == "42"         # 헬퍼(정수)
+        assert checker._config_value("ALIASED") == "21"              # 별칭
+    finally:
+        checker.ROOT = original
