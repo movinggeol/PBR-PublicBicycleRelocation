@@ -169,6 +169,13 @@ def test_grouped_output_table_is_not_sortable(client):
     html = client.get("/run").text
     latest = html[html.index("최신 산출물"):html.index("저장된 실행")]
 
+    # ⚠️ 이 검사는 **실제 산출물이 있어야** 성립한다. 산출물이 하나도 없으면
+    #    화면이 "아직 산출물이 없습니다"만 그리므로 표 자체가 없다 —
+    #    그때 실패로 보고하면 *자료가 없는 것*을 *회귀*로 잘못 읽는다
+    #    (1.26.141에서 `PBR_DATA_ROOT` 격리를 켜자 실제로 그랬다).
+    if "아직 산출물이 없습니다" in latest:
+        pytest.skip("산출물이 없어 최신 산출물 표가 그려지지 않았다")
+
     assert "data-page-item" in latest, "최신 산출물 표를 못 찾았다 — 테스트가 낡았다"
     assert "data-sortable" not in latest, "분류 묶음 표에 정렬이 걸렸다"
 
@@ -604,10 +611,18 @@ def test_period_default_is_the_latest_month(client):
     '직전 달'은 기본값이 될 수 없다 — 12개월 중 3개월에서만 존재한다(실측).
     가장 최근 달은 자료가 어떻든 항상 있다.
     """
-    from project_config import latest_period
+    from project_config import available_periods, latest_period
 
+    # ⚠️ `latest_period()`는 자료가 없으면 **대비값**을 돌려준다 — 그 값으로
+    #    화면을 검사하면 *자료 부재*를 *회귀*로 잘못 읽는다. 물어야 할 것은
+    #    "보유한 기간이 있는가"이므로 `available_periods()`로 가른다
+    #    (1.26.141에서 `PBR_DATA_ROOT` 격리를 켜자 실제로 걸렸다).
+    if not available_periods():
+        pytest.skip("순수요 자료가 없어 기간 선택지가 비어 있다")
+
+    period = latest_period()
     html = client.get("/run").text
-    assert f'<option value="{latest_period()}"' in html
+    assert f'<option value="{period}"' in html
     assert f'{latest_period()}"\n              selected' in html \
         or "selected" in html, "기본 선택이 없다"
 

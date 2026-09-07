@@ -27,11 +27,12 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from project_config import (
-    DEFAULT_NOW, DEFAULT_PERIOD, PROJECT_ROOT, ensure_output_dirs, is_holiday,
+    DATA_ROOT, DEFAULT_NOW, DEFAULT_PERIOD, PROJECT_ROOT, ensure_output_dirs, is_holiday,
 )
 
-STOCK_FILE = "data/pp_data/대여소별 재고/대여소별_자전거대수 ({now}).csv"
-DEFAULT_RAW = "data/raw_data/합성_대여이력.csv"
+# ⚠️ `data/`를 붙이지 마라 — 경로는 `DATA_ROOT` 기준이다(1.26.141).
+STOCK_FILE = "pp_data/대여소별 재고/대여소별_자전거대수 ({now}).csv"
+DEFAULT_RAW = "raw_data/합성_대여이력.csv"
 
 
 # 하루 3회차 운용(docs/구현/FLEET.md)에 맞춰, 회차마다 방향이 다른 흐름을 만든다.
@@ -92,7 +93,7 @@ def generate(
         "stock": (racks * 10 + 5) * rng.uniform(0.0, 0.9, stations),
     }).astype({"stock": int})
 
-    stock_path = PROJECT_ROOT / STOCK_FILE.format(now=now)
+    stock_path = DATA_ROOT / STOCK_FILE.format(now=now)
     stock_path.parent.mkdir(parents=True, exist_ok=True)
     stock_df.to_csv(stock_path, encoding="utf-8", index=False)
 
@@ -145,7 +146,7 @@ def generate(
             })
 
     raw = pd.DataFrame(rows)
-    raw_path = Path(raw_path) if raw_path else PROJECT_ROOT / DEFAULT_RAW
+    raw_path = Path(raw_path) if raw_path else DATA_ROOT / DEFAULT_RAW
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     raw.to_csv(raw_path, encoding="utf-8", index=False)
 

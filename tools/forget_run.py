@@ -36,6 +36,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import db
+from project_config import DATA_ROOT
 
 
 def scoped_tables(conn) -> list:
@@ -70,7 +71,7 @@ def leftover_files(labels: list) -> list:
     """지운 실행의 이름이 붙은 산출물 파일. **지우지 않고 알려만 준다.**"""
     found = []
     for label in labels:
-        found.extend(sorted((PROJECT_ROOT / "data").rglob(f"*({label}).*")))
+        found.extend(sorted((DATA_ROOT).rglob(f"*({label}).*")))
     return found
 
 

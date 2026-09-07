@@ -71,7 +71,11 @@ step4                   : imbalance
   `if __name__ == '__main__':` + `main()` 아래에 둔다. 순서는 run_pipeline.py가 제어한다.
 - step 폴더의 스크립트는 상단에서 `sys.path.insert(0, str(Path(__file__).resolve().parents[1]))`
   후 project_config를 import한다 — 새 스크립트를 만들 때 같은 패턴을 따르라.
-- 데이터 경로는 `PROJECT_ROOT` 기준으로 만든다: `str(PROJECT_ROOT / "data/pp_data/...")`.
+- **데이터 경로는 `DATA_ROOT` 기준으로 만든다**: `str(DATA_ROOT / "pp_data/...")`.
+  🔴 `PROJECT_ROOT / "data/..."`로 직접 조립하지 마라 — 그러면 `PBR_DATA_ROOT`
+  재정의가 **그 파일에만 안 듣는다.** 1.26.124가 이 관습 때문에 격리 스위치를
+  넣었다가 27개가 깨져 되돌렸고, 1.26.141에서 44곳을 모두 고친 뒤에야 열었다.
+  **반쯤 듣는 격리 스위치는 *지켜 주는 척하는 장치*라 더 나쁘다.**
 - 산출물을 쓰는 스크립트는 저장 전에 `ensure_output_dirs()`를 호출한다.
 
 ## ⚠️ 함정 (반드시 확인)

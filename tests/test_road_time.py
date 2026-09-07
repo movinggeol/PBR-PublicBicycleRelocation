@@ -191,9 +191,18 @@ def test_probe_label_separates_from_pipeline_rows(collector):
 # ---------------------------------------------------------------- 패널 이식성
 
 def test_panel_lives_where_git_carries_it(collector):
-    """`data/`에 두면 PC마다 다른 패널이 생겨 전제가 무너진다."""
+    """`data/`에 두면 PC마다 다른 패널이 생겨 전제가 무너진다.
+
+    ⚠️ 폴더 **이름**으로 재지 마라 — `PBR_DATA_ROOT`로 데이터 경로를 옮기면
+    이름이 `data`가 아니게 된다(1.26.141에서 실제로 이 테스트가 깨졌다).
+    묻고 있는 것은 이름이 아니라 **위치**다: 패널은 git이 나르는 `tools/`에
+    있고, 옛 자리는 git이 안 나르는 데이터 폴더 아래에 있다.
+    """
+    from project_config import DATA_ROOT
+
     assert collector.PANEL_PATH.parent.name == "tools"
-    assert collector.LEGACY_PANEL_PATH.parent.name == "data"
+    assert DATA_ROOT not in collector.PANEL_PATH.parents
+    assert DATA_ROOT in collector.LEGACY_PANEL_PATH.parents
 
 
 def test_panel_changes_when_a_used_station_disappears(collector):

@@ -38,16 +38,16 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from project_config import PROJECT_ROOT                     # noqa: E402
+from project_config import DATA_ROOT, PROJECT_ROOT  # noqa: E402
 from tools.make_sample_data import generate                 # noqa: E402
 
 # 실행 라벨. 실데이터 라벨과 겹치지 않게 이름을 못 박는다 — 겹치면 사용자의
 # 산출물을 덮어쓰고, 마지막의 정리 단계가 그것을 지운다.
 LABEL = "재현 데모"
 DURATIONS = "_05_10,_10_15,_15_20"
-DEFAULT_DB = PROJECT_ROOT / "data" / "재현.db"
+DEFAULT_DB = DATA_ROOT / "재현.db"
 
-PP_ROOT = PROJECT_ROOT / "data" / "pp_data"
+PP_ROOT = DATA_ROOT / "pp_data"
 STOCK_CSV = PP_ROOT / "대여소별 재고" / f"대여소별_자전거대수 ({LABEL}).csv"
 INFO_CSV = PP_ROOT / "대여소 정보" / f"st_info ({LABEL}).csv"
 
@@ -158,7 +158,7 @@ def main() -> None:
     args = parser.parse_args()
 
     db_path = Path(args.db)
-    raw_path = PROJECT_ROOT / "data" / "raw_data" / f"합성_대여이력 ({LABEL}).csv"
+    raw_path = DATA_ROOT / "raw_data" / f"합성_대여이력 ({LABEL}).csv"
     raw_path.parent.mkdir(parents=True, exist_ok=True)
 
     print("=" * 68)

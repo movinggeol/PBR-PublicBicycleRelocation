@@ -14,21 +14,21 @@ from mapviz import (DROP_COLOR, DROP_LABEL, DROP_WORD, PICK_COLOR, PICK_LABEL,
 from dataclasses import replace
 
 from project_config import (
-    DAY_TYPE_LABELS, MAP_TILES, PICK_HARM_WARN_SHARE, PROJECT_ROOT,
+    DATA_ROOT, DAY_TYPE_LABELS, MAP_TILES, PICK_HARM_WARN_SHARE, PROJECT_ROOT,
     TIME_BUDGET_MINUTES,
     VEHICLE_CAPACITY, duration_hours, duration_list, ensure_output_dirs,
     get_runtime_config,
     require_columns, select_day_type,
 )
 
-file_path = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")
-vrp_plan_file = str(PROJECT_ROOT / "data/pp_data/VRP/VRP_plan{duration} ({now}).csv")
-net_demand_file = str(PROJECT_ROOT / "data/pp_data/순수요/st_net_daily ({period}).csv")
-st_info_file = str(PROJECT_ROOT / "data/pp_data/대여소 정보/st_info ({now}).csv")
+file_path = str(DATA_ROOT / "pp_data/ILP/후보/top{duration} ({now}).csv")
+vrp_plan_file = str(DATA_ROOT / "pp_data/VRP/VRP_plan{duration} ({now}).csv")
+net_demand_file = str(DATA_ROOT / "pp_data/순수요/st_net_daily ({period}).csv")
+st_info_file = str(DATA_ROOT / "pp_data/대여소 정보/st_info ({now}).csv")
 
-result_file_path = str(PROJECT_ROOT / "data/pp_data/성능 지표/verification{duration} ({now}).csv")
-route_summary_file = str(PROJECT_ROOT / "data/pp_data/성능 지표/route_summary{duration} ({now}).csv")
-map_file_path = str(PROJECT_ROOT / "data/pp_data/성능 지표/visualization/imbalance_map{duration} ({now}).html")
+result_file_path = str(DATA_ROOT / "pp_data/성능 지표/verification{duration} ({now}).csv")
+route_summary_file = str(DATA_ROOT / "pp_data/성능 지표/route_summary{duration} ({now}).csv")
+map_file_path = str(DATA_ROOT / "pp_data/성능 지표/visualization/imbalance_map{duration} ({now}).html")
 
 config = get_runtime_config()
 now = config.now

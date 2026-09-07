@@ -14,7 +14,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from project_config import PP_ROOT, PROJECT_ROOT
+from project_config import DATA_ROOT, PP_ROOT, PROJECT_ROOT
 from tools.make_sample_data import generate
 
 DURATION = "_05_10"
@@ -58,7 +58,7 @@ def pipeline_run(tmp_path_factory, smoke_db):
     # ⚠️ **`try`로 감싸는 것이 요점이다.** 아래 `pytest.fail()`은 `yield` 앞이라,
     # 단계가 하나라도 실패하면 teardown에 도달하지 못한다 — 그러면 이 실행이
     # 실제 `data/pp_data`에 만든 산출물이 **그대로 남는다.** 스텝 스크립트는
-    # 경로를 `PROJECT_ROOT / "data/..."`로 직접 조립해서 임시 경로로 돌릴 수도
+    # 경로를 `DATA_ROOT / "..."`로 직접 조립해서 임시 경로로 돌릴 수도
     # 없다. 실제로 잔여물 63개를 찾아 치웠다(1.26.124).
     #
     # **정리가 필요한 때는 바로 일이 잘못됐을 때다.** 잘 끝난 실행은 어차피

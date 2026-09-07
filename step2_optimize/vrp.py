@@ -18,7 +18,7 @@ from ilp import haversine_km
 
 import db
 from project_config import (
-    DEPOT_ID, DEPOT_LAT, DEPOT_LON, DROP_TIME_SEC, PICK_TIME_SEC, PROJECT_ROOT,
+    DATA_ROOT, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DROP_TIME_SEC, PICK_TIME_SEC, PROJECT_ROOT,
     ENFORCE_TIME_BUDGET, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY,
     VEHICLE_SPEED_KMPH,
     duration_list, ensure_output_dirs, get_runtime_config, require_columns,
@@ -26,10 +26,10 @@ from project_config import (
 )
 
 # read_csv
-metrics_file = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")  # lat/lon 포함
-ilp_plan_file = str(PROJECT_ROOT / "data/pp_data/ILP/ILP_plan{duration} ({now}).csv")
+metrics_file = str(DATA_ROOT / "pp_data/ILP/후보/top{duration} ({now}).csv")  # lat/lon 포함
+ilp_plan_file = str(DATA_ROOT / "pp_data/ILP/ILP_plan{duration} ({now}).csv")
 # to_csv
-vrp_plan_file = str(PROJECT_ROOT / "data/pp_data/VRP/VRP_plan{duration} ({now}).csv")
+vrp_plan_file = str(DATA_ROOT / "pp_data/VRP/VRP_plan{duration} ({now}).csv")
 
 config = get_runtime_config()
 now = config.now

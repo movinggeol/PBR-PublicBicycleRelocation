@@ -14,15 +14,15 @@ import pandas as pd
 
 import db
 from project_config import (
-    PROJECT_ROOT, ensure_output_dirs, get_runtime_config, select_day_type,
+    DATA_ROOT, PROJECT_ROOT, ensure_output_dirs, get_runtime_config, select_day_type,
 )
 
 # read_csv
-stock_file = str(PROJECT_ROOT / "data/pp_data/대여소별 재고/대여소별_자전거대수 ({now}).csv")
-parking_lot_file = str(PROJECT_ROOT / "data/pp_data/대여소별 주차대수/대여소별_주차대수 ({now}).csv")
+stock_file = str(DATA_ROOT / "pp_data/대여소별 재고/대여소별_자전거대수 ({now}).csv")
+parking_lot_file = str(DATA_ROOT / "pp_data/대여소별 주차대수/대여소별_주차대수 ({now}).csv")
 
 # to_csv
-out_file_path = str(PROJECT_ROOT / "data/pp_data/대여소 정보/st_info ({now}).csv")
+out_file_path = str(DATA_ROOT / "pp_data/대여소 정보/st_info ({now}).csv")
 
 
 def main() -> None:

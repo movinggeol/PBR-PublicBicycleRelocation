@@ -38,12 +38,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd
 
-from project_config import PROJECT_ROOT
+from project_config import DATA_ROOT, PROJECT_ROOT
 
-path = str(PROJECT_ROOT / "data/raw_data/타슈 대여이력 정보(25.04~26.03)/대전시 공영자전거 타슈 대여이력 정보({period}).csv")
-result_file = str(PROJECT_ROOT / "data/raw_data/타슈 대여이력(25.04~26.03).csv")
+path = str(DATA_ROOT / "raw_data/타슈 대여이력 정보(25.04~26.03)/대전시 공영자전거 타슈 대여이력 정보({period}).csv")
+result_file = str(DATA_ROOT / "raw_data/타슈 대여이력(25.04~26.03).csv")
 # 이상치를 제거한 결과. **원본과 다른 파일이어야 한다** — 위 docstring 참고.
-cleaned_file = str(PROJECT_ROOT / "data/raw_data/타슈 대여이력(25.04~26.03) (이상치 제거).csv")
+cleaned_file = str(DATA_ROOT / "raw_data/타슈 대여이력(25.04~26.03) (이상치 제거).csv")
 
 
 def concat_file(period: list):

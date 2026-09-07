@@ -87,7 +87,7 @@ from dotenv import load_dotenv
 
 import db
 from project_config import (
-    DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, DURATIONS, PROJECT_ROOT,
+    DATA_ROOT, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, DURATIONS, PROJECT_ROOT,
 )
 
 sys.path.insert(0, str(ROOT / "step3_map"))
@@ -104,7 +104,7 @@ from module import (                                          # noqa: E402
 PANEL_PATH = PROJECT_ROOT / "tools" / "road_panel.json"
 
 # 1.26.52 이전에 쓰던 자리. 여기에 있으면 옮겨 준다.
-LEGACY_PANEL_PATH = PROJECT_ROOT / "data" / "road_panel.json"
+LEGACY_PANEL_PATH = DATA_ROOT / "road_panel.json"
 
 # 이 수집기가 남기는 run_label의 앞머리. 파이프라인 실행분과 섞이지 않도록
 # 접두어로 가른다 — 분석 스크립트가 이 값으로 골라 낸다.

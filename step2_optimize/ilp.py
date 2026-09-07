@@ -9,14 +9,14 @@ import pulp
 
 import db
 from project_config import (
-    PROJECT_ROOT, VEHICLE_SPEED_KMPH, duration_list, ensure_output_dirs, get_runtime_config,
+    DATA_ROOT, PROJECT_ROOT, VEHICLE_SPEED_KMPH, duration_list, ensure_output_dirs, get_runtime_config,
     require_columns, travel_seconds,
 )
 
 # read_csv
-metrics_path = str(PROJECT_ROOT / "data/pp_data/ILP/후보/top{duration} ({now}).csv")   # lat/lon 포함된 metrics
+metrics_path = str(DATA_ROOT / "pp_data/ILP/후보/top{duration} ({now}).csv")   # lat/lon 포함된 metrics
 # to_csv
-ilp_plan_path = str(PROJECT_ROOT / "data/pp_data/ILP/ILP_plan{duration} ({now}).csv")
+ilp_plan_path = str(DATA_ROOT / "pp_data/ILP/ILP_plan{duration} ({now}).csv")
 
 config = get_runtime_config()
 now = config.now

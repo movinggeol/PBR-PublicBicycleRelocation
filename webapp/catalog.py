@@ -13,10 +13,9 @@ from typing import Dict, List, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import mapviz
-from project_config import PROJECT_ROOT
-
-DATA_ROOT = PROJECT_ROOT / "data"
-PP_ROOT = DATA_ROOT / "pp_data"
+# ⚠️ 여기서 다시 정의하지 마라 — 정본은 `project_config`다. 예전에는 이 파일이
+#    자기 `DATA_ROOT`를 따로 만들어서, 경로를 재정의해도 화면만 옛 폴더를 봤다.
+from project_config import DATA_ROOT, PP_ROOT, PROJECT_ROOT
 
 ALLOWED_SUFFIXES = {".html", ".csv"}
 

@@ -50,7 +50,13 @@ def _force_utf8_output() -> None:
 _force_utf8_output()
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-DATA_ROOT = PROJECT_ROOT / "data"
+
+# 🔴 **데이터 경로는 여기서만 만든다.** 예전에는 스텝마다
+# `PROJECT_ROOT / "data/..."`로 직접 조립했는데, 그래서 `PBR_DATA_ROOT`를
+# 넣어도 **스텝에는 안 들었다**(1.26.124에서 넣었다가 27개가 깨져 되돌림).
+# 반쯤 듣는 격리 스위치는 *지켜 주는 척하는 장치*라 더 나쁘다 — 1.26.141에서
+# 44곳을 `DATA_ROOT` 기준으로 모두 바꾼 뒤에야 이 변수를 열었다.
+DATA_ROOT = Path(os.getenv("PBR_DATA_ROOT") or (PROJECT_ROOT / "data")).resolve()
 PP_ROOT = DATA_ROOT / "pp_data"
 
 DEFAULT_NOW = os.getenv("PBR_NOW", "2026-05-21 18")

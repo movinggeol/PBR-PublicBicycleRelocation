@@ -22,9 +22,9 @@ from typing import Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from project_config import PROJECT_ROOT
+from project_config import DATA_ROOT, PROJECT_ROOT
 
-WEBAPP_DATA = PROJECT_ROOT / "data" / "webapp"
+WEBAPP_DATA = DATA_ROOT / "webapp"
 LOG_DIR = WEBAPP_DATA / "logs"
 REGISTRY_FILE = WEBAPP_DATA / "runs.json"
 
