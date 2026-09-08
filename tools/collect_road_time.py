@@ -88,6 +88,7 @@ from dotenv import load_dotenv
 import db
 from project_config import (
     DATA_ROOT, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, DURATIONS, PROJECT_ROOT,
+    is_holiday,
 )
 
 sys.path.insert(0, str(ROOT / "step3_map"))
@@ -339,24 +340,28 @@ def pending_durations(durations: list, run_label: str, expected: int) -> list:
     return [d for d in durations if done.get(d, 0) < expected]
 
 
-def is_weekend(date_text: str) -> bool:
-    """토·일이면 참. `start_time_for()`가 '다음 평일'을 쓰기 때문에 필요하다."""
-    return date_module.fromisoformat(date_text).weekday() >= 5
+def is_holiday_date(date_text: str) -> bool:
+    """휴일(주말∪공휴일)이면 참. `--day-type`을 안 준 스케줄러가 그 날짜의
+    요일 성격으로 평일/휴일 회귀를 자동으로 고르는 데 쓴다(1.26.158).
+    """
+    return is_holiday(date_module.fromisoformat(date_text))
 
 
 def collect(chains: list, durations: list, run_label: str, headers: dict,
-            dry_run: bool = False) -> int:
+            dry_run: bool = False, day_type: str = "weekday") -> int:
     """회차 × 사슬을 돌며 수집한다. 저장한 구간 수를 돌려준다."""
     saved = 0
     # 이 라벨은 **계획이 아니다.** 못박아 두지 않으면 웹의 계획 목록에 계획인
     # 척 섞여, 눌러도 지표도 경로도 없는 빈 표만 나온다(1.26.107). 저장보다
     # 먼저 적는다 — save_output()이 만드는 runs 행에 종류가 처음부터 붙게.
+    # day_type도 함께 적는다 — 평일·휴일 계수를 나중에 절대 섞지 않으려면
+    # "그 회귀가 어느 쪽을 쟀는가"가 run_label이 아니라 DB에 남아야 한다.
     if not dry_run:
         with db.session() as conn:
-            db.ensure_run(conn, run_label, kind="probe")
+            db.ensure_run(conn, run_label, kind="probe", day_type=day_type)
 
     for duration in durations:
-        start_time = start_time_for(duration)
+        start_time = start_time_for(duration, day_type=day_type)
         print(f"\n[{duration}] 교통량 기준 시각 {start_time}"
               f" · 사슬 {len(chains)}개")
         if dry_run:
@@ -405,8 +410,10 @@ def _warn_if_stalled(last_label: str) -> None:
     import datetime as _dt
     import subprocess
 
+    tail = last_label[len(PROBE_PREFIX):]
+    tail = tail.removeprefix("holiday-")
     try:
-        last = _dt.date.fromisoformat(last_label[len(PROBE_PREFIX):])
+        last = _dt.date.fromisoformat(tail)
     except (ValueError, IndexError):
         return
     gap = (_dt.date.today() - last).days
@@ -456,7 +463,12 @@ def status() -> int:
         days = frame["run_label"].nunique()
         print(f"\n수집 일수 {days}일 · 총 {int(frame['구간'].sum())}구간")
         print("※ 요일·계절 안정성을 보려면 최소 10일(가급적 서로 다른 요일)이 필요합니다.")
-        _warn_if_stalled(frame["run_label"].max())
+        # run_label의 사전순 max는 날짜순이 아니다 — "roadprobe-holiday-…"가
+        # "roadprobe-2026-…"보다 문자열로 항상 뒤에 온다('h' > 숫자). 접두어를
+        # 뗀 날짜만 비교해야 진짜 최신을 고른다.
+        latest = max(frame["run_label"],
+                    key=lambda label: label[len(PROBE_PREFIX):].removeprefix("holiday-"))
+        _warn_if_stalled(latest)
 
     print(f"\n파이프라인 실행분(패널 아님): {int(other['n'][0])}구간"
           f" / 실행 {int(other['runs'][0])}건")
@@ -534,8 +546,15 @@ def main() -> int:
     parser.add_argument("--max-calls", type=int, default=None,
                         help="이번 실행의 TMAP 호출 상한. 기본은 필요한 만큼")
     parser.add_argument("--if-needed", action="store_true",
-                        help="모자란 회차만 채운다. 주말이거나 다 찼으면 호출 없이 끝낸다"
-                             " (스케줄러용 — 하루 여러 번 깨워도 안전하다)")
+                        help="모자란 회차만 채운다. 다 찼으면 호출 없이 끝낸다"
+                             " (스케줄러용 — 하루 여러 번 깨워도 안전하다)."
+                             " day-type을 안 주면 --date의 요일로 자동 판정한다"
+                             " (평일이면 평일, 주말·공휴일이면 휴일 계수를 잰다)")
+    parser.add_argument("--day-type", choices=("weekday", "holiday"), default=None,
+                        help="어느 쪽 교통량을 잴지. 기본은 --date의 실제 요일로"
+                             " 판정한다(평일 날짜 → weekday, 주말·공휴일 → holiday)."
+                             " 평일·휴일은 절대 섞지 않는다 — 회귀에 넣기 전에"
+                             " runs.day_type으로 갈라라 (1.26.158)")
     args = parser.parse_args()
 
     if args.status:
@@ -562,14 +581,12 @@ def main() -> int:
     chains = load_panel(rebuild=args.rebuild_panel)
 
     date = args.date or datetime.now().strftime("%Y-%m-%d")
-    run_label = PROBE_PREFIX + date
+    # day-type을 안 주면 그 날짜의 실제 요일 성격으로 정한다 — **자정 넘겨 도는
+    # --if-needed 스케줄러가 오늘이 평일인지 휴일인지 사람 없이 판단해야 한다.**
+    day_type = args.day_type or ("holiday" if is_holiday_date(date) else "weekday")
+    run_label = PROBE_PREFIX + ("holiday-" if day_type == "holiday" else "") + date
 
     if args.if_needed:
-        if is_weekend(date):
-            print(f"[건너뜀] {date}는 주말입니다 — 토·일에 받으면 금요일과 똑같은"
-                  " '다음 월요일' 교통량이라 다른 날로 셀 수 없습니다."
-                  " TMAP을 부르지 않았습니다.")
-            return 0
         expected = legs_per_duration(chains)
         remaining = pending_durations(durations, run_label, expected)
         if not remaining:
@@ -586,12 +603,13 @@ def main() -> int:
     tmap_mod.reset_call_count()
 
     print(f"고정 패널 {len(chains)}사슬 × 회차 {len(durations)}개"
-          f" = TMAP 호출 {need}건 (상한 {tmap_mod.MAX_CALLS})")
+          f" = TMAP 호출 {need}건 (상한 {tmap_mod.MAX_CALLS}) · {day_type}")
     print(f"패널 지문 {panel_digest(chains)}")
     print(f"저장 라벨: {run_label}")
     print(panel_summary(chains).to_string(index=False))
 
-    saved = collect(chains, durations, run_label, headers, dry_run=args.dry_run)
+    saved = collect(chains, durations, run_label, headers, dry_run=args.dry_run,
+                    day_type=day_type)
     if args.dry_run:
         print("\n(모의 실행 — 호출하지 않았습니다)")
         return 0

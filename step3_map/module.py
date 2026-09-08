@@ -54,22 +54,28 @@ CAR_TYPE = os.getenv("PBR_TMAP_CAR_TYPE", "1")
 FALLBACK_START_TIME = "201709121938"
 
 
-def start_time_for(duration: str, when=None) -> str:
+def start_time_for(duration: str, when=None, day_type: str = "weekday") -> str:
     """회차의 **출동 시각**을 TMAP 형식(YYYYMMDDHHMM)으로 만든다.
 
     `_05_10` → 05시, `_10_15` → 10시처럼 창의 **첫 시각**을 쓴다. 차량은 그때
     차고지를 떠나기 때문이다.
 
-    날짜는 **다음 평일**을 쓴다 — 주말은 교통량이 다르고, 과거 날짜를 넣으면
-    TMAP이 그날의 실제 이력이 아니라 요일·시간대 패턴으로 답하기 때문이다.
+    날짜는 **다음 `day_type`**을 쓴다 — 과거 날짜를 넣으면 TMAP이 그날의 실제
+    이력이 아니라 요일·시간대 패턴으로 답하기 때문에, 평일 계획은 평일 교통량을,
+    휴일 계획은 휴일 교통량을 받아야 한다(1.26.158에서 `day_type`을 추가하기
+    전까지는 **항상 다음 평일**이었다 — 파이프라인 호출부가 여전히 기본값을
+    쓰므로 그 동작은 그대로다).
     """
     from datetime import datetime, timedelta
+
+    from project_config import is_holiday
 
     hours = _duration_first_hour(duration)
     if hours is None:
         return FALLBACK_START_TIME
+    wants_holiday = day_type == "holiday"
     base = (when or datetime.now()) + timedelta(days=1)
-    while base.weekday() >= 5:            # 토·일이면 월요일로 민다
+    while is_holiday(base.date()) != wants_holiday:
         base += timedelta(days=1)
     return base.replace(hour=hours, minute=0).strftime("%Y%m%d%H%M")
 

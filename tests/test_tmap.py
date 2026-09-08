@@ -384,7 +384,8 @@ def test_출동_시각이_회차마다_다르다(monkeypatch):
 
 
 def test_출동_날짜는_평일이다():
-    """주말은 교통량이 다르다 — 토·일이 나오면 안 된다."""
+    """주말은 교통량이 다르다 — day_type을 안 주면(기본 weekday) 토·일이 나오면
+    안 된다. 파이프라인 호출부(step3_map/main.py)는 지금도 이 기본값만 쓴다."""
     from datetime import datetime
 
     module = load_module()
@@ -392,6 +393,37 @@ def test_출동_날짜는_평일이다():
         stamp = module.start_time_for("_10_15", datetime(2026, 2, day, 9, 0))
         when = datetime.strptime(stamp, "%Y%m%d%H%M")
         assert when.weekday() < 5, f"{stamp}는 주말이다"
+
+
+def test_휴일_지정하면_평일이_안_나온다():
+    """`day_type='holiday'`면 토·일·공휴일만 나와야 한다 (1.26.158).
+
+    휴일 도로 이동시간을 재려면 평일과 다른 교통량을 받아야 하는데, TMAP은
+    미래 시각을 넣으면 그 요일·시간대의 전형적 패턴으로 답한다 — 그래서
+    '다음 휴일'을 정확히 짚어야 한다.
+    """
+    from datetime import datetime
+
+    from project_config import is_holiday
+
+    module = load_module()
+    for day in range(1, 29):
+        stamp = module.start_time_for("_10_15", datetime(2026, 2, day, 9, 0),
+                                      day_type="holiday")
+        when = datetime.strptime(stamp, "%Y%m%d%H%M")
+        assert is_holiday(when.date()), f"{stamp}는 휴일이 아니다"
+
+
+def test_평일과_휴일은_같은_날을_안_가리킨다():
+    """같은 기준일에서 평일 요청과 휴일 요청은 서로 다른 날짜를 만들어야 한다
+    — 같은 날을 가리키면 두 day_type이 같은 값을 두 번 세는 셈이 된다."""
+    from datetime import datetime
+
+    module = load_module()
+    when = datetime(2026, 9, 3, 9, 0)         # 목요일
+    weekday_stamp = module.start_time_for("_10_15", when, day_type="weekday")
+    holiday_stamp = module.start_time_for("_10_15", when, day_type="holiday")
+    assert weekday_stamp[:8] != holiday_stamp[:8]
 
 
 def test_모르는_회차는_예전_기본값으로_물러선다():

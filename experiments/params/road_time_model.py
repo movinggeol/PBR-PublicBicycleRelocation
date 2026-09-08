@@ -58,7 +58,8 @@ def panel_segments() -> set:
             for leg in range(len(c["points"]) - 1)}
 
 
-def load_legs(include_pipeline: bool, panel_only: bool = True) -> pd.DataFrame:
+def load_legs(include_pipeline: bool, panel_only: bool = True,
+              day_type: str = "weekday") -> pd.DataFrame:
     """road_leg에서 쓸 만한 구간을 읽는다.
 
     ⚠️ **`roadprobe` 접두사만으로는 부족하다** (2026-09-02 실측). 패널이 도중에
@@ -68,13 +69,26 @@ def load_legs(include_pipeline: bool, panel_only: bool = True) -> pd.DataFrame:
 
     그래서 기본값으로 **지금 패널과 같은 구간만** 남긴다. `--all-legs`로 끌 수
     있지만, 껐을 때 무엇이 섞이는지 아래에서 알린다.
+
+    🔴 **평일·휴일도 섞지 않는다 (1.26.158).** `collect_road_time.py`가
+    `--day-type`으로 나눠 수집한 뒤 `runs.day_type`에 남기므로, 여기서도 그
+    값으로 걸러야 한다 — 그러지 않으면 이 저장소 전체가 지키는 "평일과 휴일은
+    절대 섞지 마라" 규약을 이 스크립트만 어기게 된다.
     """
     with db.session() as conn:
         frame = pd.read_sql(
-            "SELECT run_label, duration, cluster, leg, from_id, to_id,"
-            " straight_km, road_sec, observed_at, start_time FROM road_leg", conn)
+            "SELECT road_leg.run_label, road_leg.duration, cluster, leg,"
+            " from_id, to_id, straight_km, road_sec, observed_at, start_time,"
+            " runs.day_type"
+            " FROM road_leg LEFT JOIN runs"
+            " ON runs.run_label = road_leg.run_label", conn)
 
     frame["패널"] = frame["run_label"].str.startswith(PROBE_PREFIX)
+
+    # 파이프라인 실행분은 day_type이 없을 수 있다(웹 실행 폼이 항상 채우지는
+    # 않는다) — 패널분만 이 필터의 대상이다. 파이프라인분은 아래 include_pipeline
+    # 분기에서 따로 다룬다.
+    frame = frame[~frame["패널"] | (frame["day_type"] == day_type)].copy()
     if not include_pipeline:
         frame = frame[frame["패널"]]
     else:
@@ -251,16 +265,21 @@ def main() -> int:
                              " (기본: 제외 — 흔들림의 원인을 가릴 수 없게 된다)")
     parser.add_argument("--include-pipeline", action="store_true",
                         help="파이프라인 실행분도 함께 쓴다 (구간이 매번 다르다)")
+    parser.add_argument("--day-type", choices=("weekday", "holiday"), default="weekday",
+                        help="어느 쪽 패널분을 잴지 (기본 weekday). 평일·휴일 계수는"
+                             " 절대 같은 회귀에 섞지 않는다")
     args = parser.parse_args()
 
-    frame = load_legs(args.include_pipeline, panel_only=not args.all_legs)
+    frame = load_legs(args.include_pipeline, panel_only=not args.all_legs,
+                      day_type=args.day_type)
     if frame.empty:
-        print("road_leg에 쓸 구간이 없습니다."
+        print(f"road_leg에 {args.day_type} 패널분이 없습니다."
               " python tools/collect_road_time.py 부터 돌리십시오.")
         return 1
 
     days = sorted(frame["날짜"].dropna().unique())
-    print(f"구간 {len(frame)}개 · 날짜 {len(days)}일 ({days[0]} ~ {days[-1]})")
+    print(f"[{args.day_type}] 구간 {len(frame)}개 · 날짜 {len(days)}일"
+          f" ({days[0]} ~ {days[-1]})")
     if args.include_pipeline:
         print(f"  고정 패널 {int(frame['패널'].sum())} /"
               f" 파이프라인 {int((~frame['패널']).sum())}")

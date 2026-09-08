@@ -12,17 +12,19 @@
 
       · 그날 몫(회차 4개 × 100구간)을 이미 받았으면 TMAP을 **한 번도 부르지 않고** 끝난다
       · 한도 소진·네트워크 실패로 잘린 회차가 있으면 **그것만** 채운다
-      · 주말이면 스스로 건너뛴다
+      · day-type을 안 주면 **그날의 실제 요일**로 평일/휴일을 자동 판정한다
 
     그래서 시각을 여러 개 걸어도 **호출은 하루 20건(사슬 5 × 회차 4)을 넘지 않는다.**
     예전에는 평일 03:30 한 번이었는데, 새벽에 PC를 켜 두지 않는 환경에서는 그날을
     통째로 잃었다(2026-09-03에 실제로 비었다).
 
-    **평일만 센다.** `start_time_for()`가 '다음 평일'을 쓰기 때문에 토·일에 받으면
-    금요일과 똑같은 '다음 월요일' 교통량이라 다른 날로 셀 수 없다.
+    **평일·휴일을 나눠서 잰다 (1.26.158).** `start_time_for()`가 `day_type`을
+    받아 평일이면 '다음 평일', 휴일이면 '다음 토·일 또는 공휴일'을 만든다 —
+    같은 요일로 밀어야 다른 날로 셀 수 있다. 결과는 `runs.day_type`에 남고
+    `road_time_model.py --day-type`이 그걸로 갈라 회귀한다.
 
 .EXAMPLE
-    .\scripts\road_collector.ps1 install                      # 평일 09/12/15/18/21시 + 로그온
+    .\scripts\road_collector.ps1 install                      # 매일(휴일 포함) 09/12/15/18/21시 + 로그온
     .\scripts\road_collector.ps1 install -Slots 10:00,16:00   # 시각을 직접 정한다
     .\scripts\road_collector.ps1 status     # 스케줄 + 쌓인 현황
     .\scripts\road_collector.ps1 now        # 지금 한 번 즉시 수집 (모자란 회차만)
@@ -109,14 +111,15 @@ function Invoke-Install {
     # ① 켜져 있을 만한 시간대를 훑는다. 앞선 시각에 PC가 꺼져 있었으면 다음
     #    시각이 받고, 이미 받았으면 그냥 끝난다. 새벽을 뺀 이유는 이 프로젝트를
     #    쓰는 환경이 새벽에 PC를 켜 두지 않기 때문이다(2026-09-03).
+    #    요일은 전부 건다 — `--if-needed`가 그날의 실제 요일로 평일/휴일을
+    #    스스로 갈라 수집하므로(1.26.158), 주말만 따로 막을 이유가 없다.
     foreach ($slot in $Slots) {
         $when = [datetime]::ParseExact($slot.Trim(), 'HH:mm', $null)
         $triggers += New-ScheduledTaskTrigger -Weekly -At $when `
-            -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday
+            -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday
     }
 
     # ② 켜자마자도 한 번. 슬롯을 전부 놓친 날(늦게 켠 날)을 위한 안전망이다.
-    #    로그온은 주말에도 걸리지만 `--if-needed`가 주말을 스스로 거른다.
     $logon = New-ScheduledTaskTrigger -AtLogOn
     $logon.Delay = 'PT3M'          # 부팅 직후 혼잡을 피한다
     $triggers += $logon
@@ -131,9 +134,9 @@ function Invoke-Install {
 
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers `
         -Settings $settings -Force `
-        -Description "TMAP 고정 패널 실도로 소요시간을 평일에 수집합니다. 시각 $($Slots -join ', ') + 로그온 시. 그날 몫을 이미 받았으면 호출하지 않습니다 (docs/구현/COLLECTOR_ROAD.md)." | Out-Null
+        -Description "TMAP 고정 패널 실도로 소요시간을 매일(휴일 포함) 수집합니다 - 그날 요일로 평일/휴일 계수를 자동으로 갈라 잽니다. 시각 $($Slots -join ', ') + 로그온 시. 그날 몫을 이미 받았으면 호출하지 않습니다 (docs/구현/COLLECTOR_ROAD.md)." | Out-Null
 
-    Write-Host "[등록] $TaskName — 평일 $($Slots -join ', ') + 로그온 시" -ForegroundColor Green
+    Write-Host "[등록] $TaskName — 매일(휴일 포함) $($Slots -join ', ') + 로그온 시" -ForegroundColor Green
     Write-Host "  그날 처음 깨는 실행만 TMAP 20호출을 쓰고, 나머지는 즉시 끝납니다."
     Write-Host "  다음 실행: $(Format-Stamp (Get-ScheduledTaskInfo -TaskName $TaskName).NextRunTime)"
     Write-Host "  현황 보기: .\scripts\road_collector.ps1 status"

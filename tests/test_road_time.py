@@ -399,11 +399,61 @@ def test_다른_날짜는_서로_간섭하지_않는다(collector):
     assert collector.pending_durations(["_05_10"], today, 100) == ["_05_10"]
 
 
-def test_주말은_건너뛴다(collector):
-    """start_time_for()가 '다음 평일'을 쓰므로 토·일에 받으면 금요일과 똑같은
-    '다음 월요일' 교통량이다 — 다른 날로 세면 표본이 부풀어 오른다.
-    로그온 트리거는 주말에도 깨므로 수집기가 스스로 걸러야 한다."""
-    assert collector.is_weekend("2026-09-05") is True    # 토
-    assert collector.is_weekend("2026-09-06") is True    # 일
-    assert collector.is_weekend("2026-09-04") is False   # 금
-    assert collector.is_weekend("2026-09-07") is False   # 월
+def test_요일로_평일_휴일을_가른다(collector):
+    """`--day-type`을 안 주면 그 날짜의 실제 요일로 자동 판정한다(1.26.158).
+
+    예전에는 주말이면 통째로 건너뛰었다 — `start_time_for()`가 '다음 평일'만
+    썼기 때문이다. 이제는 `day_type`을 받아 휴일이면 '다음 토·일·공휴일'을
+    만들 수 있으므로, 주말도 **휴일 계수로** 잰다. `is_holiday_date()`는 그
+    자동 판정에 쓰는 판별자다."""
+    assert collector.is_holiday_date("2026-09-05") is True    # 토
+    assert collector.is_holiday_date("2026-09-06") is True    # 일
+    assert collector.is_holiday_date("2026-09-04") is False   # 금
+    assert collector.is_holiday_date("2026-09-07") is False   # 월
+    assert collector.is_holiday_date("2026-10-09") is True    # 한글날(평일 공휴일)
+
+
+# ---------------------------------------------------------------- 모형 재추정의 day_type 필터
+
+def _model_module():
+    """experiments/params/road_time_model.py를 경로로 직접 읽는다."""
+    path = PROJECT_ROOT / "experiments" / "params" / "road_time_model.py"
+    spec = importlib.util.spec_from_file_location("road_time_model", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_모형_재추정은_평일과_휴일을_안_섞는다(collector):
+    """`road_time_model.load_legs()`가 `runs.day_type`으로 패널분을 갈라야 한다.
+
+    이 저장소는 "평일과 휴일은 절대 섞지 마라"를 전역 규약으로 두는데,
+    휴일 도로 수집(1.26.158)을 더하면서 이 필터가 없으면 모형 재추정만
+    그 규약을 어기게 된다 — 휴일 계수가 평일 회귀에 조용히 섞여 든다.
+    """
+    import db
+
+    model = _model_module()
+
+    with db.session() as conn:
+        db.ensure_run(conn, "roadprobe-2026-09-04", kind="probe", day_type="weekday")
+        db.ensure_run(conn, "roadprobe-holiday-2026-09-05", kind="probe", day_type="holiday")
+
+    weekday_frame = pd.DataFrame([_leg_row(leg=i, straight_km=5.0, road_sec=600.0)
+                                  for i in range(25)])
+    holiday_frame = pd.DataFrame([_leg_row(leg=i, straight_km=5.0, road_sec=900.0)
+                                  for i in range(25)])
+    db.save_output("road_leg", weekday_frame,
+                   run_label="roadprobe-2026-09-04", duration="_10_15")
+    db.save_output("road_leg", holiday_frame,
+                   run_label="roadprobe-holiday-2026-09-05", duration="_10_15")
+
+    weekday_only = model.load_legs(include_pipeline=False, panel_only=False,
+                                   day_type="weekday")
+    holiday_only = model.load_legs(include_pipeline=False, panel_only=False,
+                                   day_type="holiday")
+
+    assert set(weekday_only["run_label"]) == {"roadprobe-2026-09-04"}
+    assert set(holiday_only["run_label"]) == {"roadprobe-holiday-2026-09-05"}
+    assert (weekday_only["road_sec"] == 600.0).all()
+    assert (holiday_only["road_sec"] == 900.0).all()
