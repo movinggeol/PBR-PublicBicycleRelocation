@@ -172,7 +172,7 @@ def test_simulate_stock_collects_what_the_clips_threw_away(step4):
     """양쪽 clip에서 **잘려 나간 양**이 곧 못 빌린 수·못 세운 수다.
 
     이 값들은 예전에는 `clip()` 안에서 사라졌다. KPI.md 3-B가 미구현으로
-    남겨 둔 수요 충족률·포화 시간이 정확히 이 두 값이다.
+    남겨 둔 순수요 충족률·포화 시간이 정확히 이 두 값이다.
     """
     # 거치대 10, 시작 3.  +5 → 재고 -2를 0으로 자름(못 빌린 2)
     #                     -20 → 재고 20을 10으로 자름(못 세운 10)
@@ -299,3 +299,42 @@ def test_kpi_page_survives_null_metrics(tmp_path, monkeypatch):
     assert res.status_code == 200
     assert "—" in res.text
     assert ">None<" not in res.text, "결측이 'None'으로 새어 나왔다"
+
+
+# ───────── 지표의 이름 (1.26.157) ─────────
+#
+# 29장이 분모를 총 대여로 바꿔 재 보고 **순서가 뒤집히는 것**을 확인한 뒤,
+# 7장 고찰이 *"지표는 그대로 두되 이름을 '순수요 충족률'로 정확히 한다"* 로
+# 정리했다. 그 결정이 코드·참조 문서에는 닿지 않아 옛 이름이 남아 있었다.
+
+# 지표를 **정의하거나 가르치는** 자리 — 여기에는 옛 이름이 있으면 안 된다.
+_이름을_가르치는_자리 = [
+    "step4_metrics/imbalance.py",
+    "docs/분석/KPI.md",
+    "docs/구현/steps/step4_metrics.md",
+]
+
+
+@pytest.mark.parametrize("경로", _이름을_가르치는_자리)
+def test_충족률을_옛_이름으로_가르치지_않는다(경로):
+    """`수요 충족률`은 분모를 **총 대여**로 읽히게 한다 — 실제는 순수요다.
+
+    분모가 2.3~5.4배 다르고 `_15_20`은 대소까지 뒤집힌다(0.378 → 0.489,
+    EXPERIMENTS 29장). 이름 하나가 인용을 틀리게 만드는 자리라 회귀로 못박는다.
+
+    ⚠️ **역사 기록과 29장 본문은 대상이 아니다.** 버전관리·TODO는 *그때*
+    무엇을 문제로 봤는지를 남기는 자리고, 29장은 *"'수요 충족률'이 아니라
+    '순수요 충족률'이다"* 라는 **주장 자체**라 옛 이름을 인용해야 한다.
+    """
+    from pathlib import Path
+
+    본문 = (Path(__file__).resolve().parents[1] / 경로).read_text(encoding="utf-8")
+    남은 = [줄 for 줄 in 본문.splitlines()
+            if "수요 충족률" in 줄
+            and "순수요 충족률" not in 줄
+            and "이름이 '수요 충족률'이었으나" not in 줄]  # 옛 이름을 경고로 인용한다
+
+    assert not 남은, (
+        f"{경로}가 아직 옛 이름으로 가르친다 — 분모가 순수요인데 "
+        f"'총 대여 대비'로 읽힌다(7장 고찰 · EXPERIMENTS 29장):\n  "
+        + "\n  ".join(남은))

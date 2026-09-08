@@ -1,4 +1,4 @@
-"""실험 — 수요 충족률을 **총 대여 건수**로 다시 잰다 (TODO P3 5번).
+"""실험 — 순수요 충족률을 **총 대여 건수**로 다시 잰다 (TODO P3 5번).
 
 ## 무엇이 문제인가
 
@@ -172,7 +172,7 @@ def report(df) -> None:
     if df.empty:
         return
     print("\n" + "=" * 88)
-    print("수요 충족률 — 두 정의 (재배치 전, 같은 재고 궤적)")
+    print("충족률 — 두 정의 (재배치 전, 같은 재고 궤적)")
     print("=" * 88)
     print(df.to_string(index=False))
 

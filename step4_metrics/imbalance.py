@@ -60,8 +60,12 @@ def use_run_day_type(run_label: str) -> str:
 
 def demand_satisfaction(reloc: pd.DataFrame):
     '''
-    '수요 충족률' 계산 : 평균 순수요(mu) 대비 얼마나 수요를 충족할 수 있었는지
-    imbalance를 통해 재배치 '전'보다 '후'가 얼마나 목표 상태(target_qty)에 가까워졌는가를 측정 
+    불균형 개선 계산 : 재배치 '전'보다 '후'가 얼마나 목표 상태(target_qty)에
+    가까워졌는가를 측정한다.
+
+    ⚠️ **이름이 '수요 충족률'이었으나 그 지표가 아니다.** 실제 충족률은 아래
+    `save_kpi_summary()`의 `demand_fulfill_*`이고, 이 함수가 재는 것은
+    목표 재고와의 거리다 — 둘을 같은 이름으로 부르면 인용이 어긋난다. 
     imbalance : 부족과 과잉을 나누지 않고 하나의 수치로 통합함 (절대값 활용)
     '''
 
@@ -201,7 +205,7 @@ def _simulate_stock(net: pd.DataFrame, initial: pd.Series,
     🔴 **양쪽 clip이 버리던 값을 여기서 거둔다.** 지금까지는 `clip(0, 거치대)`로
     잘라내고 **얼마나 잘렸는지는 버렸다.** 그런데 잘려 나간 양이 곧
     *"빌리려다 못 빌린 수"*(아래 clip)와 *"반납하려다 못 한 수"*(위 clip)다 —
-    [KPI.md](../docs/분석/KPI.md) 3-B가 미구현으로 남겨 둔 **수요 충족률·포화
+    [KPI.md](../docs/분석/KPI.md) 3-B가 미구현으로 남겨 둔 **순수요 충족률·포화
     시간**이 바로 이 두 값이다. 궤적을 두 번 돌 필요 없이 같은 루프에서 나온다.
 
     반환 키:
@@ -372,7 +376,9 @@ def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
         'saturation_hours_after': float(sim_after['saturated'].sum() / denominator),
     }
 
-    # 수요 충족률 — 순유출 대비 실제로 내준 비율. 분모가 0이면(그 회차에 빠져
+    # 순수요 충족률 — 순유출 대비 실제로 내준 비율. 분모가 **순수요**(대여 −
+    # 반납)라 '총 대여 대비'가 아니다 — 총 대여로 재면 분모가 2.3~5.4배고
+    # `_15_20`은 대소까지 뒤집힌다(EXPERIMENTS 29장). 분모가 0이면(그 회차에 빠져
     # 나가는 수요가 없으면) 비율이 정의되지 않으므로 아예 넘기지 않는다.
     for tag, sim in (('before', sim_before), ('after', sim_after)):
         outflow = float(sim['outflow'].sum())
