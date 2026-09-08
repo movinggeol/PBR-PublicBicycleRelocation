@@ -331,6 +331,10 @@ def _home_context() -> dict:
             #    (1.26.107). 판정은 db.list_runs()가 한 벌로 하고 화면은 읽기만
             #    한다 — 화면마다 짐작하면 화면마다 다른 답이 나온다.
             last["is_experiment"] = _run_kind(order[0]) == "experiment"
+            # **얼마나 오래됐는지**를 함께 준다. 절대 시각만 적으면 읽는 사람이
+            # 오늘 날짜와 빼기를 해야 하고, 실제로 12일 된 계획이 아무 말 없이
+            # 헤드라인에 올라와 있었다(2026-09-08 실측).
+            last["age"] = store.age_note(last["computed_at"])
             if last["stockout_before"]:
                 last["cut_pct"] = round(
                     (1 - last["stockout_after"] / last["stockout_before"]) * 100, 1)

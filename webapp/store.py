@@ -237,3 +237,43 @@ def records(frame: pd.DataFrame) -> list:
     if frame.empty:
         return []
     return frame.astype(object).where(pd.notna(frame), None).to_dict(orient="records")
+
+
+# 계획이 '낡았다'고 볼 경계(시간). **실측에서 골랐다** — 하루가 지나면 대여소
+# 55~64%의 재고가 달라진다(stock_history 12일, 날짜쌍 11개 전수). 계획은 그
+# 시점 재고 스냅샷으로 세우므로, 하루가 지나면 전제의 절반 이상이 어긋난다.
+#
+# ⚠️ *"틀렸다"* 가 아니라 *"전제가 흔들렸다"* 는 뜻이다. 화면도 그렇게 말한다 —
+# `/orders`의 '지금 재고와 대조하기'가 그것을 확인하는 길이다.
+PLAN_STALE_HOURS = 24
+
+
+def age_note(when, *, now=None) -> Optional[dict]:
+    """*"얼마나 오래됐나"* 를 사람 말로. 못 읽으면 **`None`(모름)** 을 낸다.
+
+    화면이 절대 시각만 적으면 읽는 사람이 오늘 날짜와 빼기를 해야 한다.
+    실제로 홈이 **12일 된 계획**을 아무 말 없이 '마지막 계획'으로 띄우고
+    있었다(2026-09-08 실측). 지도는 이미 지문으로 낡음을 말하는데
+    (`catalog.list_maps()`) 계획에는 그 장치가 없었다.
+
+    돌려주는 것: `{"hours": float, "text": str, "stale": bool}`.
+    `stale`은 `PLAN_STALE_HOURS`를 넘겼는지다. **판정할 수 없으면 `None`** 이라
+    화면이 *"모른다"* 고 말할 수 있다 — 지도 쪽과 같은 규약이다.
+    """
+    if when is None or (isinstance(when, float) and pd.isna(when)):
+        return None
+    stamp = pd.to_datetime(when, errors="coerce")
+    if pd.isna(stamp):
+        return None
+    current = pd.Timestamp.now() if now is None else pd.to_datetime(now)
+    hours = (current - stamp).total_seconds() / 3600
+    if hours < 0:          # 시계가 어긋났다 — 짐작해서 말하지 않는다.
+        return None
+    if hours < 1:
+        text = "방금"
+    elif hours < 24:
+        text = f"{int(hours)}시간 전"
+    else:
+        text = f"{int(hours // 24)}일 전"
+    return {"hours": round(hours, 1), "text": text,
+            "stale": hours >= PLAN_STALE_HOURS}

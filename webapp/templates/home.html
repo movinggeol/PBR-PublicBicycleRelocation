@@ -24,10 +24,26 @@
 
 <h2>마지막 계획</h2>
 {% if last %}
+{# 계획은 **그 시점 재고 스냅샷**으로 세운다. 하루가 지나면 대여소 55~64%의
+   재고가 달라져(stock_history 12일 실측) 전제가 흔들린다 — 계획이 틀렸다는
+   뜻이 아니라 **그대로 나가면 안 된다**는 뜻이라, 확인하는 길까지 적는다. #}
+{% if last.age and last.age.stale %}
+<div class="alert bad no-print">
+  <span><b>이 계획은 {{ last.age.text }} 세운 것입니다.</b>
+  계획은 그때의 재고로 짜였는데, 하루만 지나도 <b>대여소 절반 이상</b>의 재고가
+  달라집니다(실측). 그대로 내보내기 전에
+  <a href="/orders">작업지시서</a>에서 <b>“지금 재고와 대조하기”</b>로 확인하거나,
+  <a href="/run">새로 계획을 세우세요</a>.</span>
+</div>
+{% endif %}
 <div class="card">
   <div class="card-head">
     <h3>{{ last.run_label }}</h3>
-    <span class="muted">{{ last.computed_at }} · 회차 {{ last.durations }}개</span>
+    {# 절대 시각만 적으면 읽는 사람이 오늘 날짜와 빼기를 해야 한다.
+       나이를 함께 적는다 — 못 읽으면 아무 말도 하지 않는다(모름). #}
+    <span class="muted">{{ last.computed_at }}{% if last.age %} ·
+      <b{% if last.age.stale %} class="bad"{% endif %}>{{ last.age.text }}</b>{% endif %}
+      · 회차 {{ last.durations }}개</span>
   </div>
   <div class="tiles">
     <div class="tile">

@@ -1995,3 +1995,89 @@ def test_kpi의_최신은_라벨이_아니라_시각으로_고른다():
     assert 최신[0] == "2026-08-27 23", (
         f"'{최신[0]}'을 최신이라 골랐다 — 라벨 사전순으로는 sweep-가 위지만 "
         "실제로 나중에 돌린 것은 2026-08-27 23이다")
+
+
+# ── 계획이 얼마나 오래됐는지 (1.26.156) ────────────────────────────────
+# 홈이 **12일 된 계획**을 아무 말 없이 '마지막 계획'으로 띄우고 있었다
+# (2026-09-08 실측: `obs-cmp-1520`, 절대 시각만 적혀 있었다). 지도는 이미
+# 낡음을 말하는데(1.26.122) 계획에는 그 장치가 없었다.
+
+def test_계획의_나이를_사람_말로_적는다():
+    """절대 시각만 적으면 읽는 사람이 오늘 날짜와 빼기를 해야 한다."""
+    from webapp import store
+
+    assert store.age_note("2026-09-08 09:30", now="2026-09-08 10:00")["text"] == "방금"
+    assert store.age_note("2026-09-08 04:00", now="2026-09-08 10:00")["text"] == "6시간 전"
+    assert store.age_note("2026-09-01 10:00", now="2026-09-08 10:00")["text"] == "7일 전"
+
+
+def test_하루가_지나면_낡았다고_판정한다():
+    """경계는 실측에서 골랐다 — 하루 지나면 대여소 55~64%의 재고가 달라진다."""
+    from webapp import store
+
+    fresh = store.age_note("2026-09-08 00:00", now="2026-09-08 10:00")
+    stale = store.age_note("2026-09-06 10:00", now="2026-09-08 10:00")
+    assert fresh["stale"] is False
+    assert stale["stale"] is True
+
+
+def test_판정할_수_없으면_모른다고_한다():
+    """🔴 **짐작해서 말하지 않는다.**
+
+    시각을 못 읽었는데 '방금'이라 답하면 낡은 계획을 최신이라 말하게 된다 —
+    낡음을 알리려고 만든 장치가 거짓말을 하는 셈이다. 지도 쪽과 같은 규약으로
+    `None`(모름)을 내고, 화면은 아무 말도 안 한다.
+    """
+    from webapp import store
+
+    assert store.age_note(None) is None
+    assert store.age_note("시각 아님") is None
+    # 시계가 어긋나 미래로 찍힌 경우도 짐작하지 않는다.
+    assert store.age_note("2026-09-09 10:00", now="2026-09-08 10:00") is None
+
+
+def _plan_kpi(computed_at: str):
+    """홈이 카드를 그릴 만큼의 최소 KPI 한 줄.
+
+    ⚠️ 실제 DB에 기대면 안 된다 — `conftest.isolate_db`가 모든 테스트를
+    **빈 임시 DB**로 돌려서 카드 자체가 안 나온다(처음에 그렇게 썼다가
+    "2시간 전이 없다"는 엉뚱한 실패를 봤다).
+    """
+    import pandas as pd
+    return pd.DataFrame([{
+        "run_label": "계획-A", "duration": "_10_15",
+        "computed_at": computed_at,
+        "bikes_moved": 100, "vehicles_used": 3,
+        "total_distance_km": 12.0,
+        "stockout_hours_before": 2.0, "stockout_hours_after": 1.0,
+        "max_cluster_minutes": 90.0, "time_budget_minutes": 120.0,
+    }])
+
+
+def test_낡은_계획이면_화면이_경고하고_확인할_길을_준다(client, monkeypatch):
+    """**경고만 하고 길을 안 주면 읽는 사람이 할 수 있는 게 없다.**"""
+    from webapp import store
+
+    monkeypatch.setattr(store, "kpi", lambda *a, **k: _plan_kpi("2026-08-27 23:16"))
+    monkeypatch.setattr(store, "age_note",
+                        lambda when, **kw: {"hours": 288.0, "text": "12일 전",
+                                            "stale": True})
+
+    body = client.get("/").text
+    assert "12일 전" in body
+    assert "세운 것입니다" in body, "낡았는데 경고가 없다"
+    assert "지금 재고와 대조하기" in body, "확인할 길을 안 알려 준다"
+
+
+def test_갓_세운_계획에는_경고를_붙이지_않는다(client, monkeypatch):
+    """늘 빨간 경고는 사람이 무시하기 시작한다."""
+    from webapp import store
+
+    monkeypatch.setattr(store, "kpi", lambda *a, **k: _plan_kpi("2026-09-08 08:00"))
+    monkeypatch.setattr(store, "age_note",
+                        lambda when, **kw: {"hours": 2.0, "text": "2시간 전",
+                                            "stale": False})
+
+    body = client.get("/").text
+    assert "2시간 전" in body
+    assert "세운 것입니다" not in body, "갓 세운 계획에 낡음 경고가 붙었다"
