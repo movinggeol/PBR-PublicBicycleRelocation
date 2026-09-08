@@ -74,6 +74,9 @@ def load_legs(include_pipeline: bool, panel_only: bool = True,
     `--day-type`으로 나눠 수집한 뒤 `runs.day_type`에 남기므로, 여기서도 그
     값으로 걸러야 한다 — 그러지 않으면 이 저장소 전체가 지키는 "평일과 휴일은
     절대 섞지 마라" 규약을 이 스크립트만 어기게 된다.
+
+    ⚠️ **다만 그 기록은 1.26.159부터 있다.** 그 전 수집분은 `day_type`이
+    NULL이라 기록만 믿으면 통째로 빠진다 — 아래에서 라벨로 되짚는다.
     """
     with db.session() as conn:
         frame = pd.read_sql(
@@ -85,10 +88,16 @@ def load_legs(include_pipeline: bool, panel_only: bool = True,
 
     frame["패널"] = frame["run_label"].str.startswith(PROBE_PREFIX)
 
-    # 파이프라인 실행분은 day_type이 없을 수 있다(웹 실행 폼이 항상 채우지는
-    # 않는다) — 패널분만 이 필터의 대상이다. 파이프라인분은 아래 include_pipeline
-    # 분기에서 따로 다룬다.
-    frame = frame[~frame["패널"] | (frame["day_type"] == day_type)].copy()
+    # 🔴 **`runs.day_type`만 믿으면 1.26.159 이전 수집분이 통째로 빠진다.**
+    # 그 컬럼은 1.26.159에서 처음 기록하기 시작했고, 그 전 6일(08-31~09-08)은
+    # 전부 NULL이다 — `== day_type` 비교는 NULL을 어느 쪽에도 넣지 않으므로
+    # 판정용 표본이 5일에서 1일로 줄었다(2026-09-09에 실제로 그렇게 나왔다).
+    # 라벨이 사실을 알고 있다: 휴일분만 `roadprobe-holiday-`를 달고, 그 접두어가
+    # 없으면 평일분이다. 그래서 **기록이 있으면 기록을, 없으면 라벨을** 쓴다.
+    라벨상_휴일 = frame["run_label"].str.startswith(PROBE_PREFIX + "holiday-")
+    실제_구분 = frame["day_type"].where(
+        frame["day_type"].notna(), 라벨상_휴일.map({True: "holiday", False: "weekday"}))
+    frame = frame[~frame["패널"] | (실제_구분 == day_type)].copy()
     if not include_pipeline:
         frame = frame[frame["패널"]]
     else:

@@ -457,3 +457,43 @@ def test_모형_재추정은_평일과_휴일을_안_섞는다(collector):
     assert set(holiday_only["run_label"]) == {"roadprobe-holiday-2026-09-05"}
     assert (weekday_only["road_sec"] == 600.0).all()
     assert (holiday_only["road_sec"] == 900.0).all()
+
+
+def test_day_type_기록이_없는_옛_수집분도_평일로_읽는다(collector):
+    """🔴 **`runs.day_type`만 믿으면 옛 수집분이 통째로 빠진다** (1.26.161).
+
+    그 컬럼은 1.26.159에서 처음 기록하기 시작했다. 그 전 6일(08-31~09-08)은
+    NULL이라 `== "weekday"` 비교가 어느 쪽에도 넣지 않았고, **판정용 표본이
+    7일에서 1일로 줄었다** — `--status`는 7일이라 하는데 모형은 1일이라
+    두 도구가 다른 답을 하고 있었다. 하필 채택 판정을 코앞에 둔 자리다.
+
+    라벨이 사실을 알고 있다: 휴일분만 `roadprobe-holiday-`를 단다.
+    """
+    import db
+
+    model = _model_module()
+
+    # day_type을 **일부러 기록하지 않는다** — 1.26.159 이전 상태를 만든다.
+    with db.session() as conn:
+        db.ensure_run(conn, "roadprobe-2026-09-04", kind="probe")
+        db.ensure_run(conn, "roadprobe-holiday-2026-09-05", kind="probe")
+
+    for label in ("roadprobe-2026-09-04", "roadprobe-holiday-2026-09-05"):
+        db.save_output("road_leg",
+                       pd.DataFrame([_leg_row(leg=i) for i in range(25)]),
+                       run_label=label, duration="_10_15")
+
+    with db.session() as conn:
+        남은_기록 = conn.execute(
+            "SELECT COUNT(*) FROM runs WHERE run_label LIKE 'roadprobe-%'"
+            " AND day_type IS NOT NULL").fetchone()[0]
+    assert 남은_기록 == 0, "이 테스트는 day_type이 비어 있는 상태를 재현해야 한다"
+
+    weekday_only = model.load_legs(include_pipeline=False, panel_only=False,
+                                   day_type="weekday")
+    holiday_only = model.load_legs(include_pipeline=False, panel_only=False,
+                                   day_type="holiday")
+
+    assert set(weekday_only["run_label"]) == {"roadprobe-2026-09-04"}, (
+        "day_type 기록이 없는 옛 평일 수집분이 빠졌다")
+    assert set(holiday_only["run_label"]) == {"roadprobe-holiday-2026-09-05"}
