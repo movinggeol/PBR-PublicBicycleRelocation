@@ -2081,3 +2081,147 @@ def test_갓_세운_계획에는_경고를_붙이지_않는다(client, monkeypat
     body = client.get("/").text
     assert "2시간 전" in body
     assert "세운 것입니다" not in body, "갓 세운 계획에 낡음 경고가 붙었다"
+
+
+# ── 재고 수집 현황 화면 (1.26.158) ────────────────────────────────────
+# `stock_history`(62.7만 행)는 이 프로젝트의 **유일한 실측**인데 웹에 화면이
+# 하나도 없었다. 그 사이 수집이 두 번 조용히 멈췄고(1.26.103·1.26.140) 둘 다
+# 사람이 터미널을 열어야만 알 수 있었다.
+
+def _collect_ctx(**over):
+    """수집 화면이 쓸 값 한 벌.
+
+    ⚠️ 실제 DB에 기대면 안 된다 — `conftest.isolate_db`가 모든 테스트를
+    **빈 임시 DB**로 돌려서 화면이 빈 상태로 떨어진다(1.26.156에서 같은
+    함정에 두 번째로 걸렸다).
+    """
+    base = {
+        "window": "07:00-22:00", "interval": 10,
+        "source": "등록된 작업 'PBR재고수집'",
+        "rows": [{"날짜": "2026-08-31", "틱": 77, "기대": 91, "결측": 14,
+                  "구간": 4, "덮은 시간": "07:00~22:00", "상태": "결측"},
+                 {"날짜": "2026-09-08", "틱": 91, "기대": 91, "결측": 0,
+                  "구간": 1, "덮은 시간": "07:00~22:00", "상태": "온전"}],
+        "total_ticks": 168, "expected": 91, "days": 2, "stations": 1376,
+        "span": "2026-08-31 ~ 2026-09-08", "last_seen": "2026-09-08",
+        "intact": ["2026-09-08"], "split_days": 1,
+        "stalled": {"days": 0, "stalled": False}, "error": None,
+    }
+    base.update(over)
+    return base
+
+
+def test_수집_화면이_어느_기준으로_셌는지_밝힌다(client, monkeypatch):
+    """🔴 **판정을 화면에서 다시 하지 않는다.**
+
+    같은 규칙을 두 곳에 적으면 화면과 터미널이 다른 답을 한다 — 이 저장소는
+    그 사고를 이미 겪었다(1.26.55 창 · 1.26.121 "온전한 날"). 숫자는 전부
+    `tools/collect_stock.py`가 내고, 화면은 **그 기준을 밝히기만** 한다.
+    """
+    from webapp import collect_view
+
+    monkeypatch.setattr(collect_view, "context", lambda: _collect_ctx())
+    body = client.get("/collect").text
+    assert "07:00-22:00" in body
+    assert "PBR재고수집" in body, "어느 기준으로 셌는지 화면이 안 밝힌다"
+
+
+def test_기본값으로_떨어지면_표가_어긋날_수_있다고_말한다(client, monkeypatch):
+    """창을 못 읽고 기본값으로 세면 **결측이 통째로 틀린다**(1.26.55)."""
+    from webapp import collect_view
+
+    monkeypatch.setattr(
+        collect_view, "context",
+        lambda: _collect_ctx(window="09:00-17:00",
+                             source="기본값 — 등록된 작업을 찾지 못했습니다"))
+    body = client.get("/collect").text
+    assert "등록된 수집 작업을 찾지 못했습니다" in body
+    assert "어긋납니다" in body, "기본값인데 표를 믿어도 되는 것처럼 보인다"
+
+
+def test_오래_멈췄으면_화면이_먼저_말한다(client, monkeypatch):
+    """수집이 두 번 멈췄고 둘 다 며칠 뒤에야 알았다(1.26.103·1.26.140)."""
+    from webapp import collect_view
+
+    monkeypatch.setattr(
+        collect_view, "context",
+        lambda: _collect_ctx(last_seen="2026-09-01",
+                             stalled={"days": 7, "stalled": True}))
+    body = client.get("/collect").text
+    assert "7일째 새 관측이 없습니다" in body
+    assert "resume" in body, "다시 켜는 방법을 안 알려 준다"
+
+
+def test_주말_이틀은_멈춘_것으로_보지_않는다():
+    """수집은 평일만 돈다 — 하루로 두면 **월요일 아침마다 거짓 경보**가 뜬다."""
+    from webapp import collect_view
+
+    assert collect_view._stalled_note("2026-09-04", today="2026-09-07")["days"] == 3
+    assert collect_view._stalled_note("2026-09-06", today="2026-09-07")["stalled"] is False
+
+
+def test_멈췄는지_판정할_수_없으면_모른다고_한다():
+    """짐작해서 '정상'이라 답하면 멈춤을 알리려던 장치가 거짓말을 한다."""
+    from webapp import collect_view
+
+    assert collect_view._stalled_note("날짜 아님") is None
+    assert collect_view._stalled_note("2026-09-09", today="2026-09-08") is None
+
+
+def test_온전한_날이_세_가지_뜻임을_화면이_밝힌다(client, monkeypatch):
+    """🔴 같은 이름이 셋을 뜻한다(1.26.153).
+
+    밝히지 않으면 **0일**을 보고 *"쓸 자료가 없다"* 고 읽는다 — 실제로 그
+    오독이 있었다(1.26.120).
+    """
+    from webapp import collect_view
+
+    monkeypatch.setattr(collect_view, "context", lambda: _collect_ctx())
+    body = client.get("/collect").text
+    assert "dense_days()" in body
+    assert "duration_complete_days()" in body
+    assert "등록된 창의 100%" in body
+
+
+def test_결측은_아직_판정이_아니라고_말한다(client, monkeypatch):
+    """수집기가 두 환경에서 돌고 이 표는 이쪽 DB만 센다(1.26.120에 오독했다)."""
+    from webapp import collect_view
+
+    monkeypatch.setattr(collect_view, "context", lambda: _collect_ctx())
+    body = client.get("/collect").text
+    assert "아직 판정이 아닙니다" in body
+    assert "merge_stock.py" in body
+
+
+def test_구간이_여러_개면_수집_실패가_아니라_PC_꺼짐이라_말한다(client, monkeypatch):
+    """둘은 대응이 완전히 다르다.
+
+    ⚠️ `td`에 `.bad`를 붙여도 색이 안 바뀐다(규칙이 `.tile .value.bad` 등뿐).
+    **글자로 말해야** 전달된다 — 1.26.107이 겪은 그 함정이다.
+    """
+    from webapp import collect_view
+
+    monkeypatch.setattr(collect_view, "context", lambda: _collect_ctx())
+    body = client.get("/collect").text
+    assert "PC 꺼짐" in body
+    assert "수집기 고장이 아닙니다" in body
+
+
+def test_수집이_없어도_화면이_죽지_않고_길을_준다(client):
+    """빈 상태에 **나갈 길**을 둔다(이 저장소의 빈 상태 규약).
+
+    `conftest.isolate_db`가 빈 DB를 주므로 이것이 곧 실제 빈 상태다.
+    """
+    res = client.get("/collect")
+    assert res.status_code == 200
+    assert "collector.ps1 install" in res.text
+
+
+def test_수집기를_못_읽어도_대시보드가_500이_되지_않는다(client, monkeypatch):
+    """도구가 없다고 화면 전체가 죽으면 안 된다."""
+    from webapp import collect_view
+
+    monkeypatch.setattr(collect_view, "_tool", lambda: None)
+    res = client.get("/collect")
+    assert res.status_code == 200
+    assert "읽지 못했습니다" in res.text

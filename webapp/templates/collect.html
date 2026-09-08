@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}재고 수집 — PBR 대시보드{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <h1>재고 수집</h1>
+  <p class="lead">대여소 재고를 10분마다 받아 쌓은 <b>실측 기록</b>입니다.
+    결품 지표가 여기서 나옵니다 — 계획이 만들어 낸 값이 아니라
+    <b>실제로 관측한 것</b>입니다.</p>
+</section>
+
+{% if error %}
+<div class="alert bad"><span><b>{{ error }}</b>
+  터미널에서 <code>python tools/collect_stock.py --status</code>로 확인하세요.</span></div>
+
+{% elif not rows %}
+<p class="empty">아직 수집한 재고가 없습니다.
+  <code>scripts/collector.ps1 install</code>로 수집을 시작하세요
+  (<a href="/guide">사용 안내</a>).</p>
+
+{% else %}
+{# 🔴 수집이 두 번 조용히 멈췄고(1.26.103·1.26.140) 둘 다 사람이 터미널을
+   열어야만 알 수 있었다. 화면이 먼저 말하면 그 며칠이 사라지지 않는다.
+   판정할 수 없으면(stalled가 없으면) 아무 말도 하지 않는다. #}
+{% if stalled and stalled.stalled %}
+<div class="alert bad">
+  <span><b>{{ stalled.days }}일째 새 관측이 없습니다.</b>
+  수집이 멈췄을 수 있습니다 — 실제로 두 번 그랬고, 둘 다 며칠 뒤에야
+  알아차렸습니다. <code>scripts/collector.ps1 status</code>로 스케줄 상태를
+  확인하고, 꺼져 있으면 <code>resume</code>으로 다시 켜세요.</span>
+</div>
+{% endif %}
+
+{% if source.startswith('기본값') %}
+<div class="alert">
+  <span><b>등록된 수집 작업을 찾지 못했습니다.</b> 아래 결측은
+  <b>기본 창({{ window }})</b> 기준이라, 실제로 다른 창으로 등록해 두었다면
+  표가 통째로 어긋납니다.</span>
+</div>
+{% endif %}
+
+<div class="tiles">
+  <div class="tile">
+    <p class="label"><span class="tip" data-tip="한 틱은 한 번의 수집입니다. 10분 간격이라 하루 온종일 돌면 91틱입니다.">쌓인 관측</span></p>
+    <p class="value">{{ "{:,}".format(total_ticks) }}<span class="unit">틱</span></p>
+    <p class="sub muted">{{ days }}일 · 대여소 {{ "{:,}".format(stations) }}곳</p>
+  </div>
+  <div class="tile">
+    <p class="label"><span class="tip" data-tip="마지막으로 재고를 받은 날입니다. 오래됐으면 수집이 멈춘 것일 수 있습니다.">마지막 관측</span></p>
+    <p class="value {% if stalled and stalled.stalled %}bad{% endif %}">{{ last_seen }}</p>
+    {# 색만으로 말하지 않는다(base.html 규약) — 멈춘 것 같으면 **글자로도** 적는다. #}
+    <p class="sub muted">{% if stalled %}{% if stalled.days == 0 %}오늘{%
+      else %}{{ stalled.days }}일 전{% endif %}{% if stalled.stalled %} · <b>멈춘 듯</b>{% endif %}{%
+      else %}얼마나 됐는지 알 수 없음{% endif %}</p>
+  </div>
+  <div class="tile">
+    <p class="label"><span class="tip" data-tip="등록된 수집 창을 100% 채운 날입니다. 실험이 쓰는 '온전한 날'과는 기준이 다릅니다 — 아래 설명을 보세요.">창을 다 채운 날</span></p>
+    <p class="value">{{ intact | length }}<span class="unit">일</span></p>
+    <p class="sub muted">하루 {{ expected }}틱 기대</p>
+  </div>
+</div>
+
+{# ⚠️ "온전한 날"이 이 저장소에서 세 가지 뜻으로 쓰인다(1.26.153). 화면이
+   무엇을 묻고 있는지 밝히지 않으면, 여기 0일을 보고 "쓸 자료가 없다"고
+   읽는다 — 실제로 그 오독이 있었다(1.26.120). #}
+<div class="card">
+  <div class="card-head"><h2>이 화면이 묻는 것</h2></div>
+  <p class="muted" style="margin:0 0 var(--sp-sm)">
+    <b>“등록한 만큼 모았나”</b>입니다. 등록된 창({{ window }})을
+    <b>100%</b> 채워야 <b>온전</b>입니다 — 그래서 반나절만 돈 날은
+    빽빽하게 모았어도 <b>결측</b>입니다.</p>
+  <div class="table-wrap">
+  <table class="m-cards">
+    <thead><tr><th scope="col">묻는 것</th><th scope="col">누가 답하나</th><th scope="col">기준</th></tr></thead>
+    <tbody>
+      <tr><td data-label="묻는 것"><b>등록한 만큼 모았나</b></td>
+          <td data-label="누가">이 화면</td>
+          <td class="muted" data-label="기준">등록된 창의 100%</td></tr>
+      <tr><td data-label="묻는 것">모은 만큼은 빽빽한가</td>
+          <td data-label="누가"><code>dense_days()</code></td>
+          <td class="muted" data-label="기준">그날 실제로 돈 창의 80%</td></tr>
+      <tr><td data-label="묻는 것">이 회차가 덮였나</td>
+          <td data-label="누가"><code>duration_complete_days()</code></td>
+          <td class="muted" data-label="기준">그 회차 시간대의 80%</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="hint" style="margin:var(--sp-sm) 0 0">셋은 <b>같은 날에 다르게 답합니다.</b>
+    실측에서 8/31은 여기서는 <b>결측</b>(77/91)인데 실험 쪽에서는 촘촘한
+    날입니다 — 묻는 것이 다르기 때문이지 어느 한쪽이 틀린 것이 아닙니다.</p>
+</div>
+
+<h2>날짜별 수집 현황</h2>
+<p class="section-lead muted">기준: {{ source }} · 창 {{ window }} · 간격 {{ interval }}분
+  {%- if split_days %} · <b>{{ split_days }}일</b>이 여러 구간으로 나뉩니다{% endif %}</p>
+
+{% if split_days %}
+{# 하루가 여러 구간이면 수집 실패가 아니라 PC가 꺼져 있던 것이다.
+   둘은 대응이 완전히 다르므로 표 안에서 갈라 읽히게 한다. #}
+<p class="hint"><b>구간이 2 이상이면 그 사이 PC가 꺼져 있었다는 뜻입니다</b> —
+  수집기 고장이 아닙니다. 창을 온전히 덮으려면 PC를 창 시작 전에 켜 두세요.</p>
+{% endif %}
+
+<div class="card flush" data-pager="10" data-pager-label="수집 현황 쪽 넘기기">
+<div class="table-wrap">
+<table data-sortable class="m-cards">
+  <thead><tr>
+    <th scope="col">날짜</th><th scope="col" class="num">틱</th>
+    <th scope="col" class="num">기대</th><th scope="col" class="num">결측</th>
+    <th scope="col" class="num">구간</th><th scope="col">덮은 시간</th>
+    <th scope="col" class="grow">상태</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr data-page-item="{{ loop.index0 }}">
+    <td data-label="">{{ r['날짜'] }}</td>
+    <td class="num" data-label="틱">{{ r['틱'] }}</td>
+    <td class="num muted" data-label="기대">{{ r['기대'] }}</td>
+    <td class="num {% if r['결측'] %}muted{% endif %}" data-label="결측">{{ r['결측'] }}</td>
+    {# ⚠️ `td`에 `.bad`를 붙여도 **아무 일도 일어나지 않는다** — 규칙은
+       `.tile .value.bad`·`.delta.bad`·`.alert.bad`뿐이라 표 칸은 평범한
+       검은 글씨로 뜬다(1.26.107이 겪은 그 함정이다). 색을 새로 만들지 않고
+       **글자로 말한다** — base.html이 적어 둔 *"색만으로 두지 않는다"* 규약과도
+       같은 방향이다. #}
+    <td class="num" data-label="구간">{{ r['구간'] }}{% if r['구간'] > 1 %}
+      <span class="hint">· PC 꺼짐</span>{% endif %}</td>
+    <td class="muted" data-label="덮은 시간">{{ r['덮은 시간'] }}</td>
+    <td data-label="상태">{% if r['상태'] == '온전' %}<b>온전</b>{% else %}{{ r['상태'] }}{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+</div>
+
+{# 🔴 '결측'은 판정이 아니다 — 수집기가 두 환경에서 돌고 이 표는 이쪽 DB만
+   센다. 이 경고를 문서에만 적어 뒀다가 실제로 오독했다(1.26.120). #}
+<p class="hint"><b>‘결측’은 아직 판정이 아닙니다.</b> 수집기가 두 환경에서 돌고
+  이 표는 <b>이쪽 DB만</b> 셉니다. <b>온전</b>은 합쳐도 그대로지만
+  <b>결측</b>인 날은 다른 환경이 그 틱을 가지고 있을 수 있습니다 —
+  <code>tools/merge_stock.py</code>로 합친 뒤에 보세요.</p>
+{% endif %}
+{% endblock %}

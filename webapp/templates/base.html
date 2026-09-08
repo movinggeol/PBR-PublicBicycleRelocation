@@ -1238,7 +1238,10 @@
       or path.startswith('/maps') or path.startswith('/view')
       or path.startswith('/orders') %}
   {% set group = 'result' %}
-{% elif path.startswith('/data') or path.startswith('/preview') %}
+{% elif path.startswith('/data') or path.startswith('/preview')
+        or path.startswith('/collect') %}
+  {# 수집 현황도 '데이터'다 — 계산 흐름의 한 단계가 아니라 **흐름에 들어가는
+     입력**이라 3단계에 넷째를 붙이지 않고 이 묶음 안에 둔다. #}
   {% set group = 'data' %}
 {% elif path.startswith('/guide') %}
   {# 안내는 작업 흐름 밖이다 — 어느 단계도 현재 위치로 켜지 않는다 #}
@@ -1304,6 +1307,17 @@
        data-tip="군집·경로·재고 현황을 지도 위에서 확인합니다.">지도</a>
     <a href="/orders" {% if path.startswith('/orders') %}aria-current="page"{% endif %}
        data-tip="차량마다 어디를 어떤 순서로 들러 몇 대를 싣고 내리는지. 인쇄해서 현장에 냅니다.">작업지시서</a>
+  </div>
+</nav>
+{% endif %}
+
+{% if group == 'data' %}
+<nav class="group-nav" aria-label="데이터 보기">
+  <div class="group-nav-inner">
+    <a href="/data" {% if path.startswith('/data') or path.startswith('/preview') %}aria-current="page"{% endif %}
+       data-tip="단계마다 만들어진 CSV 원본을 미리 보고 내려받습니다.">산출물 CSV</a>
+    <a href="/collect" {% if path.startswith('/collect') %}aria-current="page"{% endif %}
+       data-tip="대여소 재고를 10분마다 받아 쌓은 실측 기록입니다. 결품 지표가 여기서 나옵니다.">재고 수집</a>
   </div>
 </nav>
 {% endif %}

@@ -39,7 +39,8 @@ from project_config import (
     normalize_fleet_size, normalize_per_round, normalize_period, resolve_day_type,
 )
 import tashu
-from webapp import catalog, charts, jobs, kpi_view, orders, store, weather_view
+from webapp import (catalog, charts, collect_view, jobs, kpi_view, orders, store,
+                    weather_view)
 
 app = FastAPI(title="PBR 파이프라인 대시보드", docs_url="/api/docs")
 
@@ -684,6 +685,17 @@ def data_page(request: Request):
     return templates.TemplateResponse(request, "data.html", {
         "groups": catalog.list_csvs(),
     })
+
+
+@app.get("/collect")
+def collect_page(request: Request):
+    """재고 수집 현황. **읽기만 한다** — 타슈 API를 부르지 않는다.
+
+    `stock_history`는 이 프로젝트의 유일한 실측인데 확인하는 길이 터미널뿐이라
+    수집이 두 번 조용히 멈췄다(1.26.103·1.26.140).
+    """
+    return templates.TemplateResponse(request, "collect.html",
+                                      collect_view.context())
 
 
 @app.get("/kpi")

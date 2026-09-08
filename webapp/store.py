@@ -277,3 +277,16 @@ def age_note(when, *, now=None) -> Optional[dict]:
         text = f"{int(hours // 24)}일 전"
     return {"hours": round(hours, 1), "text": text,
             "stale": hours >= PLAN_STALE_HOURS}
+
+
+def stock_station_count() -> int:
+    """수집된 재고가 있는 대여소 수. 없으면 0.
+
+    수집 현황 화면(`collect_view`)이 쓴다. **여기 두는 이유는 계층 규약이다** —
+    `webapp/`에서 `db.py`를 아는 곳은 이 파일 하나여야 한다(1.26.110에서
+    되돌린 그 규약이고, 테스트가 지킨다).
+    """
+    with db.session() as conn:
+        frame = pd.read_sql(
+            "SELECT COUNT(DISTINCT station_id) AS n FROM stock_history", conn)
+    return int(frame["n"].iloc[0]) if not frame.empty else 0
