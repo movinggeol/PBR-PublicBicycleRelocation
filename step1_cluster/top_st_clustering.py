@@ -292,7 +292,7 @@ def _wanted_vehicles_geo(pick_drop: pd.DataFrame) -> int:
         travel_km = _estimate_travel_km_per_vehicle(pick_drop, k)
         vehicle_min = (
             bikes / k * (PICK_TIME_SEC + DROP_TIME_SEC) / 60.0
-            + travel_seconds(travel_km) / 60.0
+            + travel_seconds(travel_km, day_type=config.day_type) / 60.0
         ) * CLUSTER_IMBALANCE_ALLOWANCE
         if vehicle_min <= TIME_BUDGET_MINUTES:
             return k

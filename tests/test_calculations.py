@@ -1404,6 +1404,81 @@ def test_모형을_켜도_거리는_그대로다(monkeypatch):
         importlib.reload(pc)
 
 
+def test_휴일_계수가_없으면_평일_계수로_폴백한다(monkeypatch):
+    """1.26.160 — 휴일 패널은 이제 쌓이지만(1.26.159) **판정용 표본이 아직
+    없다.** `_HOLIDAY` 환경변수를 안 주면 `day_type='holiday'`로 불러도
+    평일 계수와 같은 값이 나와야 한다 — "아무 값이나 쓴다"가 아니라 "지금
+    유일하게 검증된 계수를 쓴다"는 뜻이다.
+    """
+    import importlib
+
+    import project_config as pc
+
+    monkeypatch.setenv("PBR_USE_ROAD_MODEL", "1")
+    importlib.reload(pc)
+    try:
+        for km in (0.5, 5.0, 15.0):
+            assert pc.travel_seconds(km, day_type="holiday") == pytest.approx(
+                pc.travel_seconds(km, day_type="weekday"))
+    finally:
+        monkeypatch.delenv("PBR_USE_ROAD_MODEL", raising=False)
+        importlib.reload(pc)
+
+
+def test_휴일_계수를_채우면_평일과_갈라진다(monkeypatch):
+    """휴일 판정이 통과해 `PBR_ROAD_FIXED_SEC_HOLIDAY` 등을 채우면, 그때부터
+    `day_type='holiday'`가 그 값을 쓰고 평일과 달라져야 한다."""
+    import importlib
+
+    import project_config as pc
+
+    monkeypatch.setenv("PBR_USE_ROAD_MODEL", "1")
+    monkeypatch.setenv("PBR_ROAD_FIXED_SEC_HOLIDAY", "400")
+    monkeypatch.setenv("PBR_ROAD_SPEED_KMPH_HOLIDAY", "20")
+    importlib.reload(pc)
+    try:
+        weekday = pc.travel_seconds(5.0, day_type="weekday")
+        holiday = pc.travel_seconds(5.0, day_type="holiday")
+        assert holiday != pytest.approx(weekday)
+        assert holiday == pytest.approx(400 + 5.0 * 3600.0 / 20)
+    finally:
+        monkeypatch.delenv("PBR_USE_ROAD_MODEL", raising=False)
+        monkeypatch.delenv("PBR_ROAD_FIXED_SEC_HOLIDAY", raising=False)
+        monkeypatch.delenv("PBR_ROAD_SPEED_KMPH_HOLIDAY", raising=False)
+        importlib.reload(pc)
+
+
+def test_ilp와_vrp는_실행의_day_type을_그대로_전달한다(monkeypatch):
+    """ILP·VRP가 `config.day_type`을 무시하고 항상 평일 계수만 쓰면, 휴일
+    계획도 검증 안 된 평일 계수로 조용히 계산된다 — 그 반대를 지킨다.
+
+    `RuntimeConfig.day_type`은 CLI에서 `--day-type holiday`로 넘어오므로
+    환경변수로 흉내 낸다(`run_pipeline.py`가 이 경로로 내려보낸다).
+    """
+    import importlib
+
+    import project_config as pc
+
+    monkeypatch.setenv("PBR_USE_ROAD_MODEL", "1")
+    monkeypatch.setenv("PBR_ROAD_FIXED_SEC_HOLIDAY", "400")
+    monkeypatch.setenv("PBR_ROAD_SPEED_KMPH_HOLIDAY", "20")
+    monkeypatch.setenv("PBR_DAY_TYPE", "holiday")
+    importlib.reload(pc)
+    try:
+        ilp = _load("step2_optimize/ilp.py", "ilp_mod")
+        vrp = _load("step2_optimize/vrp.py", "vrp_mod")
+        expected = pc.travel_seconds(5.0, day_type="holiday")
+        assert ilp.km_to_travel_seconds(5.0) == pytest.approx(expected)
+        assert vrp._travel_sec(5.0) == pytest.approx(expected)
+        assert expected != pytest.approx(pc.travel_seconds(5.0, day_type="weekday"))
+    finally:
+        monkeypatch.delenv("PBR_USE_ROAD_MODEL", raising=False)
+        monkeypatch.delenv("PBR_ROAD_FIXED_SEC_HOLIDAY", raising=False)
+        monkeypatch.delenv("PBR_ROAD_SPEED_KMPH_HOLIDAY", raising=False)
+        monkeypatch.delenv("PBR_DAY_TYPE", raising=False)
+        importlib.reload(pc)
+
+
 # ── 군집 조정 최적화 (1.26.8) ─────────────────────────────────────────
 
 def test_목적함수는_캐시_유무에_상관없이_같다():

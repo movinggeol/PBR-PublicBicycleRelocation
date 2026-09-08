@@ -326,22 +326,55 @@ VEHICLE_SPEED_KMPH = env_float("PBR_VEHICLE_SPEED_KMPH", 25)
 # 켜려면 `PBR_USE_ROAD_MODEL=1`.
 USE_ROAD_MODEL = os.getenv("PBR_USE_ROAD_MODEL", "").strip().lower() in (
     "1", "true", "yes", "on")
-ROAD_FIXED_SEC = env_float("PBR_ROAD_FIXED_SEC", 275)
-ROAD_SPEED_KMPH = env_float("PBR_ROAD_SPEED_KMPH", 27.3)
+
+# 평일 계수 — 이 둘이 지금까지 판정해 온(EXPERIMENTS 9장) 값이다.
+# `PBR_ROAD_FIXED_SEC`·`PBR_ROAD_SPEED_KMPH`(접미사 없는 옛 이름)도 그대로
+# 읽는다 — 1.26.7~1.26.159까지 이 이름으로만 썼으므로, `_WEEKDAY`가 없으면
+# 옛 이름으로 폴백해 기존 `.env`가 조용히 무시되지 않게 한다.
+ROAD_FIXED_SEC_WEEKDAY = env_float(
+    "PBR_ROAD_FIXED_SEC_WEEKDAY", env_float("PBR_ROAD_FIXED_SEC", 275))
+ROAD_SPEED_KMPH_WEEKDAY = env_float(
+    "PBR_ROAD_SPEED_KMPH_WEEKDAY", env_float("PBR_ROAD_SPEED_KMPH", 27.3))
+
+# 휴일 계수 — 1.26.159부터 휴일 패널을 따로 수집하지만(COLLECTOR_ROAD.md 4장),
+# 2026-09-08 기준 판정용 표본이 없다. 값이 없으면 **평일 계수로 폴백**한다 —
+# "휴일에도 이동시간을 예측은 해야 하니 아무 값이나 쓴다"가 아니라, 지금
+# 유일하게 검증된 계수가 평일 것뿐이라서다. 휴일 판정이 통과하면 여기에
+# `PBR_ROAD_FIXED_SEC_HOLIDAY`·`PBR_ROAD_SPEED_KMPH_HOLIDAY`를 채운다.
+ROAD_FIXED_SEC_HOLIDAY = env_float(
+    "PBR_ROAD_FIXED_SEC_HOLIDAY", ROAD_FIXED_SEC_WEEKDAY)
+ROAD_SPEED_KMPH_HOLIDAY = env_float(
+    "PBR_ROAD_SPEED_KMPH_HOLIDAY", ROAD_SPEED_KMPH_WEEKDAY)
+
+# 옛 이름 — 코드 안에서 새로 읽지 마라(아래 travel_seconds()가 day_type으로
+# 고른다). 이미 이 이름으로 값을 보던 실험·문서가 있어 **그대로 남긴다.**
+ROAD_FIXED_SEC = ROAD_FIXED_SEC_WEEKDAY
+ROAD_SPEED_KMPH = ROAD_SPEED_KMPH_WEEKDAY
 
 
-def travel_seconds(km: float, speed_kmph: float = None) -> float:
+def travel_seconds(km: float, speed_kmph: float = None,
+                    day_type: str = "weekday") -> float:
     """직선거리(km) → 이동시간(초). **모든 단계가 이 함수 하나를 쓴다.**
 
     ILP와 VRP가 서로 다른 식을 쓰면 ILP가 고른 조합이 VRP에서는 최소가 아니게
     된다 — 1.13.2 이전에 속도가 25/30으로 갈려 실제로 겪었다.
 
-    `USE_ROAD_MODEL`이 꺼져 있으면 예전 그대로 `km / speed * 3600`이다.
+    `USE_ROAD_MODEL`이 꺼져 있으면 예전 그대로 `km / speed * 3600`이다(이때는
+    `day_type`이 계수에 영향을 주지 않는다 — `VEHICLE_SPEED_KMPH`가 여전히
+    평일·휴일 구분 없는 단일 상수이기 때문이다. 8장 8.2 한계 참고).
+
+    `USE_ROAD_MODEL`이 켜져 있으면 `day_type`으로 계수 쌍을 고른다. 휴일
+    판정용 표본이 아직 없어 `_HOLIDAY` 변수가 안 채워져 있으면 평일 계수로
+    조용히 폴백한다 — 1.26.160 이전에는 이 구분 자체가 없었다.
     """
     if speed_kmph is None:
         speed_kmph = VEHICLE_SPEED_KMPH
     if USE_ROAD_MODEL:
-        return ROAD_FIXED_SEC + km * 3600.0 / ROAD_SPEED_KMPH
+        if day_type == "holiday":
+            fixed, speed = ROAD_FIXED_SEC_HOLIDAY, ROAD_SPEED_KMPH_HOLIDAY
+        else:
+            fixed, speed = ROAD_FIXED_SEC_WEEKDAY, ROAD_SPEED_KMPH_WEEKDAY
+        return fixed + km * 3600.0 / speed
     return km / speed_kmph * 3600.0
 
 

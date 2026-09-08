@@ -299,11 +299,16 @@ travel_seconds()가 그때부터 실측 계수를 씀 → ILP·VRP 계산이 바
 갈아치우면 그 실험들의 재현성이 조용히 깨집니다. 판정이 통과해도 **사람이
 결정하고 손으로 켜는 것**이 지금 설계입니다.
 
-⚠️ **평일·휴일 구분이 없는 단일 상수입니다.** `USE_ROAD_MODEL`을 켜면
-`ROAD_FIXED_SEC`·`ROAD_SPEED_KMPH` 한 쌍이 평일 계획과 휴일 계획 모두에
-적용됩니다. 휴일 계수가 따로 쌓여 판정을 통과하더라도, 평일·휴일을 나눠
-적용하려면 `travel_seconds()`를 `day_type` 인자로 확장하는 작업이 별도로
-필요합니다 — 아직 하지 않았습니다(8장 8.2 한계로 기록).
+✅ **구조는 나눠 두었습니다 (2026-09-08, 1.26.160).** `travel_seconds()`가
+`day_type`을 받아 `ROAD_FIXED_SEC_WEEKDAY/HOLIDAY`·
+`ROAD_SPEED_KMPH_WEEKDAY/HOLIDAY` 두 쌍 중 하나를 고릅니다. ILP·VRP·
+군집 K 추정 셋 다 `config.day_type`(그 실행이 평일 계획인지 휴일 계획인지)을
+그대로 넘깁니다. 🔴 **다만 지금은 휴일 쌍이 실질적으로 아무 값도 아닙니다**
+— `PBR_ROAD_FIXED_SEC_HOLIDAY`·`PBR_ROAD_SPEED_KMPH_HOLIDAY`를 사람이
+채우기 전까지는 평일 계수로 조용히 폴백합니다. 채택 판정에 쓸 휴일 표본이
+아직 없어서입니다(위 9-2-A). 옛 이름 `PBR_ROAD_FIXED_SEC`·
+`PBR_ROAD_SPEED_KMPH`(접미사 없음)는 평일 값의 폴백으로 계속 읽습니다 —
+기존 `.env`가 조용히 무시되지 않습니다.
 
 ### 9-3. 파이프라인 실행분과 섞지 말 것
 
@@ -386,13 +391,19 @@ travel_seconds()가 그때부터 실측 계수를 씀 → ILP·VRP 계산이 바
 "여러 번 깨워도 안전하다"는 안전망은 이 PC에 없었던 것입니다.
 
 **일반 권한 셸에서 `.\scripts\road_collector.ps1 install`을 돌리면 실패합니다**
-— `Register-ScheduledTask`가 기존 작업을 덮어쓸 때 `Access is denied`를
-냅니다. 🔴 **스크립트가 이 실패를 숨깁니다** — `$ErrorActionPreference = 'Stop'`이
-있는데도 `Register-ScheduledTask`의 CIM 예외는 이 설정을 우회해서, 오류
-텍스트가 화면에 찍힌 뒤 **바로 다음 줄부터 계속 실행됩니다.** 그래서
-"[등록] ..." 안내가 그대로 뜨는데 실제로는 등록되지 않은 채였습니다
-(`tools/check_consistency.py`류의 "통과만 하고 아무것도 못 잡는 검사기"와
-같은 종류의 함정입니다 — 아직 안 고쳤습니다).
+— `Register-ScheduledTask`가 기존 작업을 덮어쓸 때 `Access is denied`
+(`CimException`)를 냅니다. 🔴 **처음엔 스크립트가 이 실패를 숨겼습니다** —
+스크립트 전역에 `$ErrorActionPreference = 'Stop'`이 있었지만
+`Register-ScheduledTask` 호출 자체에는 `-ErrorAction`을 안 줬습니다. **CIM
+기반 cmdlet은 자기 호출에 `-ErrorAction`이 없으면 전역 설정 대신 자신의
+기본값(Continue)을 따릅니다** — 그래서 오류 텍스트가 화면에 찍힌 뒤 바로
+다음 줄부터 계속 실행돼 "[등록] ..." 안내가 그대로 떴습니다(재현해서
+`CimException`이 `-ErrorAction Stop`을 명시했을 때는 정상적으로 잡히는
+것을 확인했습니다 — 즉 전역 설정이 무력화된 게 아니라 애초에 그 호출에
+적용된 적이 없었습니다). **`Register-ScheduledTask` 호출에 `-ErrorAction
+Stop`을 명시해 고쳤습니다(1.26.160)** — CIM 기반 cmdlet을 부를 때는
+전역 `$ErrorActionPreference`에 기대지 말고 그 호출에 직접
+`-ErrorAction`을 주어야 합니다.
 
 **관리자 권한 PowerShell에서(반드시 프로젝트 폴더로 `cd`한 뒤) 실행하면
 성공합니다.** 2026-09-08에 실제로 확인했습니다.
@@ -415,9 +426,8 @@ State: Ready
 ```
 
 > ⚠️ **다음에 다시 등록해야 할 때**: 반드시 관리자 권한 + 프로젝트 폴더에서
-> 실행하고, 끝나면 `status`나 위 조회 명령으로 **트리거 요일과 `--if-needed`가
-> 실제로 붙었는지 확인**하십시오 — 오류가 나도 성공 메시지가 뜨는 함정이
-> 아직 남아 있습니다.
+> 실행하십시오 — 관리자 권한이 아니면 여전히 `Access is denied`로 실패하지만,
+> 1.26.160부터는 그 실패가 안내 문구를 찍기 전에 스크립트를 **멈춥니다.**
 
 ---
 

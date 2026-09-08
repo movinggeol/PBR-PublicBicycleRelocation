@@ -55,8 +55,9 @@ now = config.now
 
 def _travel_sec(km: float) -> float:
     """ILP와 **같은 함수**를 쓴다 — 두 단계가 갈리면 ILP의 최적해가 VRP에서
-    최소가 아니게 된다(1.13.2에서 겪음)."""
-    return travel_seconds(km)
+    최소가 아니게 된다(1.13.2에서 겪음). `config.day_type`을 함께 넘겨
+    평일/휴일 계수를 ILP와 같은 기준으로 고른다(1.26.160)."""
+    return travel_seconds(km, day_type=config.day_type)
 
 
 def _depot_return(cluster, from_id, from_lat, from_lon, cum_sec: float):

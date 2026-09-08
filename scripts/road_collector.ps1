@@ -132,8 +132,14 @@ function Invoke-Install {
         -StartWhenAvailable `
         -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 
+    # -ErrorAction Stop을 명시한다. Register-ScheduledTask가 던지는 CIM
+    # 예외(예: 관리자 권한 없이 기존 작업을 덮어쓸 때의 Access denied)는
+    # 스크립트 전역의 $ErrorActionPreference='Stop'을 그냥 지나쳐 화면에
+    # 오류 텍스트만 찍고 다음 줄로 넘어간다 — 그래서 등록이 실패해도 아래
+    # "[등록] 성공" 안내가 그대로 떴다(2026-09-08 실제로 겪음). 여기서
+    # 명시적으로 멈추게 해야 그 뒤 안내 줄이 거짓말을 하지 않는다.
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers `
-        -Settings $settings -Force `
+        -Settings $settings -Force -ErrorAction Stop `
         -Description "TMAP 고정 패널 실도로 소요시간을 매일(휴일 포함) 수집합니다 - 그날 요일로 평일/휴일 계수를 자동으로 갈라 잽니다. 시각 $($Slots -join ', ') + 로그온 시. 그날 몫을 이미 받았으면 호출하지 않습니다 (docs/구현/COLLECTOR_ROAD.md)." | Out-Null
 
     Write-Host "[등록] $TaskName — 매일(휴일 포함) $($Slots -join ', ') + 로그온 시" -ForegroundColor Green
