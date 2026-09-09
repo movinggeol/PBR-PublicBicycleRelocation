@@ -63,16 +63,42 @@ IMBALANCE_MAP = str(PROJECT_ROOT
 
 
 def available() -> list:
-    """(run_label, duration, 후보 파일) 목록. 파일 이름이 곧 색인이다."""
+    """(run_label, duration, 후보 파일) 목록.
+
+    **CSV 파일 이름이 1차 색인이고, DB가 그것을 채운다 (1.26.164).** 예전에는
+    파일 이름만 색인이라 CSV 쓰기를 걷으면 이 도구가 통째로 눈이 멀었다
+    (1.26.163 조사). 이제 DB에만 있는 (실행, 회차)도 함께 내놓는다 — 그런
+    항목의 경로는 **아직 없는 파일**을 가리키고, 자식 쪽은 DB를 먼저 읽으므로
+    문제가 되지 않는다(`load_step_output`).
+
+    ⚠️ 정렬 열쇠를 파일 수정 시각에서 **분리했다.** DB에만 있는 항목은 잴 파일이
+    없어 `stat()`이 터진다 — 파일이 있으면 그 시각을, 없으면 0을 쓴다.
+    """
     found = []
-    if not CANDIDATE_DIR.is_dir():
-        return found
-    for path in sorted(CANDIDATE_DIR.glob("top*.csv")):
-        match = CANDIDATE_RE.match(path.name)
-        if match:
-            found.append((match.group(2), match.group(1), path))
+    본_것 = set()
+    if CANDIDATE_DIR.is_dir():
+        for path in sorted(CANDIDATE_DIR.glob("top*.csv")):
+            match = CANDIDATE_RE.match(path.name)
+            if match:
+                found.append((match.group(2), match.group(1), path))
+                본_것.add((match.group(2), match.group(1)))
+
+    try:
+        import db
+        with db.session() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT run_label, duration FROM pick_drop").fetchall()
+        for label, duration in rows:
+            if (label, duration) in 본_것:
+                continue
+            found.append((label, duration, CANDIDATE_DIR
+                          / f"top{duration} ({label}).csv"))
+    except Exception as err:      # DB가 없어도 CSV만으로 돌아야 한다
+        print(f"[경고] pick_drop DB 조회 실패: {type(err).__name__}: {err}")
+
     # 최근 것이 앞에 오게 — 파일 수정 시각이 라벨 문자열보다 믿을 만하다.
-    found.sort(key=lambda row: row[2].stat().st_mtime, reverse=True)
+    found.sort(key=lambda row: row[2].stat().st_mtime if row[2].is_file() else 0,
+               reverse=True)
     return found
 
 
@@ -91,7 +117,10 @@ from step1_cluster import st_visualization
 st_visualization.make_clustered_map([duration])
 
 from step4_metrics import imbalance
-reloc_df = pd.read_csv(r"{candidates}", encoding="utf-8")
+# DB 우선으로 읽는다(1.26.164) — 없으면 이 CSV로 물러선다. 파일 경로를 그대로
+# 넘기는 것은 **읽기**일 뿐이라 "DB를 건드리지 않는다"(쓰지 않는다)는 규칙과
+# 어긋나지 않는다.
+reloc_df = imbalance.load_step_output("pick_drop", r"{candidates}", duration=duration)
 imbalance.demand_satisfaction_map(
     reloc_df, imbalance.demand_satisfaction(reloc_df).copy(), duration)
 """

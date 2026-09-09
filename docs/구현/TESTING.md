@@ -1,11 +1,11 @@
 # 테스트
 
 이 프로젝트는 처음에 테스트가 하나도 없었고, **의존성이 전부 깨진 상태**로
-파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 748개 테스트입니다.
+파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 749개 테스트입니다.
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 748개 (약 200초)
+python -m pytest              # 전체 749개 (약 200초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -26,7 +26,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_charts.py](../../tests/test_charts.py) | 38 | **그래프 규칙** — 계열 하나에 선 하나(축 둘 금지), 색을 SVG에 박지 않는지, 값 표시는 끝점만, 좌표가 뷰박스 안인지, 발산 척도의 가운데가 무채색인지, **범례가 값만이 아니라 할 일까지 말하는지**(1.26.92), **편차 막대의 기준을 부르는 쪽이 정하는지**(안 나간 차량의 0분을 평균에 넣으면 일한 차량이 전부 평균 위가 된다), **빈 상태 문구를 그래프마다 따로 적지 않는지**(1.26.117), **SVG 봉투를 한 벌로 쓰는지**(여섯 그래프가 같은 여는 태그를 각자 적고 있었다) |
 | [tests/test_tmap.py](../../tests/test_tmap.py) | 32 | TMAP 엔드포인트 선택·폴백, **경로 지도 팝업이 파이썬 자료구조를 새지 않는지**, **출발·도착 핀에 이름 붙이는 스크립트가 심기는지**(awesome-marker 아이콘은 글자가 없어 이름이 비어 있었다, axe aria-command-name, 1.26.126) ([steps/step3_visualization.md](steps/step3_visualization.md)) |
 | [tests/test_db.py](../../tests/test_db.py) | 37 | SQLite 저장소의 스코프·멱등성·최신 라벨·스키마 마이그레이션, **재적재가 사람이 못박은 실행 종류를 지우지 않는지**(1.26.111), **띄운 쪽의 선언(`PBR_RUN_KIND`)을 읽되 선언이 없으면 짐작에 맡기는지**(1.26.114), **'최신'을 사전순이 아니라 `runs.created_at`으로 고르는지**(실험 라벨 `obs-cmp-…`는 `'o' > '2'`라 어떤 날짜 라벨도 이긴다, 1.26.125) ([DB_SCHEMA.md](DB_SCHEMA.md)) |
-| [tests/test_kpi.py](../../tests/test_kpi.py) | 26 | 성과 지표 계산과 `/kpi` 화면, 결측 지표 렌더링 ([KPI.md](../분석/KPI.md)) |
+| [tests/test_kpi.py](../../tests/test_kpi.py) | 27 | 성과 지표 계산과 `/kpi` 화면, 결측 지표 렌더링 ([KPI.md](../분석/KPI.md)) |
 | [tests/test_orders.py](../../tests/test_orders.py) | 16 | **작업지시서·실시간 재고 대조** — 대조가 지시량(요구량 아님)을 보는지, 집행 가능 판정이 계획과 같은 상한을 쓰는지, 타슈 API를 누를 때만 부르고 실패해도 500이 아닌지 |
 | [tests/test_road_time.py](../../tests/test_road_time.py) | 27 | **TMAP 실도로 고정 패널** — 패널이 결정적인지(흔들리면 '매일 같은 구간'이 무너진다), 차고지 왕복을 포함하는지, 거리 구간이 고르게 차는지, 누적의 차분이 구간 실측이고 `start_time`이 함께 남는지, **한도가 소진돼도 늘 같은 회차만 잘리지 않는지**, **평일/휴일 자동 판정과 모형 재추정의 day_type 필터**(1.26.158), **컬럼이 생기기 전 수집분도 라벨로 되짚어 읽는지**(1.26.161 — `runs.day_type`만 믿었더니 판정용 표본이 5일에서 1일로 줄었다) ([EXPERIMENTS.md](../분석/EXPERIMENTS.md) 9장) |
 | [tests/test_merge_stock.py](../../tests/test_merge_stock.py) | 17 | **두 PC 재고 병합** — 이미 있는 틱을 덮어쓰지 않는지(*먼저 수집한 것이 이긴다*, 수집기의 `INSERT OR REPLACE`와 정반대), 빈 틱은 채우는지, CSV·DB 두 원천을 읽는지, 옮겨온 DB를 읽기 전용으로 여는지, 마스터가 없는 날을 알리는지 ([COLLECTOR.md](COLLECTOR.md) 11장) |
@@ -44,7 +44,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_project_config.py](../../tests/test_project_config.py) | 6 | **숫자 환경변수 오류 문구** — `PBR_*` 21곳이 날것으로 파싱해 잘못된 값을 주면 *"invalid literal for int()"* 로 죽었다. **변수 이름이 그 문구에 없어** 스무 개 넘는 것 중 무엇을 잘못 줬는지 알 길이 없었다(1.26.144). 여기서 묻는 것은 *"오류가 나는가"* 가 아니라 **"오류 문구에 변수 이름이 있는가"** 다 |
 | [tests/test_stockout_map.py](../../tests/test_stockout_map.py) | 4 | **결품 지도** — '늘 빔'(재배치로 못 고치는 곳)을 섞어 세지 않는지, 관측이 없는 시간을 '결품 없음'으로 읽지 않는지 |
 | [tests/test_commit_guard.py](../../tests/test_commit_guard.py) | 7 | **커밋에 남의 변경이 섞이는지** — 세션 둘이 같은 `.git/index`를 쓰는 저장소라, 파일을 이름으로 집어 스테이징하고 `git diff --cached`로 확인해도 **확인과 커밋 사이에 뒤바뀐다**(2026-09-08 실측: 남의 파일 8개가 섞이고 내 파일 4개가 빠졌다). 여기서 묻는 것은 *"판정 함수가 옳은 값을 내는가"* 가 아니라 **"`git commit`이 실제로 멈추는가"** 다 — 임시 저장소에 훅을 놓고 커밋을 시켜 **HEAD가 안 움직였는지**로 잰다. 한글 경로(`core.quotepath`)와 하위 폴더 실행도 함께 본다: 둘 다 실제로 깨졌고 테스트가 잡았다 |
-| **합계** | **748** | 27개 파일 · 약 200초 (`python -m pytest`) |
+| **합계** | **749** | 27개 파일 · 약 200초 (`python -m pytest`) |
 
 > **이 합계는 손으로 세지 마세요.** 1.26.88이 손으로 세어 548이라 적었는데
 > 실측은 555였습니다 — `test_version_log.py` 한 파일을 통째로 빠뜨린 것입니다.

@@ -34,6 +34,39 @@ config = get_runtime_config()
 now = config.now
 
 
+def load_step_output(table: str, csv_path: str, duration: str = None,
+                     run_label: str = None) -> pd.DataFrame:
+    """앞 단계 산출물을 **DB에서 먼저** 읽고, 없으면 CSV로 물러선다.
+
+    🔴 **왜 이 함수가 생겼나 (1.26.164).** step4는 step1·step2의 결과를 `read_csv`로
+    받고 있었다 — CSV가 산출물이면서 **단계 간 배선**이기도 했다. 그래서 CSV
+    이중 기록을 걷으려 하면 파이프라인이 먼저 끊겼다(1.26.163 조사). 배선을
+    DB로 옮겨 두면 CSV 쓰기는 그때 지울 수 있다.
+
+    ⚠️ **CSV 폴백을 남기는 것이 이 단계의 요점이다.** 지금 있는 산출물 중에는
+    DB 도입(2026-08-07) 이전 것이 있어(4~5월분) DB에 아예 없다 — 폴백을 함께
+    지우면 그 실행들을 다시 열 수 없다. 폴백은 ③단계에서 걷는다.
+
+    없으면 **빈 프레임**을 돌려준다. 부르는 쪽이 지금처럼 '건너뜀'을 판단한다 —
+    여기서 예외를 던지면 한쪽 후보만 있는 시간대가 크래시가 된다(스킬 6번 함정).
+    """
+    frame = pd.DataFrame()
+    try:
+        with db.session() as conn:
+            frame = db.load_frame(conn, table, run_label=run_label or now,
+                                  duration=duration)
+    except Exception as err:
+        print(f"[경고] {table} DB 조회 실패: {type(err).__name__}: {err}")
+
+    if not frame.empty:
+        return frame
+
+    path = Path(csv_path)
+    if path.is_file():
+        return pd.read_csv(path, encoding='utf-8')
+    return pd.DataFrame()
+
+
 def use_run_day_type(run_label: str) -> str:
     """분석 대상 **실행의 요일 구분**으로 맞춘다. 실제로 쓸 값을 돌려준다.
 
@@ -69,7 +102,14 @@ def demand_satisfaction(reloc: pd.DataFrame):
     imbalance : 부족과 과잉을 나누지 않고 하나의 수치로 통합함 (절대값 활용)
     '''
 
-    temp = reloc.iloc[:, [0,1,2,3,10,5,8,9,6,7]].copy()
+    # 🔴 **자리가 아니라 이름으로 고른다 (1.26.164).** 예전에는
+    # `reloc.iloc[:, [0,1,2,3,10,5,8,9,6,7]]`였는데, 이 함수가 CSV만 받던 시절의
+    # 컬럼 순서를 그대로 굳힌 것이었다. 입력을 DB에서 받자 앞에 스코프 컬럼
+    # (`run_label`·`duration`) 둘이 붙어 **모든 자리가 2씩 밀렸고**, `cluster`를
+    # 집는 자리가 `mu`를 집어 지도 그리기가 KeyError로 죽었다. 이름으로 고르면
+    # 순서가 달라져도 같은 것을 집는다 — CSV·DB 어느 쪽이 와도 된다.
+    temp = reloc[['station_id', 'station_name', 'lat', 'lon', 'cluster',
+                  'stock', 'mu', 'sigma', 'target_qty', 'rebal_qty']].copy()
     print(temp.head())
 
     # 재배치 후 재고 = 기존 재고 + 재배치 수량
@@ -103,12 +143,12 @@ def route_summary(duration: str):
     VRP 결과(거리·시간 컬럼 포함)로 클러스터별 총 이동거리·운행시간을 집계한다.
     VRP 파일이 없거나 구버전(시간 컬럼 없음)이면 건너뛴다.
     '''
-    path = Path(vrp_plan_file.format(duration=duration, now=now))
-    if not path.exists():
-        print(f"VRP 결과가 없어 경로 요약을 건너뜁니다: {path}")
+    vrp = load_step_output('vrp_plan', vrp_plan_file.format(duration=duration, now=now),
+                           duration=duration)
+    if vrp.empty:
+        print(f"VRP 결과가 없어 경로 요약을 건너뜁니다: {duration}")
         return
 
-    vrp = pd.read_csv(path, encoding='utf-8')
     if 'distance_km' not in vrp.columns:
         print("VRP 결과에 거리·시간 컬럼이 없습니다(구버전). step2 vrp.py를 다시 실행하세요.")
         return
@@ -280,11 +320,10 @@ def executed_delta(vrp: pd.DataFrame) -> pd.Series:
 
 
 def load_vrp_plan(duration: str) -> pd.DataFrame:
-    """VRP 경로 계획을 읽는다(없으면 빈 프레임)."""
-    path = Path(vrp_plan_file.format(duration=duration, now=now))
-    if not path.exists():
-        return pd.DataFrame()
-    return pd.read_csv(path, encoding='utf-8')
+    """VRP 경로 계획을 읽는다(없으면 빈 프레임). DB 우선 — load_step_output 참고."""
+    return load_step_output('vrp_plan',
+                            vrp_plan_file.format(duration=duration, now=now),
+                            duration=duration)
 
 
 def pick_harm_share(pick_delta: float, drop_delta: float) -> float:
@@ -327,8 +366,12 @@ def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
     hours = duration_hours(duration)
     stations = imbalance_df[['station_id', 'stock', 'rebal_qty']].copy()
 
-    # 거치대 수는 후보 파일에 있다(imbalance_df에는 없을 수 있음)
-    candidates = pd.read_csv(file_path.format(duration=duration, now=now), encoding='utf-8')
+    # 거치대 수는 step1 후보에 있다(imbalance_df에는 없을 수 있음)
+    candidates = load_step_output('pick_drop',
+                                  file_path.format(duration=duration, now=now),
+                                  duration=duration)
+    if candidates.empty:
+        return {}
     stations = stations.merge(candidates[['station_id', 'parking_lot']],
                               on='station_id', how='left')
     stations['parking_lot'] = stations['parking_lot'].fillna(stations['stock'] * 2 + 1)
@@ -425,11 +468,10 @@ def route_extras(duration: str) -> dict:
 
     못 구하면 빈 dict를 돌려준다 — 그 컬럼은 NULL로 남는다(db.KPI_FIELDS).
     """
-    path = Path(vrp_plan_file.format(duration=duration, now=now))
-    if not path.exists():
+    vrp = load_vrp_plan(duration)
+    if vrp.empty:
         return {}
 
-    vrp = pd.read_csv(path, encoding='utf-8')
     if not {'distance_km', 'travel_sec', 'work_sec', 'cum_sec'} <= set(vrp.columns):
         return {}
 
@@ -467,10 +509,8 @@ def station_coverage(worked: int) -> dict:
     전체 대여소 수는 이번 실행이 수집한 대여소 정보에서 센다. 파일이 없으면
     지표를 빼고 넘긴다 — 지어내지 않는다.
     """
-    path = Path(st_info_file.format(now=now))
-    if not path.exists():
-        return {}
-    total = len(pd.read_csv(path, encoding='utf-8'))
+    info = load_step_output('station_info', st_info_file.format(now=now))
+    total = len(info)
     if total <= 0:
         return {}
     return {'stations_total': int(total), 'station_coverage': float(worked / total)}
@@ -697,13 +737,14 @@ if __name__ == "__main__":
     ensure_output_dirs()
 
     for duration in duration_list(config):
-        candidates = Path(file_path.format(duration=duration, now=now))
-        if not candidates.is_file():
+        reloc_df = load_step_output('pick_drop',
+                                    file_path.format(duration=duration, now=now),
+                                    duration=duration)
+        if reloc_df.empty:
             # step1이 '대상 없음'으로 건너뛴 시간대.
-            print(f"\n[건너뜀] {duration}: 후보 파일이 없습니다 ({candidates.name})")
+            print(f"\n[건너뜀] {duration}: step1 후보가 없습니다")
             continue
 
-        reloc_df = pd.read_csv(candidates, encoding='utf-8')
         require_columns(reloc_df, ['station_id', 'stock', 'target_qty', 'rebal_qty',
                                    'cluster', 'parking_lot'], f'step1 후보 {duration}')
         print(reloc_df.head())

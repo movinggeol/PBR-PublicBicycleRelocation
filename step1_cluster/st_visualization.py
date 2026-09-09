@@ -9,6 +9,7 @@ from folium.plugins import FeatureGroupSubGroup
 import pandas as pd
 import numpy as np
 
+import db
 from mapviz import (DROP_LABEL, PICK_LABEL, cluster_color, legend_html,
                     qty_radius, swatch_circle, swatch_size_scale)
 from project_config import (
@@ -25,14 +26,38 @@ clusterd_map = str(DATA_ROOT / "pp_data/ILP/visualization/clusterd_map{duration}
 config = get_runtime_config()
 now = config.now
 
+
+def load_candidates(duration: str) -> pd.DataFrame:
+    """군집 결과를 **DB에서 먼저** 읽고, 없으면 CSV로 물러선다 (1.26.164).
+
+    같은 프로세스가 방금 쓴 파일을 되읽던 자리다 — CSV가 산출물이면서 단계 간
+    배선이기도 해, 이중 기록을 걷으려면 여기부터 끊어야 했다(1.26.163 조사).
+
+    ⚠️ CSV 폴백은 남긴다 — DB 도입(2026-08-07) 이전 산출물은 DB에 아예 없다.
+    """
+    frame = pd.DataFrame()
+    try:
+        with db.session() as conn:
+            frame = db.load_frame(conn, 'pick_drop', run_label=now, duration=duration)
+    except Exception as err:
+        print(f"[경고] pick_drop DB 조회 실패: {type(err).__name__}: {err}")
+
+    if not frame.empty:
+        return frame
+
+    path = Path(clustered_file.format(duration=duration, now=now))
+    if path.is_file():
+        return pd.read_csv(path, low_memory=False, encoding='utf-8')
+    return pd.DataFrame()
+
+
 def make_clustered_map(durations: list):
 
     for duration in durations:
-        pick_drop = pd.read_csv(
-            clustered_file.format(duration=duration, now=now), 
-            low_memory=False, 
-            encoding='utf-8'
-        )
+        pick_drop = load_candidates(duration)
+        if pick_drop.empty:
+            print(f"[건너뜀] {duration}: step1 후보가 없습니다")
+            continue
 
         center_lat = pick_drop['lat'].mean()
         center_lon = pick_drop['lon'].mean()

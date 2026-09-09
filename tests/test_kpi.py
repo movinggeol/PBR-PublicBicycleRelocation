@@ -338,3 +338,43 @@ def test_충족률을_옛_이름으로_가르치지_않는다(경로):
         f"{경로}가 아직 옛 이름으로 가르친다 — 분모가 순수요인데 "
         f"'총 대여 대비'로 읽힌다(7장 고찰 · EXPERIMENTS 29장):\n  "
         + "\n  ".join(남은))
+
+
+# ---- 입력 컬럼 순서가 달라도 같은 것을 집는다 (1.26.164) ----
+
+def _후보_프레임(**추가):
+    """step1 후보의 최소 형태. 추가 컬럼은 앞에 붙여 자리를 민다."""
+    import pandas as pd
+
+    본문 = {
+        "station_id": ["ST0001", "ST0002"],
+        "station_name": ["가", "나"],
+        "lat": [36.35, 36.36], "lon": [127.38, 127.39],
+        "parking_lot": [20, 20],
+        "stock": [2, 18],
+        "target_qty": [10, 10],
+        "rebal_qty": [8, -8],
+        "mu": [3.0, 3.0], "sigma": [1.0, 1.0],
+        "cluster": [0, 1],
+    }
+    return pd.DataFrame({**추가, **본문})
+
+
+def test_demand_satisfaction은_컬럼_순서가_아니라_이름으로_고른다(step4):
+    """🔴 DB에서 읽으면 앞에 스코프 컬럼이 붙어 **자리가 밀린다.**
+
+    예전 `demand_satisfaction()`은 `iloc[:, [0,1,2,3,10,5,8,9,6,7]]`로 **자리**를
+    집었다 — CSV만 받던 시절의 순서를 굳힌 것이다. 단계 간 전달을 DB로 옮기자
+    `run_label`·`duration` 둘이 앞에 붙어 모든 자리가 2씩 밀렸고, `cluster`를
+    집을 자리가 `mu`를 집어 지도 그리기가 KeyError로 죽었다(실제로 겪었다).
+
+    같은 내용을 **컬럼 순서만 다르게** 두 번 넣어 결과가 같은지 본다.
+    """
+    csv_모양 = step4.demand_satisfaction(_후보_프레임())
+    db_모양 = step4.demand_satisfaction(
+        _후보_프레임(run_label=["L", "L"], duration=["_05_10", "_05_10"]))
+
+    assert list(csv_모양.columns) == list(db_모양.columns)
+    assert csv_모양["cluster"].tolist() == [0, 1]        # mu(3.0)를 집으면 안 된다
+    assert db_모양["cluster"].tolist() == [0, 1]
+    assert csv_모양["improvement"].tolist() == db_모양["improvement"].tolist()
