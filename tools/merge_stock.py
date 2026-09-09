@@ -195,6 +195,58 @@ def merge_master(conn: sqlite3.Connection, master: pd.DataFrame) -> int:
     return conn.total_changes - before
 
 
+# ---- 예행 ----
+
+def count_new(conn: sqlite3.Connection, history: pd.DataFrame,
+              master: pd.DataFrame, road: pd.DataFrame) -> dict:
+    """저장하지 않고 **몇 행이 새로 들어갈지만** 센다.
+
+    🔴 **왜 필요한가 (1.26.162에서 찾은 결함).** 예전 `--dry-run`은 재고 일별 표만
+    찍고 `merge_master()`·`merge_road()`를 부르기 전에 빠져나갔다. 그래서 마스터와
+    `road_leg`가 몇 행 들어오는지는 **실제로 저장한 뒤에야** 알 수 있었다 — 하필
+    도로가 *다른 패널로 잰 회차가 섞이지 않았나*를 미리 보고 싶은 자리다. 예행이
+    보여주지 않는 것을 사람이 손으로 세야 했다(2026-09-09에 실제로 그랬다).
+
+    세는 방법은 **실제 저장과 같은 열쇠**를 쓴다 — `INSERT OR IGNORE`가 무시하는
+    기준이 각 표의 기본키이므로, 그 키가 로컬에 이미 있는지만 보면 된다. 저장
+    경로와 판정이 갈리면 예행이 거짓말을 하므로 키는 한 곳에 모아 둔다.
+    """
+    def 없는_것(표: str, 키: Iterable[str], 프레임: pd.DataFrame) -> int:
+        if 프레임.empty:
+            return 0
+        키 = list(키)
+        있는_것 = {tuple(str(값) for 값 in 행)
+                 for 행 in conn.execute(f"SELECT {', '.join(키)} FROM {표}")}
+        후보 = {tuple(str(기록[열]) for 열 in 키)
+              for 기록 in 프레임.to_dict("records")}
+        return len(후보 - 있는_것)
+
+    도로 = road
+    if not 도로.empty:
+        # 저장 경로와 같게, 파이프라인 부산물은 빼고 관측분만 센다.
+        도로 = 도로[도로["run_label"].astype(str).str.startswith("roadprobe")]
+    return {
+        "재고": 없는_것("stock_history", ("observed_at", "station_id"), history),
+        "마스터": 없는_것("stock_station_master", ("observed_on", "station_id"), master),
+        "도로": 없는_것("road_leg", ("run_label", "duration", "cluster", "leg"), 도로),
+    }
+
+
+def describe_road(road: pd.DataFrame) -> List[str]:
+    """들어올 TMAP 관측을 회차별로 풀어 보여준다.
+
+    도로는 **한 회차가 통째로 오염될 수 있어**(다른 패널로 쟀다면) 합계만으로는
+    판단할 수 없다. 어느 라벨이 몇 구간 오는지 라벨 단위로 보여준다.
+    """
+    if road.empty:
+        return []
+    관측 = road[road["run_label"].astype(str).str.startswith("roadprobe")]
+    if 관측.empty:
+        return []
+    센_것 = 관측.groupby("run_label").size().sort_index()
+    return [f"    {라벨}  {수:,}구간" for 라벨, 수 in 센_것.items()]
+
+
 # ---- 보고 ----
 
 def summarize_days(history: pd.DataFrame) -> pd.DataFrame:
@@ -259,6 +311,22 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     print(days.to_string(index=False))
 
     if args.dry_run:
+        # 저장 경로와 같은 열쇠로 세어, 예행이 실제 결과와 갈리지 않게 한다.
+        with db.session() as conn:
+            예상 = count_new(conn, history, master, road)
+            빈_마스터 = missing_master_days(conn, history)
+        print(f"\n  새로 채울 재고: {예상['재고']:,}행"
+              f" · 이미 있음 {len(history) - 예상['재고']:,}행")
+        if not master.empty:
+            print(f"  마스터        : {예상['마스터']:,}행 (원천 {len(master):,}행)")
+        if not road.empty:
+            print(f"  TMAP 실측     : {예상['도로']:,}구간 (원천 {len(road):,}구간)")
+            for 줄 in describe_road(road):
+                print(줄)
+            print("    ⚠ 다른 패널로 잰 회차가 섞이면 계수가 흔들립니다 —"
+                  " 합치기 전에 tools/collect_road_time.py --status로 확인하십시오.")
+        if 빈_마스터:
+            print(f"\n  ⚠ 이름·좌표가 없는 날: {', '.join(빈_마스터)}")
         print("\n[모의] 저장하지 않았습니다.")
         return 0
 

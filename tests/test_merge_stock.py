@@ -286,3 +286,61 @@ def test_CLI가_병합하고_결과를_보고한다(tmp_path, capsys):
 def test_원천이_잘못되면_1로_끝난다(tmp_path, capsys):
     assert merge.main([str(tmp_path / "없음")]) == 1
     assert "[실패]" in capsys.readouterr().out
+
+
+# ---- 예행이 실제 결과와 같은 수를 말한다 (1.26.162) ----
+
+def test_모의_실행이_마스터와_도로도_보여준다(tmp_path, capsys):
+    """🔴 예전 `--dry-run`은 재고만 찍고 끝났다.
+
+    `main()`이 `merge_master()`·`merge_road()`를 부르기 전에 빠져나가, 마스터와
+    `road_leg`가 몇 행 들어오는지는 **저장한 뒤에야** 알 수 있었다. 하필 도로가
+    *다른 패널로 잰 회차가 섞이지 않았나*를 미리 보고 싶은 자리다(2026-09-09에
+    손으로 세야 했다). 예행이 세 갈래를 모두 말하는지 지킨다.
+    """
+    source = make_source_db(tmp_path / "c.db", SUNDAY, {"22:00": (5, 5, 5)})
+    with sqlite3.connect(source) as conn:
+        db.init_schema(conn)
+        conn.execute(
+            "INSERT INTO road_leg (run_label, duration, cluster, leg,"
+            " from_id, to_id, road_sec) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("roadprobe-2026-09-01", "_05_10", 1, 0, "ST1", "ST2", 300))
+        conn.commit()
+
+    assert merge.main([str(source), "--dry-run"]) == 0
+    출력 = capsys.readouterr().out
+    assert "마스터" in 출력
+    assert "TMAP 실측" in 출력
+    assert "roadprobe-2026-09-01" in 출력       # 라벨 단위로 밝힌다
+    assert stock_at(f"{SUNDAY} 22:00") is None  # 그래도 저장은 안 했다
+
+
+def test_예행이_실제_저장과_같은_수를_말한다(tmp_path, capsys):
+    """예행과 본실행이 갈리면 예행은 없느니만 못하다 — 같은 열쇠로 센다.
+
+    절반은 이미 있고 절반은 새것인 원천을 만들어, 예행이 말한 수와 실제로
+    저장된 수가 정확히 같은지 본다.
+    """
+    with db.session() as conn:                   # 09:00 한 틱은 이미 있다
+        db.save_stock_snapshot(conn, f"{WEEKDAY} 09:00", sample_frame())
+
+    source = make_source_db(tmp_path / "c.db", WEEKDAY,
+                            {"09:00": (99, 99, 99), "10:00": (7, 7, 7)})
+    with sqlite3.connect(source) as conn:
+        db.init_schema(conn)
+        conn.execute(
+            "INSERT INTO road_leg (run_label, duration, cluster, leg,"
+            " from_id, to_id, road_sec) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("roadprobe-2026-09-02", "_05_10", 1, 0, "ST1", "ST2", 300))
+        conn.commit()
+
+    assert merge.main([str(source), "--dry-run"]) == 0
+    예행 = capsys.readouterr().out
+    assert "새로 채울 재고: 3행" in 예행          # 10:00분만 새것이다
+    assert "이미 있음 3행" in 예행
+
+    assert merge.main([str(source)]) == 0
+    본실행 = capsys.readouterr().out
+    assert "새로 채움 : 3행" in 본실행            # 예행이 말한 그대로다
+    assert "TMAP 실측 : 1행" in 본실행
+    assert stock_at(f"{WEEKDAY} 09:00") == 3     # 먼저 있던 값이 이긴다
