@@ -212,6 +212,16 @@ function Invoke-Install {
         $register.RunLevel = 'Limited'
     }
 
+    # ErrorAction을 여기서 명시한다 — 이 스크립트 안의 다른 예약작업 cmdlet
+    # (Disable/Enable/Unregister)은 전역 $ErrorActionPreference='Stop'에 걸려
+    # 멈추는데, Register-ScheduledTask만은 인자 없이 부르면 자기 기본값
+    # (Continue)으로 동작해 실패해도 다음 줄로 넘어간다. 그래서 관리자 권한
+    # 없이 기존 작업을 덮어쓰려다 "액세스가 거부되었습니다"가 찍힌 뒤에도
+    # 아래 초록색 "[등록]" 안내가 그대로 떴다 — road_collector.ps1에서 실제로
+    # 겪은 일이다(2026-09-08, 1.26.160). 같은 방식으로 등록하는 이쪽도 같은
+    # 거짓말을 하므로 함께 막는다.
+    $register.ErrorAction = 'Stop'
+
     Register-ScheduledTask @register | Out-Null
     Write-Host "[등록] $TaskName — $DayLabel $Window · ${Interval}분 간격" -ForegroundColor Green
     Test-PowerSettings
