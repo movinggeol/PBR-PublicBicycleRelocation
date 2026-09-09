@@ -214,17 +214,19 @@ def test_time_budget_flags_overrun(fleet_client):
     assert "1건이 시간 예산을 넘었습니다" in html
 
 
-def test_unknown_duration_does_not_fall_back_to_csv(tmp_path, monkeypatch):
-    """없는 시간대를 물으면 404다 — CSV 폴백으로 **전 시간대**를 돌려주면 안 된다.
+def test_DB에_없으면_CSV로_물러서지_않는다(tmp_path, monkeypatch):
+    """**DB가 정본이다 (1.26.165).** 옆에 CSV가 있어도 404다.
 
-    폴백은 파일 하나를 통째로 읽어서 시간대를 거를 수 없다. 그런데 duration만
-    지정한 요청은 `run_label is None`이라 폴백 조건을 통과해 버렸고, 없는
-    시간대를 물었는데 전 시간대가 섞인 표가 200으로 돌아왔다(실측: 29KB).
-    시간대가 다르면 수요 구조가 반대라 섞인 값은 틀린 답이다.
+    예전에는 `run_label`도 `duration`도 없을 때 CSV 폴백이 돌았다. 고르는 방법이
+    **파일 수정시각**이라 실험 산출물(`obs-cmp-…`)을 계획 자리에 내놓을 수
+    있었는데, DB 경로는 그것을 막으려고 `kinds=("plan",)`를 쓴다(1.26.125) —
+    폴백에는 그 장치가 없었다. 실측으로 `metrics`·`route_summary`·`ilp_plan`
+    세 표에서 폴백이 고르는 파일이 실제로 `obs-cmp-1520`이었다.
+
+    빈 DB + 읽을 수 있는 CSV를 함께 두어, **CSV가 있어도 안 읽는지** 본다.
     """
     monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "dur.db"))
 
-    # 폴백이 실제로 읽을 수 있는 CSV를 깔아 둔다 — 폴백이 살아 있으면 200이 난다.
     from webapp import catalog
 
     pp = tmp_path / "pp"
@@ -234,12 +236,9 @@ def test_unknown_duration_does_not_fall_back_to_csv(tmp_path, monkeypatch):
     monkeypatch.setattr(catalog, "PP_ROOT", pp)
 
     with TestClient(app) as c:
-        # 시간대를 지정하지 않으면 폴백이 동작한다 (기존 동작 유지)
-        whole = c.get("/api/metrics")
-        assert whole.status_code == 200
-        assert whole.json()["source"] == "csv"
-
-        # 시간대를 지정하면 폴백하지 않는다
+        # 옛 폴백이라면 200 + source="csv"였을 자리다
+        assert c.get("/api/metrics").status_code == 404
+        # 시간대를 지정한 요청도 그대로 404
         assert c.get("/api/metrics", params={"duration": "없는시간대"}).status_code == 404
         assert c.get("/api/plans/vrp", params={"duration": "_10_15"}).status_code == 404
 

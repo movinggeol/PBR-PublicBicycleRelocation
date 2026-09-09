@@ -1,11 +1,23 @@
-"""산출물 조회 계층 — DB 우선, 없으면 CSV 폴백 (DB_PLAN 3단계).
+"""산출물 조회 계층 — **DB가 정본이다** (DB_PLAN 3단계 완료, 1.26.165).
 
-웹 API는 지금까지 `catalog.latest_file()`로 **파일 수정시각이 가장 최근인 것**을
+웹 API는 한때 `catalog.latest_file()`로 **파일 수정시각이 가장 최근인 것**을
 최신으로 삼았다. 파일을 복사하거나 다시 저장하면 순서가 뒤바뀌는 휴리스틱이었다.
 이제는 DB의 `run_label`을 기준으로 조회하고, 특정 실행분도 지정할 수 있다.
 
-CSV 폴백은 **이중 기록 이전에 만들어진 산출물**을 위한 전환기 장치다.
-CSV 기록을 걷어내는 시점(DB_PLAN 마지막 단계)에 함께 제거한다.
+**CSV 폴백은 걷어냈다.** 이중 기록 이전 산출물을 위한 전환기 장치였는데, 남겨
+두는 편이 더 위험해졌다:
+
+  - 폴백은 **`run_label`도 `duration`도 없을 때만** 돌았다. 즉 *"최신 계획을
+    보여 달라"* 는 물음에만 답했는데, 고르는 방법이 **파일 수정시각**이라
+    실험 산출물(`obs-cmp-…`)을 집을 수 있었다. DB 경로는 그것을 막으려고
+    `kinds=("plan",)`를 쓴다(1.26.125) — **폴백에는 그 장치가 없다.** 실측:
+    `metrics`·`route_summary`·`ilp_plan` 세 표에서 폴백이 고르는 파일이
+    실제로 `obs-cmp-1520`이었다.
+  - DB가 이미 다섯 표 모두를 답한다(실측 87·66·106·87·14행).
+
+**옛 산출물을 못 읽게 되는 것이 아니다** — 파일은 그대로 있고 `/files`가
+`catalog.py`로 내려받게 해 준다. 달라지는 것은 *"계획을 물었을 때 API가
+파일 수정시각으로 고른 것을 정답이라 내놓지 않는다"* 는 점이다.
 """
 from __future__ import annotations
 
@@ -18,18 +30,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 
 import db
-from webapp import catalog
 
-# 테이블 -> CSV 폴백 위치 (pp_data 기준 폴더, glob 패턴)
-CSV_FALLBACK = {
-    # top_[숫자]로 좁힌다 — `top*.csv`로 두면 top_center*.csv 같은 다른 산출물까지
-    # 잡아 mtime이 최신인 엉뚱한 파일을 읽는다.
-    "pick_drop": ("ILP/후보", "top_[0-9]*.csv"),
-    "ilp_plan": ("ILP", "ILP_plan*.csv"),
-    "vrp_plan": ("VRP", "VRP_plan*.csv"),
-    "metrics": ("성능 지표", "verification*.csv"),
-    "route_summary": ("성능 지표", "route_summary*.csv"),
-}
+# CSV_FALLBACK은 1.26.165에서 지웠다 — 위 설명 참고. 파일 목록·내려받기는
+# `catalog.py`가 계속 담당한다(그쪽은 "무슨 파일이 있나"를 묻는 자리라 성격이
+# 다르다). 되살릴 일이 있다면 **`kinds=("plan",)`에 해당하는 장치부터** 만들어라.
 
 
 def load(table: str, run_label: Optional[str] = None,
@@ -52,18 +56,8 @@ def load(table: str, run_label: Optional[str] = None,
     except Exception as err:      # DB가 없거나 손상돼도 CSV로 응답할 수 있게 한다
         print(f"[경고] DB 조회 실패 ({table}): {type(err).__name__}: {err}")
 
-    # 특정 실행을 콕 집어 요청한 경우에는 폴백하지 않는다
-    # (CSV에는 어느 실행분인지 구분할 정보가 파일명 말고 없다).
-    # duration도 마찬가지다 — 폴백은 시간대를 거를 수 없어서, 없는 시간대를
-    # 물었는데 **전 시간대가 섞인 표**를 200으로 돌려주고 있었다(실측:
-    # /api/metrics?duration=bogus가 29KB를 반환). 시간대가 다르면 수요 구조가
-    # 반대라 섞인 값은 틀린 답이다.
-    if run_label is None and duration is None and table in CSV_FALLBACK:
-        subdir, pattern = CSV_FALLBACK[table]
-        path = catalog.latest_file(subdir, pattern)
-        if path is not None:
-            return pd.read_csv(path, encoding="utf-8", low_memory=False), "csv"
-
+    # DB에 없으면 없다고 답한다 — 파일 수정시각으로 고른 것을 계획이라 내놓지
+    # 않는다(1.26.165). 옛 산출물은 `/files`에서 그대로 내려받을 수 있다.
     return pd.DataFrame(), "none"
 
 

@@ -1171,17 +1171,18 @@ def test_period_default_follows_the_data_we_have(tmp_path, monkeypatch):
 
 
 def test_candidate_glob_does_not_catch_other_outputs():
-    """후보 파일 글롭이 `top_center*.csv` 같은 다른 산출물을 잡으면 안 된다.
+    """후보 파일 색인이 `top_center*.csv` 같은 다른 산출물을 잡으면 안 된다.
 
-    `top*.csv`로 두면 mtime이 더 최신인 엉뚱한 파일을 `/api/stations`가 읽는다.
+    옛날에는 `webapp.store.CSV_FALLBACK`의 글롭을 지켰는데, 그 폴백은
+    1.26.165에서 없앴다(DB가 정본이다). **같은 위험은 남아 있다** —
+    `redraw_maps`가 아직 이 폴더를 훑어 색인을 만들고, `top*.csv`로 넓게 잡은 뒤
+    `CANDIDATE_RE`로 거른다. 거르는 쪽이 느슨해지면 **엉뚱한 파일을 실행 라벨로
+    읽어** 다른 실행의 지도를 덮어쓴다(1.26.107에서 실제로 겪은 사고다).
     """
-    import fnmatch
+    from tools.redraw_maps import CANDIDATE_RE
 
-    from webapp.store import CSV_FALLBACK
-
-    _subdir, pattern = CSV_FALLBACK["pick_drop"]
-    assert fnmatch.fnmatch("top_05_10 (2026-08-11 real).csv", pattern)
-    assert not fnmatch.fnmatch("top_center_05_10 (2026-08-11 real).csv", pattern)
+    assert CANDIDATE_RE.match("top_05_10 (2026-08-11 real).csv")
+    assert not CANDIDATE_RE.match("top_center_05_10 (2026-08-11 real).csv")
 
 
 # ---------------- 시간 예산을 제약으로 걸 때 (1.21.6) ----------------
