@@ -416,7 +416,12 @@ def test_step3도_앞_단계의_건너뜀을_견딘다():
     뒤에 지표(step4)가 남아 있다."""
     code = (PROJECT_ROOT / "step3_map" / "main.py").read_text(encoding="utf-8")
     body = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("#"))
-    assert "is_file()" in body, "입력 존재를 확인하지 않는다"
+    # 1.26.167에서 **확인하는 방법이 바뀌었다** — 파일 존재(`is_file()`)가 아니라
+    # `read_step_output()`이 돌려준 프레임이 비었는지를 본다. 파일만 보던 때는
+    # DB에 자료가 있어도 CSV가 없으면 지도가 한 장도 안 나왔다.
+    # **지켜야 할 것은 그대로다**: 앞 단계가 건너뛴 시간대에서 죽지 않고 알린다.
+    assert "read_step_output" in body, "앞 단계 산출물을 DB에서 읽지 않는다"
+    assert ".empty" in body, "입력이 비었는지 확인하지 않는다"
     assert "[건너뜀]" in body, "건너뛴 시간대를 알리지 않는다"
 
 

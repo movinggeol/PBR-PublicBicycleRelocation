@@ -618,19 +618,22 @@ if __name__ == "__main__":
         # 건너뛴다 (1.26.129). 예전에는 확인 없이 바로 읽어 FileNotFoundError로
         # **파이프라인 전체가 죽었다** — 지도는 산출물일 뿐이고 뒤에 지표(step4)가
         # 남아 있는데도. ilp.py·vrp.py는 이미 같은 가드를 갖고 있었다.
-        plan_path = Path(vrp_plan_file.format(duration=duration, now=now))
-        candidates = Path(clustered_file.format(duration=duration, now=now))
-        missing = [p.name for p in (plan_path, candidates) if not p.is_file()]
-        if missing:
-            print(f"\n[건너뜀] {duration}: 입력이 없습니다 ({', '.join(missing)})")
-            continue
+        # 앞 단계 산출물은 DB에서 먼저 읽는다 (1.26.167) — 없으면 CSV로 물러선다.
+        # 예전에는 **파일만** 봤기 때문에, DB에 자료가 있어도 CSV가 없으면
+        # 경로 지도가 한 장도 안 나왔다(조용히 건너뛴다).
+        vrp_plan, _ = db.read_step_output(
+            'vrp_plan', vrp_plan_file.format(duration=duration, now=now),
+            run_label=now, duration=duration)
+        pick_drop, _ = db.read_step_output(
+            'pick_drop', clustered_file.format(duration=duration, now=now),
+            run_label=now, duration=duration)
 
-        vrp_plan = pd.read_csv(plan_path, encoding="utf-8")
-        if vrp_plan.empty:
-            print(f"\n[건너뜀] {duration}: VRP 계획이 비어 있습니다(그릴 경로 없음)")
+        빈_것 = [이름 for 이름, 표 in (("VRP 계획", vrp_plan), ("step1 후보", pick_drop))
+               if 표.empty]
+        if 빈_것:
+            # 앞 단계가 '대상 없음'으로 건너뛴 시간대는 여기서도 건너뛴다.
+            print(f"\n[건너뜀] {duration}: 입력이 없습니다 ({', '.join(빈_것)})")
             continue
-
-        pick_drop = pd.read_csv(candidates, encoding="utf-8")
 
         make_vrp_map(depot, pick_drop, vrp_plan, duration, HEADERS, TMAP_URL)
 

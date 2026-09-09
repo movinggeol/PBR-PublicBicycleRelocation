@@ -264,6 +264,28 @@ def selected_scripts(args: argparse.Namespace) -> Iterable[Path]:
         yield from STAGES[group]
 
 
+# `API_SNAPSHOTS` 세 파일에 대응하는 DB 표. 순서는 뜻이 없고 **셋 다** 있어야 한다
+# (반쯤 있는 라벨을 물려받으면 다음 단계에서 멈춘다 — snapshot_labels()와 같은 규약).
+SNAPSHOT_TABLES = ("station_stock", "parking_lot", "station_info")
+
+
+def _snapshot_in_db(label: str) -> bool:
+    """그 라벨의 재고 스냅샷이 **DB에 세 표 다** 있는가.
+
+    DB를 못 열면 False다 — 없다고 답하는 쪽이 안전하다(파일 경로로 넘어간다).
+    """
+    try:
+        import db
+
+        with db.session() as conn:
+            for table in SNAPSHOT_TABLES:
+                if db.load_frame(conn, table, run_label=label).empty:
+                    return False
+        return True
+    except Exception:
+        return False
+
+
 def inherit_snapshot(label: str) -> int:
     """`--skip-api`로 건너뛴 재고 스냅샷을 **가장 최근 실행에서 물려받는다.**
 
@@ -275,9 +297,19 @@ def inherit_snapshot(label: str) -> int:
     남아야 한다 — 조용히 물려받으면 출처를 알 수 없는 계획이 된다.
 
     반환: 복사한 파일 수. 이미 다 있으면 0.
+
+    ⚠️ **파일과 DB를 함께 본다 (1.26.167).** 예전에는 파일만 봐서, DB에 스냅샷이
+    있어도 CSV가 없으면 *"물려받을 스냅샷이 없습니다"* 로 **단계가 시작되기도 전에**
+    멈췄다. 배선이 DB로 옮겨진 뒤로는(1.26.164·166) 그 판정이 사실과 어긋난다.
     """
     missing = [p for p in snapshot_paths(label) if not p.exists()]
     if not missing:
+        return 0
+
+    if _snapshot_in_db(label):
+        # 파일은 없지만 DB에 그 라벨의 스냅샷이 있다 — 각 단계가 DB에서 읽으므로
+        # 물려받을 것이 없다. 파일을 만들지 않는 것이 맞다(원본을 늘리지 않는다).
+        print(f"[안내] --skip-api: '{label}'의 재고 스냅샷을 DB에서 씁니다 (CSV 없음).")
         return 0
 
     donors = [other for other in snapshot_labels() if other != label]

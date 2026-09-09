@@ -481,3 +481,52 @@ def test_앞_단계를_DB에서_읽고_없으면_CSV로_물러선다(tmp_path, m
     frame, source = db.read_step_output("pick_drop", tmp_path / "없다.csv",
                                         run_label="없는라벨", duration="_05_10")
     assert source == "none" and frame.empty
+
+
+# ---- CSV를 다 지워도 DB만으로 돈다 (1.26.167) ----
+
+def test_CSV를_전부_지워도_DB만으로_다시_돈다(tmp_path):
+    """🔴 **이 저장소의 배선이 정말 DB로 옮겨졌는지 재는 시험이다.**
+
+    한 번 완주시켜 DB와 CSV를 모두 만든 뒤 **산출물 CSV를 전부 지우고** 다시
+    돌린다. 배선이 파일에 남아 있으면 그 단계가 *"입력이 없습니다"* 로 조용히
+    건너뛰므로, 건너뛴 줄이 하나도 없어야 한다.
+
+    실제로 이 시험이 두 곳을 찾아냈다(1.26.167): `step3_map/main.py`가 파일만
+    보고 있었고, `run_pipeline.inherit_snapshot()`이 DB를 안 봐서 **단계가
+    시작되기도 전에** 멈췄다. 그전까지는 단계별 읽기 함수만 확인했을 뿐,
+    CSV를 실제로 지우고 완주시켜 본 적이 없었다.
+
+    원천(합성 대여이력)은 남긴다 — 그건 입력이지 단계 간 배선이 아니다.
+    """
+    raw = tmp_path / "합성.csv"
+    generate(now="dbonly", period="dbonly", stations=40, days=8,
+             rentals_per_day=300, raw_path=raw)
+
+    data_root = tmp_path / "data"
+    env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8",
+               PBR_DATA_ROOT=str(data_root), PBR_DB_PATH=str(tmp_path / "d.db"))
+    공통 = ["--now", "dbonly", "--period", "dbonly",
+           "--duration", DURATION, "--raw-file", str(raw)]
+
+    def 돌린다(*추가):
+        return subprocess.run(
+            [sys.executable, "run_pipeline.py", "--skip-eda", "--skip-map", *공통, *추가],
+            cwd=PROJECT_ROOT, env=env, capture_output=True, text=True,
+            encoding="utf-8", errors="replace")
+
+    첫판 = 돌린다()
+    assert 첫판.returncode == 0, f"1차 실행 실패:\n{첫판.stdout[-1500:]}"
+
+    산출물 = sorted((data_root / "pp_data").rglob("*.csv"))
+    assert 산출물, "1차 실행이 CSV를 하나도 안 만들었다 — 시험이 성립하지 않는다"
+    for path in 산출물:
+        path.unlink()
+
+    둘째판 = 돌린다("--skip-api")
+    assert 둘째판.returncode == 0, f"CSV 없이 재실행 실패:\n{둘째판.stdout[-1500:]}"
+
+    출력 = 둘째판.stdout + 둘째판.stderr
+    assert "물려받을 재고 스냅샷이 없습니다" not in 출력, "스냅샷 가드가 DB를 못 봤다"
+    건너뜀 = [줄 for 줄 in 출력.splitlines() if "입력이 없습니다" in 줄]
+    assert not 건너뜀, f"아직 파일에 매인 단계가 있다:\n" + "\n".join(건너뜀)

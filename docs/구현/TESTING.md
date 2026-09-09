@@ -1,11 +1,11 @@
 # 테스트
 
 이 프로젝트는 처음에 테스트가 하나도 없었고, **의존성이 전부 깨진 상태**로
-파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 750개 테스트입니다.
+파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 751개 테스트입니다.
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 750개 (약 200초)
+python -m pytest              # 전체 751개 (약 200초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -22,7 +22,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_weather.py](../../tests/test_weather.py) | 43 | **날씨 원천** — 빈칸의 뜻이 컬럼마다 다른지(강수는 0, 기온은 보간), 겨울 3시간 누적 강수를 펴는지, 창 접기(합·평균·최대)와 자정을 넘긴 창, 자료가 없어도 죽지 않는지, API 결측(-9)을 값으로 읽지 않는지 ([WEATHER.md](../분석/WEATHER.md)) |
 | [tests/test_day_type.py](../../tests/test_day_type.py) | 36 | 평일/휴일 분리·공휴일 판정·수요 모델 폴백·계절 보정, **평가도 같은 구분을 쓰는지** ([steps/step0_raw.md](steps/step0_raw.md)) |
 | [tests/test_stock_history.py](../../tests/test_stock_history.py) | 44 | **재고 시계열 수집** — 창 가드(휴일·창 밖에 API를 부르지 않는지), 틱 격자 반올림, 멱등 저장, 실패도 로그에 남는지, 파이프라인 이력을 건드리지 않는지, 요일 옵션 세 갈래(평일만 / 평일+휴일 / **휴일만**)가 **창 가드는 지키는지**, `--holidays-only`가 **공휴일(평일인 날)까지 잡는지**, **등록된 창을 실제로 읽어 오는지**(PATH·인코딩에 걸려 낡은 기본값으로 물러나면 결측 표가 통째로 틀린다, 1.26.120), **결측을 가동 구간과 함께 보여 주는지**·**한 환경만 보고 온전함을 단언하지 않는지**(수집기는 두 환경에서 돈다, 1.26.121) ([COLLECTOR.md](COLLECTOR.md)) |
-| [tests/test_pipeline.py](../../tests/test_pipeline.py) | 45 | step0→1→2→4를 **실제로 실행**해 산출물·스키마 확인, **도구가 실패를 종료 코드로 말하는지**(`redraw_maps.py`가 전부 깨져도 0으로 끝났다) |
+| [tests/test_pipeline.py](../../tests/test_pipeline.py) | 46 | step0→1→2→4를 **실제로 실행**해 산출물·스키마 확인, **도구가 실패를 종료 코드로 말하는지**(`redraw_maps.py`가 전부 깨져도 0으로 끝났다) |
 | [tests/test_charts.py](../../tests/test_charts.py) | 38 | **그래프 규칙** — 계열 하나에 선 하나(축 둘 금지), 색을 SVG에 박지 않는지, 값 표시는 끝점만, 좌표가 뷰박스 안인지, 발산 척도의 가운데가 무채색인지, **범례가 값만이 아니라 할 일까지 말하는지**(1.26.92), **편차 막대의 기준을 부르는 쪽이 정하는지**(안 나간 차량의 0분을 평균에 넣으면 일한 차량이 전부 평균 위가 된다), **빈 상태 문구를 그래프마다 따로 적지 않는지**(1.26.117), **SVG 봉투를 한 벌로 쓰는지**(여섯 그래프가 같은 여는 태그를 각자 적고 있었다) |
 | [tests/test_tmap.py](../../tests/test_tmap.py) | 32 | TMAP 엔드포인트 선택·폴백, **경로 지도 팝업이 파이썬 자료구조를 새지 않는지**, **출발·도착 핀에 이름 붙이는 스크립트가 심기는지**(awesome-marker 아이콘은 글자가 없어 이름이 비어 있었다, axe aria-command-name, 1.26.126) ([steps/step3_visualization.md](steps/step3_visualization.md)) |
 | [tests/test_db.py](../../tests/test_db.py) | 37 | SQLite 저장소의 스코프·멱등성·최신 라벨·스키마 마이그레이션, **재적재가 사람이 못박은 실행 종류를 지우지 않는지**(1.26.111), **띄운 쪽의 선언(`PBR_RUN_KIND`)을 읽되 선언이 없으면 짐작에 맡기는지**(1.26.114), **'최신'을 사전순이 아니라 `runs.created_at`으로 고르는지**(실험 라벨 `obs-cmp-…`는 `'o' > '2'`라 어떤 날짜 라벨도 이긴다, 1.26.125) ([DB_SCHEMA.md](DB_SCHEMA.md)) |
@@ -44,7 +44,7 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_project_config.py](../../tests/test_project_config.py) | 6 | **숫자 환경변수 오류 문구** — `PBR_*` 21곳이 날것으로 파싱해 잘못된 값을 주면 *"invalid literal for int()"* 로 죽었다. **변수 이름이 그 문구에 없어** 스무 개 넘는 것 중 무엇을 잘못 줬는지 알 길이 없었다(1.26.144). 여기서 묻는 것은 *"오류가 나는가"* 가 아니라 **"오류 문구에 변수 이름이 있는가"** 다 |
 | [tests/test_stockout_map.py](../../tests/test_stockout_map.py) | 4 | **결품 지도** — '늘 빔'(재배치로 못 고치는 곳)을 섞어 세지 않는지, 관측이 없는 시간을 '결품 없음'으로 읽지 않는지 |
 | [tests/test_commit_guard.py](../../tests/test_commit_guard.py) | 7 | **커밋에 남의 변경이 섞이는지** — 세션 둘이 같은 `.git/index`를 쓰는 저장소라, 파일을 이름으로 집어 스테이징하고 `git diff --cached`로 확인해도 **확인과 커밋 사이에 뒤바뀐다**(2026-09-08 실측: 남의 파일 8개가 섞이고 내 파일 4개가 빠졌다). 여기서 묻는 것은 *"판정 함수가 옳은 값을 내는가"* 가 아니라 **"`git commit`이 실제로 멈추는가"** 다 — 임시 저장소에 훅을 놓고 커밋을 시켜 **HEAD가 안 움직였는지**로 잰다. 한글 경로(`core.quotepath`)와 하위 폴더 실행도 함께 본다: 둘 다 실제로 깨졌고 테스트가 잡았다 |
-| **합계** | **750** | 27개 파일 · 약 200초 (`python -m pytest`) |
+| **합계** | **751** | 27개 파일 · 약 200초 (`python -m pytest`) |
 
 > **이 합계는 손으로 세지 마세요.** 1.26.88이 손으로 세어 548이라 적었는데
 > 실측은 555였습니다 — `test_version_log.py` 한 파일을 통째로 빠뜨린 것입니다.
