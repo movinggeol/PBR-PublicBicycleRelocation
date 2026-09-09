@@ -2,9 +2,9 @@
 
 > 2026-08-07 결정. 현재 CSV 파일 기반 데이터 관리를 SQLite 단일 DB로 이관한다.
 > **1~4단계 완료** (저장소 → 이중 기록 → 웹 API 전환 → 대여이력 적재, 1.4.0~1.7.0).
-> **5단계 진행 중**: 조회 폴백 제거는 끝났고(1.26.165 — 조회는 DB가 정본),
-> 단계 간 배선도 step1·step4는 DB로 옮겼습니다(1.26.164). 남은 것은 **step0·step2가
-> 서로 CSV로 주고받는 배선**과 그 뒤의 `to_csv` 제거입니다 — 아래 5단계 절 참고.
+> **5단계 거의 완료**: 조회 폴백을 걷었고(1.26.165 — 조회는 DB가 정본),
+> **단계 간 배선은 step0~step4 전부 DB로 옮겼습니다**(1.26.164·166). 남은 것은
+> `to_csv` 제거뿐인데 **사용자 지시로 보류합니다** — 아래 5단계 절 참고.
 
 ## 결정 요약 (trade-off)
 
@@ -333,26 +333,37 @@ CSV는 **산출물이면서 단계 간 배선**이기도 했습니다. 그래서
 | ① | 단계 간 배선을 `db.load_frame()`으로 | ✅ step4·step1 완료 (1.26.164) |
 | ② | `redraw_maps` 색인에 DB를 더한다 | ✅ 완료 (1.26.164) |
 | ③ | `store.CSV_FALLBACK` 제거 | ✅ 완료 (1.26.165) |
-| ④ | `to_csv` 9곳 제거 | ⏸ **아직** — 아래 이유 |
+| ④ | 앞쪽(step0·step2) 배선도 DB로 | ✅ 완료 (1.26.166) |
+| ⑤ | `to_csv` 9곳 제거 | ⏸ **보류 — 사용자 지시로 파일을 남긴다** |
 
-### ④를 아직 못 하는 이유 — step0·step2가 서로 CSV로 읽습니다
+### ④ 완료 — 이제 배선은 전부 DB다 (1.26.166)
 
-①에서 step4·step1은 끊었지만, 앞쪽은 그대로입니다.
+step0·step2의 되읽기도 `db.read_step_output()` 하나를 거칩니다.
 
-| 어디 | 무엇을 파일로 받나 |
+| 어디 | 무엇을 DB에서 받나 |
 | --- | --- |
-| `step0_collect/api_to_info.py` | 주차대수·재고 (같은 step0의 앞 스크립트) |
-| `step0_collect/calculate_target_qty.py` | 대여소 정보·순수요·warmup |
-| `step0_collect/extract_parking_lot.py` | 대여소 원천 |
-| `step1_cluster/top_st_clustering.py` | 재배치 정보·대여소 정보 |
-| `step2_optimize/ilp.py` | step1 후보 |
-| `step2_optimize/vrp.py` | ILP 계획·대여소 정보 |
+| `step0_collect/extract_parking_lot.py` | `station_stock` |
+| `step0_collect/api_to_info.py` | `parking_lot` · `station_stock` |
+| `step0_collect/calculate_target_qty.py` | `station_info` · `net_demand`(+warmup) |
+| `step1_cluster/top_st_clustering.py` | `rebalance_plan` · `station_info` |
+| `step2_optimize/ilp.py` | `pick_drop` |
+| `step2_optimize/vrp.py` | `pick_drop` · `ilp_plan` |
 
-🔴 **여기서 배운 것**: ①을 먼저 하지 않고 ④부터 했다면 실패가 **조용했을** 수
-있습니다. 실제로 ①을 하자마자 `demand_satisfaction()`이 컬럼을 **자리로** 집던
-것이 드러났는데(`iloc[:, [0,1,2,3,10,5,8,9,6,7]]`), DB 입력은 앞에 스코프 컬럼이
-붙어 자리가 밀립니다 — `cluster` 자리에서 `mu`를 집어도 **둘 다 숫자라 groupby가
-그냥 돕니다.** 지도가 `KeyError`로 죽어 준 것이 운이 좋았던 것입니다(1.26.164).
+**CSV 폴백은 모든 자리에 남겼습니다** — DB가 비어 있고 원천만 있는 환경(새로
+받은 저장소)에서도 파이프라인이 돌아야 합니다. `read_rental_source()`가
+대여이력에 대해 지키는 규약과 같습니다. `tests/test_pipeline.py`가 **세 방향을
+모두** 못박습니다(DB만 있을 때 · CSV만 있을 때 · 둘 다 없을 때).
+
+🔴 **여기서도 자리로 집던 코드가 나왔습니다.** `api_to_info.py`와
+`extract_parking_lot.py`가 `iloc[:, [...]]`로 컬럼을 골랐는데, DB에서 읽으면
+앞에 `run_label`이 붙어 자리가 밀립니다. 이름 기반으로 바꾸고, 예전 CSV
+산출물과 **1,361행이 값까지 완전히 같은지** 대조해 확인했습니다.
+
+### ⑤(`to_csv` 제거)는 보류입니다
+
+**사용자 지시로 파일을 지우지 않습니다.** 지금은 배선이 DB를 쓰고 CSV는
+`to_csv`로 계속 남으므로, 산출물 파일은 예전처럼 그대로 쌓입니다 — 되돌릴
+필요가 생기면 폴백이 그대로 받습니다.
 
 ⚠️ **원천 CSV는 이 이야기와 무관합니다.** 대여이력·재고이력 같은 **입력**은
 계속 파일입니다. 걷어내는 것은 파이프라인이 **자기가 만든 것을 자기가 다시

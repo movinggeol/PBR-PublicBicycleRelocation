@@ -709,6 +709,42 @@ def latest_label(conn: sqlite3.Connection, table: str,
     return rows[0][0]
 
 
+def read_step_output(table: str, csv_path, run_label: Optional[str] = None,
+                     period: Optional[str] = None, duration: Optional[str] = None,
+                     ) -> Tuple[pd.DataFrame, str]:
+    """앞 단계 산출물을 **DB에서 먼저** 읽고, 없으면 그 CSV로 물러선다.
+
+    🔴 **왜 있나 (1.26.166).** 파이프라인은 자기가 만든 산출물을 다음 단계에서
+    `read_csv`로 되읽고 있었다 — CSV가 산출물이면서 **단계 간 배선**이기도 해서,
+    이중 기록을 걷으려 하면 파이프라인이 먼저 끊겼다(1.26.163 조사). step4·step1은
+    1.26.164에서 옮겼고, 이 함수는 그 방식을 step0·step2까지 넓히면서 **한 곳으로
+    모은 것**이다.
+
+    ⚠️ **CSV 폴백은 남긴다.** 원천 CSV가 있고 DB가 비어 있는 환경(새로 받은 저장소,
+    DB 도입 이전 산출물)에서도 파이프라인이 돌아야 한다. `read_rental_source()`가
+    대여이력에 대해 하는 것과 같은 규약이다.
+
+    반환: (DataFrame, 출처) — 출처는 "db" | "csv" | "none".
+    부르는 쪽이 비었는지 보고 건너뛸지 정한다 — 여기서 예외를 던지면 한쪽 후보만
+    있는 시간대가 크래시가 된다.
+    """
+    frame = pd.DataFrame()
+    try:
+        with session() as conn:
+            frame = load_frame(conn, table, run_label=run_label,
+                               period=period, duration=duration)
+    except Exception as err:
+        print(f"[경고] {table} DB 조회 실패: {type(err).__name__}: {err}")
+
+    if not frame.empty:
+        return frame, "db"
+
+    path = Path(csv_path)
+    if path.is_file():
+        return pd.read_csv(path, encoding="utf-8", low_memory=False), "csv"
+    return pd.DataFrame(), "none"
+
+
 def record_run(conn: sqlite3.Connection, run_label: str, period: Optional[str] = None,
                duration: Optional[str] = None, raw_file: Optional[str] = None,
                day_type: Optional[str] = None, kind: Optional[str] = None) -> None:

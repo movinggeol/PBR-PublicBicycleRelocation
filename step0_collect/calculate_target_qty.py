@@ -217,10 +217,20 @@ if __name__ == '__main__':
 
     ensure_output_dirs()
 
-    st_info = pd.read_csv(st_info_file.format(now=now), encoding='utf-8', low_memory=False)
+    # 앞 단계 산출물은 DB에서 먼저 읽는다 (1.26.166). 이름으로 고르므로
+    # 스코프 컬럼이 앞에 붙어도 상관없다.
+    st_info, _ = db.read_step_output('station_info', st_info_file.format(now=now),
+                                     run_label=now)
+    if st_info.empty:
+        raise SystemExit(f"대여소 정보가 없습니다 — api_to_info.py를 먼저 돌리세요 ({now}).")
     st_initial_qty = st_info.loc[:, ["station_id", 'parking_lot', 'stock']]
 
-    net_daily = pd.read_csv(net_file.format(period=period), encoding='utf-8', low_memory=False)
+    net_daily, _ = db.read_step_output('net_demand', net_file.format(period=period),
+                                       period=period)
+    if net_daily.empty:
+        raise SystemExit(f"순수요가 없습니다 — raw_to_net.py를 먼저 돌리세요 ({period}).")
+    # DB는 '날짜'를 date로 저장한다(db.TABLES의 rename) — 계산 코드는 한글을 쓴다.
+    net_daily = net_daily.rename(columns={'date': '날짜'})
 
     # 평일과 휴일 중 한쪽만 남긴다. 섞으면 부호가 반대인 대여소끼리 상쇄된다.
     전체일수 = pd.to_datetime(net_daily['날짜']).dt.date.nunique()
@@ -247,10 +257,11 @@ if __name__ == '__main__':
     warmup_net = None
     if config.warmup_days > 0 and config.warmup_label != period:
         warmup_path = Path(net_file.format(period=config.warmup_label))
-        if warmup_path.exists():
+        warmup_raw, _ = db.read_step_output('net_demand', warmup_path,
+                                            period=config.warmup_label)
+        if not warmup_raw.empty:
             warmup_net = select_day_type(
-                pd.read_csv(warmup_path, encoding='utf-8', low_memory=False),
-                '날짜', config.day_type)
+                warmup_raw.rename(columns={'date': '날짜'}), '날짜', config.day_type)
             print(f"계절 보정: {config.warmup_label} 첫 {config.warmup_days}일 실적을 씁니다.")
         else:
             print(f"[안내] 계절 보정 건너뜀 — {config.warmup_label} 순수요가 없습니다"

@@ -47,9 +47,14 @@ def main() -> None:
     config = get_runtime_config()
     now = config.now
 
-    df = pd.read_csv(file_path.format(now=now), encoding='utf-8', low_memory=False)
+    # 앞 단계(tashu_api)의 재고를 DB에서 먼저 읽는다 (1.26.166).
+    df, _ = db.read_step_output('station_stock', file_path.format(now=now),
+                                run_label=now)
+    if df.empty:
+        raise SystemExit(f"대여소별 재고가 없습니다 — tashu_api.py를 먼저 돌리세요 ({now}).")
 
-    df = df.iloc[:, [0, 2, 3, 4]].copy()
+    # 🔴 이름으로 고른다 — DB에서 오면 앞에 `run_label`이 붙어 자리가 밀린다.
+    df = df[['station_id', 'parking_info', 'lat', 'lon']].copy()
 
     df.loc[:, 'parking_info'] = df.loc[:, 'parking_info'].str.split('/', expand=True)[1].str.strip()
     df.loc[:, 'parking_info'] = df.loc[:, 'parking_info'].replace('parking_lot 없음', 0)

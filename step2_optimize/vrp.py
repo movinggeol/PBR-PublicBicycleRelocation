@@ -242,8 +242,10 @@ def run_vrp_plan(ilp_plan: pd.DataFrame, duration: str):
     results = []
     clusters = ilp_plan['cluster'].unique()
 
-    # 좌표 불러오기 (클러스터 루프 밖에서 1회)
-    station_info = pd.read_csv(metrics_file.format(duration=duration, now=now), encoding='utf-8')
+    # 좌표 불러오기 (클러스터 루프 밖에서 1회) — DB 우선 (1.26.166)
+    station_info, _ = db.read_step_output(
+        'pick_drop', metrics_file.format(duration=duration, now=now),
+        run_label=now, duration=duration)
     require_columns(station_info, ['station_id', 'lat', 'lon'], f'step1 후보 {duration}')
     require_columns(ilp_plan, ['cluster', 'pick_station_id', 'drop_station_id', 'qty'],
                     f'step2 ILP 계획 {duration}')
@@ -397,12 +399,9 @@ if __name__ == '__main__':
 
     for duration in duration_list(config):
         plan_path = Path(ilp_plan_file.format(duration=duration, now=now))
-        if not plan_path.is_file():
-            # 앞 단계가 '대상 없음'으로 건너뛴 시간대.
-            print(f"\n[건너뜀] {duration}: ILP 계획이 없습니다 ({plan_path.name})")
-            continue
-
-        ilp_plan = pd.read_csv(plan_path, encoding='utf-8', low_memory=False)
+        # step2 ILP 계획을 DB에서 먼저 읽는다 (1.26.166).
+        ilp_plan, _ = db.read_step_output('ilp_plan', plan_path,
+                                          run_label=now, duration=duration)
         if ilp_plan.empty:
             print(f"\n[건너뜀] {duration}: ILP 계획이 비어 있습니다(이동할 자전거 없음)")
             continue

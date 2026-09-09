@@ -440,3 +440,44 @@ def test_step_모듈은_직접_실행도_된다():
         assert result.returncode == 0, (
             f"{script}를 스크립트로 띄울 수 없다 — 파이프라인이 이 경로를 쓴다:\n"
             f"{(result.stderr or '')[-600:]}")
+
+
+# ---- 단계 간 배선이 DB로 옮겨졌다 (1.26.166) ----
+
+def test_앞_단계를_DB에서_읽고_없으면_CSV로_물러선다(tmp_path, monkeypatch):
+    """파이프라인이 **자기가 만든 것을 자기가 되읽는** 자리의 규약.
+
+    🔴 CSV는 산출물이면서 **단계 간 배선**이기도 했다 — 그래서 이중 기록을
+    걷으려 하면 파이프라인이 먼저 끊겼다(1.26.163). 이제 `db.read_step_output()`
+    하나를 거친다. **두 방향을 모두 지킨다**:
+
+      - DB에 있으면 CSV가 없어도 읽는다 (배선이 DB로 옮겨졌다)
+      - DB가 비면 CSV로 물러선다 (원천만 있는 환경도 돌아야 한다)
+    """
+    import db
+    import pandas as pd
+
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "wire.db"))
+
+    표 = pd.DataFrame({"station_id": ["ST1", "ST2"], "lat": [36.3, 36.4],
+                       "lon": [127.3, 127.4], "rebal_qty": [5, -5],
+                       "cluster": [0, 0]})
+
+    # ① DB에만 있는 경우 — 없는 CSV 경로를 줘도 읽힌다
+    with db.session() as conn:
+        db.save_frame(conn, "pick_drop", 표, run_label="배선", duration="_05_10")
+    frame, source = db.read_step_output("pick_drop", tmp_path / "없는파일.csv",
+                                        run_label="배선", duration="_05_10")
+    assert source == "db" and len(frame) == 2
+
+    # ② DB에 없는 경우 — CSV로 물러선다
+    csv = tmp_path / "폴백.csv"
+    표.to_csv(csv, index=False, encoding="utf-8")
+    frame, source = db.read_step_output("pick_drop", csv,
+                                        run_label="없는라벨", duration="_05_10")
+    assert source == "csv" and len(frame) == 2
+
+    # ③ 둘 다 없으면 빈 프레임 — 부르는 쪽이 '건너뜀'을 정한다(예외 아님)
+    frame, source = db.read_step_output("pick_drop", tmp_path / "없다.csv",
+                                        run_label="없는라벨", duration="_05_10")
+    assert source == "none" and frame.empty

@@ -80,30 +80,29 @@ def main() -> None:
     st_info = rent_agg.merge(ret_agg, how='left', on='station_id').dropna()
 
     # merge(대여소 정보 : st_info, 주차대수 : parking_lot)
-    parking_lot = pd.read_csv(parking_lot_file.format(now=now), encoding='utf-8')
+    # 🔴 **자리가 아니라 이름으로 고른다 (1.26.166).** 앞 단계를 DB에서 읽으면
+    # 앞에 스코프 컬럼(`run_label`)이 붙어 **모든 자리가 밀린다.** 같은 함정에
+    # step4가 먼저 걸렸다 — `cluster` 자리에서 `mu`를 집고도 둘 다 숫자라
+    # groupby가 그냥 돌아, 지도가 죽어 준 덕에 알았다(1.26.164).
+    parking_lot, _ = db.read_step_output(
+        'parking_lot', parking_lot_file.format(now=now), run_label=now)
 
-    st_info = (
-        st_info
-        .iloc[:, [0, 1, 2, 3, 4, 7, 5, 6]]
-    )
-    st_info = (
-        st_info
-        .merge(parking_lot, how='left', on='station_id')
-        .iloc[:, [0, 1, 2, 3, 10, 4, 5, 6, 7]]
-    )
+    # stock 읽기 : 대여소별 자전거 주차대수
+    st_stock, _ = db.read_step_output(
+        'station_stock', stock_file.format(now=now), run_label=now)
 
-    st_info.columns = [
-        'station_id', 'station_name', 'lat', 'lon', 'parking_lot', 'rent_count', 'return_count',
-        '총 이용시간(분)', '총 이용거리(km)']
+    st_info = (st_info
+               .merge(parking_lot[['station_id', 'parking_lot']],
+                      how='left', on='station_id')
+               .merge(st_stock[['station_id', 'stock']],
+                      how='left', on='station_id'))
 
-    # stock 파일 읽기 : 대여소별 자전거 주차대수
-    st_stock = pd.read_csv(stock_file.format(now=now), encoding='utf-8')
-    st_stock = st_stock.iloc[:, [0, -1]]
-
-    intersect_df = st_info.merge(st_stock, how='left', on='station_id')
+    # 산출 컬럼과 순서는 예전 그대로다 — 뒤 단계가 이 이름으로 읽는다.
+    intersect_df = st_info.rename(columns={
+        '총_이용시간_분': '총 이용시간(분)', '총_이용거리_km': '총 이용거리(km)',
+    })[['station_id', 'station_name', 'lat', 'lon', 'parking_lot', 'stock',
+        'rent_count', 'return_count', '총 이용시간(분)', '총 이용거리(km)']]
     print(intersect_df.head())
-
-    intersect_df = intersect_df.iloc[:, [0, 1, 2, 3, 4, 9, 5, 6, 7, 8]]
 
     ensure_output_dirs()
     intersect_df.to_csv(out_file_path.format(now=now), encoding='utf-8', index=False)

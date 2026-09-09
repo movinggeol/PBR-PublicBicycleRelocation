@@ -166,8 +166,10 @@ def select_top_unbalanced_st(file_path:str, duration:str, st_info:pd.DataFrame) 
 
     types = ['pick', 'drop']
 
-    # file_path는 호출부에서 이미 완전히 포맷된 경로
-    st_rebal = pd.read_csv(file_path, encoding='utf-8', low_memory=False)
+    # file_path는 호출부에서 이미 완전히 포맷된 경로 — DB에 없을 때의 폴백이다.
+    # 앞 단계(step0 calculate_target_qty)의 재배치량을 DB에서 먼저 읽는다(1.26.166).
+    st_rebal, _ = db.read_step_output('rebalance_plan', file_path,
+                                      run_label=now, duration=duration)
     require_columns(st_rebal, ['station_id', 'mu', 'sigma', 'parking_lot', 'stock',
                                'target_qty', 'rebal_qty'], f'step0 재배치량 {duration}')
     require_columns(st_info, ['station_id', 'station_name', 'lat', 'lon',
@@ -467,7 +469,10 @@ if __name__ == '__main__':
 
     ensure_output_dirs()
 
-    st_info = pd.read_csv(st_info_file.format(now=now), low_memory=False, encoding='utf-8')
+    st_info, _ = db.read_step_output('station_info', st_info_file.format(now=now),
+                                     run_label=now)
+    if st_info.empty:
+        raise SystemExit(f"대여소 정보가 없습니다 — api_to_info.py를 먼저 돌리세요 ({now}).")
 
     # 시간대 목록은 project_config의 --duration(콤마 구분)으로 지정
     for duration in duration_list(config):

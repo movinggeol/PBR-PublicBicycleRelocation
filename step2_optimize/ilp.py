@@ -257,13 +257,15 @@ if __name__ == "__main__":
     solver = build_solver(msg=True)
 
     for duration in duration_list(config):
-        candidates = Path(metrics_path.format(duration=duration, now=now))
-        if not candidates.is_file():
+        # step1 후보를 DB에서 먼저 읽는다 (1.26.166) — 없으면 CSV로 물러선다.
+        metrics, _ = db.read_step_output(
+            'pick_drop', metrics_path.format(duration=duration, now=now),
+            run_label=now, duration=duration)
+        if metrics.empty:
             # step1이 '대상 없음'으로 건너뛴 시간대. 여기서도 건너뛴다.
-            print(f"\n[건너뜀] {duration}: 후보 파일이 없습니다 ({candidates.name})")
+            print(f"\n[건너뜀] {duration}: step1 후보가 없습니다")
             continue
 
-        metrics = pd.read_csv(candidates, encoding='utf-8', low_memory=False)
         require_columns(metrics, ['station_id', 'lat', 'lon', 'rebal_qty', 'cluster'],
                         f'step1 후보 {duration}')
         print(f"\n=== [ILP @ {duration}] ===")
