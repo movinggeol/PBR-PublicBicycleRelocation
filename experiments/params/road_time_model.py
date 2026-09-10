@@ -44,6 +44,16 @@ LABELS = ["0~0.5", "0.5~1", "1~2", "2~5", "5~10", "10~20", "20+"]
 # 판정 기준 (위 문서 참고). 결과를 보고 고치지 말 것.
 MAE_GAIN_THRESHOLD = 0.20        # 상수 속도 대비 표본 밖 MAE 감소폭
 CV_THRESHOLD = 0.15              # 날짜별 계수의 변동계수 상한
+MIN_DAYS = 10                    # 판정에 필요한 수집 일수
+
+# 🔴 **판정용 표본은 09-02부터 센다** (EXPERIMENTS 9장 사전 등록).
+# 08-31은 패널을 커밋으로 나르기 전이고, 09-01은 로컬에서 만든 패널로 재
+# 100구간 중 31개가 어긋났다(`_20_05` 회차도 빠졌다). 이 스크립트는 어긋난
+# 구간만 버리고 그날을 **한 날로 세므로**, 그대로 두면 사전 등록보다 이틀
+# 느슨해진다 — 2026-09-11에 실제로 스크립트가 "10일 · 통과"라고 말했으나
+# 등록 기준으로는 8일이었다. 결과를 본 뒤 기준을 앞당기는 것과 같아지므로
+# 여기서 막는다.
+JUDGE_FROM = "2026-09-02"
 
 
 def panel_segments() -> set:
@@ -241,6 +251,20 @@ def verdict(frame: pd.DataFrame, by_day: pd.DataFrame, oos: pd.DataFrame) -> Non
           f"  (기준 {CV_THRESHOLD:.0%} 미만)")
     stable = max(cv_fixed, cv_speed) < CV_THRESHOLD
 
+    # 🔴 **셋째 조건 — 수집 일수.** 사전 등록은 세 조건의 AND인데 예전에는
+    # 앞의 둘만 재고 "두 기준을 모두 통과"라 말했다. 일수를 안 세면 그 문구가
+    # 채택 신호로 읽힌다 — 2026-09-11에 실제로 그렇게 출력됐다.
+    # 표본 밖 검증을 못 해도 일수는 알려야 하므로 아래 early return보다 앞에 둔다.
+    판정일 = sorted(d for d in by_day["날짜"].astype(str) if d >= JUDGE_FROM)
+    등록일수 = len(판정일)
+    print(f"  ② 판정용 수집 일수 — {등록일수}일"
+          f"  (기준 {MIN_DAYS}일 이상 · {JUDGE_FROM}부터 센다)")
+    if 등록일수 < days:
+        print(f"     ⚠️ 전체 수집은 {days}일이지만 {JUDGE_FROM} 이전"
+              f" {days - 등록일수}일은 패널이 달라 세지 않습니다"
+              " (EXPERIMENTS 9장 사전 등록).")
+    enough = 등록일수 >= MIN_DAYS
+
     if oos.empty:
         print("  ③ 표본 밖 검증을 할 수 없습니다.")
         return
@@ -251,10 +275,18 @@ def verdict(frame: pd.DataFrame, by_day: pd.DataFrame, oos: pd.DataFrame) -> Non
     print(f"  ③ 표본 밖 MAE — 상수속도 {base:.1f}초 → 재추정 {refit:.1f}초"
           f" ({gain:+.1%}, 기준 −{MAE_GAIN_THRESHOLD:.0%})")
 
+    if stable and gain >= MAE_GAIN_THRESHOLD and not enough:
+        print(f"\n  ⏳ 앞의 두 기준은 통과했으나 **수집 일수가 모자랍니다**"
+              f" ({등록일수}/{MIN_DAYS}일).")
+        print("     🔴 **여기서 채택하지 마십시오.** 기준 통과를 이유로 표본"
+              " 조건을 앞당기면 결과를 보고 기준을 고치는 것과 같아집니다.")
+        print(f"     평일만 쌓이므로 {MIN_DAYS - 등록일수}번 더 수집하면 됩니다.")
+        return
+
     if stable and gain >= MAE_GAIN_THRESHOLD:
         fixed, speed = fit_linear(frame["straight_km"].to_numpy(),
                                   frame["road_sec"].to_numpy())
-        print(f"\n  ✅ 두 기준을 모두 통과했습니다 — 계수를 갱신할 근거가 있습니다.")
+        print(f"\n  ✅ 세 기준을 모두 통과했습니다 — 계수를 갱신할 근거가 있습니다.")
         print(f"     PBR_ROAD_FIXED_SEC={fixed:.0f}"
               f" · PBR_ROAD_SPEED_KMPH={speed:.1f}")
         print(f"     (현행 {ROAD_FIXED_SEC:.0f}초 / {ROAD_SPEED_KMPH}km/h)")

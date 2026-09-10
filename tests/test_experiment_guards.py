@@ -662,3 +662,95 @@ def test_결품예측_구간검사가_지는_구간을_숨기지_않는다():
     src = inspect.getsource(sf.report_by_base_rate)
     assert "진다" in src, "지는 구간을 표시하지 않는다 — 평균에 묻힌다"
     assert "min(" in src, "두 베이스라인 중 나은 쪽과 겨루지 않는다"
+
+
+# ---------------------------------------------------------------------------
+# 도로 이동시간 채택 판정 — 사전 등록의 세 조건이 모두 걸리는가
+#
+# 🔴 2026-09-11에 실제로 물렸다. 사전 등록은 세 조건의 AND인데
+# (MAE −20% · 변동계수 15% · **수집 10일**) `verdict()`가 앞의 둘만 재고
+# "두 기준을 모두 통과했습니다"라고 출력했다. 그날 스크립트는 08-31·09-01을
+# 포함해 "10일"이라 셌지만 사전 등록은 09-02부터 세므로 8일이었다 —
+# 그대로 채택했다면 **결과를 본 뒤 기준을 이틀 앞당긴 것**이 된다.
+# ---------------------------------------------------------------------------
+
+def load_road_model():
+    spec = importlib.util.spec_from_file_location(
+        "road_time_model",
+        PROJECT_ROOT / "experiments" / "params" / "road_time_model.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["road_time_model"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _판정자료(날짜들, *, cv작음=True, 이득큼=True):
+    """판정 세 조건 중 일수만 바꿔 가며 부를 수 있는 최소 자료."""
+    frame = pd.DataFrame({
+        "날짜": 날짜들,
+        "straight_km": [1.0] * len(날짜들),
+        "road_sec": [400.0] * len(날짜들),
+    })
+    고정비 = [320.0] * len(날짜들) if cv작음 else [
+        100.0 + 200.0 * (i % 2) for i in range(len(날짜들))]
+    by_day = pd.DataFrame({
+        "날짜": 날짜들, "고정비초": 고정비, "속도kmh": [32.0] * len(날짜들),
+    })
+    재추정 = 200.0 if 이득큼 else 274.0
+    oos = pd.DataFrame({
+        "검증일": 날짜들,
+        "상수속도MAE": [275.0] * len(날짜들),
+        "현행모형MAE": [208.0] * len(날짜들),
+        "재추정MAE": [재추정] * len(날짜들),
+    })
+    return frame, by_day, oos
+
+
+def test_도로판정은_앞의_두_기준만_통과해도_채택이라_말하지_않는다(capsys):
+    """**이것이 2026-09-11에 실제로 난 결함이다.**
+
+    MAE와 변동계수가 통과해도 수집 일수가 모자라면 채택 문구를 내면 안 된다.
+    """
+    rm = load_road_model()
+    날짜 = [f"2026-09-{d:02d}" for d in (2, 3, 4, 7, 8, 9, 10, 11)]   # 8일
+
+    rm.verdict(*_판정자료(날짜))
+
+    out = capsys.readouterr().out
+    assert "8/10일" in out, "몇 일이 모자란지 말해야 한다"
+    assert "채택하지 마십시오" in out
+    assert "✅" not in out, "일수가 모자란데 채택 신호를 내면 안 된다"
+
+
+def test_도로판정_일수는_사전등록대로_09_02부터_센다(capsys):
+    """08-31·09-01은 패널이 달라 세지 않는다 — 스크립트가 더 느슨하면 안 된다."""
+    rm = load_road_model()
+    날짜 = ["2026-08-31", "2026-09-01"] + [
+        f"2026-09-{d:02d}" for d in (2, 3, 4, 7, 8, 9, 10, 11)]        # 전체 10일
+
+    rm.verdict(*_판정자료(날짜))
+
+    out = capsys.readouterr().out
+    assert "8일" in out, "등록 기준으로는 8일인데 10일로 셌다"
+    assert "2일은 패널이 달라 세지 않습니다" in out, "왜 뺐는지 밝혀야 한다"
+    assert "✅" not in out
+
+
+def test_도로판정은_열흘이_차면_채택_근거를_낸다(capsys):
+    """막기만 하고 열어 주지 않으면 게이트가 아니라 벽이다."""
+    rm = load_road_model()
+    날짜 = [f"2026-09-{d:02d}" for d in (2, 3, 4, 7, 8, 9, 10, 11, 14, 15)]
+
+    rm.verdict(*_판정자료(날짜))
+
+    out = capsys.readouterr().out
+    assert "✅" in out and "세 기준" in out, "셋을 다 쟀다고 말해야 한다"
+    assert "PBR_ROAD_FIXED_SEC" in out, "무엇을 켜야 하는지 알려야 한다"
+
+
+def test_도로판정_일수기준은_상수로_박혀_있다():
+    """기준을 코드 여기저기서 재정의하면 사전 등록이 무의미해진다."""
+    rm = load_road_model()
+
+    assert rm.MIN_DAYS == 10
+    assert rm.JUDGE_FROM == "2026-09-02"
