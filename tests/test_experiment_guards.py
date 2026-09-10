@@ -484,3 +484,127 @@ def test_라벨을_안_주면_실험이_아니라_계획_스냅샷을_고른다(
 
         got = db.load_frame(conn, "station_info", kinds=("plan",))
         assert int(got["stock"].iloc[0]) == 5, "계획 스냅샷의 재고여야 한다"
+
+
+# ─────────── 결품 예측이 스스로를 속이지 않는지 (2026-09-10) ───────────
+#
+# 아홉 번째 ML 시도가 처음으로 이겼다(ML_ATTEMPTS 9번). 🔴 **이겼을 때가
+# 가장 위험하다** — 7번 시도는 교차검증을 통과하고도 틀려 코드에 들어갔다가
+# 되돌려졌다. 여기서 지키는 것은 "성능"이 아니라 **그 성능을 만든 절차**다.
+
+def test_결품예측이_날짜로_자르고_시간이_겹치지_않는다():
+    """무작위 분할은 같은 날의 앞뒤 틱을 양쪽에 넣어 **누출**이 된다.
+
+    빔 상태의 자기상관이 lag1에서 0.790이므로, 누출이 있으면 그것만으로
+    이긴다. 학습의 마지막 시각이 검증의 첫 시각보다 앞서야 한다.
+    """
+    import numpy as np
+    import pandas as pd
+
+    from experiments.structure import stockout_forecast as sf
+
+    # 5일치 격자를 만든다 — 대여소 2곳, 하루 40틱
+    rows = []
+    for d in range(5):
+        for t in range(40):
+            ts = pd.Timestamp("2026-09-01") + pd.Timedelta(days=d, minutes=10 * t)
+            for sid, base in (("ST0001", 0), ("ST0002", 3)):
+                rows.append({"observed_at": str(ts), "station_id": sid,
+                             "stock": base if t % 2 else base + 1})
+    frame = pd.DataFrame(rows)
+    frame["ts"] = pd.to_datetime(frame["observed_at"])
+    frame["빔"] = (frame["stock"] == 0).astype(np.int8)
+
+    days = sf.dense_days(frame)
+    assert len(days) == 5, f"5일이 나와야 한다: {days}"
+
+    long = sf.build_features(frame, horizon=6)
+    day = long["ts"].dt.date
+    train = long[day.isin(days[:-2])]
+    test = long[day.isin(days[-2:])]
+
+    assert not train.empty and not test.empty, "분할이 한쪽을 비웠다"
+    assert train["ts"].max() < test["ts"].min(), (
+        "학습이 검증 이후를 보고 있다 — 날짜 분할이 깨졌다")
+
+
+def test_결품예측_피처가_미래를_보지_않는다():
+    """`shift(-horizon)`으로 만든 타깃 말고는 **t보다 뒤를 보면 안 된다.**
+
+    재고를 계단처럼 만들어(앞은 0, 뒤는 5) 미래를 보는 피처가 있으면
+    그 자리에서 값이 바뀌는 것으로 잡는다.
+    """
+    import numpy as np
+    import pandas as pd
+
+    from experiments.structure import stockout_forecast as sf
+
+    n = 60
+    rows = []
+    for t in range(n):
+        ts = pd.Timestamp("2026-09-01 07:00") + pd.Timedelta(minutes=10 * t)
+        rows.append({"observed_at": str(ts), "station_id": "ST0001",
+                     "stock": 0 if t < 30 else 5})
+    frame = pd.DataFrame(rows)
+    frame["ts"] = pd.to_datetime(frame["observed_at"])
+    frame["빔"] = (frame["stock"] == 0).astype(np.int8)
+
+    long = sf.build_features(frame, horizon=6)
+    앞 = long[long["ts"] < pd.Timestamp("2026-09-01 12:00")]
+
+    # 계단이 서기 전(t<24, 즉 12:00 이전) 구간은 과거·현재가 전부 '빔'이다.
+    assert (앞["지금빔"] == 1).all(), "현재 상태가 미래에 오염됐다"
+    assert (앞["최근6틱빔비율"] == 1).all(), "이동평균이 미래를 봤다"
+    # 타깃은 미래를 봐야 한다 — 계단 직전 행의 타깃은 0(안 빔)이어야 한다
+    assert (long["타깃"] == 0).any(), "타깃이 미래를 전혀 안 본다"
+
+
+def test_결품예측_과거빈도표는_학습구간에서만_만든다():
+    """검증 구간의 값으로 만들면 누출이다.
+
+    `add_station_history()`는 첫 인자(학습)로만 표를 만들고, 그것을 두
+    프레임에 **같이** 붙여야 한다.
+    """
+    import pandas as pd
+
+    from experiments.structure import stockout_forecast as sf
+
+    train = pd.DataFrame({
+        "station_id": ["ST0001"] * 4, "시": [7, 7, 8, 8],
+        "지금빔": [1.0, 1.0, 0.0, 0.0], "타깃": [1, 1, 0, 0]})
+    test = pd.DataFrame({
+        "station_id": ["ST0001", "ST0001"], "시": [7, 8],
+        "지금빔": [0.0, 1.0], "타깃": [0, 1]})   # 학습과 정반대로 둔다
+
+    tr, te = sf.add_station_history(train, [train, test])
+
+    # 7시의 학습 빈도는 1.0, 8시는 0.0 — 검증의 실제 값과 무관해야 한다
+    assert te.loc[te["시"] == 7, "대여소시간대빔비율"].iloc[0] == 1.0, (
+        "검증 구간의 값이 표에 섞였다 — 누출이다")
+    assert te.loc[te["시"] == 8, "대여소시간대빔비율"].iloc[0] == 0.0
+
+    # 학습에 없던 (대여소, 시간대)는 전체 평균으로 메운다 — NaN이 남으면 안 된다
+    새것 = pd.DataFrame({"station_id": ["ST9999"], "시": [23],
+                        "지금빔": [0.0], "타깃": [0]})
+    _, 채운 = sf.add_station_history(train, [train,새것])
+    assert 채운["대여소시간대빔비율"].notna().all(), "학습에 없는 조합이 NaN으로 남았다"
+
+
+def test_브라이어_점수는_확률의_크기를_잰다():
+    """AUC가 아니라 Brier를 쓰는 이유 — **순서가 아니라 크기**가 맞아야 한다.
+
+    계획은 *"어디부터 손댈지"* 를 정하는 데 확률을 쓰므로, 0.9와 0.6을
+    구분하지 못하면 우선순위를 매길 수 없다. 순서가 같아도 크기가 틀리면
+    Brier는 벌을 준다 — 그것이 이 지표를 고른 이유다.
+    """
+    from experiments.structure.stockout_forecast import brier
+
+    actual = [1, 1, 0, 0]
+    맞는_크기 = [0.9, 0.8, 0.2, 0.1]
+    같은_순서_틀린_크기 = [0.6, 0.55, 0.45, 0.4]
+
+    assert brier(맞는_크기, actual) < brier(같은_순서_틀린_크기, actual), (
+        "순서만 같고 크기가 틀린 예측을 걸러 내지 못한다")
+    assert brier([1, 1, 0, 0], actual) == 0.0, "완벽한 예측은 0이어야 한다"
+    assert abs(brier([0.5] * 4, actual) - 0.25) < 1e-9, (
+        "'늘 0.5'는 0.25 — 베이스라인 감각을 맞춰 둔다")
