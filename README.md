@@ -289,7 +289,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 
-python -m pytest              # 751개 통과 확인 (약 100초)
+python -m pytest              # 764개 통과 확인 (약 100초)
 python tools/reproduce.py     # 합성 데이터 생성 → step0~step4 → 결과 표 (약 20초)
 ```
 
@@ -321,14 +321,14 @@ $env:PBR_DB_PATH = "data/재현.db"; python -m webapp   # http://127.0.0.1:8000
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest                 # 751개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 764개, 약 100초 (tests/ 만 수집)
 ```
 
 - `tests/test_pipeline.py` (46) — 합성 데이터로 step0→step1→step2→step4를
   **subprocess로 실제 실행**한 뒤 산출물 존재·스키마·ILP 공급 제약·개선량을 검증.
   실행마다 고유 라벨(`smoketest-{PID}`)을 써서 실데이터를 건드리지 않고,
   끝나면 그 라벨 파일만 정리합니다.
-- `tests/test_webapp.py` (140) — 라우트·경로 탈출 차단·실행 폼 입력 검증,
+- `tests/test_webapp.py` (153) — 라우트·경로 탈출 차단·실행 폼 입력 검증,
   그리고 **화면이 실제로 무엇을 보여 주는가** — 명암비·400% 확대·인쇄·빈 상태,
   화면이 말하는 범위와 실제로 센 범위가 같은지
 - `tests/test_calculations.py` (77) — **계산 단위 테스트**: 목표재고 공식(`μ + zσ`,
@@ -434,7 +434,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/연구/RELATED_WORK.md](docs/연구/RELATED_WORK.md) | **관련 연구** — 문제의 갈래와 본 연구의 위치 |
 | [docs/연구/LITERATURE.md](docs/연구/LITERATURE.md) | **문헌 분석** — 논문 24편 한 편씩 분석·비교표·인용 지도 |
 | [docs/분석/EXPERIMENTS.md](docs/분석/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
-| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 751개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
+| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 764개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/구현/PROJECT_PIPELINE.md](docs/구현/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/구현/WEBAPP.md](docs/구현/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/구현/DESIGN.md](docs/구현/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |

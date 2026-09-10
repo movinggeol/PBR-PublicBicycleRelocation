@@ -2225,3 +2225,94 @@ def test_수집기를_못_읽어도_대시보드가_500이_되지_않는다(clie
     res = client.get("/collect")
     assert res.status_code == 200
     assert "읽지 못했습니다" in res.text
+
+
+# ─────────── 소리로 듣는 화면 (2026-09-10) ───────────
+#
+# axe-core는 **속성이 있는가**를 본다. 여기서 지키는 것은 그다음 축이다 —
+# 실제로 읽히는 순서와, 바뀐 것을 알려 주는가. 사람이 NVDA로 확인할 대본은
+# docs/구현/스크린리더_점검.md 에 있고, 이 테스트는 그중 **기계로 지킬 수
+# 있는 것**만 못박는다.
+
+@pytest.mark.parametrize("path", [
+    "/", "/run", "/guide", "/kpi", "/vehicles", "/maps", "/data",
+    "/collect", "/orders",
+])
+def test_제목_레벨을_건너뛰지_않는다(client, path):
+    """제목으로 훑는 사람에게 레벨 건너뜀은 **빈 계단**이다.
+
+    h1 다음에 h3이 오면 "중간에 뭔가 있는데 못 들었나" 싶어진다. 눈으로
+    보면 글자 크기로 위계가 보이지만, 소리에는 레벨 숫자밖에 없다.
+    """
+    html = client.get(path).text
+    levels = [int(m) for m in re.findall(r"<h([1-6])[ >]", html)]
+    assert levels.count(1) == 1, f"{path}: h1이 {levels.count(1)}개다 (정확히 하나여야 한다)"
+    건너뜀 = [(a, b) for a, b in zip(levels, levels[1:]) if b > a + 1]
+    assert not 건너뜀, f"{path}: 레벨을 건너뛴다 {건너뜀} — 전체 위계 {levels}"
+
+
+def test_오류_화면도_제목_위계를_지킨다(client):
+    """오류 화면은 평소 안 보이므로 위계가 틀어져도 눈에 안 띈다."""
+    res = client.get("/view/없는파일.html", headers={"Accept": "text/html"})
+    levels = [int(m) for m in re.findall(r"<h([1-6])[ >]", res.text)]
+    건너뜀 = [(a, b) for a, b in zip(levels, levels[1:]) if b > a + 1]
+    assert not 건너뜀, f"오류 화면이 레벨을 건너뛴다 {건너뜀} — {levels}"
+
+
+def test_체크박스_묶음에_이름이_붙어_있다(client):
+    """입력이 여럿인 묶음은 `for`로 이을 상대가 없다.
+
+    role=group + 이름이 없으면 "_05_10 확인란"만 읽히고 **무엇을 고르는
+    중인지**가 안 들린다. 눈으로는 위에 적힌 "시간대"가 보이지만 소리에는
+    그 연결이 없다.
+    """
+    html = client.get("/run").text
+    assert 'role="group" aria-labelledby="lbl-duration"' in html, \
+        "시간대 체크박스 묶음에 그룹 이름이 없다"
+    assert 'id="lbl-duration"' in html, "aria-labelledby가 가리킬 상대가 없다"
+    assert 'role="group" aria-label="건너뛸 단계"' in html, \
+        "생략 옵션 묶음에 그룹 이름이 없다"
+
+
+def test_나중에_채워지는_상자는_알려진다(client):
+    """날씨·예보는 페이지가 그려진 뒤 스크립트가 채운다.
+
+    화면을 보는 사람에겐 상자가 나타나는 것이 곧 신호지만, 소리로 듣는
+    사람에겐 라이브 리전이 없으면 **비 예보가 통째로 전달되지 않는다.**
+    """
+    html = client.get("/run").text
+    for box in ("forecast", "weather"):
+        assert re.search(rf'<div id="{box}"[^>]*role="status"', html), \
+            f"#{box}가 채워져도 보조기기에 알려지지 않는다"
+
+
+def test_진행_화면이_지금_어느_단계인지_말한다(client, monkeypatch):
+    """3초마다 통째로 새로고침되는 화면이다.
+
+    눈으로 보면 어디가 바뀌었는지 한눈에 알지만, 소리로 들으면 새로고침은
+    **문서를 처음부터 다시 읽는 일**이다. 지금 어느 단계인지 한 줄로 짚어
+    주지 않으면 진행 여부를 알 길이 없다.
+    """
+    class 진행중:
+        id = "테스트실행"; status = "running"; is_running = True
+        started_at = "2026-09-10 21:00"; finished_at = None; elapsed = 42.0
+        args: list[str] = []; kind = "plan"; run_label = "테스트실행"
+        returncode = None; error = None
+
+    로그 = ("[1/3] step0_collect/tashu_api.py\n"
+           "[2/3] step1_cluster/top_st_clustering.py\n"
+           "[3/3] step2_optimize/ilp.py\n"
+           "[1/3] 실행: step0_collect/tashu_api.py\n"
+           "완료: step0_collect/tashu_api.py\n"
+           "[2/3] 실행: step1_cluster/top_st_clustering.py\n")
+
+    monkeypatch.setattr(jobs, "get_job", lambda jid: 진행중())
+    monkeypatch.setattr(jobs, "read_log", lambda job: 로그)
+    monkeypatch.setattr(jobs, "read_log_tail", lambda job, *a, **k: 로그)
+
+    html = client.get("/runs/테스트실행").text
+    m = re.search(r'<p role="status"[^>]*>(.*?)</p>', html, re.S)
+    assert m, "진행 상황을 알리는 라이브 리전이 없다"
+    말 = " ".join(m.group(1).split())
+    assert "3단계 중 1단계 완료" in 말, f"완료 개수를 안 말한다: {말!r}"
+    assert "지금은" in 말, f"현재 단계를 안 말한다: {말!r}"

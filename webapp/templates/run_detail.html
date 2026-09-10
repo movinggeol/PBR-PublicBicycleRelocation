@@ -17,9 +17,22 @@
 {% if job.is_running %}
 <div class="card">
   <div class="card-head">
-    <h3>진행 중입니다</h3>
+    <h2>진행 중입니다</h2>
     <span class="hint">3초마다 자동으로 새로고침됩니다</span>
   </div>
+  {# 새로고침은 화면을 통째로 다시 그린다 — 눈으로 보는 사람은 어디가 바뀌었는지
+     한눈에 알지만, 화면을 소리로 듣는 사람에게는 그 한 줄을 짚어 줘야 한다.
+     지금 어느 단계인지만 여기서 알린다(전체를 다시 읽히면 오히려 방해다). #}
+  <p role="status" class="hint" style="margin:0 0 var(--sp-sm)">
+    {%- if progress -%}
+      {%- set done = progress | selectattr("status", "equalto", "done") | list | length -%}
+      {%- set now = progress | selectattr("status", "equalto", "running") | list | first -%}
+      전체 {{ progress | length }}단계 중 {{ done }}단계 완료.
+      {% if now %}지금은 {{ now.label }} 단계입니다.{% endif %}
+    {%- else -%}
+      준비 중입니다.
+    {%- endif -%}
+  </p>
   <p class="hint" style="margin:var(--sp-xs) 0 var(--sp-md)">중단하면 그때까지 만들어진 산출물은
     남지만, 진행 중이던 단계의 결과는 불완전할 수 있습니다.</p>
   <form method="post" action="/runs/{{ job.id }}/cancel">
