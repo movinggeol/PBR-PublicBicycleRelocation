@@ -222,6 +222,7 @@ def main(argv=None) -> int:
         # ── 여기서 멈추지 않는다. 7번 시도는 교차검증을 **통과하고도** 틀렸다.
         report_calibration(결과["③ GBM"], actual)
         report_topk(test, 결과, actual)
+        report_by_base_rate(test, 결과["③ GBM"], actual)
         report_leak_checks(train, test, 피처, actual)
 
     return 0
@@ -276,6 +277,67 @@ def report_topk(test: pd.DataFrame, 결과: dict, actual) -> None:
         말 = " · ".join(f"{name} {acc[name] / n / K:.1%}" for name in acc)
         print(f"  상위 {K:3d}곳 (시각 {n}개) — {말}")
     print(f"  무작위로 골랐다면 — {np.mean(actual):.1%}")
+
+
+def report_by_base_rate(test: pd.DataFrame, prob, actual) -> None:
+    """🔴 **이 스크립트에서 가장 중요한 검사다 — "늘 비는 곳 부르기"가 아닌가.**
+
+    상위 50곳을 뽑아 보면 **평소 빔 비율이 0.99**인 대여소들이 나온다. 그것만
+    보면 모델이 한 일은 *"원래 비는 곳을 순서대로 부른 것"* 일 수 있고,
+    그렇다면 GBM은 필요 없다 — 과거 빈도표만으로 같은 답이 나온다.
+
+    그래서 **평소 빈도가 비슷한 것끼리 갈라** 그 안에서 다시 잰다. 각 구간
+    안에서도 이겨야 *"오늘 지금 상태"* 를 배운 것이다.
+
+    📌 실제로 이 검사가 판단을 바꿨다 — 처음 측정에서 예측이 고른 곳은
+    **100%가 평소 90% 이상 비는 대여소**였고 순수요 `mu`가 0이었다(아무도
+    안 쓰는 곳이라 맞히기는 쉽지만 채울 이유가 없다). 구간을 갈라 보고서야
+    **모든 구간에서 이긴다**는 것이 확인됐다.
+    """
+    print("\n" + "=" * 62)
+    print("평소 빈도 구간별 — '늘 비는 곳 부르기'가 아닌지")
+    print("=" * 62)
+
+    work = test.copy()
+    work["예측"] = prob
+    work["실제"] = actual
+    edges = [0, 0.2, 0.4, 0.6, 0.8, 0.95, 1.01]
+    work["구간"] = pd.cut(work["대여소시간대빔비율"], edges, right=False)
+
+    for name, sub in work.groupby("구간", observed=True):
+        if len(sub) < 500:
+            continue
+        a = sub["실제"].values
+        b_freq = brier(sub["대여소시간대빔비율"].values, a)
+        b_now = brier(sub["지금빔"].values.astype(float), a)
+        b_gbm = brier(sub["예측"].values, a)
+        표 = "✅" if b_gbm < min(b_freq, b_now) else "🔴 진다"
+        print(f"  평소빔 {str(name):<13} n={len(sub):>7,} 실제 {a.mean():.2f}"
+              f" | 빈도 {b_freq:.4f} · 지속 {b_now:.4f}"
+              f" · GBM {b_gbm:.4f}  {표}")
+
+    가운데 = work[(work["대여소시간대빔비율"] >= 0.2)
+                & (work["대여소시간대빔비율"] < 0.8)]
+    if 가운데.empty:
+        return
+    a = 가운데["실제"].values
+    print(f"\n  🔴 애매한 구간(0.2~0.8)이 진짜 시험대다 — n={len(가운데):,}"
+          f" · 실제 빔 {a.mean():.1%}")
+    print(f"     ① 지속 {brier(가운데['지금빔'].values.astype(float), a):.4f}"
+          f" · ② 빈도 {brier(가운데['대여소시간대빔비율'].values, a):.4f}"
+          f" · ③ GBM {brier(가운데['예측'].values, a):.4f}")
+
+    K = 50
+    말 = []
+    for 이름, 열 in (("예측", "예측"), ("빈도", "대여소시간대빔비율"),
+                   ("지속", "지금빔")):
+        hits = [g.nlargest(K, 열)["실제"].mean()
+                for _, g in 가운데.groupby("ts") if len(g) >= K]
+        if hits:
+            말.append(f"{이름} {np.mean(hits):.1%}")
+    if 말:
+        print(f"     상위 {K}곳 실제로 빈 비율 — {' · '.join(말)}"
+              f" (무작위 {a.mean():.1%})")
 
 
 def report_leak_checks(train, test, 피처, actual) -> None:

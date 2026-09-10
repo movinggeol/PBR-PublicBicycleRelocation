@@ -608,3 +608,57 @@ def test_브라이어_점수는_확률의_크기를_잰다():
     assert brier([1, 1, 0, 0], actual) == 0.0, "완벽한 예측은 0이어야 한다"
     assert abs(brier([0.5] * 4, actual) - 0.25) < 1e-9, (
         "'늘 0.5'는 0.25 — 베이스라인 감각을 맞춰 둔다")
+
+
+def test_결품예측이_평소빈도로_갈라_다시_잰다():
+    """🔴 **"늘 비는 곳 부르기"를 성능으로 착각하지 않기 위한 검사다.**
+
+    상위 50곳을 뽑으면 평소 빔 비율 0.99인 대여소가 나온다. 그것만 보면
+    모델이 한 일이 *"원래 비는 곳을 순서대로 부른 것"* 일 수 있고, 그러면
+    과거 빈도표만으로 같은 답이 나오므로 GBM이 필요 없다.
+
+    실제로 이 검사가 판단을 한 번 뒤집었다(ML_ATTEMPTS 9번) — 예측이 고른
+    곳은 **100%가 평소 90% 이상 비는 곳**이었고 순수요가 0이었다. 아무도
+    안 쓰는 대여소라 맞히기는 쉽지만 채울 이유가 없다.
+
+    여기서 지키는 것은 **그 절을 실제로 찍는가**다. 사라지면 다음 사람은
+    상위 K곳 숫자만 보고 이겼다고 판단한다.
+    """
+    import inspect
+
+    from experiments.structure import stockout_forecast as sf
+
+    assert hasattr(sf, "report_by_base_rate"), (
+        "평소 빈도 구간별 검사가 사라졌다")
+
+    src = inspect.getsource(sf.report_by_base_rate)
+    assert "대여소시간대빔비율" in src, "무엇으로 가르는지가 빠졌다"
+    assert "지금빔" in src and "brier" in src.lower(), (
+        "구간 안에서 두 베이스라인과 다시 겨루지 않는다")
+
+    # 판정 절차가 이 함수를 **실제로** 부르는지 — 정의만 있고 안 부르면 소용없다.
+    # ⚠️ 문자열 검색으로는 주석 처리된 호출도 통과한다(실제로 그렇게 새어
+    #    나갔다). 구문 트리에서 호출 노드를 찾아야 한다.
+    import ast
+
+    tree = ast.parse(inspect.getsource(sf.main))
+    부르는_이름 = {
+        node.func.id for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "report_by_base_rate" in 부르는_이름, (
+        "함수는 있는데 판정 경로에서 부르지 않는다 (주석 처리됐을 수 있다)")
+
+
+def test_결품예측_구간검사가_지는_구간을_숨기지_않는다():
+    """구간마다 **이겼는지 졌는지**를 표시해야 한다.
+
+    전체 평균만 보면 한 구간에서 크게 이겨 다른 구간의 패배를 가릴 수 있다.
+    """
+    import inspect
+
+    from experiments.structure import stockout_forecast as sf
+
+    src = inspect.getsource(sf.report_by_base_rate)
+    assert "진다" in src, "지는 구간을 표시하지 않는다 — 평균에 묻힌다"
+    assert "min(" in src, "두 베이스라인 중 나은 쪽과 겨루지 않는다"
