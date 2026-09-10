@@ -10,6 +10,7 @@
 > **착수 전 검사 항목**으로 바꿔 놓은 것입니다.
 
 관련 문서: [ML_ATTEMPTS.md](ML_ATTEMPTS.md) (**먼저 읽으십시오**) ·
+[ML_후보_10.md](ML_후보_10.md) (*"또 뭘 해 볼 수 있나"* — 후보 10가지 판정) ·
 [ML_OPPORTUNITIES.md](ML_OPPORTUNITIES.md) ·
 [DEMAND_DISTRIBUTION.md](DEMAND_DISTRIBUTION.md) ·
 [수집완료_계획.md](../기록/수집완료_계획.md)
