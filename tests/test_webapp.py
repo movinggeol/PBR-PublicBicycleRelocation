@@ -535,17 +535,69 @@ def test_pinned_tooltip_has_a_close_button(client):
     assert "#tipbox[data-pinned] { pointer-events: auto" in html
 
 
-def test_only_explanation_labels_are_pinnable(client):
-    """고정은 `.tip` 딱지에서만 한다.
+def test_설명_딱지와_그래프_값만_고정된다(client):
+    """고정은 `.tip` 딱지와 **그래프 값 마크**(제목이 있는 것)에서만 한다.
 
-    내비 링크와 화면 전환 단추에도 data-tip이 붙어 있다. 아무 data-tip에서나
-    클릭을 가로채면 누르는 순간 고정만 되고 **페이지 이동이 막힌다**.
+    내비 링크와 화면 전환 단추에도 `data-tip`이 붙어 있다. 아무 `data-tip`에서나
+    클릭을 가로채면 누르는 순간 고정만 되고 **페이지 이동이 막힌다**(그래서
+    `.tip`에서만 하던 것이 예전 규칙이다).
+
+    1.26.177에서 그래프 값(`charts._tip()`이 붙이는 `data-tip-title`)까지
+    넓혔다 — 그래프 마크는 눌러서 페이지가 움직이지 않으니 같은 위험이 없다.
+    가르는 기준은 **제목의 유무**이지 클래스 이름이 아니다: 내비 링크는
+    `data-tip`은 있어도 `data-tip-title`이 없다.
     """
     html = client.get("/run").text
-    assert 'classList.contains("tip")' in html, (
-        "고정 대상을 .tip으로 좁히지 않으면 내비 링크가 죽는다")
-    # 내비 링크가 여전히 data-tip을 달고 있는지 — 전제가 무너지면 이 테스트도 무의미하다
+    assert 'el.classList.contains("tip")' in html, (
+        "설명 딱지는 여전히 고정 대상이어야 한다")
+    assert 'el.hasAttribute("data-tip-title")' in html, (
+        "그래프 값에 고정을 넓힌 조건이 없다"
+    )
+    # 내비 링크가 여전히 data-tip은 달고 **data-tip-title은 없는지** — 이 둘이
+    # 갈려 있어야 링크가 고정 대상으로 잘못 걸리지 않는다.
     assert 'href="/kpi"' in html and "data-tip=" in html
+    nav = html[html.index('href="/kpi"'):html.index('href="/kpi"') + 300]
+    assert "data-tip-title" not in nav, "내비 링크에 제목이 붙으면 고정 대상이 된다"
+
+
+def test_고정_중_다른_값을_누르면_옮겨간다(client):
+    """닫았다 다시 여는 두 번 클릭을 시키지 않는다 (1.26.177).
+
+    지도 마커·달력 팝오버가 흔히 쓰는 방식이다 — 고정된 채로 다른 고정 가능한
+    지점을 누르면 그리로 옮겨 가고, **같은** 지점을 다시 누르면 닫힌다.
+    """
+    html = client.get("/kpi").text
+    assert "if (pinned && el === current) { hide();" in html, (
+        "같은 점 재클릭이 토글(닫기)로 안 이어진다")
+    assert 'if (el !== current) show(el);' in html
+
+
+# ───────── 부가 창 Esc 규약 (1.26.177) ─────────
+
+def test_부가_창_esc_스택이_있다(client):
+    """풍선 고정·표 창처럼 본문 위에 얹히는 부가 창은 **연 순서대로** 닫힌다.
+
+    예전에는 표 창 쪽에 "풍선이 고정 중이면 양보한다"는 하드코딩 규칙이
+    있었는데, 표 창 둘이 겹친 경우의 순서는 그 규칙으로 못 정한다. 공유
+    스택(`pushEscLayer`/`popEscLayer`)이 실제 연 순서를 그대로 기억한다.
+    """
+    html = client.get("/kpi").text
+    assert "function pushEscLayer(fn)" in html
+    assert "function popEscLayer(fn)" in html
+    assert "escLayers[escLayers.length - 1]()" in html, (
+        "Esc가 스택 맨 위(가장 최근에 연 것) 하나만 닫지 않는다")
+    # 하드코딩된 옛 순서 규칙 — "풍선이 고정 중이면 표 창 쪽이 무조건 양보한다"
+    # — 이 되살아나면 표 창 둘 이상이 겹쳤을 때는 순서를 정할 길이 없다.
+    assert 'tip.hasAttribute("data-pinned")' not in html
+
+
+def test_열기와_닫기가_스택에_짝으로_등록된다(client):
+    """push만 하고 pop을 잊으면 닫힌 창이 스택에 남아 다음 Esc를 엉뚱하게 삼킨다."""
+    html = client.get("/kpi").text
+    assert "pushEscLayer(close)" in html
+    assert "popEscLayer(close)" in html
+    assert "pushEscLayer(hide)" in html
+    assert "popEscLayer(hide)" in html
 
 
 # ───────── 수정안 30·31·32 (1.23.9) ─────────
@@ -2391,3 +2443,17 @@ def test_절이_다섯인_화면에_차례가_붙는다(client):
     # 절 이름이 템플릿에 박혀 있으면 안 된다(h2에서 읽어야 한다).
     marker = body[body.index("data-toc="):body.index("data-toc=") + 200]
     assert "추세" not in marker and "효과와 비용" not in marker
+
+
+def test_차례가_본문_안쪽_끝에만_머물지_않는다(client, monkeypatch):
+    """🔴 처음 놓았을 때는 본문(1200px) 상자 **안쪽**에 갇혀 있었다 — 그
+    바깥의 진짜 빈 공간(뷰포트 오른쪽 끝까지)은 그대로 버려두고 있었다
+    (실측 1500px 화면: 차례 오른쪽 끝~뷰포트 끝이 174px 비어 있었다).
+
+    화면이 넓어질수록 남는 여백도 늘어나므로, 차례는 **그 여백의 절반만큼**
+    오른쪽으로 옮겨 가야 한다 — 고정된 px가 아니라 `100vw`가 들어간 식이어야
+    화면 폭이 달라져도 "절반"이 유지된다.
+    """
+    body = client.get("/kpi").text
+    assert "100vw - (50vw + 600px" in body, (
+        "차례 위치 계산에 뷰포트 폭(100vw)이 안 들어가면 폭마다 절반이 안 맞는다")

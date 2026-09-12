@@ -950,16 +950,29 @@
        두면 되고, 항목은 스크립트가 본문의 `h2`에서 읽는다 — 차례를 손으로 적어
        두면 절을 고칠 때 반드시 한쪽이 낡는다(이 저장소가 여러 번 겪은 자리다).
 
-       자리: 본문(max-width 1200px)의 **오른쪽 안쪽**이다. 폭이 모자라면 아예
-       걷는다 — 본문 위에 겹쳐 놓느니 없는 편이 낫다. */
+       자리: 본문(max-width 1200px)의 오른쪽 안쪽에서 시작하되, **화면 오른쪽의
+       빈 공간 쪽으로 절반만큼 밀어 둔다** — 처음 놓았을 때는 본문 상자 안에
+       갇혀 있어 그 바깥의 진짜 여백(뷰포트 오른쪽 끝까지)을 그냥 버려두고
+       있었다(실측 1500px 화면: 차례 오른쪽 끝에서 뷰포트 끝까지 174px가
+       그대로 비어 있었다). 폭이 모자라면 아예 걷는다 — 본문 위에 겹쳐
+       놓느니 없는 편이 낫다. */
     :root { --toc-w: 176px; }
     .toc { display: none; }
     @media (min-width: 1200px) {
-      /* 차례가 설 자리를 본문이 **비워 준다.** 이것이 없으면 겹친다. */
+      /* 차례가 설 자리를 본문이 **비워 준다.** 이것이 없으면 겹친다.
+         (차례를 오른쪽으로 밀어도 본문의 예약 폭 자체는 그대로 둔다 — 본문
+         글자가 차례 쪽으로 더 넓게 쓸 이유는 없고, 폭을 좁히면 창을 늘였다
+         줄일 때 글줄이 다시 흐르며 차례 위치 계산과 어긋나기 쉽다.) */
       :root[data-has-toc] main { padding-right: calc(var(--toc-w) + var(--sp-xl)); }
       :root[data-has-toc] .toc {
         display: block; position: fixed; z-index: 40;
-        left: calc(50vw + 600px - var(--sp-lg) - var(--toc-w));
+        /* 원래 자리(본문 안쪽 끝)의 오른쪽 끝 = 50vw + 600px - sp-lg.
+           그 자리에서 뷰포트 오른쪽 끝까지 남는 여백의 **절반만큼** 오른쪽으로
+           옮긴다. 화면이 넓어질수록 여백도 늘어 차례도 그만큼 더 밀린다. */
+        left: calc(
+          (50vw + 600px - var(--sp-lg) - var(--toc-w))
+          + (100vw - (50vw + 600px - var(--sp-lg))) / 2
+        );
         width: var(--toc-w);
         /* 2단 내비(전역 + 작업 흐름) 아래에서 시작한다. */
         top: 168px; max-height: calc(100vh - 200px); overflow-y: auto;
@@ -1529,6 +1542,32 @@
     try { localStorage.setItem("pbr-theme", root.dataset.theme); } catch (e) {}
   });
 
+  /* ════════ 부가 창 Esc 규약 (1.26.177) ════════
+     본문 위에 얹히는 "부가 창" — 고정된 풍선, 표 창, 앞으로 생길 무엇이든 —
+     은 전부 여기 등록한다. Esc는 **가장 나중에 연 것 하나만** 닫는다. 한 번에
+     전부 닫으면 맞대어 보던 것들이 통째로 날아간다.
+
+     예전에는 풍선과 표 창이 **각자 다른 keydown 리스너**를 갖고 있었다.
+     표 창 쪽은 "풍선이 고정 중이면 내가 양보한다"는 하드코딩 규칙으로
+     순서를 흉내 냈는데, 그러면 **표 창 둘이 겹친 경우**의 순서는 못 정한다.
+     이제 스택 하나가 실제 열린 순서를 그대로 기억한다.
+
+     새 부가 창을 만들 때 지킬 것 둘뿐이다:
+       열 때  pushEscLayer(닫는함수)
+       닫을 때 popEscLayer(같은함수)   ← 다른 경로(닫기 단추 등)로 닫혀도 반드시 부른다
+     닫는함수는 **몇 번을 불러도 안전해야** 한다(이미 닫힌 것을 또 닫아도 죽지 않게). */
+  var escLayers = [];
+  function pushEscLayer(fn) { escLayers.push(fn); }
+  function popEscLayer(fn) {
+    var i = escLayers.indexOf(fn);
+    if (i >= 0) escLayers.splice(i, 1);
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape" || !escLayers.length) return;
+    e.preventDefault();
+    escLayers[escLayers.length - 1]();
+  });
+
   /* 도움말 풍선.
      풍선을 <body> 바로 아래 하나만 두고 옮겨 쓴다 — 요소마다 ::after로 만들면
      overflow:auto가 걸린 표 안에서 잘린다. 화면 밖으로 나가면 접어 넣는다. */
@@ -1603,6 +1642,18 @@
       box.removeAttribute("data-show");
       box.removeAttribute("data-pinned");
       box.setAttribute("aria-hidden", "true");
+      popEscLayer(hide);      /* 스택에 없었으면(고정 아니었으면) 아무 일도 안 한다 */
+    }
+
+    /* **고정할 수 있는 것**은 둘이다 — 설명용 딱지(.tip)와, 그래프의 값
+       마크(`data-tip-title`을 가진 것, `charts._tip()`이 붙인다). 내비
+       링크·전환 단추에도 `data-tip`이 있지만 **제목이 없다** — 그것들까지
+       고정 대상에 넣으면 누르는 순간 페이지 이동이 막힌다(실제로 그래서
+       `.tip`에만 걸어 뒀던 것이다). 제목 유무로 가르면 그래프까지 넓혀도
+       같은 위험이 없다 — 그래프 마크는 눌러서 일어나는 일이 없다. */
+    function isPinnable(el) {
+      return !!el && ((el.classList && el.classList.contains("tip"))
+                      || el.hasAttribute("data-tip-title"));
     }
 
     document.addEventListener("mouseover", function (e) {
@@ -1616,20 +1667,21 @@
       if (el && el === current && !el.contains(e.relatedTarget)) hide();
     });
 
-    /* 댔을 때 누르면 고정된다 — 떼도 남고, x를 눌러야 사라진다.
-
-       **고정은 설명용 딱지(.tip)에서만 한다.** 내비 링크와 화면 전환 단추에도
-       data-tip이 붙어 있어서, 아무 data-tip에서나 클릭을 가로채면 누르는 순간
-       고정만 되고 **페이지 이동이 막힌다**. 눌러서 무슨 일이 일어나는 것에는
-       손대지 않는다. */
+    /* 댔을 때 누르면 고정된다 — 떼도 남고, x를 눌러야(또는 Esc) 사라진다.
+       고정 중에 **다른** 고정 가능 요소를 누르면 거기로 옮겨 간다(닫았다
+       다시 여는 두 번 클릭을 안 시킨다) — 지도 마커·달력 팝오버가 흔히
+       쓰는 방식이다. 같은 요소를 다시 누르면 끈다(토글). */
     document.addEventListener("click", function (e) {
       if (box.contains(e.target)) return;          /* 풍선 안(닫기 단추)은 위에서 처리 */
       var el = e.target.closest("[data-tip]");
-      var pinnable = el && el.classList && el.classList.contains("tip");
-      if (pinnable && !pinned) {
-        if (el !== current) show(el);              /* 터치처럼 호버 없이 눌린 경우 */
-        pinned = true;
-        box.setAttribute("data-pinned", "");
+      if (isPinnable(el)) {
+        if (pinned && el === current) { hide(); e.preventDefault(); return; }
+        if (el !== current) show(el);               /* 터치처럼 호버 없이 눌린 경우 */
+        if (!pinned) {
+          pinned = true;
+          box.setAttribute("data-pinned", "");
+          pushEscLayer(hide);
+        }
         place(el);
         e.preventDefault();
         return;
@@ -1644,7 +1696,13 @@
       if (el) show(el);
     });
     document.addEventListener("focusout", function () { if (!pinned) hide(); });
-    document.addEventListener("keydown", function (e) { if (e.key === "Escape") hide(); });
+    /* Esc: **고정된** 풍선은 위의 부가 창 스택이 순서대로 닫는다(hide가
+       push/pop 양쪽에 다 등록돼 있다). 고정이 아니라 호버·포커스로만 뜬
+       풍선은 스택에 없으므로 여기서 따로 닫는다 — 그런 풍선은 "연 것"이
+       아니라 지나가는 참고라 순서를 다툴 이유가 없다. */
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !pinned) hide();
+    });
     /* 스크롤: 평소엔 접고, 고정 중이면 **따라다니게** 한다 —
        고정해 둔 설명이 엉뚱한 자리에 떠 있으면 무엇의 설명인지 알 수 없다. */
     window.addEventListener("scroll", function () {
@@ -2266,9 +2324,6 @@
       panel.style.top = (box.top + STEP * depth) + "px";
     }
 
-    /* 열려 있는 창들. Esc가 **맨 위 창 하나만** 닫으려면 누가 위인지 알아야 한다. */
-    var panels = [];
-
     document.querySelectorAll("[data-table-open]").forEach(function (trigger) {
       var panel = trigger.parentNode.querySelector(".table-panel");
       if (!panel) return;
@@ -2279,8 +2334,14 @@
       drag(panel, parts.head);
       trigger.setAttribute("aria-expanded", "false");
 
-      /* 겹친 창 중 아래 것을 누르면 앞으로 올린다 — 창을 다루는 곳의 상식이다. */
-      panel.addEventListener("pointerdown", function () { raise(panel); });
+      /* 겹친 창 중 아래 것을 누르면 앞으로 올린다 — 창을 다루는 곳의 상식이다.
+         Esc도 **시각적으로 앞에 있는 것**을 닫아야 하므로, 부가 창 스택에서도
+         이 창을 맨 위로 다시 꽂는다(빼고 다시 넣으면 배열 끝으로 옮겨진다). */
+      panel.addEventListener("pointerdown", function () {
+        raise(panel);
+        popEscLayer(close);
+        pushEscLayer(close);
+      });
 
       function open() {
         /* 자리를 계산하기 전에 이미 떠 있는 창을 센다(자기 자신은 아직 hidden이다). */
@@ -2288,6 +2349,10 @@
         panel.hidden = false;
         raise(panel);
         trigger.setAttribute("aria-expanded", "true");
+        /* 부가 창 스택에 올린다 — Esc가 **연 순서대로** 닫게 한다(1.26.177).
+           풍선 고정과 같은 스택이라, 표 창을 열어 둔 채 값을 고정하고 Esc를
+           두 번 누르면 나중에 연 것부터 하나씩 닫힌다. */
+        pushEscLayer(close);
 
         /* ⚠️ 좁은 화면은 **아래에서 올라오는 판**이라 자리를 CSS가 잡는다
            (left:0; right:0). 여기서 pin()을 부르면 right를 auto로 바꿔 그 묶음이
@@ -2306,35 +2371,13 @@
         panel.hidden = true;
         trigger.setAttribute("aria-expanded", "false");
         trigger.focus();
+        popEscLayer(close);     /* 닫기 단추로 닫아도 스택에서 지운다 */
       }
 
       trigger.addEventListener("click", function () {
         panel.hidden ? open() : close();
       });
       parts.close.addEventListener("click", close);
-      panels.push({ panel: panel, close: close });
-    });
-
-    /* Esc로 닫는다 — **초점이 어디 있든**.
-       예전에는 창 자신에게만 keydown을 걸어서, 열자마자 닫기 단추에 초점이
-       가 있을 때만 통했다. 창을 한 번 끌거나 본문을 클릭하면 초점이 밖으로
-       나가고 그 뒤로는 Esc가 먹지 않았다 — 닫으려면 ×를 찾아 눌러야 했다.
-
-       ⚠️ **맨 위 하나만 닫는다.** 여러 창을 띄워 맞대어 보는 것이 이 창의
-       용도인데 Esc 한 번에 전부 사라지면 비교하던 것이 통째로 날아간다.
-       풍선(#tipbox)이 떠 있으면 그쪽이 먼저다 — 위에 있는 것부터 걷힌다. */
-    document.addEventListener("keydown", function (e) {
-      if (e.key !== "Escape") return;
-      var tip = document.getElementById("tipbox");
-      if (tip && tip.hasAttribute("data-pinned")) return;   /* 고정된 풍선이 먼저 */
-      var open = panels.filter(function (p) { return !p.panel.hidden; });
-      if (!open.length) return;
-      open.sort(function (a, b) {
-        return (parseInt(a.panel.style.zIndex, 10) || BASE_Z)
-             - (parseInt(b.panel.style.zIndex, 10) || BASE_Z);
-      });
-      e.preventDefault();
-      open[open.length - 1].close();
     });
   })();
 </script>
