@@ -52,6 +52,28 @@ def _svg_open(width: float, height: float, label: str) -> str:
             f'aria-label="{html.escape(label)}">')
 
 
+def _tip(title: str, value: str, sub: str = "") -> str:
+    """커서 풍선에 **구조**를 준다 — 제목 / 값 / 덧말 (1.26.175).
+
+    예전에는 `data-tip="2026-08-27 23: 0.51h"` 한 줄이었다. 어두운 상자에
+    그대로 흘려 놓으니 **무엇이 이름이고 무엇이 값인지 구분이 없어** 비정형
+    문자열처럼 보였다 — 콜론 하나가 그 둘을 가르는 유일한 표시였고, 실행
+    라벨에도 콜론이 들어갈 수 있다.
+
+    ⚠️ **이 저장소의 모든 풍선이 쓰는 형식이다.** 그래프에만 넣으면 같은
+    화면에서 풍선이 두 모양이 된다 — `base.html`의 `#tipbox` 하나가 세
+    속성을 읽어 조립하므로, 표·타일·내비 어디에 붙여도 같은 모양이 나온다.
+
+    `data-tip`만 주면 **예전 그대로** 한 줄짜리 설명이다(내비 링크 등 설명문이
+    들어가는 자리). 제목을 주면 값이 커지는 수치용 배치로 바뀐다.
+    """
+    out = (f'data-tip-title="{html.escape(str(title))}" '
+           f'data-tip="{html.escape(str(value))}"')
+    if sub:
+        out += f' data-tip-sub="{html.escape(str(sub))}"'
+    return out
+
+
 def _fmt(value: float, digits: int = 1) -> str:
     """축·표시용 숫자. 정수로 떨어지면 소수점을 붙이지 않는다."""
     if value == int(value):
@@ -120,13 +142,29 @@ def line(labels: Sequence[str], values: Sequence[Optional[float]], *,
     parts.append(f'<polyline class="viz-line" points="'
                  + " ".join(f"{px(i):.1f},{py(v):.1f}" for i, v in pairs) + '"/>')
 
+    # ── x축 밴드 — **y를 정확히 맞히지 않아도 된다** (1.26.175)
+    #
+    # 예전에는 점 둘레 11px 원만 히트 영역이라, 값을 읽으려면 곡선 위 그 한
+    # 점을 **위아래로도 정확히** 짚어야 했다. 그래프를 읽는 사람이 아는 것은
+    # x(어느 실행인가)뿐인데 y까지 맞히라고 요구한 셈이다.
+    #
+    # 이제 x 슬롯 하나를 **판 높이 전체로** 세운 띠가 히트 영역이다. 그 세로
+    # 줄 어디에 커서를 둬도 그 실행의 값이 뜬다. 띠는 투명하고, 대신 안내선과
+    # 후광이 켜져 **지금 읽고 있는 x가 어디인지** 보인다.
+    slot = plot_w / max(1, len(values) - 1)
     for i, v in pairs:
-        # 히트 영역을 마크보다 크게 잡는다(8px 점을 정확히 짚게 만들지 않는다).
+        left = max(pad_l, px(i) - slot / 2)
+        right = min(width - pad_r, px(i) + slot / 2)
         parts.append(
-            f'<circle cx="{px(i):.1f}" cy="{py(v):.1f}" r="11" class="viz-hit" '
-            f'tabindex="0" data-tip="{html.escape(labels[i])}: {_fmt(v, 2)}{unit}"/>')
-        parts.append(f'<circle cx="{px(i):.1f}" cy="{py(v):.1f}" r="4" '
-                     f'class="viz-dot"/>')
+            f'<g class="viz-band" tabindex="0" '
+            f'{_tip(labels[i], f"{_fmt(v, 2)}{unit}", title)}>'
+            f'<rect x="{left:.1f}" y="{pad_t}" width="{max(1.0, right - left):.1f}" '
+            f'height="{plot_h}" class="viz-band-hit"/>'
+            f'<line x1="{px(i):.1f}" y1="{pad_t}" x2="{px(i):.1f}" '
+            f'y2="{pad_t + plot_h}" class="viz-guide"/>'
+            f'<circle cx="{px(i):.1f}" cy="{py(v):.1f}" r="8" class="viz-halo"/>'
+            f'<circle cx="{px(i):.1f}" cy="{py(v):.1f}" r="4" class="viz-dot"/>'
+            f'</g>')
 
     # 값 표시는 **끝점 하나만**. 점마다 숫자를 적으면 읽히지 않는다.
     last_i, last_v = pairs[-1]
@@ -190,7 +228,7 @@ def hbar(labels: Sequence[str], values: Sequence[float], *,
         parts.append(
             f'<rect x="{pad_l}" y="{y:.1f}" width="{w:.1f}" height="{bar_h}" '
             f'rx="4" class="viz-bar" tabindex="0" '
-            f'data-tip="{html.escape(str(label))}: {_fmt(v, 1)}{unit}"/>')
+            f'{_tip(label, f"{_fmt(v, 1)}{unit}", title)}/>')
         parts.append(_text(pad_l + w + 6, cy + 4, f"{_fmt(v, 1)}{unit}",
                            "viz-value", "start"))
 
@@ -277,8 +315,7 @@ def deviation_hbar(labels: Sequence[str], values: Sequence[float], *,
         parts.append(
             f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{bar_h}" '
             f'rx="3" class="viz-bar" tabindex="0" '
-            f'data-tip="{html.escape(str(label))}: {_fmt(value, 1)}{unit}'
-            f' ({baseline_label} 대비 {dev:+.1f}{unit})"/>')
+            f'{_tip(label, f"{_fmt(value, 1)}{unit}", f"{baseline_label} 대비 {dev:+.1f}{unit}")}/>')
         # 값 글자는 막대 바깥, 뻗어 나간 쪽에 붙인다.
         if dev >= 0:
             parts.append(_text(x + w + 6, cy + 4, f"{dev:+.1f}{unit}",
@@ -334,10 +371,16 @@ def vbar(labels: Sequence[str], values: Sequence[float], *,
         h = max(0.0, plot_h * v / span)
         y = pad_t + plot_h - h
         cls = "viz-bar warn" if i in marked else "viz-bar"
+        # 막대가 짧으면(값이 0 근처) 짚을 데가 거의 없다. 기둥 하나를 **판
+        # 높이 전체로** 세워 그 칸 어디서나 값이 뜨게 한다(line과 같은 규약).
         parts.append(
+            f'<g class="viz-band" tabindex="0" '
+            f'{_tip(label, f"{_fmt(v, 1)}{unit}", title)}>'
+            f'<rect x="{pad_l + slot * i:.1f}" y="{pad_t}" width="{slot:.1f}" '
+            f'height="{plot_h}" class="viz-band-hit"/>'
             f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w:.1f}" height="{h:.1f}" '
-            f'rx="2" class="{cls}" tabindex="0" '
-            f'data-tip="{html.escape(str(label))}: {_fmt(v, 1)}{unit}"/>')
+            f'rx="2" class="{cls}"/>'
+            f'</g>')
 
     # x축 눈금은 **골라서** 붙인다 — 24개를 다 적으면 글자가 겹친다.
     step = 1 if n <= 12 else 2
@@ -442,7 +485,8 @@ def scatter(points: Sequence[dict], *, x_key: str, y_key: str,
     for p in usable:
         cx, cy = px(p[x_key]), py(p[y_key])
         parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="13" class="viz-hit" '
-                     f'tabindex="0" data-tip="{html.escape(p.get("tip", ""))}"/>')
+                     f'tabindex="0" '
+                     f'{_tip(p.get("label") or x_label, f"{_fmt(p[y_key], 2)}", p.get("tip", ""))}/>')
         # 겹치는 점은 면 색 링으로 떼어 놓는다(테두리를 그리는 게 아니다).
         parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="5" class="viz-dot ring"/>')
         if p.get("label"):
@@ -510,12 +554,15 @@ def heatmap(rows: Sequence[str], cols: Sequence[str],
             if value is None:
                 continue
             token = _diverging_class(value, scale)
-            tip = f"{row_name} {cols[c]}: {_fmt(value, 2)}{unit}"
+            # 방향(쌓임/빠져나감)을 **글자로** 함께 준다 — 색만으로 읽게 두지 않는다.
+            way = "빠져나감 · 채워 줘야 함" if value > 0 else (
+                "쌓임 · 빼내야 함" if value < 0 else "손댈 필요 없음")
+            tip = _tip(f"{row_name} {cols[c]}", f"{_fmt(value, 2)}{unit}", way)
             # 칸 사이 2px은 테두리가 아니라 **면이 드러난 틈**이다.
             parts.append(
                 f'<rect x="{x + 1}" y="{y + 1}" width="{cell - 2}" '
                 f'height="{cell - 2}" rx="3" fill="var(--{token})" '
-                f'tabindex="0" data-tip="{html.escape(tip)}"/>')
+                f'tabindex="0" {tip}/>')
 
     parts.append("</svg>")
     return "".join(parts)

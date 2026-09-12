@@ -529,6 +529,12 @@
        안 그러면 열 사이가 휑하게 벌어져 머리글과 값이 눈으로 안 이어진다. */
     td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; width: 1%; }
     th.grow { width: 100%; }
+    /* 글자 열도 **제 내용만큼만** 가져간다 (1.26.175).
+       숫자 열의 `width: 1%`과 같은 장치다. 이것이 없으면 남는 폭을 글자 열이
+       통째로 삼킨다 — 실측에서 `실행` 600px · `회차` 318px인데 정작 읽어야 할
+       개선률·이동거리는 70~83px이었다. 전부 1%가 되면 브라우저가 남는 폭을
+       **내용 비율대로 나눠** 주므로 한 열만 휑하게 벌어지지 않는다. */
+    th.tight, td.tight { width: 1%; white-space: nowrap; }
 
     /* 설명이 들어가는 표 — 숫자 표와 규칙이 정반대다.
        .grow를 쓰면 첫 열이 남는 폭을 다 먹어 설명 열이 서너 줄로 쪼개진다.
@@ -576,7 +582,33 @@
        인라인 SVG가 이 변수들을 그대로 상속한다 — 색을 파이썬 쪽에 박지 않는다.
        마크는 얇게, 격자·축은 면보다 한 단 진한 실선 머리카락선. 점선은 쓰지 않는다. */
     .viz { width: 100%; height: auto; display: block; overflow: visible; }
-    .viz-grid { stroke: var(--divider-soft); stroke-width: 1; }
+    /* 격자는 **눈금을 잇는 선**이다 — 보이지 않으면 y축 숫자와 곡선이 따로 논다.
+       ⚠️ `--divider-soft`(#f0f0f0)는 흰 면 위에서 대비가 1.06:1이라 사실상
+       안 보였다(실측). 표의 칸 구분선과 같은 `--hairline`으로 올린다 — 면보다
+       한 단 진한 머리카락선이라는 규약(DESIGN.md '그래프')에 맞는 값이다. */
+    .viz-grid { stroke: var(--hairline); stroke-width: 1; }
+    /* ── x축 밴드 (1.26.175)
+       점을 **위아래로까지 정확히** 짚지 않아도 값이 뜨게 하는 세로 띠다.
+       띠 자체는 투명하고, 커서가 들어오면 안내선과 후광이 켜져 지금 읽는
+       x가 어디인지 보인다. 색으로만 말하지 않는다 — 풍선이 이름을 적는다. */
+    .viz-band { cursor: default; }
+    .viz-band-hit { fill: transparent; }
+    .viz-guide { stroke: var(--ink-4); stroke-width: 1; opacity: 0;
+                 transition: opacity .12s ease; pointer-events: none; }
+    .viz-halo { fill: var(--blue); opacity: 0;
+                transition: opacity .12s ease; pointer-events: none; }
+    .viz-band:hover .viz-guide, .viz-band:focus .viz-guide { opacity: .5; }
+    .viz-band:hover .viz-halo, .viz-band:focus .viz-halo { opacity: .18; }
+    .viz-band:focus { outline: none; }
+    .viz-band:focus-visible .viz-guide { opacity: .9; }
+    .viz-band:focus-visible .viz-band-hit {
+      fill: var(--blue); fill-opacity: .06;
+      outline: 2px solid var(--blue-focus); outline-offset: -1px;
+    }
+    /* 움직임을 줄여 달라고 한 사람에게는 즉시 켜고 끈다. */
+    @media (prefers-reduced-motion: reduce) {
+      .viz-guide, .viz-halo { transition: none; }
+    }
     .viz-line { fill: none; stroke: var(--blue); stroke-width: 2;
                 stroke-linejoin: round; stroke-linecap: round; }
     .viz-dot { fill: var(--blue); }
@@ -662,10 +694,20 @@
        화면 끝(`right: 24px`)에 붙이면 넓은 모니터에서 본문과 너무 멀어져 시선이
        크게 튄다. 정중앙은 `translateX(-50%)`이므로 `-10%`는 **창 너비의 40%만큼**
        오른쪽으로 민 자리다 — 본문 위를 덜 가리면서 눈이 닿는 거리에 둔다. */
+    /* ⚠️ 폭을 **내용에 맞춘다**(1.26.175). 예전에는 어떤 표든 560px 고정이라,
+       `실행 | 결품 시간` 두 열짜리 표에서 실행 열 혼자 490px을 먹었다(실측).
+       값은 오른쪽 끝에 68px로 밀려 있고 그 사이는 통째로 빈 칸이었다 —
+       `.grow`(width:100%)가 남는 폭을 전부 글자 열에 몰아주기 때문이다.
+
+       `fit-content`는 표가 필요한 만큼만 넓히고, 25열짜리 히트맵 표처럼 넘치는
+       것은 `max-width`에서 잘려 **판 안에서 가로 스크롤**된다(그 동작은 그대로).
+       min-width는 머리(제목 + 닫기)가 찌그러지지 않을 최소치다. */
     .table-panel {
       position: fixed; z-index: 60; top: 50%; left: 50%; right: auto;
       transform: translate(-10%, -50%);
-      width: min(560px, calc(100vw - 2 * var(--sp-md)));
+      width: fit-content;
+      min-width: min(260px, calc(100vw - 2 * var(--sp-md)));
+      max-width: min(560px, calc(100vw - 2 * var(--sp-md)));
       background: var(--surface); border: 1px solid var(--hairline);
       border-radius: var(--r-lg); box-shadow: 0 12px 40px rgba(0, 0, 0, .22);
       display: flex; flex-direction: column; max-height: min(70vh, 34rem);
@@ -848,6 +890,35 @@
       box-shadow: 0 6px 20px rgba(0, 0, 0, .22);
       white-space: normal; text-align: left; font-weight: 400;
     }
+    /* ── 수치용 배치 (1.26.175)
+       설명문 풍선은 줄글이라 그대로 흘려도 읽힌다. 그러나 **그래프 값**은
+       이름과 숫자가 한 줄에 섞여 `2026-08-27 23: 0.51h` 처럼 비정형 문자열로
+       보였다 — 콜론 하나가 둘을 가르는 유일한 표시였고, 실행 라벨에도 콜론이
+       들어갈 수 있다.
+
+       제목(data-tip-title)이 오면 세 단으로 세운다: 이름은 작고 흐리게,
+       **값은 크고 진하게**, 덧말은 그 아래. 값이 주인공이라는 것이 배치로
+       드러나야 한다(통계 타일과 같은 위계다). 숫자는 tabular-nums라 풍선이
+       점마다 들썩이지 않는다. */
+    #tipbox.rich { padding: 10px 12px 11px; }
+    #tipbox .tip-title {
+      display: block; font-size: 11px; color: var(--ink-4);
+      letter-spacing: 0; margin-bottom: 1px;
+    }
+    #tipbox.rich .tip-body {
+      display: block; font-size: 17px; font-weight: 600; line-height: 1.25;
+      letter-spacing: -.3px; font-variant-numeric: tabular-nums;
+    }
+    #tipbox .tip-sub {
+      display: block; font-size: 11px; color: var(--ink-4);
+      line-height: 1.45; margin-top: 3px;
+      /* 덧말이 길면(산점도의 실행 이름) 상자가 옆으로 늘어나지 않게 접는다. */
+      max-width: 240px;
+    }
+    /* 어두운 상자 위의 '흐린 글자'다. `--ink-4`는 밝은 면 기준 회색이라
+       여기서는 대비가 뒤집힌다 — 캔버스 색을 반투명으로 깔아 맞춘다. */
+    #tipbox .tip-title, #tipbox .tip-sub { color: color-mix(in srgb, var(--canvas) 68%, transparent); }
+    #tipbox [hidden] { display: none !important; }
     #tipbox[data-show] { opacity: 1; transform: translateY(0); }
     /* 고정 상태 — 커서를 떼도 남는다. 닫기 단추를 눌러야 하므로 이때만
        클릭을 받는다(평소 pointer-events:none이라야 풍선이 커서를 가리지 않는다). */
@@ -870,6 +941,57 @@
     #tipbox .tipclose:focus-visible { outline: 2px solid var(--canvas); outline-offset: 1px; }
     /* 고정할 수 있다는 것을 커서로 알린다 */
     .tip { cursor: help; }
+
+    /* ════════ 본문 차례 (1.26.175) ════════
+       절이 다섯을 넘는 화면(/kpi)은 끝까지 내려가면 **앞에 무엇이 있었는지**
+       기억나지 않는다. 오른쪽 여백에 차례를 세워 지금 어디인지 늘 보이게 한다.
+
+       ⚠️ **한 화면 전용으로 만들지 않는다.** 붙이는 쪽은 `<div data-toc>` 하나만
+       두면 되고, 항목은 스크립트가 본문의 `h2`에서 읽는다 — 차례를 손으로 적어
+       두면 절을 고칠 때 반드시 한쪽이 낡는다(이 저장소가 여러 번 겪은 자리다).
+
+       자리: 본문(max-width 1200px)의 **오른쪽 안쪽**이다. 폭이 모자라면 아예
+       걷는다 — 본문 위에 겹쳐 놓느니 없는 편이 낫다. */
+    :root { --toc-w: 176px; }
+    .toc { display: none; }
+    @media (min-width: 1200px) {
+      /* 차례가 설 자리를 본문이 **비워 준다.** 이것이 없으면 겹친다. */
+      :root[data-has-toc] main { padding-right: calc(var(--toc-w) + var(--sp-xl)); }
+      :root[data-has-toc] .toc {
+        display: block; position: fixed; z-index: 40;
+        left: calc(50vw + 600px - var(--sp-lg) - var(--toc-w));
+        width: var(--toc-w);
+        /* 2단 내비(전역 + 작업 흐름) 아래에서 시작한다. */
+        top: 168px; max-height: calc(100vh - 200px); overflow-y: auto;
+        padding-left: var(--sp-md); border-left: 1px solid var(--hairline);
+      }
+    }
+    .toc-title {
+      font-size: 11px; font-weight: 600; color: var(--ink-4);
+      letter-spacing: .02em; margin: 0 0 8px;
+    }
+    .toc ol { list-style: none; margin: 0; padding: 0; }
+    .toc a {
+      display: block; padding: 5px 0; font-size: var(--fs-fine);
+      line-height: 1.4; color: var(--ink-3); text-decoration: none;
+      letter-spacing: -.08px;
+      /* 긴 절 이름("실행·회차별 지표")이 세로로 서지 않게 한다. */
+      overflow-wrap: break-word;
+    }
+    .toc a:hover { color: var(--ink); }
+    .toc a:focus-visible {
+      outline: 2px solid var(--blue-focus); outline-offset: 2px; border-radius: 3px;
+    }
+    /* 지금 읽는 절. **색만으로 말하지 않는다** — 왼쪽 막대가 함께 선다
+       (DESIGN.md 규칙 5, 색맹·흑백 인쇄에서도 갈린다). */
+    .toc a[aria-current] {
+      color: var(--blue); font-weight: 600;
+      box-shadow: inset 2px 0 0 var(--blue); padding-left: 9px; margin-left: -11px;
+    }
+    @media print { .toc { display: none !important; } }
+    /* 모바일 모드는 430px 고정 폭이라 차례가 설 자리가 없다. */
+    :root[data-view="mobile"] .toc, [data-narrow] .toc { display: none !important; }
+    :root[data-view="mobile"] main, [data-narrow] main { padding-right: var(--sp-lg); }
 
     /* ════════ 조각들 ════════ */
     .chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
@@ -1423,15 +1545,24 @@
       if (el.tabIndex < 0) el.tabIndex = 0;
     });
 
-    /* 본문만 갈아 끼운다. 닫기 단추는 그대로 두어야 다시 만들 필요가 없다. */
+    /* 본문만 갈아 끼운다. 닫기 단추는 그대로 두어야 다시 만들 필요가 없다.
+       세 칸(이름/값/덧말)을 미리 만들어 두고 **내용만** 바꾼다 — 매번 다시
+       만들면 고정 중에 DOM이 갈려 닫기 단추의 초점이 날아간다. */
+    var titleEl = document.createElement("span");
+    titleEl.className = "tip-title";
     var body = document.createElement("span");
+    body.className = "tip-body";
+    var subEl = document.createElement("span");
+    subEl.className = "tip-sub";
     var close = document.createElement("button");
     close.type = "button";
     close.className = "tipclose";
     close.setAttribute("aria-label", "설명 닫기");
     close.textContent = "×";
     close.addEventListener("click", function (e) { e.stopPropagation(); hide(); });
+    box.appendChild(titleEl);
     box.appendChild(body);
+    box.appendChild(subEl);
     box.appendChild(close);
 
     function place(el) {
@@ -1452,7 +1583,17 @@
       var text = el.getAttribute("data-tip");
       if (!text) return;
       current = el;
+      /* 제목이 있으면 수치용 배치(세 단), 없으면 예전 그대로 줄글 한 단이다.
+         내비 링크·용어 딱지는 설명문이라 제목을 주지 않는다 — 한 형식으로
+         억지로 맞추면 설명문에 빈 제목 줄이 생긴다. */
+      var t = el.getAttribute("data-tip-title");
+      var s = el.getAttribute("data-tip-sub");
+      titleEl.textContent = t || "";
+      titleEl.hidden = !t;
       body.textContent = text;
+      subEl.textContent = s || "";
+      subEl.hidden = !s;
+      box.classList.toggle("rich", !!t);
       box.setAttribute("data-show", "");
       box.removeAttribute("aria-hidden");
       place(el);
@@ -1929,6 +2070,84 @@
     });
   })();
 
+  /* 본문 차례.
+     `<div data-toc>`가 있는 화면에서 본문의 h2를 읽어 오른쪽 차례를 세운다.
+     **항목을 손으로 적지 않는다** — 절을 고치면 차례가 저절로 따라온다.
+
+     스크립트가 없거나 폭이 모자라면 아무 일도 일어나지 않는다(차례가 없을 뿐
+     본문은 그대로다). 다른 화면에 도입할 때도 붙일 것은 그 한 줄뿐이다. */
+  (function () {
+    var host = document.querySelector("[data-toc]");
+    var main = document.getElementById("main-content");
+    if (!host || !main) return;
+
+    /* 빈 상태로 h2만 남은 절도 차례에는 실어야 한다 — "그런 절이 있다"는
+       사실 자체가 정보다(1.26.107에서 통째로 사라졌던 그 절이 그렇다). */
+    var heads = Array.prototype.slice.call(main.querySelectorAll("h2"));
+    if (heads.length < 2) return;          /* 둘 미만이면 차례가 아니다 */
+
+    var nav = document.createElement("nav");
+    nav.className = "toc";
+    nav.setAttribute("aria-label", host.getAttribute("data-toc") || "본문 차례");
+    var title = document.createElement("p");
+    title.className = "toc-title";
+    title.textContent = host.getAttribute("data-toc") || "이 화면의 절";
+    var list = document.createElement("ol");
+    nav.appendChild(title);
+    nav.appendChild(list);
+
+    var links = [];
+    heads.forEach(function (h, i) {
+      /* id가 없으면 붙인다. 사람이 붙여 둔 id(`#backtest` 등)는 건드리지
+         않는다 — 다른 문서가 그 주소로 링크하고 있을 수 있다. */
+      if (!h.id) h.id = "sec-" + (i + 1);
+      var li = document.createElement("li");
+      var a = document.createElement("a");
+      a.href = "#" + h.id;
+      a.textContent = h.textContent.trim();
+      li.appendChild(a);
+      list.appendChild(li);
+      links.push(a);
+    });
+    document.body.appendChild(nav);
+    document.documentElement.setAttribute("data-has-toc", "");
+
+    /* 눌러서 옮길 때 제목이 고정 내비 **뒤로 숨지 않게** 자리를 띄운다.
+       `scroll-margin-top`이 이 일을 하는데, 값을 CSS에 박으면 내비 높이가
+       바뀔 때 갈린다 — 실제 높이를 재서 넣는다. */
+    var navBar = document.querySelector(".flow-nav");
+    var offset = (navBar ? navBar.getBoundingClientRect().bottom : 0) + 12;
+    heads.forEach(function (h) { h.style.scrollMarginTop = offset + "px"; });
+
+    /* 지금 읽는 절 표시. **화면 위쪽에 걸린 제목 중 가장 아래**가 현재 절이다
+       — 보이는 것 아무거나 잡으면 스크롤 중에 표시가 위아래로 튄다. */
+    function sync() {
+      var line = offset + 8;
+      var cur = 0;
+      for (var i = 0; i < heads.length; i++) {
+        if (heads[i].getBoundingClientRect().top <= line) cur = i;
+      }
+      /* 맨 아래까지 내렸으면 마지막 절이다 — 짧은 절은 위 규칙만으로는
+         영영 현재가 되지 않는다. */
+      if (window.innerHeight + window.scrollY >=
+          document.body.scrollHeight - 4) cur = heads.length - 1;
+      links.forEach(function (a, i) {
+        if (i === cur) a.setAttribute("aria-current", "true");
+        else a.removeAttribute("aria-current");
+      });
+    }
+
+    var ticking = false;
+    function onScroll() {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(function () { ticking = false; sync(); });
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    sync();
+  })();
+
   /* 표 창 — 그래프 옆에 놓고 맞대어 보라고 띄운다.
      머리를 끌면 옮겨진다. 위치는 옮긴 그대로 두되, 화면 밖으로는 못 나간다. */
   (function () {
@@ -2024,6 +2243,18 @@
        옮긴 창은 건드리지 않는다 — 옮긴 자리가 그 사람의 의도다. */
     var STEP = 28;
 
+    /* 방금 연 창이 **맨 위로** 온다 (1.26.175).
+       모든 창이 z-index:60으로 같아서 쌓임 순서를 DOM 순서가 정했다 — 화면
+       아래쪽 카드에서 표를 열면 위쪽 카드의 창 **뒤로** 깔려서, 계단으로 밀어
+       둔 것이 무색하게 "안 열렸나?" 싶었다. 누른 것이 앞에 와야 한다. */
+    var BASE_Z = 60;
+    var topZ = BASE_Z;
+
+    function raise(panel) {
+      topZ += 1;
+      panel.style.zIndex = topZ;
+    }
+
     function openCount() {
       return document.querySelectorAll(".table-panel:not([hidden])").length;
     }
@@ -2035,6 +2266,9 @@
       panel.style.top = (box.top + STEP * depth) + "px";
     }
 
+    /* 열려 있는 창들. Esc가 **맨 위 창 하나만** 닫으려면 누가 위인지 알아야 한다. */
+    var panels = [];
+
     document.querySelectorAll("[data-table-open]").forEach(function (trigger) {
       var panel = trigger.parentNode.querySelector(".table-panel");
       if (!panel) return;
@@ -2045,10 +2279,14 @@
       drag(panel, parts.head);
       trigger.setAttribute("aria-expanded", "false");
 
+      /* 겹친 창 중 아래 것을 누르면 앞으로 올린다 — 창을 다루는 곳의 상식이다. */
+      panel.addEventListener("pointerdown", function () { raise(panel); });
+
       function open() {
         /* 자리를 계산하기 전에 이미 떠 있는 창을 센다(자기 자신은 아직 hidden이다). */
         var depth = openCount();
         panel.hidden = false;
+        raise(panel);
         trigger.setAttribute("aria-expanded", "true");
 
         /* ⚠️ 좁은 화면은 **아래에서 올라오는 판**이라 자리를 CSS가 잡는다
@@ -2074,9 +2312,29 @@
         panel.hidden ? open() : close();
       });
       parts.close.addEventListener("click", close);
-      panel.addEventListener("keydown", function (e) {
-        if (e.key === "Escape") { e.preventDefault(); close(); }
+      panels.push({ panel: panel, close: close });
+    });
+
+    /* Esc로 닫는다 — **초점이 어디 있든**.
+       예전에는 창 자신에게만 keydown을 걸어서, 열자마자 닫기 단추에 초점이
+       가 있을 때만 통했다. 창을 한 번 끌거나 본문을 클릭하면 초점이 밖으로
+       나가고 그 뒤로는 Esc가 먹지 않았다 — 닫으려면 ×를 찾아 눌러야 했다.
+
+       ⚠️ **맨 위 하나만 닫는다.** 여러 창을 띄워 맞대어 보는 것이 이 창의
+       용도인데 Esc 한 번에 전부 사라지면 비교하던 것이 통째로 날아간다.
+       풍선(#tipbox)이 떠 있으면 그쪽이 먼저다 — 위에 있는 것부터 걷힌다. */
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      var tip = document.getElementById("tipbox");
+      if (tip && tip.hasAttribute("data-pinned")) return;   /* 고정된 풍선이 먼저 */
+      var open = panels.filter(function (p) { return !p.panel.hidden; });
+      if (!open.length) return;
+      open.sort(function (a, b) {
+        return (parseInt(a.panel.style.zIndex, 10) || BASE_Z)
+             - (parseInt(b.panel.style.zIndex, 10) || BASE_Z);
       });
+      e.preventDefault();
+      open[open.length - 1].close();
     });
   })();
 </script>

@@ -387,10 +387,14 @@ def test_세로막대는_순서있는_축에_쓴다():
     svg = charts.vbar([str(h) for h in range(24)], [h * 10 for h in range(24)],
                       title="시간대별", unit="건")
 
-    assert svg.count("<rect") == 24
-    assert 'class="viz-bar"' in svg
+    # ⚠️ `<rect` 수로 세지 않는다 — 막대마다 **x축 밴드**(투명한 히트 영역)가
+    # 하나씩 더 붙어 있다(1.26.175). 세야 하는 것은 막대다.
+    assert svg.count('class="viz-bar"') == 24
     # 커서를 대면 값이 뜬다(charts.py 공통 규약).
     assert svg.count("data-tip=") == 24
+    # 값을 읽으려고 **짧은 막대를 정확히 짚게 만들지 않는다** — 판 높이 전체를
+    # 덮는 밴드가 칸마다 있어야 0 근처 값도 커서로 읽힌다.
+    assert svg.count('class="viz-band-hit"') == 24
 
 
 def test_세로막대의_강조와_구분선은_글자_설명을_함께_낸다():
@@ -466,8 +470,11 @@ def test_편차_막대_풍선에_절대값이_남아_있다():
     기준을 옮기되 값을 잃지는 않는다."""
     svg = charts.deviation_hbar(["V06", "V09"], [402.3, 339.2],
                                 title="시험", unit="분")
-    assert "V06: 402.3분" in svg, "풍선에 절대값이 없다"
-    assert "평균 대비" in svg, "풍선에 편차가 없다"
+    # 풍선은 이름/값/덧말 세 칸이다(1.26.175). 값 칸에 **절대값**이 있어야
+    # 하고, 편차는 덧말로 따라붙는다 — 한 줄로 흘리면 어느 쪽이 값인지 모른다.
+    assert 'data-tip-title="V06"' in svg, "풍선에 항목 이름이 없다"
+    assert 'data-tip="402.3분"' in svg, "풍선 값 칸에 절대값이 없다"
+    assert 'data-tip-sub="평균 대비 +31.6분"' in svg, "풍선 덧말에 편차가 없다"
 
 
 def test_편차_막대의_값_글자가_항목_이름을_덮지_않는다():
@@ -569,3 +576,65 @@ def test_모든_그래프가_svg_봉투를_한_벌로_쓴다():
     tag = charts._svg_open(100, 50, "제목<&>")
     assert 'class="viz"' in tag and 'role="img"' in tag
     assert "제목&lt;&amp;&gt;" in tag, "aria-label을 이스케이프하지 않는다"
+
+
+# ── 커서 풍선의 구조와 히트 영역 (1.26.175) ──────────────────────────
+
+def test_풍선은_이름과_값을_갈라_싣는다():
+    """🔴 예전에는 `2026-08-27 23: 0.51h` 한 줄이었다.
+
+    콜론 하나가 이름과 값을 가르는 **유일한** 표시였고, 실행 라벨에도 콜론이
+    들어갈 수 있다. 어두운 상자에 그대로 흘려 놓으니 무엇이 값인지 모를
+    비정형 문자열로 보였다 — 화면이 값을 크게 세우려면 값이 어디부터인지
+    알아야 한다.
+    """
+    svg = charts.line(["2026-08-27 23", "2026-08-28 10"], [0.51, 0.62],
+                      title="결품 시간", unit="h")
+
+    assert 'data-tip-title="2026-08-27 23"' in svg, "이름 칸이 없다"
+    assert 'data-tip="0.51h"' in svg, "값 칸에 값만 들어 있지 않다"
+    assert 'data-tip-sub="결품 시간"' in svg, "무슨 지표인지 덧말이 없다"
+    # 이름과 값이 한 칸에 뭉쳐 있으면 화면이 위계를 줄 수 없다.
+    assert "2026-08-27 23: 0.51h" not in svg
+
+
+def test_설명문_풍선은_예전_그대로_한_줄이다():
+    """**한 형식으로 억지로 맞추지 않는다.**
+
+    내비 링크·용어 딱지에 들어가는 것은 줄글 설명이다. 거기에 제목 칸을
+    만들면 빈 줄이 하나 생기고, 값도 아닌 문장이 크게 세워진다. 제목을 주지
+    않으면 `#tipbox`가 예전 배치를 그대로 쓴다(base.html `show()`).
+    """
+    assert charts._tip("이름", "값") == 'data-tip-title="이름" data-tip="값"'
+    assert "data-tip-sub" not in charts._tip("이름", "값")
+    # 이스케이프를 잊으면 라벨 안의 따옴표가 속성을 깬다.
+    assert charts._tip('"><b>', "1") .startswith('data-tip-title="&quot;&gt;&lt;b&gt;"')
+
+
+def test_꺾은선은_y를_맞히지_않아도_값이_뜬다():
+    """🔴 예전에는 점 둘레 11px 원만 히트 영역이었다.
+
+    읽는 사람이 아는 것은 **x(어느 실행인가)** 뿐인데 y까지 정확히 짚으라고
+    요구한 셈이다. 이제 x 슬롯마다 **판 높이 전체**를 덮는 띠가 서 있어,
+    그 세로 줄 어디에 커서를 둬도 그 실행의 값이 뜬다.
+    """
+    svg = charts.line(["A", "B", "C"], [1.0, 5.0, 2.0], title="시험", height=150)
+
+    assert svg.count('class="viz-band-hit"') == 3, "점마다 밴드가 서 있지 않다"
+    # 밴드 높이 = 판 높이(150 - pad_t 24 - pad_b 26 = 100). 점 둘레가 아니다.
+    assert 'height="100"' in svg, "밴드가 판 높이를 안 덮는다"
+    # 지금 읽는 x가 어디인지 보여야 한다 — 값만 뜨고 자리를 모르면 헷갈린다.
+    assert 'class="viz-guide"' in svg and 'class="viz-halo"' in svg
+
+
+def test_히트맵_풍선이_방향을_글자로_말한다():
+    """색만으로 읽게 두지 않는다(DESIGN.md 규칙 5).
+
+    순수요는 부호가 있는 값이라 **붉은가 푸른가**가 곧 "채워 줄까 빼낼까"다.
+    색을 못 가리는 사람에게는 숫자 앞의 `-` 하나가 전부였다.
+    """
+    svg = charts.heatmap(["월"], ["09"], [[25.2]], unit="대")
+    assert "빠져나감 · 채워 줘야 함" in svg
+
+    svg2 = charts.heatmap(["월"], ["09"], [[-8.0]], unit="대")
+    assert "쌓임 · 빼내야 함" in svg2

@@ -17,6 +17,9 @@
 {%- endmacro %}
 
 {% block content %}
+{# 오른쪽 차례. 항목은 스크립트가 아래 h2에서 읽는다 — 여기 손으로 적지 않는다.
+   다른 화면에 도입할 때도 이 한 줄만 두면 된다. #}
+<div data-toc="이 화면의 절" hidden></div>
 <section class="hero">
   <h1>성과 지표</h1>
   <p class="lead">계획이 목표 재고를 얼마나 채웠는지, 그러기 위해 얼마나 움직였는지를 봅니다.
@@ -174,12 +177,12 @@
   <div class="table-wrap">
   <table data-sortable class="m-cards" id="kpi-runs-table">
     <thead><tr>
-      <th scope="col">실행</th>
-      <th scope="col"><span class="tip" data-tip="계획한 시간대입니다. 예: _10_15 는 10시~15시.">회차</span></th>
+      <th scope="col" class="tight">실행</th>
+      <th scope="col" class="tight"><span class="tip" data-tip="계획한 시간대입니다. 예: _10_15 는 10시~15시.">회차</span></th>
       <th scope="col" class="num col-more"><span class="tip" data-tip="이번 계획에서 손을 댄 대여소 수입니다.">대여소</span></th>
       <th scope="col" class="num col-more"><span class="tip" data-tip="대여소를 가까운 것끼리 묶은 덩어리 수입니다. 차량 한 대가 한 덩어리를 맡습니다.">군집</span></th>
-      <th scope="col" class="num col-more"><span class="tip" data-tip="실제로 출동한 차량 수입니다.">차량</span></th>
-      <th scope="col" class="num col-more"><span class="tip" data-tip="옮긴 자전거 총 대수입니다.">옮긴 대수</span></th>
+      <th scope="col" class="num"><span class="tip" data-tip="실제로 출동한 차량 수입니다.">차량</span></th>
+      <th scope="col" class="num"><span class="tip" data-tip="옮긴 자전거 총 대수입니다.">옮긴 대수</span></th>
       <th scope="col" class="num"><span class="tip" data-tip="목표 재고까지 모자란 양을 계획이 몇 % 메웠는지입니다. 수요를 맞췄다는 뜻이 아니라 계획을 지켰다는 뜻입니다.">개선률</span></th>
       <th scope="col" class="num col-more"><span class="tip" data-tip="목표 재고를 완전히 채운 대여소의 비율입니다. 계획량이 적재 용량 근처에서 눌리므로 격차가 8대만 넘어도 도달이 구조적으로 불가능합니다 — 실행 품질을 재는 값이 아닙니다.">목표 도달</span></th>
       <th scope="col" class="num col-more"><span class="tip" data-tip="목표까지 벌어진 양이 트럭 적재 용량 안이라 한 번 방문으로 해결할 수 있었던 대여소의 비율입니다. 낮으면 애초에 한 회차로는 못 푸는 일감이 많다는 뜻입니다.">한 번에 닿는 범위</span></th>
@@ -194,12 +197,12 @@
     <tbody>
     {% for r in rows %}
     <tr>
-      <td class="muted" data-label="">{{ r.run_label }}</td>
-      <td data-label="회차"><b>{{ r.duration }}</b></td>
+      <td class="muted tight" data-label="">{{ r.run_label }}</td>
+      <td class="tight" data-label="회차"><b>{{ r.duration }}</b></td>
       <td class="num muted col-more" data-label="대여소">{{ whole(r.stations, "") }}</td>
       <td class="num muted col-more" data-label="군집">{{ whole(r.clusters, "") }}</td>
-      <td class="num muted col-more" data-label="차량">{{ whole(r.vehicles_used, "") }}</td>
-      <td class="num col-more" data-label="옮긴 대수">{{ whole(r.bikes_moved, "") }}</td>
+      <td class="num muted" data-label="차량">{{ whole(r.vehicles_used, "") }}</td>
+      <td class="num" data-label="옮긴 대수">{{ whole(r.bikes_moved, "") }}</td>
       <td class="num" data-label="개선률"><b>{{ fmt(r.avg_improvement_rate, "pct") }}</b></td>
       <td class="num col-more" data-label="목표 도달">{{ fmt(r.target_met_ratio, "pct") }}</td>
       <td class="num col-more" data-label="한 번에 닿는 범위">{{ fmt(r.reachable_ratio, "pct") }}</td>

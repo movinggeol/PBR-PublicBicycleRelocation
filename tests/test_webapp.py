@@ -2316,3 +2316,78 @@ def test_진행_화면이_지금_어느_단계인지_말한다(client, monkeypat
     말 = " ".join(m.group(1).split())
     assert "3단계 중 1단계 완료" in 말, f"완료 개수를 안 말한다: {말!r}"
     assert "지금은" in 말, f"현재 단계를 안 말한다: {말!r}"
+
+
+# ── 성과 지표 화면의 배치 (1.26.175) ─────────────────────────────────
+
+def _kpi_rows():
+    """성과 지표 표가 그려질 만큼의 KPI 두 줄.
+
+    ⚠️ 실제 DB에 기대면 안 된다 — `conftest.isolate_db`가 모든 테스트를 **빈
+    임시 DB**로 돌려서 `{% if rows %}`가 표를 통째로 지운다. 1.26.156·158에
+    이어 **세 번째**로 같은 함정에 걸렸다.
+    """
+    import pandas as pd
+    return pd.DataFrame([
+        {"run_label": "2026-08-27 23", "duration": "_10_15",
+         "computed_at": "2026-08-27 23:16", "stations": 245, "clusters": 16,
+         "vehicles_used": 14, "bikes_moved": 257, "avg_improvement_rate": 0.70,
+         "target_met_ratio": 0.42, "reachable_ratio": 0.58, "gap_median": 6,
+         "gap_max": 55, "total_distance_km": 451.0, "max_cluster_minutes": 136.0,
+         "time_budget_minutes": 120.0, "time_budget_met": 0.9,
+         "improvement_per_km": 1.35, "stockout_hours_before": 1.77,
+         "stockout_hours_after": 0.53},
+        {"run_label": "2026-08-26 23", "duration": "_05_10",
+         "computed_at": "2026-08-26 23:23", "stations": 249, "clusters": 15,
+         "vehicles_used": 15, "bikes_moved": 249, "avg_improvement_rate": 0.71,
+         "target_met_ratio": 0.44, "reachable_ratio": 0.60, "gap_median": 5,
+         "gap_max": 48, "total_distance_km": 468.0, "max_cluster_minutes": 110.0,
+         "time_budget_minutes": 120.0, "time_budget_met": 1.0,
+         "improvement_per_km": 1.21, "stockout_hours_before": 1.70,
+         "stockout_hours_after": 0.60},
+    ])
+
+
+def test_글자_열이_남는_폭을_통째로_삼키지_않는다(client, monkeypatch):
+    """🔴 실측에서 `실행` 600px · `회차` 318px인데 정작 읽어야 할 개선률은
+    70px이었다(1400px 화면).
+
+    숫자 열에는 `width: 1%`가 있어 제 내용만큼만 차지하는데 글자 열에는 그런
+    장치가 없어, 남는 폭 900px을 둘이 나눠 가졌다. 열 이름과 값 사이가 휑하게
+    벌어져 눈으로 이어지지 않는다(DESIGN.md '표'가 `width: 1%`를 둔 이유가
+    바로 이것이다).
+    """
+    from webapp import store
+    monkeypatch.setattr(store, "kpi", lambda *a, **k: _kpi_rows())
+
+    body = client.get("/kpi").text
+    assert '<th scope="col" class="tight">실행</th>' in body
+    assert 'class="tight"><span class="tip" data-tip="계획한 시간대입니다' in body
+
+
+def test_기본_화면에_투입과_산출이_함께_보인다(client, monkeypatch):
+    """개선률만 보이면 *"얼마를 들여 얻은 값인가"* 를 알 수 없다.
+
+    `차량`(투입)과 `옮긴 대수`(산출)는 접힌 열에 있어 **모든 열 보기**를 눌러야
+    나왔다. 남는 폭을 나눠 가질 열이 필요하기도 했다 — 둘을 올려 기본 화면이
+    일곱 열로 고르게 찬다.
+    """
+    from webapp import store
+    monkeypatch.setattr(store, "kpi", lambda *a, **k: _kpi_rows())
+
+    body = client.get("/kpi").text
+    assert '<th scope="col" class="num"><span class="tip" data-tip="실제로 출동한 차량 수입니다.">차량</span></th>' in body
+    assert '<th scope="col" class="num"><span class="tip" data-tip="옮긴 자전거 총 대수입니다.">옮긴 대수</span></th>' in body
+
+
+def test_절이_다섯인_화면에_차례가_붙는다(client):
+    """끝까지 내려가면 앞에 무엇이 있었는지 기억나지 않는다.
+
+    ⚠️ **항목을 손으로 적지 않는다** — 스크립트가 본문 `h2`에서 읽는다.
+    차례를 템플릿에 적어 두면 절을 고칠 때 반드시 한쪽이 낡는다.
+    """
+    body = client.get("/kpi").text
+    assert "data-toc=" in body, "차례를 붙일 자리가 없다"
+    # 절 이름이 템플릿에 박혀 있으면 안 된다(h2에서 읽어야 한다).
+    marker = body[body.index("data-toc="):body.index("data-toc=") + 200]
+    assert "추세" not in marker and "효과와 비용" not in marker
