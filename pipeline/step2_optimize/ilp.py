@@ -1,4 +1,5 @@
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -29,6 +30,48 @@ vehicle_speed_kmph = VEHICLE_SPEED_KMPH
 # 0%다 — 지금 규모에서는 두 값 모두 아무 일도 하지 않는 안전장치다(사용자 결정, 1.18.7).
 SOLVER_TIME_LIMIT_SEC = 600
 SOLVER_GAP_REL = 0.02
+
+
+# CBC 하위 프로세스를 띄우다 실패했을 때 다시 시도하는 횟수·간격.
+# 격자 실험은 한 번에 100회 넘게 푸는데, **한 번 실패하면 50분치가 통째로
+# 날아간다** — 2026-09-12에 `cluster_count_sweep`이 3001초를 돌고 그렇게 죽었다.
+SOLVE_RETRIES = 3
+SOLVE_RETRY_WAIT_SEC = 5.0
+
+
+def solve_with_retry(prob: "pulp.LpProblem", solver: "pulp.LpSolver") -> None:
+    """ILP를 푼다. **프로세스를 못 띄우면 잠시 쉬었다 다시 시도한다.**
+
+    🔴 **왜 필요한가** (2026-09-12 실측). PuLP는 풀 때마다 CBC를 **별도
+    프로세스로** 띄운다. 격자 실험은 120회씩 푸는데, 메모리가 빠듯한 PC에서는
+    그중 한 번이 `OSError: [WinError 8] 메모리 리소스가 부족...`으로 실패한다.
+    여유 물리 메모리가 1.5GB 아래로 내려갈 때 났다(브라우저·편집기가 열려 있으면
+    쉽게 그렇게 된다).
+
+    **이것은 계산이 틀린 것이 아니라 순간적인 자원 부족이다.** 그런데 예전에는
+    그대로 예외가 올라가 스크립트가 죽었고, `gamma_sweep`(120회)과
+    `cluster_count_sweep`(50분)이 실제로 그렇게 날아갔다. 몇 초 쉬고 다시
+    띄우면 대개 성공하므로, **여기서만 막으면 파이프라인 전체가 보호된다** —
+    저장소의 유일한 `prob.solve()` 자리다.
+
+    ⚠️ **계산 오류는 잡지 않는다.** `OSError`만 다시 시도하고, 모델이 틀려서
+    나는 예외는 그대로 올려보낸다 — 조용히 삼키면 부실한 계획이 정상처럼 보인다.
+    끝까지 실패하면 무엇을 해야 하는지 알려 주고 죽는다.
+    """
+    for 남은 in range(SOLVE_RETRIES - 1, -1, -1):
+        try:
+            prob.solve(solver)
+            return
+        except OSError as err:
+            if 남은 == 0:
+                raise OSError(
+                    f"{err}\n"
+                    "  CBC를 띄울 메모리가 모자랍니다 — 계산이 틀린 것이 아닙니다.\n"
+                    "  브라우저·편집기를 닫고 다시 돌리거나, 격자를 쪼개 주십시오\n"
+                    "  (예: --periods/--seeds를 나눠 여러 번, --out으로 이어 붙이기).") from err
+            print(f"[재시도] CBC를 띄우지 못했습니다 ({type(err).__name__}) —"
+                  f" {SOLVE_RETRY_WAIT_SEC:.0f}초 쉬고 다시 시도합니다 (남은 {남은}회)")
+            time.sleep(SOLVE_RETRY_WAIT_SEC)
 
 
 def build_solver(msg: bool = False, time_limit: int = SOLVER_TIME_LIMIT_SEC,
@@ -180,7 +223,7 @@ def solve_cluster_moves(cluster_df: pd.DataFrame, solver: pulp.LpSolver,
     prob += pulp.lpSum(x[(i,j)] for i in I for j in J) == move_total
     # ---------------- 제약조건 ---------------
 
-    prob.solve(solver)
+    solve_with_retry(prob, solver)
     status = pulp.LpStatus[prob.status]
     print("Status:", status)
 

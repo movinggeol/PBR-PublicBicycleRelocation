@@ -1638,3 +1638,68 @@ def test_bhh_path_is_unchanged_by_the_refactor(step1):
     height = (lat.max() - lat.min()) * 111.0
     expected = 0.7124 * np.sqrt(len(frame) * max(abs(width) * abs(height), 0.01))
     assert step1.total_tour_km(frame, "bhh") == pytest.approx(expected)
+
+
+# ---------------------------------------------------------------------------
+# CBC를 못 띄웠을 때 — 50분치를 한 번의 자원 부족으로 날리지 않는가 (2026-09-12)
+#
+# PuLP는 풀 때마다 CBC를 별도 프로세스로 띄운다. 격자 실험은 120회씩 푸는데,
+# 여유 메모리가 1.5GB 아래로 내려가면 그중 한 번이
+# `OSError: [WinError 8] 메모리 리소스가 부족...`으로 실패한다. 계산이 틀린 게
+# 아니라 순간적인 자원 부족인데, 예전에는 그대로 죽어 gamma_sweep(120회)과
+# cluster_count_sweep(3001초)이 실제로 통째로 날아갔다.
+# ---------------------------------------------------------------------------
+
+def test_CBC를_못_띄우면_쉬었다_다시_시도한다(step2, monkeypatch, capsys):
+    """한 번의 자원 부족으로 격자 전체를 잃지 않는다."""
+    ilp, _vrp = step2
+    monkeypatch.setattr(ilp, "SOLVE_RETRY_WAIT_SEC", 0.0)
+
+    시도 = {"n": 0}
+
+    class 두번_실패하는_문제:
+        def solve(self, solver):
+            시도["n"] += 1
+            if 시도["n"] < 3:
+                raise OSError(8, "메모리 리소스가 부족하여 이 명령을 처리할 수 없습니다")
+            return 1
+
+    ilp.solve_with_retry(두번_실패하는_문제(), solver=object())
+
+    assert 시도["n"] == 3, "다시 시도하지 않았다"
+    assert "재시도" in capsys.readouterr().out, "조용히 넘어가면 안 된다"
+
+
+def test_끝까지_못_띄우면_무엇을_해야_하는지_알려_주고_죽는다(step2, monkeypatch):
+    """모르면 사용자는 계산이 틀린 줄 안다 — 원인과 처방을 말해야 한다."""
+    ilp, _vrp = step2
+    monkeypatch.setattr(ilp, "SOLVE_RETRY_WAIT_SEC", 0.0)
+
+    class 늘_실패하는_문제:
+        def solve(self, solver):
+            raise OSError(8, "메모리 리소스가 부족하여 이 명령을 처리할 수 없습니다")
+
+    with pytest.raises(OSError) as err:
+        ilp.solve_with_retry(늘_실패하는_문제(), solver=object())
+
+    말 = str(err.value)
+    assert "계산이 틀린 것이 아닙니다" in 말, "원인을 오해하게 둔다"
+    assert "닫고" in 말 or "쪼개" in 말, "처방이 없다"
+
+
+def test_계산_오류는_다시_시도하지_않고_그대로_올린다(step2, monkeypatch):
+    """🔴 조용히 삼키면 부실한 계획이 정상처럼 보인다 — OSError만 다시 시도한다."""
+    ilp, _vrp = step2
+    monkeypatch.setattr(ilp, "SOLVE_RETRY_WAIT_SEC", 0.0)
+
+    시도 = {"n": 0}
+
+    class 모델이_틀린_문제:
+        def solve(self, solver):
+            시도["n"] += 1
+            raise ValueError("모델이 틀렸다")
+
+    with pytest.raises(ValueError):
+        ilp.solve_with_retry(모델이_틀린_문제(), solver=object())
+
+    assert 시도["n"] == 1, "계산 오류를 다시 시도했다 — 시간만 버리고 답은 같다"
