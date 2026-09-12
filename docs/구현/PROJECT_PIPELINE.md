@@ -39,14 +39,15 @@ flowchart TD
 │       ├── ILP/
 │       ├── VRP/
 │       └── 성능 지표/
-├── step0_collect/                # 수집·전처리
-├── step0_eda/                  # 이력 병합·탐색
-├── step1_cluster/
-├── step2_optimize/
-├── step3_map/
-├── step4_metrics/
+├── pipeline/                              # step0~step4 (1.26.168부터 한데 묶음)
+│   ├── step0_collect/                    #   수집·전처리
+│   ├── step0_eda/                        #   이력 병합·탐색
+│   ├── step1_cluster/
+│   ├── step2_optimize/
+│   ├── step3_map/
+│   └── step4_metrics/
 ├── webapp/                               # 웹 대시보드 (FastAPI + Jinja2)
-├── tests/                                # pytest 774개(27개 파일)
+├── tests/                                # pytest 776개(27개 파일)
 ├── tools/                                # 합성 데이터·적재·백테스트·재고 수집 도구
 ├── experiments/                          # 파라미터 실험·구조 결정용 측정
 ├── project_config.py                     # 공통 설정·운영 상수 (now/period/duration/day_type)
@@ -69,7 +70,7 @@ data는 대용량 원천·중간·결과 파일을 보관하는 영역이며, �
 
 ### TASHU Open API
 
-step0_collect/tashu_api.py가 TASHU API에서 대여소별 현재 재고를 조회합니다.
+pipeline/step0_collect/tashu_api.py가 TASHU API에서 대여소별 현재 재고를 조회합니다.
 
 - 입력: .env의 TASHU_API_KEY
 - 출력: data/pp_data/대여소별 재고/대여소별_자전거대수 ({now}).csv
@@ -77,7 +78,7 @@ step0_collect/tashu_api.py가 TASHU API에서 대여소별 현재 재고를 조�
 
 ### 공공데이터포털 대여 이력
 
-data/raw_data/에 타슈 대여 이력 CSV를 둡니다. 월별 파일은 step0_eda/concat_1year_file.py로 병합할 수 있습니다.
+data/raw_data/에 타슈 대여 이력 CSV를 둡니다. 월별 파일은 pipeline/step0_eda/concat_1year_file.py로 병합할 수 있습니다.
 
 주요 입력 항목은 대여·반납 시각, 출발·도착 대여소 ID입니다.
 
@@ -152,7 +153,7 @@ K-Medoids 기반 공간 클러스터링은 작업 대여소를 가까운 군집�
 
 ## 6. Step 2: ILP 수량 최적화
 
-step2_optimize/ilp.py는 클러스터별 Pick 대여소에서 Drop 대여소로 이동할 자전거 수를 정수선형계획법으로 계산합니다.
+pipeline/step2_optimize/ilp.py는 클러스터별 Pick 대여소에서 Drop 대여소로 이동할 자전거 수를 정수선형계획법으로 계산합니다.
 
 입력은 top 후보 CSV이며, 주요 컬럼은 station_id, lat, lon, pick_qty, drop_qty, cluster입니다.
 
@@ -215,7 +216,7 @@ vrp.py는 ILP 결과를 실제 차량이 수행할 방문 순서로 바꿉니다
 
 ## 8. Step 3: 지도 시각화
 
-step3_map/module.py는 CSV 좌표와 경로를 정규화하고 TMAP 응답을 처리합니다. main.py는 VRP 경로, Pick·Drop 마커, 클러스터 정보를 Folium 지도에 표시합니다.
+pipeline/step3_map/module.py는 CSV 좌표와 경로를 정규화하고 TMAP 응답을 처리합니다. main.py는 VRP 경로, Pick·Drop 마커, 클러스터 정보를 Folium 지도에 표시합니다.
 
 - 입력: VRP 계획 CSV, Pick·Drop 후보 CSV
 - API 키: .env의 API_KEY
@@ -252,18 +253,18 @@ python run_pipeline.py                    # 전체 실행
 각 스크립트도 같은 공통 옵션(`--now` 등)을 그대로 받습니다.
 
 ~~~powershell
-python "step0_eda/concat_1year_file.py"   # 월별 파일을 합칠 때만
-python "step0_collect/tashu_api.py"
-python "step0_collect/extract_parking_lot.py"
-python "step0_collect/api_to_info.py"
-python "step0_collect/raw_to_net.py"
-python "step0_collect/calculate_target_qty.py"
-python "step1_cluster/top_st_clustering.py"
-python "step1_cluster/st_visualization.py"
-python "step2_optimize/ilp.py"
-python "step2_optimize/vrp.py"
-python "step3_map/main.py"
-python "step4_metrics/imbalance.py"
+python "pipeline/step0_eda/concat_1year_file.py"   # 월별 파일을 합칠 때만
+python "pipeline/step0_collect/tashu_api.py"
+python "pipeline/step0_collect/extract_parking_lot.py"
+python "pipeline/step0_collect/api_to_info.py"
+python "pipeline/step0_collect/raw_to_net.py"
+python "pipeline/step0_collect/calculate_target_qty.py"
+python "pipeline/step1_cluster/top_st_clustering.py"
+python "pipeline/step1_cluster/st_visualization.py"
+python "pipeline/step2_optimize/ilp.py"
+python "pipeline/step2_optimize/vrp.py"
+python "pipeline/step3_map/main.py"
+python "pipeline/step4_metrics/imbalance.py"
 ~~~
 
 ## 11. 재현성 점검

@@ -383,11 +383,11 @@ def test_머리기사는_회차별로_말하고_창이_모자라면_밝힌다(ob
 
 def load_imbalance():
     """step4의 `imbalance`를 싣는다 (실험들이 채점에 쓰는 그 모듈)."""
-    for path in (PROJECT_ROOT, PROJECT_ROOT / "step4_metrics"):
+    for path in (PROJECT_ROOT, PROJECT_ROOT / "pipeline" / "step4_metrics"):
         if str(path) not in sys.path:
             sys.path.insert(0, str(path))
     spec = importlib.util.spec_from_file_location(
-        "imbalance", PROJECT_ROOT / "step4_metrics" / "imbalance.py")
+        "imbalance", PROJECT_ROOT / "pipeline" / "step4_metrics" / "imbalance.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -754,3 +754,94 @@ def test_도로판정_일수기준은_상수로_박혀_있다():
 
     assert rm.MIN_DAYS == 10
     assert rm.JUDGE_FROM == "2026-09-02"
+
+
+# ---------------------------------------------------------------------------
+# 실험이 건네준 자료를 파이프라인이 조용히 무시하지 않는가 (2026-09-12)
+#
+# 🔴 게이트 A 채택을 사흘 앞두고 예행연습을 하다 찾았다. 실험 하네스는 자기가
+# 고른 z로 재배치량을 계산해 **메모리 버퍼**로 넘기는데, 1.26.166이 넣은
+# DB 우선 조회의 `now`가 **모듈을 불러오는 순간 고정된 기본 라벨**이라
+# 실험이 고른 스냅샷과 무관했다. 그 결과
+#   · DB에 있으면 → 버퍼를 무시하고 엉뚱한 자료로 계산 (_05_10이 그랬다)
+#   · 없으면      → Path(StringIO)에서 TypeError
+# 조용한 쪽이 더 나쁘다 — 표가 그럴듯하게 찍혀 그대로 논문에 간다.
+# 실제로 고치니 _05_10의 작업 대상이 81곳에서 89곳으로 바뀌었다.
+# ---------------------------------------------------------------------------
+
+def _재배치량_프레임(rebal_qty):
+    return pd.DataFrame({
+        "station_id": [f"ST{i:04d}" for i in range(1, len(rebal_qty) + 1)],
+        "mu": [5.0] * len(rebal_qty),
+        "sigma": [1.0] * len(rebal_qty),
+        "parking_lot": [20] * len(rebal_qty),
+        "stock": [10] * len(rebal_qty),
+        "target_qty": [10] * len(rebal_qty),
+        "rebal_qty": rebal_qty,
+    })
+
+
+def _대여소정보(n):
+    return pd.DataFrame({
+        "station_id": [f"ST{i:04d}" for i in range(1, n + 1)],
+        "station_name": [f"대여소{i}" for i in range(1, n + 1)],
+        "lat": [36.3 + i * 0.001 for i in range(n)],
+        "lon": [127.4 + i * 0.001 for i in range(n)],
+        "parking_lot": [20] * n,
+        "stock": [10] * n,
+    })
+
+
+def load_step1_module():
+    spec = importlib.util.spec_from_file_location(
+        "top_st_clustering",
+        PROJECT_ROOT / "pipeline" / "step1_cluster" / "top_st_clustering.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["top_st_clustering"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_건네준_재배치량이_DB에_밀려나지_않는다():
+    """**이것이 2026-09-12에 실제로 난 결함이다.**
+
+    DB에 같은 라벨·회차가 있어도, 호출부가 자료를 직접 건네면 그것을 써야 한다.
+    """
+    import io
+
+    import db
+
+    step1 = load_step1_module()
+
+    # 이 함수는 pick과 drop을 맞춰 자르므로 양쪽이 다 있어야 한다.
+    # DB에는 여섯 곳이 걸리는 자료를, 버퍼에는 네 곳짜리를 둔다 —
+    # 결과가 6이면 DB가 이긴 것이고 4면 건네준 자료를 쓴 것이다.
+    db_쪽 = _재배치량_프레임([9, 9, 9, -9, -9, -9])
+    db_쪽["run_label"] = step1.now
+    db_쪽["duration"] = "_10_15"
+    with db.session() as conn:
+        db_쪽.to_sql("rebalance_plan", conn, if_exists="append", index=False)
+
+    버퍼 = io.StringIO()
+    _재배치량_프레임([8, 8, 0, -8, -8, 0]).to_csv(버퍼, index=False)
+    버퍼.seek(0)
+
+    got = step1.select_top_unbalanced_st(버퍼, "_10_15", _대여소정보(6))
+
+    assert len(got) == 4, "DB 쪽(6곳)이 이겼다 — 건네준 자료가 무시됐다"
+    assert set(got["station_id"]) == {"ST0001", "ST0002", "ST0004", "ST0005"}
+
+
+def test_폴백_경로_자리에_버퍼가_오면_뜻이_보이게_말한다():
+    """`TypeError: ... not 'StringIO'`로는 무엇이 잘못됐는지 알 수 없다."""
+    import io
+
+    import db
+
+    with pytest.raises(TypeError) as err:
+        db.read_step_output("rebalance_plan", io.StringIO("a,b\n1,2\n"),
+                            run_label="없는라벨", duration="_10_15")
+
+    말 = str(err.value)
+    assert "조용히 무시" in 말, "왜 위험한지 말해야 한다"
+    assert "rebalance_plan" in 말, "어느 표인지 말해야 한다"

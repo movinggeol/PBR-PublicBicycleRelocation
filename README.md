@@ -90,12 +90,13 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 ├── data/                                  # 원천·중간·결과 데이터 (Git 미포함)
 │   ├── raw_data/                          # 타슈 대여 이력
 │   └── pp_data/                           # 파이프라인 산출물
-├── step0_collect/                # API·원천 데이터 처리
-├── step0_eda/                  # 이력 병합·탐색 분석
-├── step1_cluster/   # Pick/Drop·클러스터링
-├── step2_optimize/                      # 수량·경로 최적화
-├── step3_map/                   # TMAP/Folium 지도
-├── step4_metrics/                     # 불균형 평가
+├── pipeline/                               # step0~step4 배치 파이프라인 (1.26.168부터 한데 묶음)
+│   ├── step0_collect/                     #   API·원천 데이터 처리
+│   ├── step0_eda/                         #   이력 병합·탐색 분석
+│   ├── step1_cluster/                     #   Pick/Drop·클러스터링
+│   ├── step2_optimize/                    #   수량·경로 최적화
+│   ├── step3_map/                         #   TMAP/Folium 지도
+│   └── step4_metrics/                     #   불균형 평가
 ├── docs/                                  # 문서 — 읽는 사람 기준으로 나눠 두었습니다
 │   ├── README.md                          #   목차: 어느 폴더에 무엇이 있는지
 │   ├── GLOSSARY.md                        #   용어집
@@ -229,20 +230,20 @@ python run_pipeline.py --warmup-days 0                         # 계절 보정 �
 단계별 개별 실행:
 
 ```powershell
-python "step0_collect/tashu_api.py"
-python "step0_collect/extract_parking_lot.py"
-python "step0_collect/api_to_info.py"
-python "step0_collect/raw_to_net.py"
-python "step0_collect/calculate_target_qty.py"
-python "step1_cluster/top_st_clustering.py"
-python "step1_cluster/st_visualization.py"
-python "step2_optimize/ilp.py"
-python "step2_optimize/vrp.py"
-python "step3_map/main.py"
-python "step4_metrics/imbalance.py"
+python "pipeline/step0_collect/tashu_api.py"
+python "pipeline/step0_collect/extract_parking_lot.py"
+python "pipeline/step0_collect/api_to_info.py"
+python "pipeline/step0_collect/raw_to_net.py"
+python "pipeline/step0_collect/calculate_target_qty.py"
+python "pipeline/step1_cluster/top_st_clustering.py"
+python "pipeline/step1_cluster/st_visualization.py"
+python "pipeline/step2_optimize/ilp.py"
+python "pipeline/step2_optimize/vrp.py"
+python "pipeline/step3_map/main.py"
+python "pipeline/step4_metrics/imbalance.py"
 ```
 
-월별 파일을 합칠 때는 먼저 `step0_eda/concat_1year_file.py --concat`을 실행합니다.
+월별 파일을 합칠 때는 먼저 `pipeline/step0_eda/concat_1year_file.py --concat`을 실행합니다.
 
 ## 재고 시계열 수집 (운영 예시 시나리오)
 
@@ -289,7 +290,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 
-python -m pytest              # 774개 통과 확인 (약 100초)
+python -m pytest              # 776개 통과 확인 (약 100초)
 python tools/reproduce.py     # 합성 데이터 생성 → step0~step4 → 결과 표 (약 20초)
 ```
 
@@ -321,7 +322,7 @@ $env:PBR_DB_PATH = "data/재현.db"; python -m webapp   # http://127.0.0.1:8000
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest                 # 774개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 776개, 약 100초 (tests/ 만 수집)
 ```
 
 - `tests/test_pipeline.py` (46) — 합성 데이터로 step0→step1→step2→step4를
@@ -434,7 +435,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/연구/RELATED_WORK.md](docs/연구/RELATED_WORK.md) | **관련 연구** — 문제의 갈래와 본 연구의 위치 |
 | [docs/연구/LITERATURE.md](docs/연구/LITERATURE.md) | **문헌 분석** — 논문 24편 한 편씩 분석·비교표·인용 지도 |
 | [docs/분석/EXPERIMENTS.md](docs/분석/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
-| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 774개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
+| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 776개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/구현/PROJECT_PIPELINE.md](docs/구현/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/구현/WEBAPP.md](docs/구현/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/구현/DESIGN.md](docs/구현/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |

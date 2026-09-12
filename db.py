@@ -739,6 +739,17 @@ def read_step_output(table: str, csv_path, run_label: Optional[str] = None,
     if not frame.empty:
         return frame, "db"
 
+    # 🔴 폴백은 **경로**만 받는다. 메모리 버퍼를 넘기면 `Path()`가
+    # `TypeError: ... not 'StringIO'`로 죽는데, 그 문구로는 무엇이 잘못됐는지
+    # 알 수 없다 — 2026-09-12에 실험 하네스가 이 길로 죽었다. 부르는 쪽이
+    # 자료를 직접 들고 있다면 이 함수를 거치지 말고 그것을 써야 한다.
+    if hasattr(csv_path, 'read'):
+        raise TypeError(
+            f"{table}: 폴백 경로 자리에 파일 객체가 왔습니다. "
+            "자료를 직접 들고 있다면 read_step_output을 거치지 말고 "
+            "그 자료를 쓰십시오 — 이 함수는 DB를 먼저 보므로 "
+            "건네준 자료가 조용히 무시됩니다.")
+
     path = Path(csv_path)
     if path.is_file():
         return pd.read_csv(path, encoding="utf-8", low_memory=False), "csv"
@@ -895,7 +906,7 @@ def run_day_type(conn: sqlite3.Connection, run_label: str) -> Optional[str]:
     평일 계획을 **휴일 순수요로 채점하고** 있었다(1.26.127). 같은 스크립트가
     월요일에는 다른 답을 냈다.
 
-    `step4_metrics/imbalance.py`의 `load_net_demand()`가 *"계획과 같은 요일
+    `pipeline/step4_metrics/imbalance.py`의 `load_net_demand()`가 *"계획과 같은 요일
     구분만 남긴다"* 고 적어 둔 바로 그 실패다 — 정답은 여기 저장돼 있었다.
     """
     row = conn.execute("SELECT day_type FROM runs WHERE run_label = ?",

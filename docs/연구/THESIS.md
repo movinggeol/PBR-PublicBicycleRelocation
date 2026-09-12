@@ -17,7 +17,7 @@
 
 | 구분 | 상태 | 판정 |
 | --- | --- | --- |
-| 동작하는 시스템 | step0~4 실데이터 완주, 웹 대시보드, 테스트 774개 | ✅ 졸업작품으로 충분 |
+| 동작하는 시스템 | step0~4 실데이터 완주, 웹 대시보드, 테스트 776개 | ✅ 졸업작품으로 충분 |
 | 설계 근거 | 설계 문서 18개, `z`·`γ`를 실측 실험으로 결정 | ✅ 학부 기준 이상 |
 | 실패·수정 기록 | [RETROSPECTIVE.md](../기록/RETROSPECTIVE.md) 4장 "측정이 뒤집은 가설 열일곱 가지" | ✅ **논문 고찰에 그대로 쓸 수 있는 자산** |
 | 비교 대조군 | 대조군 4종 비교 완료 ([EXPERIMENTS.md](../분석/EXPERIMENTS.md) 5장) | ✅ 1.18.0 |
@@ -180,7 +180,7 @@ Ghosh 외(2017), 소윤상(2018), 정철환 외(2022), 정석원·서진욱(2019
 - 목표 재고: `target_qty = round(s · μ + z · (s · σ))`, `z = 1.99`, `s` = 계절 배율
 - 재배치량: `rebal_qty = target_qty − stock` (양수=Drop, 음수=Pick), 작업 대상 `|rebal_qty| > 2`
 - 군집 목적함수: `α·balance + β·size + γ·distance`, `γ = 3000`
-- ILP: Pick→Drop 이동량 결정변수·수급 제약·목적함수 (`step2_optimize/ilp.py`)
+- ILP: Pick→Drop 이동량 결정변수·수급 제약·목적함수 (`pipeline/step2_optimize/ilp.py`)
 - VRP: 적재 용량 10대, 시간 예산 120분, depot 왕복 제약
 - 기호표(notation table) — 논문 심사에서 반드시 봅니다
 
@@ -213,7 +213,7 @@ Ghosh 외(2017), 소윤상(2018), 정철환 외(2022), 정석원·서진욱(2019
 
 | 항목 | 현재 | 할 일 |
 | --- | --- | --- |
-| CI | ✅ GitHub Actions (`.github/workflows/tests.yml`) | push·PR마다 테스트 774개 자동 실행 |
+| CI | ✅ GitHub Actions (`.github/workflows/tests.yml`) | push·PR마다 테스트 776개 자동 실행 |
 | LICENSE | ✅ 있음 (`LICENSE`) | — |
 | 재현 패키지 | ✅ README "5분 안에 직접 돌려보기" (`tools/make_sample_data.py`) | — |
 | 웹 인증 | 없음 (로컬 전용) | 고치지 말고 **한계로 명시** |

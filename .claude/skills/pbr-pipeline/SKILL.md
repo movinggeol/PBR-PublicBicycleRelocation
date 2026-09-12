@@ -18,7 +18,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 774개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 776개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -40,13 +40,16 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 
 ## 파이프라인 구조 (실행 순서 = 데이터 의존 순서)
 
+모든 step 폴더는 `pipeline/` 아래에 있다(1.26.168부터 — 예전에는 프로젝트
+루트에 6개가 나열돼 있었다).
+
 ```text
-step0_collect  : tashu_api → extract_parking_lot → api_to_info → raw_to_net → calculate_target_qty
-step0_eda    : concat_1year_file, EDA (선택적)
-step1                   : top_st_clustering → st_visualization
-step2                   : ilp → vrp
-step3                   : main (TMAP 지도)
-step4                   : imbalance
+pipeline/step0_collect  : tashu_api → extract_parking_lot → api_to_info → raw_to_net → calculate_target_qty
+pipeline/step0_eda      : concat_1year_file, EDA (선택적)
+pipeline/step1          : top_st_clustering → st_visualization
+pipeline/step2          : ilp → vrp
+pipeline/step3          : main (TMAP 지도)
+pipeline/step4          : imbalance
 ```
 
 각 단계는 `data/pp_data/…/<이름>{duration} ({now}).csv` 형식의 파일로 통신한다.
@@ -83,8 +86,15 @@ step4                   : imbalance
 1. **step 폴더는 ASCII 이름이다** (1.18.3에서 정리했다 — 예전 이름은
    `step0 (raw데이터 처리)`처럼 공백·괄호·한글이 있어 셸 인용이 필요했다).
    `step0_collect`(수집·전처리)와 `step0_eda`(이력 병합·EDA)는 **별개 폴더**다.
-   **파일명은 아직 정리 전이다** — `step1_cluster/top_st_clustering.py`는 숫자로
+   **파일명은 아직 정리 전이다** — `top_st_clustering.py`는 숫자로
    시작해 일반 import가 안 되므로 `importlib`으로 불러야 한다.
+   🔴 **모든 step 폴더는 `pipeline/` 아래에 있다** (1.26.168) — 예전에는 프로젝트
+   루트에 `step0_collect`~`step4_metrics` 6개가 `docs`·`data`·`tools` 같은
+   대분류와 나란히 나열돼 있어 중분류가 대분류처럼 보였다. 옮기며 각 스크립트의
+   `sys.path.insert(0, ...parents[1])`이 `parents[2]`로, `from step2_optimize
+   import vrp` 같은 실험 쪽 import가 `from pipeline.step2_optimize import vrp`로
+   바뀌었다. **새 스크립트를 만들 때는 `parents[2]`를 쓰고 `pipeline.` 접두어로
+   import하라.**
 2. **`data/`와 `*.csv`는 .gitignore로 전부 제외된다.** 데이터 파일은 커밋할 수 없고,
    로컬에 원천 CSV가 있어야만 파이프라인이 돈다. 데이터가 없으면 코드 실행 검증은
    구문 수준(`python -m py_compile`)까지만 가능하다.
@@ -313,7 +323,7 @@ python experiments/params/road_time_model.py  # 이동시간 모형 재추정 (E
 ## 테스트
 
 ```powershell
-python -m pytest                 # 774개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 776개, 약 100초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 
