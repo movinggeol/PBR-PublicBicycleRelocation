@@ -535,6 +535,46 @@ def test_pinned_tooltip_has_a_close_button(client):
     assert "#tipbox[data-pinned] { pointer-events: auto" in html
 
 
+def test_풍선이_어두운_고정색_대신_화면_테마를_따른다(client):
+    """🔴 예전에는 **페이지와 반대로 뒤집힌** 색이었다 — 라이트 모드에서
+    검정 상자, 다크 모드에서 흰 상자(둘 다 `--ink`/`--canvas`를 그대로 써서
+    서로 뒤집혀 있었다). 다른 카드(`.card`)와 같은 언어로 바꿨다: 라이트=흰
+    카드, 다크=어두운 카드(2026-09-12 결정).
+    """
+    html = client.get("/kpi").text
+    i = html.index("#tipbox {")
+    rule = html[i:html.index("}", i)]
+    assert "background: var(--surface); color: var(--ink);" in rule
+    assert "border: 1px solid var(--hairline);" in rule
+    # 예전의 뒤집힌 배색이 **이 규칙 안에서** 되살아나지 않았는지 본다.
+    # (같은 문자열이 `.skip-link`처럼 의도적으로 반전색을 쓰는 다른 요소에
+    # 남아 있는 것은 정상이라 전체 문서에서 찾으면 안 된다.)
+    assert "background: var(--ink); color: var(--canvas);" not in rule
+
+
+def test_고정_시_닫기_단추가_제목_글자와_안_겹친다(client):
+    """🔴 `.rich`의 `padding: 10px 12px 11px`가 오른쪽도 12px로 되돌려서,
+    닫기 단추 자리로 예약해 둔 `padding-right: 30px`(아이디 하나짜리 선택자)를
+    **더 높은 우선순위**(아이디+클래스)로 조용히 무효화하고 있었다.
+
+    실측: 고정하면 제목 글자 오른쪽 끝이 × 단추 위로 13px 올라탔다. 문자열
+    검사로는 값이 있다는 것만 알 수 있어 이 겹침 자체는 못 잡는다 — 그래서
+    `.rich` 규칙 **안에서** 예약값을 다시 확인한다(specificity로 안 밀리는
+    유일한 자리는 같은 선택자 안에서 나중에 적는 것이다).
+    """
+    html = client.get("/kpi").text
+    assert "padding: 10px 12px 11px; padding-right: 30px;" in html, (
+        ".rich이 닫기 단추 자리(30px)를 다시 안 지키면 겹침이 재발한다")
+
+
+def test_헤더_구분선이_보이는_폭을_가진다(client):
+    """🔴 `<span>`은 기본이 inline이라, `display: block`이 없으면 `height:1px`
+    선이 내용(빈 텍스트) 폭만큼만 잡아 **사실상 안 보인다**(실측: 폭 0).
+    """
+    html = client.get("/kpi").text
+    assert "#tipbox .tip-divider { display: block;" in html
+
+
 def test_설명_딱지와_그래프_값만_고정된다(client):
     """고정은 `.tip` 딱지와 **그래프 값 마크**(제목이 있는 것)에서만 한다.
 
