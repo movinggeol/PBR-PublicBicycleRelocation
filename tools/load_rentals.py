@@ -85,7 +85,7 @@ def main() -> int:
     # 지금 실제로 열린 DB를 찍는다 — db.DB_PATH는 PBR_DB_PATH를 모른다(1.26.143).
     print(f"\nDB: {db.active_db_path()}")
     print("\n이제 step0가 CSV 대신 DB에서 읽습니다:")
-    print('  python "step0_collect/raw_to_net.py" --period "25년 11월"')
+    print('  python "pipeline/step0_collect/raw_to_net.py" --period "25년 11월"')
     return 0
 
 

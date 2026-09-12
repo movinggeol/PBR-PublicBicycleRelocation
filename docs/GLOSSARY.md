@@ -57,8 +57,8 @@
 | **Pick / Drop** | `pick_drop` | Pick = 자전거를 **빼 오는** 대여소(재고 과잉), Drop = **내려놓는** 대여소(재고 부족). |
 | **군집화** | K-Medoids (`kmedoids` 패키지, FasterPAM) | 대여소를 차량별 덩어리로 나누는 단계(step1). 거리뿐 아니라 **수급 균형**도 목적함수에 넣습니다. |
 | **군집 목적함수 계수** | `CLUSTER_ALPHA`·`BETA`·`GAMMA` (1·100·3000) | 거리·크기·수급 불균형에 각각 매기는 벌점. **`γ`는 비단조입니다**(γ=2000이 γ=1000보다 나빴습니다) — 두 점 사이를 보간하면 안 됩니다. |
-| **ILP** | `step2_optimize/ilp.py` (PuLP + CBC) | 정수계획법. **어느 Pick에서 어느 Drop으로 몇 대를 옮길지**를 정합니다. 군집마다 총 pick = 총 drop이 되도록 맞춥니다. |
-| **VRP** | `step2_optimize/vrp.py` | 차량경로문제. **어떤 순서로 돌지**를 정합니다. 지금은 greedy 휴리스틱이고, 최적 대비 평균 2.2~3.8%·최악 16.5% 떨어집니다(시간 제한에 따라)([EXPERIMENTS.md](분석/EXPERIMENTS.md) 6장). |
+| **ILP** | `pipeline/step2_optimize/ilp.py` (PuLP + CBC) | 정수계획법. **어느 Pick에서 어느 Drop으로 몇 대를 옮길지**를 정합니다. 군집마다 총 pick = 총 drop이 되도록 맞춥니다. |
+| **VRP** | `pipeline/step2_optimize/vrp.py` | 차량경로문제. **어떤 순서로 돌지**를 정합니다. 지금은 greedy 휴리스틱이고, 최적 대비 평균 2.2~3.8%·최악 16.5% 떨어집니다(시간 제한에 따라)([EXPERIMENTS.md](분석/EXPERIMENTS.md) 6장). |
 | **방문 순서** | `order` | 그 회차에서 몇 번째로 들르는지. |
 | **적재량** | `load` | 그 시점에 차에 실려 있는 자전거 수(0 ~ 적재 용량). |
 

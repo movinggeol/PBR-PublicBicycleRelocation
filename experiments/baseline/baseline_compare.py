@@ -46,11 +46,11 @@ sys.path.insert(0, str(ROOT))
 # 예전에는 네 폴더를 각각 sys.path에 넣고 `import ilp`처럼 맨 이름으로 불렀다.
 # 그래야만 했던 이유는 `vrp.py`·`top_st_clustering.py`가 형제 모듈을 맨 이름으로
 # 부르고 있어서였고, 그 두 줄을 고치자 이 우회가 필요 없어졌다.
-import db                                                      # noqa: E402
-from step0_collect import calculate_target_qty as target_mod    # noqa: E402
-from step2_optimize import ilp as ilp_mod                       # noqa: E402
-from step2_optimize import vrp as vrp_mod                       # noqa: E402
-from step4_metrics import imbalance as kpi_mod                  # noqa: E402
+import db                                                                # noqa: E402
+from pipeline.step0_collect import calculate_target_qty as target_mod    # noqa: E402
+from pipeline.step2_optimize import ilp as ilp_mod                       # noqa: E402
+from pipeline.step2_optimize import vrp as vrp_mod                       # noqa: E402
+from pipeline.step4_metrics import imbalance as kpi_mod                  # noqa: E402
 from project_config import (                # noqa: E402
     DEFAULT_PERIOD, DEFAULT_WARMUP_DAYS, TIME_BUDGET_MINUTES, VEHICLES_PER_ROUND,
     normalize_day_type, select_day_type,
@@ -73,7 +73,7 @@ ST_INFO_COLUMNS = ["station_id", "station_name", "lat", "lon", "parking_lot",
 
 def load_step1():
     """step1 군집 모듈을 불러온다 (파일명이 숫자로 시작해 일반 import가 안 된다)."""
-    path = ROOT / "step1_cluster" / "top_st_clustering.py"
+    path = ROOT / "pipeline" / "step1_cluster" / "top_st_clustering.py"
     spec = importlib.util.spec_from_file_location("top_st_clustering", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

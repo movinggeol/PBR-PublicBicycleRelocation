@@ -29,11 +29,11 @@ DURATION = "_05_10"
 LABEL = f"daytype-{os.getpid()}"
 
 PREP = [
-    Path("step0_collect") / "extract_parking_lot.py",
-    Path("step0_collect") / "api_to_info.py",
-    Path("step0_collect") / "raw_to_net.py",
+    Path("pipeline/step0_collect") / "extract_parking_lot.py",
+    Path("pipeline/step0_collect") / "api_to_info.py",
+    Path("pipeline/step0_collect") / "raw_to_net.py",
 ]
-TARGET_QTY = Path("step0_collect") / "calculate_target_qty.py"
+TARGET_QTY = Path("pipeline/step0_collect") / "calculate_target_qty.py"
 
 
 # ---------------- 설정 헬퍼 ----------------
@@ -409,7 +409,8 @@ def test_run_pipeline_forwards_warmup_options():
     finally:
         sys.argv = argv
 
-    command = run_pipeline.build_command(Path("step0/calculate_target_qty.py"), args)
+    command = run_pipeline.build_command(
+        Path("pipeline/step0_collect/calculate_target_qty.py"), args)
 
     assert "--warmup-period" in command and "26년 03월" in command
     # 0은 '보정을 끈다'는 뜻이라 값으로 참·거짓을 판정하면 조용히 사라진다.
@@ -420,7 +421,7 @@ def _load_step4():
     """step4 모듈을 경로로 직접 읽는다(모듈 전역 `config`를 갈아끼우므로 독립 이름)."""
     import importlib.util
 
-    path = PROJECT_ROOT / "step4_metrics" / "imbalance.py"
+    path = PROJECT_ROOT / "pipeline" / "step4_metrics" / "imbalance.py"
     spec = importlib.util.spec_from_file_location("_imbalance_daytype", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

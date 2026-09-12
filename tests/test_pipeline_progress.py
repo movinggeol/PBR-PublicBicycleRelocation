@@ -15,9 +15,9 @@ from webapp.app import pipeline_progress
 PLAN = "\n".join([
     "=== Public Bike Rebalancing Pipeline ===",
     "요일 구분: 평일 (계획 대상일 2026-08-18 기준)",
-    r"[1/3] step0_collect\raw_to_net.py",
-    r"[2/3] step2_optimize\ilp.py",
-    r"[3/3] step4_metrics\imbalance.py",
+    r"[1/3] pipeline\step0_collect\raw_to_net.py",
+    r"[2/3] pipeline\step2_optimize\ilp.py",
+    r"[3/3] pipeline\step4_metrics\imbalance.py",
 ])
 
 
@@ -40,7 +40,7 @@ def test_marks_running_and_done():
     log = "\n".join([
         PLAN,
         "[1/3] 실행: python raw_to_net.py",
-        r"완료: step0_collect\raw_to_net.py",
+        r"완료: pipeline\step0_collect\raw_to_net.py",
         "[2/3] 실행: python ilp.py",
     ])
 
@@ -56,9 +56,9 @@ def test_done_line_carries_the_elapsed_time():
     log = "\n".join([
         PLAN,
         "[1/3] 실행: python raw_to_net.py",
-        r"완료: step0_collect\raw_to_net.py (3.3초)",
+        r"완료: pipeline\step0_collect\raw_to_net.py (3.3초)",
         "[2/3] 실행: python ilp.py",
-        r"완료: step2_optimize\ilp.py (1분 12초)",
+        r"완료: pipeline\step2_optimize\ilp.py (1분 12초)",
     ])
 
     assert [s["status"] for s in pipeline_progress(log)] == ["done", "done", "pending"]
@@ -68,16 +68,16 @@ def test_marks_failure():
     log = "\n".join([
         PLAN,
         "[1/3] 실행: python raw_to_net.py",
-        r"완료: step0_collect\raw_to_net.py",
+        r"완료: pipeline\step0_collect\raw_to_net.py",
         "[2/3] 실행: python ilp.py",
-        r"실패: step2_optimize\ilp.py (exit code=1)",
+        r"실패: pipeline\step2_optimize\ilp.py (exit code=1)",
     ])
 
     assert [s["status"] for s in pipeline_progress(log)] == ["done", "failed", "pending"]
 
 
 def test_marks_missing_file():
-    log = "\n".join([PLAN, r"파일이 없습니다: step2_optimize\ilp.py"])
+    log = "\n".join([PLAN, r"파일이 없습니다: pipeline\step2_optimize\ilp.py"])
 
     assert pipeline_progress(log)[1]["status"] == "missing"
 
@@ -165,7 +165,7 @@ def test_pipeline_clustering_follows_cluster_seed():
 
     import project_config
 
-    step1 = Path(__file__).resolve().parents[1] / "step1_cluster"
+    step1 = Path(__file__).resolve().parents[1] / "pipeline" / "step1_cluster"
     sys.path.insert(0, str(step1))   # adjust_module을 형제로 찾는다
     spec = importlib.util.spec_from_file_location(
         "_top_st_clustering", step1 / "top_st_clustering.py")

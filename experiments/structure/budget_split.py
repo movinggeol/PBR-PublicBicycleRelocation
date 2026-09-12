@@ -63,7 +63,7 @@ sys.path.insert(0, str(ROOT))
 # step 폴더를 sys.path에 밀어 넣지 않는다 — 폴더 이름으로 부른다(1.26.154).
 
 import db                                          # noqa: E402
-from step2_optimize import vrp as vrp_mod                              # noqa: E402  (step2)
+from pipeline.step2_optimize import vrp as vrp_mod                     # noqa: E402  (step2)
 from project_config import (                       # noqa: E402
     TIME_BUDGET_MINUTES, VEHICLES_PER_ROUND,
 )
@@ -73,7 +73,7 @@ WINDOWS = ("_05_10", "_10_15", "_15_20")
 
 def load_step1():
     """step1은 파일명이 숫자로 시작해 일반 import가 안 된다."""
-    path = ROOT / "step1_cluster" / "top_st_clustering.py"
+    path = ROOT / "pipeline" / "step1_cluster" / "top_st_clustering.py"
     spec = importlib.util.spec_from_file_location("top_st_clustering", path)
     module = importlib.util.module_from_spec(spec)
     sys.modules["top_st_clustering"] = module
@@ -104,7 +104,7 @@ def station_points(run_label: str) -> dict:
 
 def check_stations_known(plan: pd.DataFrame, points: dict) -> None:
     """모든 대여소가 좌표를 갖고 있는지 미리 확인한다 — `run_vrp_plan()`과 같은 규약
-    (step2_optimize/vrp.py:250-255).
+    (pipeline/step2_optimize/vrp.py:250-255).
 
     🔴 **예전에는 `build_nodes()`가 없는 대여소를 조용히 걸렀다(1.26.127에서 발견).**
     그러면 그 대여소만 빠진 채 측정이 지나가고, 표에는 아무 흔적도 안 남는다.

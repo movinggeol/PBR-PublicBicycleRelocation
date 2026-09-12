@@ -145,7 +145,7 @@ def main() -> int:
         if len(periods) < 2:
             print(f"기간이 {len(periods)}개뿐이라 백테스트할 수 없습니다.")
             print("여러 달의 순수요를 먼저 만드세요:")
-            print('  python "step0_collect/raw_to_net.py" --period "25년 10월"')
+            print('  python "pipeline/step0_collect/raw_to_net.py" --period "25년 10월"')
             return 1
         net = {p: select_day_type(db.load_frame(conn, "net_demand", period=p),
                                   "date", day_type)

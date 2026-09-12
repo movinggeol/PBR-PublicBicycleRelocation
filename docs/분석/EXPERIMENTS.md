@@ -780,7 +780,7 @@ step1의 불균형 조정(`adjust_clustering`)이 바로 이 손실을 줄이는
 **`select_top_unbalanced_st()`의 위치 기반 컬럼 선택**이 깨지기 쉽습니다.
 
 ```python
-.iloc[:, [0, 7, 8, 9, 3, 4, 5, 6, 1, 2]]     # step1_cluster/top_st_clustering.py
+.iloc[:, [0, 7, 8, 9, 3, 4, 5, 6, 1, 2]]     # pipeline/step1_cluster/top_st_clustering.py
 ```
 
 **입력 CSV의 컬럼 순서가 바뀌면 조용히 엉뚱한 값을 씁니다.** 바로 위에서
@@ -2524,7 +2524,7 @@ BHH의 **1/3**(0.013 대 0.035)로 나와 *"NN이 훨씬 안정적이니 보정 
 
 ### 먼저 드러난 것 — 파이프라인에는 씨앗을 바꿀 방법이 없었다
 
-`step1_cluster/top_st_clustering.py`가 `make_clustering(pick_drop)`을 부를 때
+`pipeline/step1_cluster/top_st_clustering.py`가 `make_clustering(pick_drop)`을 부를 때
 `random_state=42`가 **기본값으로 박혀 있었고 바깥에서 바꿀 수단이 없었습니다.**
 
 즉 `run_pipeline.py`로 얻은 표(4장·4-후속·5-D·7장)는 씨앗 1회일 뿐 아니라
@@ -3121,7 +3121,7 @@ python experiments/params/z_fixedpop_grid.py --z-grid wide `
 아니라 관행값**이라, 근거를 물으면 그렇게 답할 수밖에 없었습니다.
 
 **중립 모집단(전체 대여소)으로 쟀습니다** — `REBAL_MIN_QTY`가 **후보 집합을
-바꾸는 손잡이**라([top_st_clustering.py:174](../../step1_cluster/top_st_clustering.py#L174))
+바꾸는 손잡이**라([top_st_clustering.py:174](../../pipeline/step1_cluster/top_st_clustering.py#L174))
 자기 후보 집합에서 재면 17·18장과 같은 결함에 빠집니다. 자가 흔들리지 않았음을
 **회차별로 확인**했습니다(세 회차 모두 재배치 전 값이 값에 무관).
 

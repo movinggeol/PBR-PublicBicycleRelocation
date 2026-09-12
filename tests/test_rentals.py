@@ -142,13 +142,13 @@ def _run_step0(script: str, raw_path, db_path) -> None:
         pytest.fail(f"{script} 실패\n{completed.stdout[-1500:]}\n{completed.stderr[-1500:]}")
 
 
-PARKING = "step0_collect/extract_parking_lot.py"
+PARKING = "pipeline/step0_collect/extract_parking_lot.py"
 
 
 @pytest.mark.parametrize("script, output, prerequisites", [
-    ("step0_collect/raw_to_net.py", "순수요/st_net_daily ({period}).csv", []),
+    ("pipeline/step0_collect/raw_to_net.py", "순수요/st_net_daily ({period}).csv", []),
     # api_to_info는 주차대수 산출물이 먼저 있어야 한다
-    ("step0_collect/api_to_info.py", "대여소 정보/st_info ({now}).csv", [PARKING]),
+    ("pipeline/step0_collect/api_to_info.py", "대여소 정보/st_info ({now}).csv", [PARKING]),
 ])
 def test_csv_and_db_paths_produce_identical_output(
         sample, tmp_path_factory, script, output, prerequisites):

@@ -9,7 +9,7 @@ now는 project_config의 분석 시점 라벨을 사용한다(파이프라인 �
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import db
 import tashu

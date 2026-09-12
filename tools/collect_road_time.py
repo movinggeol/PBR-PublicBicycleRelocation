@@ -91,7 +91,7 @@ from project_config import (
     is_holiday,
 )
 
-sys.path.insert(0, str(ROOT / "step3_map"))
+sys.path.insert(0, str(ROOT / "pipeline" / "step3_map"))
 import module as tmap_mod                                    # noqa: E402
 from module import (                                          # noqa: E402
     TmapBudgetExceeded, TmapQuotaExceeded, call_tmap_sequential,

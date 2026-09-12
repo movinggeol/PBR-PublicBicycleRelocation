@@ -109,7 +109,7 @@ def step4():
     import importlib.util
     from pathlib import Path
 
-    path = Path(__file__).resolve().parents[1] / "step4_metrics" / "imbalance.py"
+    path = Path(__file__).resolve().parents[1] / "pipeline" / "step4_metrics" / "imbalance.py"
     spec = importlib.util.spec_from_file_location("_imbalance", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -309,7 +309,7 @@ def test_kpi_page_survives_null_metrics(tmp_path, monkeypatch):
 
 # 지표를 **정의하거나 가르치는** 자리 — 여기에는 옛 이름이 있으면 안 된다.
 _이름을_가르치는_자리 = [
-    "step4_metrics/imbalance.py",
+    "pipeline/step4_metrics/imbalance.py",
     "docs/분석/KPI.md",
     "docs/구현/steps/step4_metrics.md",
 ]

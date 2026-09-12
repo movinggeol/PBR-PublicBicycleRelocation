@@ -3,9 +3,9 @@
 `project_config.MAP_TILES`가 "세 지도가 같은 배경을 써야 한다"를 맡는 것과
 같은 이유로, **범례와 색도 여기 한 벌만 둔다.** 파일마다 따로 박아 두면
 하나 고칠 때 셋이 갈라진다 — 실제로 그렇게 갈라져 있었다(1.26.75 조사):
-`step3_map/main.py`만 한글·블러·그림자를 갖췄고,
-`step4_metrics/imbalance.py`는 영어("Legend")에 회색 굵은 테두리,
-`step1_cluster/st_visualization.py`는 범례가 **아예 없었다.**
+`pipeline/step3_map/main.py`만 한글·블러·그림자를 갖췄고,
+`pipeline/step4_metrics/imbalance.py`는 영어("Legend")에 회색 굵은 테두리,
+`pipeline/step1_cluster/st_visualization.py`는 범례가 **아예 없었다.**
 
 색이 곧 뜻인 화면에서 그 뜻을 설명하는 상자가 화면마다 다르면 같은 도구가
 아닌 것처럼 보인다(docs/구현/DESIGN.md "색만으로 뜻을 전하지 않는다").
@@ -273,7 +273,7 @@ def legend_html(title: str, rows: Sequence[Tuple[str, str]], *,
                 position: str = "bottom: 24px; left: 24px;") -> str:
     """세 지도가 같이 쓰는 범례 상자.
 
-    `rows`는 (배지 HTML, 설명 글자) 쌍의 목록이다. `step3_map/main.py`의
+    `rows`는 (배지 HTML, 설명 글자) 쌍의 목록이다. `pipeline/step3_map/main.py`의
     기존 범례(블러 배경·둥근 모서리·`--shadow-product`와 같은 그림자 값)를
     그대로 기준으로 삼았다 — 이 저장소에서 이미 한 번 다듬어진 모양이라
     처음부터 새로 디자인하지 않는다.

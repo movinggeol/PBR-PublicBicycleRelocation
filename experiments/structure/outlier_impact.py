@@ -1,7 +1,7 @@
 """이상치 제거가 계획을 바꾸는가 — 지금 안 걸려 있는데, 걸었어야 했나 (TODO 18).
 
-`step0_eda/concat_1year_file.py`는 이용시간(분)·이용거리(km)의 **IQR × 1.5 밖**을
-잘라 냅니다. 그런데 순수요를 만드는 `step0_collect/raw_to_net.py`는 월별 원본에서
+`pipeline/step0_eda/concat_1year_file.py`는 이용시간(분)·이용거리(km)의 **IQR × 1.5 밖**을
+잘라 냅니다. 그런데 순수요를 만드는 `pipeline/step0_collect/raw_to_net.py`는 월별 원본에서
 **네 컬럼(시각·대여소ID)만** 읽습니다 — 이용시간·이용거리는 읽지도 않으므로
 **그 필터는 계획 경로에 걸리지 않습니다**(docs/분석/DECISIONS.md 6-1).
 

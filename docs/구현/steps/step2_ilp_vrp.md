@@ -1,4 +1,4 @@
-# Step 2 — ILP 수량 최적화 · VRP 경로 (`step2_optimize/`)
+# Step 2 — ILP 수량 최적화 · VRP 경로 (`pipeline/step2_optimize/`)
 
 클러스터별로 "어느 Pick 대여소에서 어느 Drop 대여소로 몇 대를 옮길지"(ILP)와
 "차량이 어떤 순서로 방문할지"(VRP)를 계산하는 단계입니다.

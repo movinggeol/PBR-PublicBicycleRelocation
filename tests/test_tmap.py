@@ -16,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-MODULE_PATH = Path(__file__).resolve().parents[1] / "step3_map" / "module.py"
+MODULE_PATH = Path(__file__).resolve().parents[1] / "pipeline" / "step3_map" / "module.py"
 
 
 def load_module():
@@ -173,7 +173,7 @@ def test_budget_stops_calls_before_quota_is_spent(monkeypatch):
 # 지도에서 지점을 누르면 뜨는 창이다. 사람이 현장에서 읽는 글이므로 파이썬 자료구조가
 # 그대로 새어 나오면 안 된다.
 
-MAIN_PATH = Path(__file__).resolve().parents[1] / "step3_map" / "main.py"
+MAIN_PATH = Path(__file__).resolve().parents[1] / "pipeline" / "step3_map" / "main.py"
 
 
 def load_main():
@@ -385,7 +385,7 @@ def test_출동_시각이_회차마다_다르다(monkeypatch):
 
 def test_출동_날짜는_평일이다():
     """주말은 교통량이 다르다 — day_type을 안 주면(기본 weekday) 토·일이 나오면
-    안 된다. 파이프라인 호출부(step3_map/main.py)는 지금도 이 기본값만 쓴다."""
+    안 된다. 파이프라인 호출부(pipeline/step3_map/main.py)는 지금도 이 기본값만 쓴다."""
     from datetime import datetime
 
     module = load_module()

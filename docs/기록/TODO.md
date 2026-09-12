@@ -1740,7 +1740,7 @@ python experiments/baseline/ortools_gap.py --period "26년 03월" --limit-sec 60
   손해의 대부분을 회수한다. 단, [EXPERIMENTS.md](../분석/EXPERIMENTS.md) 6장은
   **절대량이 작다는 이유로 이미 한 번 접었다** — 뒤집으려면 새 숫자가 필요하다.
 
-**교체할 때 함께 고칠 곳**: `step2_optimize/vrp.py` ·
+**교체할 때 함께 고칠 곳**: `pipeline/step2_optimize/vrp.py` ·
 `requirements.txt`(ortools 추가) · [FLEET.md](../구현/FLEET.md) 운용 모델 ·
 [DECISIONS.md](../분석/DECISIONS.md) 7장 표(`VRP greedy` 행) ·
 [step2_ilp_vrp.md](../구현/steps/step2_ilp_vrp.md) · 논문 2장·3-보·6장 초안.
@@ -1867,8 +1867,8 @@ J = α·(군집별 수급 불균형)² + β·(군집 크기 편차)² + γ·(군
   0건이 됐지만 **결품이 40초 나빠졌다.** "예산 준수율만 올리고 결품을 악화시키는
   개선"은 개선이 아니다.
 
-**바꿀 때 함께 고칠 곳**: `step1_cluster/top_st_clustering.py` ·
-`step1_cluster/adjust_module.py` · `project_config`의 `CLUSTER_GAMMA` ·
+**바꿀 때 함께 고칠 곳**: `pipeline/step1_cluster/top_st_clustering.py` ·
+`pipeline/step1_cluster/adjust_module.py` · `project_config`의 `CLUSTER_GAMMA` ·
 [FORMULATION.md](../분석/FORMULATION.md) 목적함수 · [FLEET.md](../구현/FLEET.md) ·
 [DECISIONS.md](../분석/DECISIONS.md) 파라미터 표 · 논문 5장 초안.
 

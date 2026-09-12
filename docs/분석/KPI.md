@@ -5,7 +5,7 @@
 
 ## 1. 지금 있는 것
 
-step4([imbalance.py](../../step4_metrics/imbalance.py))가 계산합니다.
+step4([imbalance.py](../../pipeline/step4_metrics/imbalance.py))가 계산합니다.
 
 | 지표 | 정의 | 저장 위치 |
 | --- | --- | --- |
@@ -386,7 +386,7 @@ z를 올리자 작업량이 늘어 `_15_20`이 시간 예산을 넘겼고, 거�
 step4를 실행하면 자동으로 쌓입니다.
 
 ```powershell
-python "step4_metrics/imbalance.py"   # kpi_summary에 기록
+python "pipeline/step4_metrics/imbalance.py"   # kpi_summary에 기록
 python -m webapp                          # /kpi 에서 확인
 ```
 

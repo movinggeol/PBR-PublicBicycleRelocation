@@ -2,6 +2,7 @@
 
 합성 데이터로 전 단계를 실제 실행해 산출물의 존재와 스키마를 확인한다.
 API 키가 필요한 step0/tashu_api.py와 step3/main.py(TMAP)는 제외한다.
+(모든 step 폴더는 1.26.168부터 `pipeline/` 아래에 있다.)
 
 실데이터를 건드리지 않도록 실행마다 고유한 now/period 라벨을 쓰고,
 끝나면 그 라벨이 붙은 파일만 지운다.
@@ -22,15 +23,15 @@ LABEL = f"smoketest-{os.getpid()}"
 
 # 실행 순서 = 데이터 의존 순서
 STAGES = [
-    Path("step0_collect") / "extract_parking_lot.py",
-    Path("step0_collect") / "api_to_info.py",
-    Path("step0_collect") / "raw_to_net.py",
-    Path("step0_collect") / "calculate_target_qty.py",
-    Path("step1_cluster") / "top_st_clustering.py",
-    Path("step1_cluster") / "st_visualization.py",
-    Path("step2_optimize") / "ilp.py",
-    Path("step2_optimize") / "vrp.py",
-    Path("step4_metrics") / "imbalance.py",
+    Path("pipeline/step0_collect") / "extract_parking_lot.py",
+    Path("pipeline/step0_collect") / "api_to_info.py",
+    Path("pipeline/step0_collect") / "raw_to_net.py",
+    Path("pipeline/step0_collect") / "calculate_target_qty.py",
+    Path("pipeline/step1_cluster") / "top_st_clustering.py",
+    Path("pipeline/step1_cluster") / "st_visualization.py",
+    Path("pipeline/step2_optimize") / "ilp.py",
+    Path("pipeline/step2_optimize") / "vrp.py",
+    Path("pipeline/step4_metrics") / "imbalance.py",
 ]
 
 
@@ -390,18 +391,18 @@ def test_지도_다시_그리기_dry_run은_성공이다(monkeypatch):
 # ───────── step 모듈을 패키지로 import할 수 있는가 (1.26.154) ─────────
 
 STEP_MODULES = [
-    "step0_collect.calculate_target_qty",
-    "step0_collect.raw_to_net",
-    "step1_cluster.top_st_clustering",
-    "step2_optimize.ilp",
-    "step2_optimize.vrp",
-    "step4_metrics.imbalance",
+    "pipeline.step0_collect.calculate_target_qty",
+    "pipeline.step0_collect.raw_to_net",
+    "pipeline.step1_cluster.top_st_clustering",
+    "pipeline.step2_optimize.ilp",
+    "pipeline.step2_optimize.vrp",
+    "pipeline.step4_metrics.imbalance",
 ]
 
 
 @pytest.mark.parametrize("module", STEP_MODULES)
 def test_step_모듈을_폴더_이름으로_import할_수_있다(module):
-    """`from step2_optimize import vrp`가 되는가 (1.26.154).
+    """`from pipeline.step2_optimize import vrp`가 되는가 (1.26.154, 1.26.168).
 
     실험 **48개**가 `sys.path`에 step 폴더를 밀어 넣는 여섯 줄을 각자 이고
     있다. 이유는 단 둘이었다 — `vrp.py`가 `from ilp import ...`, 그리고
@@ -410,10 +411,12 @@ def test_step_모듈을_폴더_이름으로_import할_수_있다(module):
 
     step 폴더에는 `__init__.py`가 없지만 파이썬 3.3+의 네임스페이스 패키지라
     **폴더 이름으로 부르는 것 자체는 원래 됐다** — 위 두 줄만 막고 있었다.
+    1.26.168에서 step 폴더들을 `pipeline/` 아래로 모으면서 패키지 경로에
+    `pipeline.` 접두어가 붙었다.
 
     ⚠️ **직접 실행도 계속 돼야 한다.** `run_pipeline.py`는 이 파일들을
-    `python step2_optimize/vrp.py`로 띄운다(스크립트 경로). 그때는 폴더가
-    `sys.path[0]`이라 맨 이름 import가 맞고, 패키지 경로는 없다. 그래서
+    `python pipeline/step2_optimize/vrp.py`로 띄운다(스크립트 경로). 그때는
+    폴더가 `sys.path[0]`이라 맨 이름 import가 맞고, 패키지 경로는 없다. 그래서
     둘 다 되게 두고 어느 쪽이 실패하든 다른 쪽으로 넘어가게 했다.
     """
     import importlib
@@ -428,7 +431,7 @@ def test_step_모듈은_직접_실행도_된다():
     위 테스트를 통과시키려고 맨 이름 import를 지우면 이쪽이 깨진다 —
     `run_pipeline.py`가 쓰는 것은 이 경로다. 둘은 함께 지켜야 한다.
     """
-    for script in ("step2_optimize/vrp.py", "step1_cluster/top_st_clustering.py"):
+    for script in ("pipeline/step2_optimize/vrp.py", "pipeline/step1_cluster/top_st_clustering.py"):
         # run_pipeline.py와 **같은 형태**로 부른다: `python <경로>`. 이때
         # 파이썬이 그 폴더를 sys.path[0]에 놓으므로 맨 이름 import가 성립한다.
         # `--help`로 세워 둔다 — 실제 계산까지 돌리면 자료가 있어야 한다.

@@ -140,7 +140,7 @@ STAGE_LABELS = {
 
 _PLAN_RE = re.compile(r"^\[(\d+)/(\d+)\] (?!실행: )(.+)$")
 _START_RE = re.compile(r"^\[(\d+)/(\d+)\] 실행: ")
-# 완료 줄에는 소요 시간이 붙는다("완료: step1_cluster/top_st_clustering.py (42.1초)").
+# 완료 줄에는 소요 시간이 붙는다("완료: pipeline/step1_cluster/top_st_clustering.py (42.1초)").
 # 괄호 부분을 떼고 파일명만 집는다 — 안 그러면 단계 표시가 통째로 안 켜진다.
 _DONE_RE = re.compile(r"^완료: (.+?)(?: \([^()]*\))?$")
 _FAIL_RE = re.compile(r"^실패: (.+?) \(exit code=")

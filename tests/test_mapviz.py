@@ -144,9 +144,9 @@ def test_세_지도가_모두_mapviz를_쓴다():
     실제로 그래서 갈라져 있었다(step3만 한글 범례, step4는 영어, step1은
     범례 없음). `project_config.MAP_TILES`와 같은 이유의 규약이다."""
     sources = {
-        "step1": PROJECT_ROOT / "step1_cluster" / "st_visualization.py",
-        "step3": PROJECT_ROOT / "step3_map" / "main.py",
-        "step4": PROJECT_ROOT / "step4_metrics" / "imbalance.py",
+        "step1": PROJECT_ROOT / "pipeline" / "step1_cluster" / "st_visualization.py",
+        "step3": PROJECT_ROOT / "pipeline" / "step3_map" / "main.py",
+        "step4": PROJECT_ROOT / "pipeline" / "step4_metrics" / "imbalance.py",
     }
     for step, path in sources.items():
         code = path.read_text(encoding="utf-8")
@@ -168,7 +168,7 @@ def test_크기_눈금은_하한을_감추지_않는다():
     크기다. 눈금이 그것을 그냥 "3대"라고 적으면 **거짓 주장**이 된다 —
     작은 원을 전부 3대로 읽게 만든다.
     """
-    code = (PROJECT_ROOT / "step4_metrics" / "imbalance.py").read_text(encoding="utf-8")
+    code = (PROJECT_ROOT / "pipeline" / "step4_metrics" / "imbalance.py").read_text(encoding="utf-8")
     # 주석은 옛 낱말을 **인용해 설명한다** — 코드만 본다.
     body = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("#"))
 
@@ -193,8 +193,8 @@ def test_점선_배지는_테두리로만_말한다():
 def test_세_지도가_같은_낱말을_쓴다():
     """한 개념에 어휘가 여러 벌이면 기사가 화면을 오갈 때마다 번역해야 한다.
     step3만 "Pick (회수)"/"Drop (분배)"라는 **세 번째 어휘**를 쓰고 있었다."""
-    for step, path in (("step3", PROJECT_ROOT / "step3_map" / "main.py"),
-                       ("step4", PROJECT_ROOT / "step4_metrics" / "imbalance.py")):
+    for step, path in (("step3", PROJECT_ROOT / "pipeline" / "step3_map" / "main.py"),
+                       ("step4", PROJECT_ROOT / "pipeline" / "step4_metrics" / "imbalance.py")):
         code = path.read_text(encoding="utf-8")
         # 주석에서 옛 낱말을 인용하는 것은 괜찮다 — 코드에 남아 있으면 안 된다.
         lines = [l for l in code.splitlines()
@@ -208,7 +208,7 @@ def test_쓰지_않는_색_변수를_두지_않는다():
     """`base_color = "blue"/"orange"`가 정의만 되고 어디에도 안 쓰였다.
     읽는 사람은 색이 작업 종류를 뜻한다고 오해하는데, 정작 마커는 전부
     보라 원이다."""
-    code = (PROJECT_ROOT / "step3_map" / "main.py").read_text(encoding="utf-8")
+    code = (PROJECT_ROOT / "pipeline" / "step3_map" / "main.py").read_text(encoding="utf-8")
     body = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("#"))
     assert "base_color" not in body, "쓰지 않는 색 변수가 남아 있다"
 
@@ -377,7 +377,7 @@ def test_크기를_말하는_지도는_눈금을_함께_낸다():
     """`swatch_size_scale()`의 docstring이 세운 규칙 — 크기 인코딩은 눈금
     없이는 '저것보다 크다'까지만 읽힌다. 군집 지도는 크기를 주장하면서
     눈금이 없었다."""
-    code = (PROJECT_ROOT / "step1_cluster" / "st_visualization.py").read_text(
+    code = (PROJECT_ROOT / "pipeline" / "step1_cluster" / "st_visualization.py").read_text(
         encoding="utf-8")
     body = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("#"))
     assert "원 크기는 재배치 수량" in body, "크기 주장이 사라졌다면 이 시험을 고쳐라"
@@ -396,8 +396,8 @@ def test_두_지도가_같은_군집을_같은_색으로_그린다():
     (obs-cmp-1520 _15_20은 군집 5·11이 빠져 6번부터 14개가 밀렸다).
     두 화면을 나란히 놓고 보는 사람에게는 다른 군집이 된다.
     """
-    for step, path in (("step1", PROJECT_ROOT / "step1_cluster" / "st_visualization.py"),
-                       ("step3", PROJECT_ROOT / "step3_map" / "main.py")):
+    for step, path in (("step1", PROJECT_ROOT / "pipeline" / "step1_cluster" / "st_visualization.py"),
+                       ("step3", PROJECT_ROOT / "pipeline" / "step3_map" / "main.py")):
         code = path.read_text(encoding="utf-8")
         body = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("#"))
 
@@ -414,7 +414,7 @@ def test_step3도_앞_단계의_건너뜀을_견딘다():
     """step1·step2는 '대상 없음'이면 건너뛰는데 step3만 확인 없이 읽어
     FileNotFoundError로 **파이프라인 전체를 죽였다.** 지도는 산출물일 뿐이고
     뒤에 지표(step4)가 남아 있다."""
-    code = (PROJECT_ROOT / "step3_map" / "main.py").read_text(encoding="utf-8")
+    code = (PROJECT_ROOT / "pipeline" / "step3_map" / "main.py").read_text(encoding="utf-8")
     body = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("#"))
     # 1.26.167에서 **확인하는 방법이 바뀌었다** — 파일 존재(`is_file()`)가 아니라
     # `read_step_output()`이 돌려준 프레임이 비었는지를 본다. 파일만 보던 때는
@@ -429,7 +429,7 @@ def test_실측_표에_가짜_출발점이_들어가지_않는다():
     """TMAP 요청의 출발점은 차고지가 아니라 남쪽으로 약 555m 민 자리다
     (출발지와 도착지가 같으면 경유지 최적화가 성립하지 않는다). 그 어긋남이
     이동시간 모형의 정답표(`road_leg`)에 새고 있었다 — 1,705구간 중 29건."""
-    code = (PROJECT_ROOT / "step3_map" / "main.py").read_text(encoding="utf-8")
+    code = (PROJECT_ROOT / "pipeline" / "step3_map" / "main.py").read_text(encoding="utf-8")
     body = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("#"))
 
     # 지도에 그리는 경로에는 **진짜 차고지**가 들어간다.

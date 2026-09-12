@@ -48,33 +48,33 @@ STAGES = {
     # 라이브 타슈 API를 부르는 **유일한** 단계. 나머지 둘은 그 결과 CSV만 읽으므로
     # 키 없이도 돈다 — 그래서 따로 뗐다(`--skip-fetch`, 1.26.56).
     "fetch": [
-        Path("step0_collect") / "tashu_api.py",
+        Path("pipeline/step0_collect") / "tashu_api.py",
     ],
     "api": [
-        Path("step0_collect") / "extract_parking_lot.py",
-        Path("step0_collect") / "api_to_info.py",
+        Path("pipeline/step0_collect") / "extract_parking_lot.py",
+        Path("pipeline/step0_collect") / "api_to_info.py",
     ],
     "eda": [
-        Path("step0_eda") / "concat_1year_file.py",
-        Path("step0_eda") / "EDA.py",
+        Path("pipeline/step0_eda") / "concat_1year_file.py",
+        Path("pipeline/step0_eda") / "EDA.py",
     ],
     "preprocess": [
-        Path("step0_collect") / "raw_to_net.py",
-        Path("step0_collect") / "calculate_target_qty.py",
+        Path("pipeline/step0_collect") / "raw_to_net.py",
+        Path("pipeline/step0_collect") / "calculate_target_qty.py",
     ],
     "selection": [
-        Path("step1_cluster") / "top_st_clustering.py",
-        Path("step1_cluster") / "st_visualization.py",
+        Path("pipeline/step1_cluster") / "top_st_clustering.py",
+        Path("pipeline/step1_cluster") / "st_visualization.py",
     ],
     "optimization": [
-        Path("step2_optimize") / "ilp.py",
-        Path("step2_optimize") / "vrp.py",
+        Path("pipeline/step2_optimize") / "ilp.py",
+        Path("pipeline/step2_optimize") / "vrp.py",
     ],
     "visualization": [
-        Path("step3_map") / "main.py",
+        Path("pipeline/step3_map") / "main.py",
     ],
     "evaluation": [
-        Path("step4_metrics") / "imbalance.py",
+        Path("pipeline/step4_metrics") / "imbalance.py",
     ],
 }
 

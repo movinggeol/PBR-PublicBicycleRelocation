@@ -11,20 +11,20 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pandas as pd
 
-# 형제 모듈. **두 경로를 다 연다** (1.26.154).
-#   · `python step2_optimize/vrp.py` — 파이프라인이 쓰는 형태. 이때는
+# 형제 모듈. **두 경로를 다 연다** (1.26.154, 1.26.168).
+#   · `python pipeline/step2_optimize/vrp.py` — 파이프라인이 쓰는 형태. 이때는
 #     이 폴더가 sys.path[0]이라 맨 이름으로 잡힌다.
-#   · `from step2_optimize import vrp` — 실험이 순수 계산 함수만 쓰려고
+#   · `from pipeline.step2_optimize import vrp` — 실험이 순수 계산 함수만 쓰려고
 #     부르는 형태. 맨 이름만 두면 여기서 ModuleNotFoundError가 났고,
 #     그래서 실험 48개가 sys.path에 step 폴더를 밀어 넣고 있었다.
 try:
     from ilp import haversine_km
 except ModuleNotFoundError:                      # 패키지 경로로 불렸다
-    from step2_optimize.ilp import haversine_km
+    from pipeline.step2_optimize.ilp import haversine_km
 
 import db
 from project_config import (

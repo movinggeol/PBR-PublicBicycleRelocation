@@ -26,7 +26,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import matplotlib
 # ⚠️ pyplot을 import하기 **전에** 백엔드를 정해야 한다. 배치 실행이라 창을
@@ -288,7 +288,7 @@ def write_html(month, hour, weekday, *, span: str, rows: int) -> Path:
                          width=840, height=220,
                          highlight=(5, 6), divider_note="붉은 막대 = 주말"))
 
-    parts.append('<footer>step0_eda/EDA.py가 만들었습니다. '
+    parts.append('<footer>pipeline/step0_eda/EDA.py가 만들었습니다. '
                  'PNG 같은 폴더에 함께 있습니다.</footer></main></body></html>')
 
     EDA_DIR.mkdir(parents=True, exist_ok=True)

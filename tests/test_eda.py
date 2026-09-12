@@ -18,7 +18,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-EDA_PATH = Path(__file__).resolve().parents[1] / "step0_eda" / "EDA.py"
+EDA_PATH = Path(__file__).resolve().parents[1] / "pipeline" / "step0_eda" / "EDA.py"
 
 
 def _source() -> str:
@@ -93,7 +93,7 @@ def test_세_그래프를_파일로_남긴다(rentals, tmp_path, monkeypatch):
     """월별·시간대별·요일별 PNG가 실제로 만들어진다."""
     import importlib
 
-    eda = importlib.import_module("step0_eda.EDA") if "step0_eda" in sys.modules else None
+    eda = importlib.import_module("pipeline.step0_eda.EDA") if "pipeline.step0_eda" in sys.modules else None
     if eda is None:
         spec = importlib.util.spec_from_file_location("eda_module", EDA_PATH)
         eda = importlib.util.module_from_spec(spec)
@@ -195,7 +195,7 @@ def test_EDA_산출물_폴더가_규약에_등록됐다():
 def _concat_module():
     import importlib.util
 
-    path = Path(__file__).resolve().parents[1] / "step0_eda" / "concat_1year_file.py"
+    path = Path(__file__).resolve().parents[1] / "pipeline" / "step0_eda" / "concat_1year_file.py"
     spec = importlib.util.spec_from_file_location("_concat_1year_file", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

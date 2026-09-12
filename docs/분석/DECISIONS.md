@@ -53,7 +53,7 @@ step2b 순서(VRP)  그 이동을 어떤 순서로 돌 것인가          (greed
 
 **하는 일**: 작업 대상 대여소를 차량 수만큼의 덩어리로 나눕니다. **군집 1개 = 차량 1대**.
 
-목적함수는 거리만이 아닙니다(`step1_cluster/adjust_module.py`).
+목적함수는 거리만이 아닙니다(`pipeline/step1_cluster/adjust_module.py`).
 
 ```text
 비용 = α · 군집 내 거리 + β · 크기 편차 + γ · |군집 내 pick − drop|
@@ -86,7 +86,7 @@ step2b 순서(VRP)  그 이동을 어떤 순서로 돌 것인가          (greed
 ## 3. 왜 ILP인가 — 그리고 왜 그 대가가 거의 없었나
 
 **하는 일**: 군집 하나 안에서 **어느 Pick 대여소에서 어느 Drop 대여소로 몇 대**를
-옮길지 정합니다(`step2_optimize/ilp.py`).
+옮길지 정합니다(`pipeline/step2_optimize/ilp.py`).
 
 ```text
 최소화   Σ_ij  T_ij · x_ij            (T = 이동 시간, x = 옮길 대수)
@@ -288,7 +288,7 @@ $$r_i = \operatorname{int}\!\left( Q \cdot \tanh\!\left(\frac{t_i - q_i}{Q}\righ
 
 ### 6-1. 이상치 — IQR × 1.5, **그리고 그것이 계획에 닿지 않는다는 사실**
 
-`step0_eda/concat_1year_file.py`가 1년치 병합 파일에서 **이용시간(분)·이용거리(km)** 의
+`pipeline/step0_eda/concat_1year_file.py`가 1년치 병합 파일에서 **이용시간(분)·이용거리(km)** 의
 IQR × 1.5 밖을 잘라 냅니다.
 
 **왜 IQR인가**: 이용시간·이용거리는 오른쪽으로 길게 늘어진 분포라 평균±3σ 같은
@@ -297,7 +297,7 @@ IQR × 1.5 밖을 잘라 냅니다.
 **그런데 반드시 밝혀야 할 것이 있습니다.**
 
 > **이 이상치 제거는 계획 경로에 걸리지 않습니다.** 순수요를 만드는
-> `step0_collect/raw_to_net.py`는 **월별 원본**을 읽고, 그것도 네 컬럼
+> `pipeline/step0_collect/raw_to_net.py`는 **월별 원본**을 읽고, 그것도 네 컬럼
 > (대여일시·대여_대여소ID·반납일시·반납_대여소ID)만 씁니다. 이용시간·이용거리는
 > **읽지도 않습니다.**
 

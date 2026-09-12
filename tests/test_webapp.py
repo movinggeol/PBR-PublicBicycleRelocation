@@ -1284,7 +1284,7 @@ def test_표_팝업은_좁은_화면에서_자리를_고정하지_않는다():
 
 def test_설명_문장에는_파일명용_잘림_클래스를_쓰지_않는다():
     """.step-file은 파일명 전용이다 — nowrap + ellipsis라 한 줄을 넘으면 잘린다.
-    /runs/{id}의 'step1_cluster/top_st_clustering.py'처럼 뒤가 잘려도 알아볼 수
+    /runs/{id}의 'pipeline/step1_cluster/top_st_clustering.py'처럼 뒤가 잘려도 알아볼 수
     있는 값에는 맞지만, /guide가 같은 클래스를 **설명 문장**에 써서 여덟 줄이
     말줄임표로 잘려 있었다(1.26.99). 처음 쓰는 사람을 위한 화면인데 정작
     설명이 안 보였다."""
@@ -1615,7 +1615,7 @@ def test_불균형_지도가_색을_직접_박지_않는다():
 
     import mapviz
 
-    src = (Path(mapviz.__file__).parent / "step4_metrics" / "imbalance.py").read_text(
+    src = (Path(mapviz.__file__).parent / "pipeline" / "step4_metrics" / "imbalance.py").read_text(
         encoding="utf-8")
     # ⚠️ 함수 이름을 틀리게 적으면 **조용히 파일 전체를 훑는다.** 예전에는
     # 없는 이름(`make_imbalance_map`)을 찾고 있어서 `if ... else 0` 때문에
@@ -2299,12 +2299,12 @@ def test_진행_화면이_지금_어느_단계인지_말한다(client, monkeypat
         args: list[str] = []; kind = "plan"; run_label = "테스트실행"
         returncode = None; error = None
 
-    로그 = ("[1/3] step0_collect/tashu_api.py\n"
-           "[2/3] step1_cluster/top_st_clustering.py\n"
-           "[3/3] step2_optimize/ilp.py\n"
-           "[1/3] 실행: step0_collect/tashu_api.py\n"
-           "완료: step0_collect/tashu_api.py\n"
-           "[2/3] 실행: step1_cluster/top_st_clustering.py\n")
+    로그 = ("[1/3] pipeline/step0_collect/tashu_api.py\n"
+           "[2/3] pipeline/step1_cluster/top_st_clustering.py\n"
+           "[3/3] pipeline/step2_optimize/ilp.py\n"
+           "[1/3] 실행: pipeline/step0_collect/tashu_api.py\n"
+           "완료: pipeline/step0_collect/tashu_api.py\n"
+           "[2/3] 실행: pipeline/step1_cluster/top_st_clustering.py\n")
 
     monkeypatch.setattr(jobs, "get_job", lambda jid: 진행중())
     monkeypatch.setattr(jobs, "read_log", lambda job: 로그)

@@ -26,7 +26,7 @@ MODULE_PATH = PROJECT_ROOT / "tools" / "collect_road_time.py"
 
 def load_collector():
     """tools/collect_road_time.py를 경로로 직접 읽는다."""
-    for path in (PROJECT_ROOT, PROJECT_ROOT / "step3_map"):
+    for path in (PROJECT_ROOT, PROJECT_ROOT / "pipeline" / "step3_map"):
         if str(path) not in sys.path:
             sys.path.insert(0, str(path))
     spec = importlib.util.spec_from_file_location("collect_road_time", MODULE_PATH)

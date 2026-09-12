@@ -29,7 +29,7 @@ PNG는 상호작용을 버리게 되고(3-A), 다른 JS 라이브러리는 같�
 
 | 무엇 | 어디 | 만드는 법 | 자립? |
 | --- | --- | --- | --- |
-| 군집·경로·재고 **지도** | `step3_map/`, step1, step4 | folium 0.20 → Leaflet html | ❌ CDN 11개 |
+| 군집·경로·재고 **지도** | `pipeline/step3_map/`, step1, step4 | folium 0.20 → Leaflet html | ❌ CDN 11개 |
 | 대시보드 **그래프** | `webapp/charts.py` | 파이썬이 인라인 SVG를 직접 씀 | ✅ 완전 자립 |
 
 같은 프로젝트 안에서 두 방식이 정반대입니다. 그래프 쪽에는 왜 그렇게 했는지가

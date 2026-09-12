@@ -344,12 +344,12 @@ step0·step2의 되읽기도 `db.read_step_output()` 하나를 거칩니다.
 
 | 어디 | 무엇을 DB에서 받나 |
 | --- | --- |
-| `step0_collect/extract_parking_lot.py` | `station_stock` |
-| `step0_collect/api_to_info.py` | `parking_lot` · `station_stock` |
-| `step0_collect/calculate_target_qty.py` | `station_info` · `net_demand`(+warmup) |
-| `step1_cluster/top_st_clustering.py` | `rebalance_plan` · `station_info` |
-| `step2_optimize/ilp.py` | `pick_drop` |
-| `step2_optimize/vrp.py` | `pick_drop` · `ilp_plan` |
+| `pipeline/step0_collect/extract_parking_lot.py` | `station_stock` |
+| `pipeline/step0_collect/api_to_info.py` | `parking_lot` · `station_stock` |
+| `pipeline/step0_collect/calculate_target_qty.py` | `station_info` · `net_demand`(+warmup) |
+| `pipeline/step1_cluster/top_st_clustering.py` | `rebalance_plan` · `station_info` |
+| `pipeline/step2_optimize/ilp.py` | `pick_drop` |
+| `pipeline/step2_optimize/vrp.py` | `pick_drop` · `ilp_plan` |
 
 **CSV 폴백은 모든 자리에 남겼습니다** — DB가 비어 있고 원천만 있는 환경(새로
 받은 저장소)에서도 파이프라인이 돌아야 합니다. `read_rental_source()`가

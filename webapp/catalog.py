@@ -34,9 +34,9 @@ MAP_CATEGORIES = [
 #    지도가 늘 때 한쪽만 고치기 쉽다 — `tests/test_mapviz.py`가 둘이
 #    어긋나면 실패한다(`transfer_run.RUN_TABLES`에서 겪은 것과 같은 자리).
 MAP_DRAWERS = {
-    "ILP/visualization": PROJECT_ROOT / "step1_cluster" / "st_visualization.py",
-    "VRP/visualization": PROJECT_ROOT / "step3_map" / "main.py",
-    "성능 지표/visualization": PROJECT_ROOT / "step4_metrics" / "imbalance.py",
+    "ILP/visualization": PROJECT_ROOT / "pipeline" / "step1_cluster" / "st_visualization.py",
+    "VRP/visualization": PROJECT_ROOT / "pipeline" / "step3_map" / "main.py",
+    "성능 지표/visualization": PROJECT_ROOT / "pipeline" / "step4_metrics" / "imbalance.py",
 }
 
 # 지도 한 장이 100~800KB라 스물몇 장을 통째로 읽으면 화면이 느려진다.

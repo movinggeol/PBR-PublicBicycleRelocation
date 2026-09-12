@@ -546,7 +546,7 @@ pbrRemember(key, on)
 
 | 클래스 | 담는 것 | 넘칠 때 |
 | --- | --- | --- |
-| `.step-file` | 파일명 (`step1_cluster/top_st_clustering.py`) | `nowrap` + 말줄임표로 **자릅니다** |
+| `.step-file` | 파일명 (`pipeline/step1_cluster/top_st_clustering.py`) | `nowrap` + 말줄임표로 **자릅니다** |
 | `.step-note` | 설명 문장 | `normal` + `keep-all`로 **접습니다** |
 
 파일명은 뒤가 잘려도 어느 단계인지 알아보지만, 설명은 잘리면 뜻이 사라집니다.

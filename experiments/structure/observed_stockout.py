@@ -1,6 +1,6 @@
 """결품을 계산이 아니라 **관측**으로 센다 (TODO 1-4).
 
-지금 `step4_metrics/imbalance.py`의 결품 시간은 **복원**입니다.
+지금 `pipeline/step4_metrics/imbalance.py`의 결품 시간은 **복원**입니다.
 
     stock(t+1) = clip(stock(t) − net(t), 0, 거치대 수)
 

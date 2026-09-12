@@ -7,7 +7,7 @@
     충족률 = (순유출 − 못 빌린 양) / 순유출        ← 지금
     순유출 = Σ max(0, 대여 − 반납)
 
-`step4_metrics/imbalance.py`가 스스로 경고를 달아 두었다 —
+`pipeline/step4_metrics/imbalance.py`가 스스로 경고를 달아 두었다 —
 *"`unmet`/`outflow`는 순수요 기준이라 '총 대여 건수'가 아니다."*
 
 🔴 **왜 반쪽인가.** 한 시간에 10명이 빌리고 10명이 반납한 대여소는 순수요가 0이라
@@ -56,7 +56,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 import db  # noqa: E402
-from step0_collect.calculate_target_qty import duration_columns  # noqa: E402
+from pipeline.step0_collect.calculate_target_qty import duration_columns  # noqa: E402
 
 
 def load_baseline():

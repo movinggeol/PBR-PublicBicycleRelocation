@@ -65,7 +65,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 import demand_model  # noqa: E402
-from step0_collect.calculate_target_qty import duration_columns  # noqa: E402
+from pipeline.step0_collect.calculate_target_qty import duration_columns  # noqa: E402
 
 # 정규분포에서 MAD × 1.4826 이 sigma의 일치추정량이다(1 / 0.6745).
 MAD_TO_SIGMA = 1.4826

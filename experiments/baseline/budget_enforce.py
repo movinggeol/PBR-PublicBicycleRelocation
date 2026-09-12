@@ -33,7 +33,7 @@ sys.path.insert(0, str(ROOT))
 import pandas as pd
 
 import db
-from step2_optimize import vrp as vrp_mod                              # noqa: E402  (step2)
+from pipeline.step2_optimize import vrp as vrp_mod                     # noqa: E402  (step2)
 from project_config import (                       # noqa: E402
     DURATIONS, TIME_BUDGET_MINUTES, get_runtime_config,
 )
@@ -64,7 +64,7 @@ def station_points(run_label: str) -> dict:
 
 def check_stations_known(plan: pd.DataFrame, points: dict) -> None:
     """모든 대여소가 좌표를 갖고 있는지 미리 확인한다 — `run_vrp_plan()`과 같은 규약
-    (step2_optimize/vrp.py:250-255).
+    (pipeline/step2_optimize/vrp.py:250-255).
 
     🔴 **예전에는 없었다 — 없으면 `build_nodes()`가 `points[sid]`에서 어느
     대여소 탓인지 안 보이는 `KeyError`로 죽었다(1.26.127에서 발견).** 실측

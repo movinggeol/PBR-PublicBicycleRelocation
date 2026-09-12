@@ -25,9 +25,9 @@ from project_config import (
     VEHICLE_CAPACITY,
 )
 
-STEP0 = PROJECT_ROOT / "step0_collect"
-STEP1 = PROJECT_ROOT / "step1_cluster"
-STEP2 = PROJECT_ROOT / "step2_optimize"
+STEP0 = PROJECT_ROOT / "pipeline" / "step0_collect"
+STEP1 = PROJECT_ROOT / "pipeline" / "step1_cluster"
+STEP2 = PROJECT_ROOT / "pipeline" / "step2_optimize"
 
 
 def _load(path, name):
@@ -153,7 +153,7 @@ def test_실효_최댓값을_로그로_알린다():
     `VEHICLE_CAPACITY`만 보고 10을 기대하지 않도록, 저장할 때마다 그 실행에서
     실제로 나온 한 대여소 최대 계획량을 찍는다.
     """
-    path = PROJECT_ROOT / "step0_collect" / "calculate_target_qty.py"
+    path = PROJECT_ROOT / "pipeline" / "step0_collect" / "calculate_target_qty.py"
     body = "\n".join(l for l in path.read_text(encoding="utf-8").splitlines()
                      if not l.lstrip().startswith("#"))
     assert "한 대여소 최대 계획량" in body, "실효 최댓값을 알리지 않는다"
@@ -436,7 +436,7 @@ def test_ilp_returns_nothing_when_one_side_is_missing(step2):
 
 @pytest.fixture(scope="module")
 def step4():
-    return _load(PROJECT_ROOT / "step4_metrics" / "imbalance.py", "_imbalance_calc")
+    return _load(PROJECT_ROOT / "pipeline" / "step4_metrics" / "imbalance.py", "_imbalance_calc")
 
 
 def test_executed_delta_signs_pick_negative_and_drop_positive(step4):
@@ -955,7 +955,7 @@ def test_step1_thresholds_come_from_project_config():
     """
     import project_config
 
-    source = (PROJECT_ROOT / "step1_cluster" / "top_st_clustering.py").read_text(encoding="utf-8")
+    source = (PROJECT_ROOT / "pipeline" / "step1_cluster" / "top_st_clustering.py").read_text(encoding="utf-8")
     assert "iloc[:50" not in source, "상위 컷이 코드에 박혀 있다"
     assert "rebal_qty']) > 2]" not in source, "작업 대상 임계가 코드에 박혀 있다"
     assert "MAX_ITER = 200" not in source, "조정 반복 상한이 코드에 박혀 있다"
@@ -1112,9 +1112,9 @@ def test_all_three_maps_share_one_tile_setting():
 
     assert project_config.MAP_TILES == "OpenStreetMap", "기본 배경이 바뀌었다"
 
-    for relative in ("step1_cluster/st_visualization.py",
-                     "step3_map/main.py",
-                     "step4_metrics/imbalance.py"):
+    for relative in ("pipeline/step1_cluster/st_visualization.py",
+                     "pipeline/step3_map/main.py",
+                     "pipeline/step4_metrics/imbalance.py"):
         source = (PROJECT_ROOT / relative).read_text(encoding="utf-8")
         assert "tiles=MAP_TILES" in source, f"{relative}가 공통 설정을 쓰지 않는다"
         # 주석에 남은 설명은 봐주되, 코드에 타일 이름을 박은 것은 막는다.
@@ -1335,8 +1335,8 @@ def test_ilp와_vrp가_같은_이동시간_함수를_쓴다():
     """
     import project_config as pc
 
-    ilp = _load("step2_optimize/ilp.py", "ilp_mod")
-    vrp = _load("step2_optimize/vrp.py", "vrp_mod")
+    ilp = _load("pipeline/step2_optimize/ilp.py", "ilp_mod")
+    vrp = _load("pipeline/step2_optimize/vrp.py", "vrp_mod")
 
     for km in (0.0, 0.25, 1.0, 3.7, 12.0):
         expected = pc.travel_seconds(km)
@@ -1466,8 +1466,8 @@ def test_ilp와_vrp는_실행의_day_type을_그대로_전달한다(monkeypatch)
     monkeypatch.setenv("PBR_DAY_TYPE", "holiday")
     importlib.reload(pc)
     try:
-        ilp = _load("step2_optimize/ilp.py", "ilp_mod")
-        vrp = _load("step2_optimize/vrp.py", "vrp_mod")
+        ilp = _load("pipeline/step2_optimize/ilp.py", "ilp_mod")
+        vrp = _load("pipeline/step2_optimize/vrp.py", "vrp_mod")
         expected = pc.travel_seconds(5.0, day_type="holiday")
         assert ilp.km_to_travel_seconds(5.0) == pytest.approx(expected)
         assert vrp._travel_sec(5.0) == pytest.approx(expected)
@@ -1491,7 +1491,7 @@ def test_목적함수는_캐시_유무에_상관없이_같다():
     """
     import numpy as np
 
-    adjust = _load("step1_cluster/adjust_module.py", "adjust_cache")
+    adjust = _load("pipeline/step1_cluster/adjust_module.py", "adjust_cache")
     rng = np.random.default_rng(7)
 
     for _ in range(120):
@@ -1519,7 +1519,7 @@ def test_이동_시도가_원본을_건드리지_않는다():
     import numpy as np
     import pandas as pd
 
-    adjust = _load("step1_cluster/adjust_module.py", "adjust_move")
+    adjust = _load("pipeline/step1_cluster/adjust_module.py", "adjust_move")
 
     frame = pd.DataFrame({
         "cluster": [0, 0, 1, 1],
@@ -1543,7 +1543,7 @@ def test_채택되면_그_대여소만_옮겨진다():
     """받아들인 이동은 **한 칸만** 바꾼다."""
     import pandas as pd
 
-    adjust = _load("step1_cluster/adjust_module.py", "adjust_move2")
+    adjust = _load("pipeline/step1_cluster/adjust_module.py", "adjust_move2")
 
     frame = pd.DataFrame({
         "cluster": [0, 0, 1, 1],

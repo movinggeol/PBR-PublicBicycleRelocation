@@ -4,7 +4,7 @@
 호출하면 컬럼 이름·좌표 뒤집기 같은 규약이 갈리고, 그러면 화면이 보여주는
 '현재 재고'와 계획이 쓴 '재고'가 조용히 다른 것을 가리키게 된다.
 
-여기서는 **받아 오기만 한다.** 파일·DB에 남기는 것은 step0_collect/tashu_api.py다.
+여기서는 **받아 오기만 한다.** 파일·DB에 남기는 것은 pipeline/step0_collect/tashu_api.py다.
 """
 from __future__ import annotations
 

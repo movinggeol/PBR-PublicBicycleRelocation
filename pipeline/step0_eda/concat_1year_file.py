@@ -15,7 +15,7 @@
 입력이 늘 원본이므로 몇 번을 돌려도 같은 값이 나온다.
 
 📌 **이 필터는 계획 경로에 걸리지 않는다 — 그리고 그것이 옳다고 판정됐다.**
-순수요를 만드는 `step0_collect/raw_to_net.py`는 시각·대여소ID 네 컬럼만 읽어서
+순수요를 만드는 `pipeline/step0_collect/raw_to_net.py`는 시각·대여소ID 네 컬럼만 읽어서
 이용시간·이용거리를 보지 않는다. 계획 경로로 옮겨야 하는지는 1.20.8에서 재고
 **옮기지 않기로 결론이 났다** — 원천의 최댓값이 이미 46분·3.7km로 캡돼 있어
 IQR 울타리가 자르는 것은 오류가 아니라 **정상 이용의 상위 4%** 였고, 옮기면
@@ -25,8 +25,8 @@ experiments/structure/outlier_impact.py).
 그래서 이 산출물은 **EDA·문서용이다.** 계획은 이 파일을 읽지 않는다.
 
 실행 예:
-    python "step0_eda/concat_1year_file.py" --concat --preprocess
-    python "step0_eda/concat_1year_file.py" --preprocess
+    python "pipeline/step0_eda/concat_1year_file.py" --concat --preprocess
+    python "pipeline/step0_eda/concat_1year_file.py" --preprocess
 옵션 없이 실행하면(파이프라인 기본) 병합 파일이 있을 때만 이상치 제거를 수행하고,
 없으면 건너뛴다(전체 파이프라인 중단 방지).
 """
@@ -34,7 +34,7 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pandas as pd
 
