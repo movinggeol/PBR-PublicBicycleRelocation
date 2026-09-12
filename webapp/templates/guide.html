@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}사용 안내 — PBR 대시보드{% endblock %}
 {% block content %}
+{# 오른쪽 차례가 예전의 '바로가기' 줄을 대신한다 — 절을 고치면 저절로
+   따라오고, 이 화면처럼 절이 많아 스크롤이 긴 곳에서는 늘 옆에 붙어 있어
+   접었다 펴는 줄보다 낫다. 항목은 스크립트가 아래 h2에서 읽는다. #}
+<div data-toc="이 화면의 절" hidden></div>
 
 <section class="hero">
   <h1>사용 안내</h1>
@@ -10,17 +14,6 @@
     <a class="btn" href="/run#run">바로 실행해 보기</a>
   </div>
 </section>
-
-<div class="filterbar" style="margin-bottom:var(--sp-lg)">
-  <span class="label">바로가기</span>
-  <a class="chip" href="#start">처음 쓰신다면</a>
-  <a class="chip" href="#what">무엇을 계산하나</a>
-  <a class="chip" href="#form">입력 항목</a>
-  <a class="chip" href="#read">결과 읽는 법</a>
-  <a class="chip" href="#rules">계획이 쓰는 기준</a>
-  <a class="chip" href="#trouble">이럴 땐</a>
-  <a class="chip" href="#words">용어</a>
-</div>
 
 {# ───────────────────────── 처음 쓰신다면 ───────────────────────── #}
 <h2 id="start">처음 쓰신다면</h2>

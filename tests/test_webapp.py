@@ -1018,6 +1018,35 @@ def test_인쇄는_모바일_모드를_무시한다():
     assert ".no-print" in print_block, "no-print 규칙이 공용 인쇄 블록에 없다"
 
 
+def test_정렬은_화살표_단추만_누른다(client):
+    """머리글 전체가 아니라 화살표만 정렬을 맡는다 (1.26.180).
+
+    머리글 글자에는 설명 풍선(.tip)이 달려 있다. th 전체가 클릭 대상이면
+    풍선을 고정하려는 클릭이 의도치 않게 정렬까지 실행시킨다 — 실제로
+    사용자가 겪은 문제다. 화살표를 별도 <button class="th-sort">로 떼어
+    그것만 클릭·Enter/Space에 반응하게 한다.
+    """
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    js = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    start = js.index("표 정렬.")
+    block = js[start:js.index("눌러서 복사 (TODO 20).", start)]
+    assert 'btn.className = "th-sort"' in block, "화살표 단추를 만들지 않는다"
+    assert 'btn.addEventListener("click", sort);' in block, "화살표 단추가 정렬을 맡지 않는다"
+    assert 'th.addEventListener("click", sort);' not in block, (
+        "머리글 전체(th)가 여전히 정렬 클릭 대상이다 — 풍선 클릭과 충돌한다")
+
+    # 실제 화면에도 단추가 그려지는지 — 스크립트 존재만으로는 "붙는다"만 말한다.
+    body = client.get("/kpi").text
+    assert 'class="th-sort"' not in body, (
+        "th-sort는 서버 HTML이 아니라 JS가 <th>에 붙이는 요소다 — "
+        "템플릿에 미리 박혀 있으면 두 벌이 된다")
+
+
 def test_카드_모드_정렬은_데스크톱과_같은_함수를_쓴다():
     """모바일 정렬 줄은 머리글의 정렬 함수를 그대로 부른다.
 
@@ -2497,3 +2526,43 @@ def test_차례가_본문_안쪽_끝에만_머물지_않는다(client, monkeypat
     body = client.get("/kpi").text
     assert "100vw - (50vw + 600px" in body, (
         "차례 위치 계산에 뷰포트 폭(100vw)이 안 들어가면 폭마다 절반이 안 맞는다")
+
+
+def test_실행_차량운용_화면에도_차례가_붙는다(client):
+    """차례는 /kpi 전용이 아니다 — 절이 여럿인 다른 화면에도 도입한다.
+
+    붙이는 쪽이 할 일은 `<div data-toc>` 한 줄뿐이고(1.26.175 설계), 항목은
+    본문 h2에서 스크립트가 읽으므로 이 화면들에는 그 한 줄만 있으면 된다.
+    /run·/vehicles는 h2가 자료 유무와 무관하게 항상 그려져 실제 자료 없이도
+    검사할 수 있다.
+    """
+    for path in ("/run", "/vehicles"):
+        body = client.get(path).text
+        assert "data-toc=" in body, f"{path}에 차례를 붙일 자리가 없다"
+
+
+def test_지도_화면에도_차례가_붙는다(client, monkeypatch):
+    """/maps는 분류(h2)가 자료에서 나오므로 자료를 심어야 h2가 둘 이상 된다."""
+    monkeypatch.setattr(app_module.catalog, "list_maps", lambda: _fake_groups(2))
+    body = client.get("/maps").text
+    assert "data-toc=" in body, "/maps에 차례를 붙일 자리가 없다"
+
+
+def test_재고_수집_화면에도_차례가_붙는다(client, monkeypatch):
+    """/collect의 h2 둘(이 화면이 묻는 것 · 날짜별 수집 현황)은 `rows`가
+    있을 때만 그려지므로 자료를 심어야 한다."""
+    from webapp import collect_view
+
+    monkeypatch.setattr(collect_view, "context", lambda: _collect_ctx())
+    body = client.get("/collect").text
+    assert "data-toc=" in body, "/collect에 차례를 붙일 자리가 없다"
+
+
+def test_사용_안내의_바로가기_줄이_차례로_바뀌었다(client):
+    """예전에는 손으로 적은 '바로가기' 칩 줄이 있었다 — 절을 고치면 이 줄만
+    낡는다(다른 화면의 차례를 다 자동화해 놓고 여기만 손으로 적어 둘 이유가
+    없다). 차례로 바꾸고 그 줄은 없앤다.
+    """
+    body = client.get("/guide").text
+    assert "data-toc=" in body, "/guide에 차례를 붙일 자리가 없다"
+    assert "바로가기" not in body, "손으로 적은 바로가기 줄이 아직 남아 있다"
