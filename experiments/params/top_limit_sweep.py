@@ -133,7 +133,7 @@ def estimate(candidates: pd.DataFrame) -> dict:
 
 def stockout(plan: pd.DataFrame, candidates: pd.DataFrame, duration: str) -> float:
     """step4의 함수를 그대로 쓴다. 후보에 못 든 대여소는 재고가 그대로다."""
-    import imbalance as kpi_mod                     # noqa: E402  (step4)
+    from pipeline.step4_metrics import imbalance as kpi_mod                     # noqa: E402  (step4)
 
     net = kpi_mod.load_net_demand()
     if net.empty:
@@ -166,7 +166,7 @@ def main() -> int:
         return 1
 
     print(f"실행 '{label}' · 현행 상한 50 · 문턱 {REBAL_MIN_QTY}")
-    import imbalance as kpi_mod                     # noqa: E402  (step4)
+    from pipeline.step4_metrics import imbalance as kpi_mod                     # noqa: E402  (step4)
     kpi_mod.use_run_day_type(label)                 # 오늘 달력이 아니라 그 실행의 요일로
     print()
 

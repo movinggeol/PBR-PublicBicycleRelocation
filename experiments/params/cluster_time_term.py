@@ -56,6 +56,12 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+# 출력 인코딩 가드를 깨운다 — 이 스크립트는 파이프라인 모듈을 importlib으로
+# 늦게 부르므로, 그 전에 찍는 문구가 cp949로 인코딩돼 죽었다(2026-09-12 실측:
+# 🔴 한 글자에 UnicodeEncodeError). project_config를 거치면 _force_utf8_output()이
+# 돈다 — 저장소가 이 함정을 막아 둔 단일 지점이다.
+import project_config  # noqa: F401,E402
+
 # 순회 항으로 바꿀 때 함께 볼 γ 후보. 현행 3000은 메도이드 거리합 기준이라
 # 그대로 쓰면 비중이 어긋난다 — 넓게 훑는다.
 GAMMA_TOUR = [100, 300, 1000, 3000]
@@ -186,7 +192,7 @@ def main() -> int:
     with contextlib.redirect_stdout(buf):
         bc = load_baseline()
         step1 = bc.load_step1()
-        import adjust_module
+        from pipeline.step1_cluster import adjust_module
 
     rows = []
     with contextlib.redirect_stdout(buf):

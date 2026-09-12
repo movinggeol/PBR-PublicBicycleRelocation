@@ -54,6 +54,12 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+# 출력 인코딩 가드를 깨운다 — 이 스크립트는 파이프라인 모듈을 importlib으로
+# 늦게 부르므로, 그 전에 찍는 문구가 cp949로 인코딩돼 죽었다(2026-09-12 실측:
+# 🔴 한 글자에 UnicodeEncodeError). project_config를 거치면 _force_utf8_output()이
+# 돈다 — 저장소가 이 함정을 막아 둔 단일 지점이다.
+import project_config  # noqa: F401,E402
+
 WORKER = Path(__file__).with_name("_convention_worker.py")
 
 # 셀 하나가 이 시간을 넘기면 버리고 다음으로 간다 (TODO 대기-12 ①).

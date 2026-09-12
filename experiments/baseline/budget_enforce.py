@@ -126,7 +126,7 @@ def stockout_compare(label: str, durations: list, budget_sec: float) -> None:
     step4의 함수(`executed_delta`·`_stockout_hours`)를 **그대로** 쓴다. 측정 코드가
     제 방식대로 결품을 세면 파이프라인이 내는 값과 달라져 비교가 성립하지 않는다.
     """
-    import imbalance as kpi_mod                     # noqa: E402  (step4)
+    from pipeline.step4_metrics import imbalance as kpi_mod                     # noqa: E402  (step4)
 
     net = kpi_mod.load_net_demand()
     if net.empty:
@@ -185,7 +185,7 @@ def main() -> int:
 
     durations = [args.duration] if args.duration else list(WINDOWS)
     print(f"실행 '{label}' · 예산 {args.budget:.0f}분")
-    import imbalance as kpi_mod                     # noqa: E402  (step4)
+    from pipeline.step4_metrics import imbalance as kpi_mod                     # noqa: E402  (step4)
     kpi_mod.use_run_day_type(label)                 # 오늘 달력이 아니라 그 실행의 요일로
     print()
 

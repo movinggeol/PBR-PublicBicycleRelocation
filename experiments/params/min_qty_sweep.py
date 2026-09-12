@@ -96,7 +96,7 @@ def stockout(plan: pd.DataFrame, candidates: pd.DataFrame, duration: str) -> flo
     후보에 들지 못한 대여소는 손대지 않으므로 재고가 그대로다 — 그것이 문턱을
     올렸을 때의 대가다.
     """
-    import imbalance as kpi_mod                     # noqa: E402  (step4)
+    from pipeline.step4_metrics import imbalance as kpi_mod                     # noqa: E402  (step4)
 
     net = kpi_mod.load_net_demand()
     if net.empty:
@@ -133,7 +133,7 @@ def main() -> int:
         return 1
 
     print(f"실행 '{label}' · 현행 문턱 2")
-    import imbalance as kpi_mod                     # noqa: E402  (step4)
+    from pipeline.step4_metrics import imbalance as kpi_mod                     # noqa: E402  (step4)
     kpi_mod.use_run_day_type(label)                 # 오늘 달력이 아니라 그 실행의 요일로
     print()
 
