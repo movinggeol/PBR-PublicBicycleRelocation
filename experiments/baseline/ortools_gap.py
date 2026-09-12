@@ -26,7 +26,9 @@
     python experiments/baseline/ortools_gap.py --period "25년 11월" --duration "_05_10"
     python experiments/baseline/ortools_gap.py --period "25년 11월" --limit-sec 30
 
-설치: pip install ortools   (파이프라인 의존성이 아니다 — 이 실험 전용)
+설치: requirements.txt에 있다 (2026-09-12부터). 파이프라인 경로는 greedy가
+      짜고 이 실험은 그 결과와 겨뤄 갭을 잰다 — 지금은 대조군이지만
+      VRP 자체를 ortools로 대체하는 방안도 검토 중이다.
 """
 import argparse
 import sys
@@ -42,7 +44,9 @@ import baseline_compare as bc  # noqa: E402
 try:
     from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 except ImportError:  # pragma: no cover
-    raise SystemExit("ortools가 없습니다. `pip install ortools` 후 다시 실행하세요.")
+    raise SystemExit(
+        "ortools가 없습니다 — requirements.txt에 있는데 설치가 빠졌습니다.\n"
+        "  .\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt")
 
 from project_config import (  # noqa: E402
     DEPOT_LAT, DEPOT_LON, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY, VEHICLE_SPEED_KMPH,

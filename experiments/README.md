@@ -80,7 +80,7 @@ python experiments/params/z_fixedpop_grid.py --z-grid wide `
 `ortools_gap.py`만 별도 설치가 필요합니다 — **파이프라인 의존성이 아닙니다.**
 
 ```powershell
-pip install ortools      # 이 실험 전용
+# ortools는 2026-09-12부터 requirements.txt에 있다 — 따로 설치할 것 없다
 ```
 
 ```powershell

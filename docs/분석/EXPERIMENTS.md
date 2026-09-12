@@ -13,7 +13,7 @@ python experiments/params/seasonal_window.py    # 3장
 python experiments/baseline/baseline_compare.py --period "25년 11월" --plan-basis   # 5장
 python experiments/baseline/repeat_eval.py --periods "25년 09월,25년 10월,25년 11월,26년 01월,26년 03월" --methods P,B0,B1,B3
 python experiments/baseline/gamma_recheck.py --period "26년 03월"    # 4장 후속-2
-python experiments/baseline/ortools_gap.py --period "25년 11월"      # greedy 경로의 갭 (pip install ortools)
+python experiments/baseline/ortools_gap.py --period "25년 11월"      # greedy 경로의 갭
 python experiments/structure/multi_cluster_route.py --period "25년 11월"  # 8장
 python experiments/params/road_time_model.py    # 9장 (수집: scripts/road_collector.ps1)
 ```
@@ -1408,7 +1408,8 @@ K=8을 기각한 것과 같은 기준). `_wanted_vehicles_geo()`와 `geo=` 인�
 
 같은 노드 집합(ILP가 정한 대여소별 pick/drop 수량)·같은 적재 용량(10대)·같은 거리
 (Haversine)로 OR-Tools(GUIDED_LOCAL_SEARCH, 클러스터당 10초)와 비교했습니다.
-재현: `python experiments/baseline/ortools_gap.py --period "25년 11월"` (`pip install ortools` 필요).
+재현: `python experiments/baseline/ortools_gap.py --period "25년 11월"`
+(2026-09-12부터 `requirements.txt` 기본 의존성이다 — 예행연습에서 이 장이 설치 누락으로 멈췄다).
 
 > 🎲 **씨앗 42 1회입니다.** 14장(씨앗 감사)의 대상이며, 여기 실린 절댓값은 씨앗을 바꾸면 흔들립니다 — 인용할 때 그 사실을 함께 밝히십시오.
 
