@@ -317,9 +317,13 @@ def run_loop(start: clock, end: clock, interval: int, *, dry_run: bool = False,
 def uptime_blocks(stamps: Sequence[datetime], interval: int) -> list:
     """연속된 틱을 하나의 **가동 구간**으로 묶는다. [(첫틱, 끝틱), ...]
 
-    간격보다 넓게 벌어졌다면 그 사이 **PC가 꺼져 있었다**는 뜻이다(7장) —
-    수집기가 실패한 것이 아니라 아예 돌지 않은 것이다. 구간이 여럿이면
-    결측은 고장이 아니라 가동 시간의 그림자다.
+    간격보다 넓게 벌어진 곳은 **틱이 DB에 안 들어온 구간**이다. 원인은 둘인데
+    이 함수만으로는 가릴 수 없다 — PC가 꺼져 스크립트가 아예 안 돌았거나,
+    돌았는데 API가 죽었거나다.
+
+    🔴 **예전에는 전자라고 단정했다**("그 사이 PC가 꺼져 있었다는 뜻이다").
+    2026-09-12에 반증됐다 — PC는 켜져 있었고 수집기도 10분마다 돌았는데 타슈
+    API가 여섯 시간 죽어 19틱이 비었다. 가르는 것은 `failure_ticks()`다.
     """
     blocks = []
     start = prev = None
@@ -335,19 +339,57 @@ def uptime_blocks(stamps: Sequence[datetime], interval: int) -> list:
     return blocks
 
 
-def coverage(start: clock, end: clock, interval: int) -> pd.DataFrame:
-    """날짜별 수집 현황. 컬럼: 날짜, 틱, 기대, 결측, 구간, 덮은 시간, 상태.
+def failure_ticks(log_path: Optional[Path] = None) -> dict:
+    """날짜별 **수집 실패 틱 수**를 로그에서 읽는다. 로그가 없으면 빈 dict.
 
-    **로그가 아니라 DB의 기대 격자와 대조한다** — 절전으로 놓친 틱은 스크립트
-    자체가 안 돌아 로그에도 안 남기 때문이다.
+    `coverage()`는 DB의 기대 격자로 결측을 세지만 **왜** 비었는지는 모른다.
+    로그는 정확히 반대다 — 절전으로 스크립트가 아예 안 돌면 아무것도 안
+    남기지만(그래서 격자가 필요하다), **돌았는데 API가 죽은 것은 남긴다.**
+    둘을 겹쳐야 결측의 원인이 갈린다.
+
+    🔴 **이 대조는 원래 사람이 한 번 손으로 했다**(1.26.121 판 기록의 09-04
+    분석: *"결측 61틱 중 60틱은 실패가 아니라 아예 호출되지 않았다"*). 그런데
+    화면에는 그 **결론만** 고정 문구로 박혔고, 2026-09-12에 거짓말이 됐다.
+    한 번 맞았던 답을 상수로 박으면 다음번에 틀린 안심을 준다 — 그래서 대조를
+    **매번 도구가 하게** 옮겼다.
+    """
+    path = log_path or (HISTORY_DIR / LOG_NAME)
+    if not path.exists():
+        return {}
+    try:
+        log = pd.read_csv(path, encoding="utf-8-sig")
+    except (pd.errors.EmptyDataError, OSError):
+        return {}
+    if "status" not in log.columns or "observed_at" not in log.columns:
+        return {}
+    failed = log.loc[log["status"] != "성공", "observed_at"].dropna().astype(str)
+    return {day: int(n) for day, n in failed.str.slice(0, 10).value_counts().items()}
+
+
+def coverage(start: clock, end: clock, interval: int) -> pd.DataFrame:
+    """날짜별 수집 현황.
+
+    컬럼: 날짜, 요일, 틱, 기대, 결측, 실패, 구간, 덮은 시간, 상태.
+
+    **결측은 로그가 아니라 DB의 기대 격자와 대조한다** — 절전으로 놓친 틱은
+    스크립트 자체가 안 돌아 로그에도 안 남기 때문이다. `실패`가 그 반대쪽을
+    메운다(`failure_ticks()`).
 
     `구간`·`덮은 시간`을 함께 내는 이유는 **결측의 원인을 표 안에서 읽히게**
-    하기 위해서다. 하루가 세 구간으로 쪼개져 있으면 그것은 수집 실패가 아니라
-    PC를 세 번 켰다는 뜻이고, 그 둘은 대응이 완전히 다르다.
+    하기 위해서다. 하루가 세 구간으로 쪼개진 것은 PC를 세 번 켰다는 뜻일 수도
+    있고 **API가 죽어 있었다는 뜻일 수도 있다** — `실패`가 그 둘을 가른다.
+    대응이 정반대다: 앞은 PC를 켜면 되고, 뒤는 켜 봐야 그 틱이 오지 않는다.
+
+    `요일`을 내는 이유는 **논문이 모든 단계에서 평일과 휴일을 나누기** 때문이다.
+    휴일 관측은 주말에만 오므로 하루를 잃으면 회복에 일주일이 걸리는데, 예전
+    화면은 둘을 섞어 "누적 16일"이라고만 말해 **휴일이 몇 날인지 이 표로는 셀
+    수 없었다**(실제로 임시 SQL을 짜야 알았다).
     """
     with db.session() as conn:
         ticks = db.stock_history_ticks(conn)
-    columns = ["날짜", "틱", "기대", "결측", "구간", "덮은 시간", "상태"]
+    failures = failure_ticks()
+    columns = ["날짜", "요일", "틱", "기대", "결측", "실패",
+               "구간", "덮은 시간", "상태"]
     if ticks.empty:
         return pd.DataFrame(columns=columns)
 
@@ -369,7 +411,9 @@ def coverage(start: clock, end: clock, interval: int) -> pd.DataFrame:
             status = "결측"
         blocks = uptime_blocks(group.tolist(), interval)
         span = f"{blocks[0][0]:%H:%M}~{blocks[-1][1]:%H:%M}"
-        rows.append(dict(zip(columns, [day, count, target, missing,
+        kind = "휴일" if is_holiday(stamp) else "평일"
+        rows.append(dict(zip(columns, [day, kind, count, target, missing,
+                                       failures.get(day, 0),
                                        len(blocks), span, status])))
     return pd.DataFrame(rows)
 
@@ -392,12 +436,19 @@ def print_status(start: clock, end: clock, interval: int,
         return 0
 
     total_ticks = int(table["틱"].sum())
-    print(f"  누적     : {len(table)}일 · {total_ticks}틱")
+
+    def by_kind(frame) -> str:
+        """평일·휴일을 갈라 적는다. 게이트 C가 세는 것은 **휴일 일수**다."""
+        return (f"평일 {int((frame['요일'] == '평일').sum())}"
+                f" · 휴일 {int((frame['요일'] == '휴일').sum())}")
+
+    print(f"  누적     : {len(table)}일 · {total_ticks}틱  ({by_kind(table)})")
     print(f"  기간     : {table['날짜'].iloc[0]} ~ {table['날짜'].iloc[-1]}")
 
-    intact = table.loc[table["상태"] == "온전", "날짜"].tolist()
-    tail = f" (최근 {', '.join(intact[-5:])})" if intact else ""
-    print(f"  온전한 날: {len(intact)}일{tail}")
+    intact = table.loc[table["상태"] == "온전"]
+    days = intact["날짜"].tolist()
+    tail = f" (최근 {', '.join(days[-5:])})" if days else ""
+    print(f"  온전한 날: {len(days)}일 ({by_kind(intact)}){tail}")
     # 이 환경 DB만 세는 값이다. 병합은 틱을 **더하기만** 하므로 '온전'은 합치기
     # 전에도 참이지만 '결측'은 아직 판정이 아니다 — 다른 환경이 그 틱을 가지고
     # 있을 수 있다. 이 구분을 문서에만 적어 두면 (실제로 그랬듯) 한쪽 숫자만
@@ -406,10 +457,27 @@ def print_status(start: clock, end: clock, interval: int,
     print("               '결측'은 다른 환경분을 tools/merge_stock.py로 합치기")
     print("               전까지 판정이 아닙니다 (docs/구현/두_PC_작업.md 0장).")
 
+    # 🔴 구간이 갈라진 것을 PC 전원 탓으로 **단정하지 않는다.** 2026-09-12에
+    #    반증됐다 — 예전 문구는 그날도 "PC가 꺼져 있었다는 뜻입니다"라고
+    #    틀린 안심을 줬을 것이다. 로그에 실패가 있으면 그렇게 말하지 않는다.
     split = table.loc[table["구간"] > 1]
     if not split.empty:
-        print(f"  가동 구간: {len(split)}일이 여러 구간으로 나뉩니다 — 그 사이")
-        print("             PC가 꺼져 있었다는 뜻입니다. 수집기 고장이 아닙니다.")
+        blamed = int((split["실패"] > 0).sum())
+        print(f"  가동 구간: {len(split)}일이 여러 구간으로 나뉩니다.")
+        if blamed:
+            print(f"             그중 {blamed}일은 수집 실패가 함께 있습니다 —")
+            print("             PC가 아니라 API가 죽은 구간이 섞여 있습니다.")
+        if len(split) - blamed:
+            print(f"             나머지 {len(split) - blamed}일은 그 사이 PC가 꺼져")
+            print("             있었다는 뜻입니다. 수집기 고장이 아닙니다.")
+
+    failed = table.loc[table["실패"] > 0]
+    if not failed.empty:
+        worst = failed.sort_values("실패").iloc[-1]
+        print(f"  수집 실패: {len(failed)}일 · {int(table['실패'].sum())}틱"
+              f" (최다 {worst['날짜']} {int(worst['실패'])}틱)")
+        print("             PC 전원이 아니라 API 쪽입니다 — 켜 둬도 그 틱은")
+        print("             오지 않습니다. 휴일이면 회복에 일주일이 걸립니다.")
     print()
     print(table.to_string(index=False))
 

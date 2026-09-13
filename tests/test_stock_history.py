@@ -566,3 +566,92 @@ def test_현황은_한_환경만_보고_온전함을_단언하지_않는다(hist
     assert "실험에 쓸 수 있는 날입니다" not in out
     assert "merge_stock.py" in out              # 무엇을 해야 판정되는지 말한다
     assert "두_PC_작업.md" in out
+
+
+# ------------------------------------------------- 결측의 원인 · 평일과 휴일
+
+def test_실패_로그는_날짜별로_세고_성공은_안_센다(history_dir):
+    """`coverage()`는 **왜** 비었는지 모른다 — 로그가 그 반대쪽을 메운다."""
+    collector.write_log("2026-08-24 09:00", "성공", 1374)
+    collector.write_log("2026-08-24 09:10", "실패", 0, "ConnectionError")
+    collector.write_log("2026-08-24 09:20", "실패", 0, "ConnectionError")
+    collector.write_log("2026-08-25 09:00", "실패", 0, "ConnectionError")
+
+    assert collector.failure_ticks() == {"2026-08-24": 2, "2026-08-25": 1}
+
+
+def test_로그가_없으면_실패_집계는_비어_있다(history_dir):
+    """로그가 없다고 크래시하면 현황 전체를 못 본다 — 새 환경의 첫 실행이다."""
+    assert collector.failure_ticks() == {}
+
+
+def test_현황표는_평일과_휴일을_갈라_센다(history_dir):
+    """논문은 모든 단계에서 평일·휴일을 나눈다. 예전 표는 섞어 놓아
+    **휴일이 몇 날 모였는지 이 표로는 셀 수 없었다.**
+
+    어린이날(화요일)이 핵심이다 — 요일로 가르면 '평일'이 된다.
+    """
+    with db.session() as conn:
+        for stamp in (WEEKDAY, SATURDAY, PUBLIC_HOLIDAY):
+            db.save_stock_snapshot(conn, f"{stamp:%Y-%m-%d} 09:00", sample_frame())
+
+    table = collector.coverage(*WINDOW, INTERVAL).set_index("날짜")
+
+    assert table.loc["2026-05-05", "요일"] == "휴일"   # 화요일이지만 어린이날
+    assert table.loc["2026-08-22", "요일"] == "휴일"   # 토요일
+    assert table.loc["2026-08-24", "요일"] == "평일"
+
+
+def test_현황은_휴일_일수를_따로_말한다(history_dir, capsys):
+    """게이트 C가 세는 것은 **휴일 일수**인데 화면은 '누적 N일'만 말했다.
+    실제로 휴일이 몇 날인지 알려고 임시 SQL을 짜야 했다(2026-09-13).
+    """
+    with db.session() as conn:
+        for stamp in (WEEKDAY, SATURDAY):
+            db.save_stock_snapshot(conn, f"{stamp:%Y-%m-%d} 09:00", sample_frame())
+
+    collector.print_status(*WINDOW, INTERVAL)
+
+    assert "평일 1 · 휴일 1" in capsys.readouterr().out
+
+
+def _split_day(day: str) -> None:
+    """하루를 두 가동 구간으로 갈라 저장한다(09시대 · 14시대)."""
+    with db.session() as conn:
+        for hour, minute in ((9, 0), (9, 10), (14, 0), (14, 10)):
+            db.save_stock_snapshot(conn, f"{day} {hour:02d}:{minute:02d}",
+                                   sample_frame())
+
+
+def test_구간이_갈라져도_실패가_있으면_PC_탓으로_단정하지_않는다(history_dir, capsys):
+    """🔴 2026-09-12 회귀. 그날 PC는 켜져 있었고 수집기도 10분마다 돌았는데
+    타슈 API가 여섯 시간 죽어 19틱이 비었다. 그런데 화면은 *"그 사이 PC가
+    꺼져 있었다는 뜻입니다. 수집기 고장이 아닙니다"* 라고 **틀린 안심**을 줬다.
+
+    원인은 1.26.121이 사람이 한 번 손으로 한 대조(09-04의 '결측 61틱 중
+    60틱은 호출조차 안 됐다')의 **결론만** 고정 문구로 박은 것이다.
+    한 번 맞았던 답을 상수로 박으면 다음번에 거짓말이 된다.
+    """
+    _split_day("2026-08-24")
+    for minute in (20, 30, 40):
+        collector.write_log(f"2026-08-24 09:{minute}", "실패", 0, "ConnectionError")
+
+    collector.print_status(*WINDOW, INTERVAL)
+    out = capsys.readouterr().out
+
+    assert "PC가 꺼져" not in out
+    assert "API가 죽은 구간이 섞여" in out
+    assert "수집 실패: 1일 · 3틱" in out
+
+
+def test_실패가_없는_날의_공백은_여전히_PC_탓이다(history_dir, capsys):
+    """위 테스트가 공허해지지 않게 반대쪽을 함께 고정한다 — 로그에 실패가
+    없으면 스크립트가 아예 안 돈 것이고, 그때는 예전 판정이 맞다.
+    """
+    _split_day("2026-08-24")
+
+    collector.print_status(*WINDOW, INTERVAL)
+    out = capsys.readouterr().out
+
+    assert "PC가 꺼져" in out
+    assert "수집 실패:" not in out
