@@ -35,8 +35,16 @@ STAGES = [
 ]
 
 
+# 🔴 **산출물 뿌리는 `pipeline_run`이 임시 경로로 갈아끼운다** (1.26.188).
+# 그전에는 이 모듈의 시험이 **진짜 `data/pp_data`에 산출물을 쌓았다** — 실패하면
+# 그대로 남아 실제로 잔여물 63개를 치운 적이 있다(1.26.124). 기본값을 진짜
+# 경로로 두는 것은 픽스처 없이 `_out()`을 부르는 실수가 있으면 드러나게 하려는
+# 것이다(그런 호출자는 지금 없다).
+_PP_ROOT: Path = PP_ROOT
+
+
 def _out(relative: str) -> Path:
-    return PP_ROOT / relative.format(label=LABEL, duration=DURATION)
+    return _PP_ROOT / relative.format(label=LABEL, duration=DURATION)
 
 
 @pytest.fixture(scope="module")
@@ -47,46 +55,58 @@ def smoke_db(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def pipeline_run(tmp_path_factory, smoke_db):
-    """합성 데이터를 만들고 파이프라인을 한 번 실행한다."""
+    """합성 데이터를 만들고 파이프라인을 한 번 실행한다.
+
+    🔴 **산출물은 진짜 `data/`가 아니라 임시 경로에 쌓인다** (1.26.188).
+    예전에는 `PBR_DB_PATH`만 격리하고 `PBR_DATA_ROOT`는 두지 않아 이 시험이
+    사용자의 `data/pp_data`에 파일을 만들었고, 실패하면 그대로 남았다.
+
+    ⚠️ **그때 댄 이유는 이제 낡았다** — *"스텝 스크립트는 경로를 `DATA_ROOT`로
+    직접 조립해서 임시 경로로 돌릴 수도 없다."* 1.26.141이 44곳을 `DATA_ROOT`
+    기준으로 바꿨고, `test_CSV를_전부_지워도_DB만으로_다시_돈다`가
+    `PBR_DATA_ROOT`만으로 파이프라인을 완주시켜 **실증했다**(1.26.185).
+    """
+    global _PP_ROOT
     raw_path = tmp_path_factory.mktemp("raw") / "합성_대여이력.csv"
-    generate(now=LABEL, period=LABEL, stations=70, days=12,
-             rentals_per_day=500, raw_path=raw_path)
+    data_root = tmp_path_factory.mktemp("data")
+    _PP_ROOT = data_root / "pp_data"
 
     env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8",
-               PBR_DB_PATH=str(smoke_db))
+               PBR_DATA_ROOT=str(data_root), PBR_DB_PATH=str(smoke_db))
+
+    # 합성 데이터도 하위 프로세스로 만든다 — `generate()`를 여기서 부르면
+    # import 시점에 굳은 `DATA_ROOT`(=진짜 `data/`)에 대여소 파일이 쓰인다.
+    지음 = subprocess.run(
+        [sys.executable, "tools/make_sample_data.py",
+         "--now", LABEL, "--period", LABEL, "--stations", "70",
+         "--days", "12", "--rentals-per-day", "500", "--raw-file", str(raw_path)],
+        cwd=PROJECT_ROOT, env=env, capture_output=True, text=True,
+        encoding="utf-8", errors="replace")
+    if 지음.returncode != 0:
+        pytest.fail("합성 데이터 생성 실패:" + 지음.stdout + 지음.stderr)
+
     results = []
 
-    # ⚠️ **`try`로 감싸는 것이 요점이다.** 아래 `pytest.fail()`은 `yield` 앞이라,
-    # 단계가 하나라도 실패하면 teardown에 도달하지 못한다 — 그러면 이 실행이
-    # 실제 `data/pp_data`에 만든 산출물이 **그대로 남는다.** 스텝 스크립트는
-    # 경로를 `DATA_ROOT / "..."`로 직접 조립해서 임시 경로로 돌릴 수도
-    # 없다. 실제로 잔여물 63개를 찾아 치웠다(1.26.124).
-    #
-    # **정리가 필요한 때는 바로 일이 잘못됐을 때다.** 잘 끝난 실행은 어차피
-    # 스스로 치운다.
-    try:
-        for script in STAGES:
-            completed = subprocess.run(
-                [sys.executable, str(script),
-                 "--now", LABEL, "--period", LABEL,
-                 "--duration", DURATION, "--raw-file", str(raw_path)],
-                cwd=PROJECT_ROOT, env=env,
-                capture_output=True, text=True, encoding="utf-8", errors="replace",
+    # 예전에는 여기서 `try/finally`로 **진짜 `data/`에 남은 잔여물**을 치웠다.
+    # 이제 산출물이 임시 경로에만 쌓이므로 치울 것이 없다 — pytest가 tmp를
+    # 알아서 걷는다. **치우는 것보다 애초에 안 만드는 것이 낫다.**
+    for script in STAGES:
+        completed = subprocess.run(
+            [sys.executable, str(script),
+             "--now", LABEL, "--period", LABEL,
+             "--duration", DURATION, "--raw-file", str(raw_path)],
+            cwd=PROJECT_ROOT, env=env,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        results.append((script, completed))
+        if completed.returncode != 0:
+            pytest.fail(
+                f"{script} 실패 (exit {completed.returncode})\n"
+                f"--- stdout ---\n{completed.stdout[-2000:]}\n"
+                f"--- stderr ---\n{completed.stderr[-2000:]}"
             )
-            results.append((script, completed))
-            if completed.returncode != 0:
-                pytest.fail(
-                    f"{script} 실패 (exit {completed.returncode})\n"
-                    f"--- stdout ---\n{completed.stdout[-2000:]}\n"
-                    f"--- stderr ---\n{completed.stderr[-2000:]}"
-                )
 
-        yield results
-    finally:
-        # 이 실행이 만든 파일만 정리한다.
-        for path in PP_ROOT.rglob(f"*{LABEL}*"):
-            if path.is_file():
-                path.unlink()
+    yield results
 
 
 def test_all_stages_succeed(pipeline_run):
@@ -275,13 +295,18 @@ def test_run_registry_populated(pipeline_run, smoke_db):
         assert not db.load_frame(conn, "metrics").empty      # 웹 API가 쓸 경로
 
 
-def test_csv_to_db_tool_imports_outputs(pipeline_run, tmp_path):
+def test_csv_to_db_tool_imports_outputs(pipeline_run, tmp_path, monkeypatch):
     """CSV → DB 적재 도구도 같은 결과를 낸다(이관 검증·복구 경로).
 
     파이프라인이 방금 만든 CSV를 적재하므로 컬럼이 하나라도 어긋나면 여기서 잡힌다.
     """
     import db
+    import tools.csv_to_db as csv_to_db
     from tools.csv_to_db import import_outputs
+
+    # 이 도구는 자기 모듈의 `PP_ROOT`(=진짜 `data/`)를 본다. 픽스처가 산출물을
+    # 임시 경로로 옮겼으므로(1.26.188) 그쪽을 보게 한다.
+    monkeypatch.setattr(csv_to_db, "PP_ROOT", _PP_ROOT)
 
     with db.session(tmp_path / "imported.db") as conn:
         loaded = import_outputs(conn, now=LABEL, period=LABEL, durations=[DURATION])
@@ -604,3 +629,63 @@ def test_CSV를_전부_지워도_DB만으로_다시_돈다(tmp_path):
     assert "물려받을 재고 스냅샷이 없습니다" not in 출력, "스냅샷 가드가 DB를 못 봤다"
     건너뜀 = [줄 for 줄 in 출력.splitlines() if "입력이 없습니다" in 줄]
     assert not 건너뜀, f"아직 파일에 매인 단계가 있다:\n" + "\n".join(건너뜀)
+
+
+# ---- 빈 산출물은 크래시가 아니다 — 같은 부류 쓸기 (1.26.188) ----
+
+def test_빈_경로도_헤더를_갖춘_표로_저장된다(tmp_path, monkeypatch):
+    """ilp와 **같은 결함이 vrp에도 있었다**(1.26.188).
+
+    `results`가 비면 `pd.DataFrame([])`라 컬럼이 통째로 사라진다. 빈 경로는
+    실제로 나올 수 있다 — **시간 예산이 전부를 잘라 내면** `greedy_route()`가
+    첫 방문에서 멈춰 한 행도 못 만든다(`budget_enforce.py`가 그 실험이다).
+    여기서는 그 상황을 `greedy_route`를 비우는 것으로 만든다.
+    """
+    import importlib
+    import pandas as pd
+
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "빈경로.db"))
+    monkeypatch.setenv("PBR_DATA_ROOT", str(tmp_path / "data"))
+    vrp = importlib.import_module("pipeline.step2_optimize.vrp")
+
+    저장 = tmp_path / "빈경로.csv"
+    monkeypatch.setattr(vrp, "vrp_plan_file", str(저장).replace("{", "{{"))
+    monkeypatch.setattr(vrp, "greedy_route", lambda *a, **k: [])   # 예산이 다 잘랐다
+    monkeypatch.setattr(vrp.db, "read_step_output", lambda *a, **k: (pd.DataFrame({
+        "station_id": ["ST0001", "ST0002"],
+        "lat": [36.35, 36.36], "lon": [127.38, 127.39],
+    }), "db"))
+
+    ilp_plan = pd.DataFrame({
+        "cluster": [0], "pick_station_id": ["ST0001"],
+        "drop_station_id": ["ST0002"], "qty": [3], "travel_time_sec": [60.0],
+    })
+    vrp.run_vrp_plan(ilp_plan, "_05_10")
+
+    다시 = pd.read_csv(저장)          # EmptyDataError가 나면 여기서 터진다
+    assert 다시.empty
+    for 컬럼 in ("cluster", "to_id", "action", "qty"):
+        assert 컬럼 in 다시.columns, f"빈 경로에서 '{컬럼}'이 사라지면 step4가 KeyError를 낸다"
+
+
+def test_step4도_헤더_없는_파일을_비었다로_읽는다(tmp_path, monkeypatch):
+    """🔴 `db.read_step_output()`은 1.26.185에서 고쳤는데 **판박이인 step4의
+    `load_step_output()`만 남아 있었다**(1.26.188).
+
+    두 함수의 docstring이 **같은 약속**을 적고 있다 — *"여기서 예외를 던지면
+    한쪽 후보만 있는 시간대가 크래시가 된다."* 한쪽만 고치면 그 약속은 반만
+    지켜진다.
+    """
+    import importlib
+    import pandas as pd
+
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "step4.db"))
+    monkeypatch.setenv("PBR_DATA_ROOT", str(tmp_path / "data"))
+    imbalance = importlib.import_module("pipeline.step4_metrics.imbalance")
+
+    빈파일 = tmp_path / "헤더없음.csv"
+    빈파일.write_bytes(b"")
+
+    frame = imbalance.load_step_output("vrp_plan", str(빈파일),
+                                       duration="_05_10", run_label="없는라벨")
+    assert isinstance(frame, pd.DataFrame) and frame.empty

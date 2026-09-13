@@ -63,7 +63,15 @@ def load_step_output(table: str, csv_path: str, duration: str = None,
 
     path = Path(csv_path)
     if path.is_file():
-        return pd.read_csv(path, encoding='utf-8')
+        try:
+            return pd.read_csv(path, encoding='utf-8')
+        except pd.errors.EmptyDataError:
+            # 🔴 **헤더조차 없는 파일도 '비었다'이지 크래시가 아니다**(1.26.188).
+            #    바로 위 docstring이 *"여기서 예외를 던지면 한쪽 후보만 있는
+            #    시간대가 크래시가 된다"* 고 약속해 놓고 이 줄이 깼다.
+            #    `db.read_step_output()`이 1.26.185에서 같은 이유로 고쳐졌는데,
+            #    **판박이 구조인 이쪽만 남아 있었다.**
+            return pd.DataFrame()
     return pd.DataFrame()
 
 
@@ -221,7 +229,10 @@ def load_net_demand() -> pd.DataFrame:
     if frame.empty:
         path = Path(net_demand_file.format(period=config.period))
         if path.is_file():
-            frame = pd.read_csv(path, encoding='utf-8')
+            try:
+                frame = pd.read_csv(path, encoding='utf-8')
+            except pd.errors.EmptyDataError:
+                frame = pd.DataFrame()      # 위와 같은 이유 (1.26.188)
 
     if frame.empty:
         return frame

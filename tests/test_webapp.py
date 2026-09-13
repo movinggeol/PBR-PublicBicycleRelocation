@@ -2614,3 +2614,23 @@ def test_사용_안내의_바로가기_줄이_차례로_바뀌었다(client):
     body = client.get("/guide").text
     assert "data-toc=" in body, "/guide에 차례를 붙일 자리가 없다"
     assert "바로가기" not in body, "손으로 적은 바로가기 줄이 아직 남아 있다"
+
+
+def test_빈_CSV_미리보기가_500으로_죽지_않는다(client, tmp_path, monkeypatch):
+    """🔴 **빈 산출물은 정상이다** — 한쪽 후보만 있는 시간대에서 나온다.
+
+    그런데 `/preview`가 헤더조차 없는 CSV에서 `EmptyDataError`로 터져
+    **화면 전체가 500**이 됐다(1.26.188). 파이프라인 안쪽(ilp·vrp·step4)은
+    같은 부류를 함께 쓸었지만, 이쪽은 **사용자에게 보이는 화면**이라
+    증상이 가장 나쁘다.
+    """
+    from webapp import catalog
+
+    빈파일 = tmp_path / "빈산출물.csv"
+    빈파일.write_bytes(b"")
+    monkeypatch.setattr(catalog, "DATA_ROOT", tmp_path)
+
+    응답 = client.get("/preview/빈산출물.csv")
+
+    assert 응답.status_code == 200, "빈 CSV는 404도 500도 아니다 — 빈 표다"
+    assert "내용이 없는 파일입니다" in 응답.text

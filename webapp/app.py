@@ -995,9 +995,18 @@ def preview_csv(request: Request, relpath: str):
 
     # 미리보기는 앞부분만 필요하므로 전체를 읽지 않는다.
     max_rows = 200
-    df = pd.read_csv(target, encoding="utf-8", nrows=max_rows)
+    try:
+        df = pd.read_csv(target, encoding="utf-8", nrows=max_rows)
+    except pd.errors.EmptyDataError:
+        # 🔴 **빈 CSV는 화면이 500으로 죽을 이유가 아니다** (1.26.188).
+        #    파이프라인은 빈 산출물을 낼 수 있고(한쪽 후보만 있는 시간대)
+        #    그게 정상이다. 그런데 미리보기는 헤더조차 없는 파일에서
+        #    EmptyDataError로 터져 **화면 전체가 500**이 됐다.
+        #    같은 부류를 ilp(1.26.185)·vrp·step4와 함께 쓸었다.
+        df = pd.DataFrame()
     total_rows = _count_csv_rows(target)
-    table_html = df.to_html(classes="preview-table", index=False, border=0)
+    table_html = (df.to_html(classes="preview-table", index=False, border=0)
+                  if len(df.columns) else "<p>내용이 없는 파일입니다.</p>")
 
     return templates.TemplateResponse(request, "preview.html", {
         "name": target.name,

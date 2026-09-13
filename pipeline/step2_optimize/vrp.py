@@ -296,7 +296,12 @@ def run_vrp_plan(ilp_plan: pd.DataFrame, duration: str):
     # -------------------------
     # 차량 배정 (로테이션) — docs/구현/FLEET.md
     # -------------------------
-    vrp_result = pd.DataFrame(results)
+    # ⚠️ **빈 경로도 헤더를 갖춘 표로 쓴다** (1.26.188, ilp.py와 같은 처방).
+    #    `pd.DataFrame([])`를 그냥 저장하면 컬럼이 통째로 사라진다. 그러면
+    #    되읽는 쪽이 `frame['cluster']`에서 KeyError를 내거나, 파일이면
+    #    EmptyDataError로 죽는다. **빈 경로는 정상이다** — ILP 계획이 비면
+    #    (한쪽 후보만 있는 시간대) 여기까지 내려온다.
+    vrp_result = pd.DataFrame(results, columns=None if results else VRP_PLAN_COLUMNS)
     vrp_result = _assign_fleet(vrp_result, duration)
 
     # -------------------------
@@ -341,6 +346,14 @@ def cluster_workload(vrp_result: pd.DataFrame) -> pd.DataFrame:
     summary["distance_km"] = summary["distance_km"].round(2)
     summary["minutes"] = (summary.pop("seconds") / 60).round(1)
     return summary
+
+
+# 경로표의 컬럼. **빈 경로일 때 헤더를 세우는 데 쓴다**(1.26.188) — 행이 있으면
+# dict에서 그대로 나오지만, 0행이면 여기 적힌 이름이 없어 컬럼이 통째로 사라진다.
+# `vehicle_id`는 `_assign_fleet()`이 뒤에 붙이므로 여기에 넣지 않는다.
+VRP_PLAN_COLUMNS = ['cluster', 'from_id', 'from_lat', 'from_lon',
+                    'to_id', 'to_lat', 'to_lon', 'action', 'qty',
+                    'distance_km', 'travel_sec', 'work_sec', 'cum_sec']
 
 
 def _assign_fleet(vrp_result: pd.DataFrame, duration: str) -> pd.DataFrame:
