@@ -801,6 +801,11 @@
       background: var(--surface); color: var(--ink);
     }
     .field input:hover, .field select:hover { border-color: var(--ink-4); }
+    /* 값이 있어도 쓰이지 않는 칸(예: DB에 이미 있는 기간의 원천 CSV, 1.26.184)임을
+       "안 보이는 규칙"으로 남기지 않는다 — 흐리고 손을 못 대게 해 눈으로도 알린다. */
+    .field input:disabled, .field select:disabled {
+      opacity: .55; cursor: not-allowed; background: var(--surface-2); color: var(--ink-3);
+    }
     .field input:focus, .field select:focus {
       outline: 0; border-color: var(--blue-focus);
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 22%, transparent);

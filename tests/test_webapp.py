@@ -1477,6 +1477,47 @@ def test_긴_경로는_파일_이름을_따로_알린다():
         "역슬래시 경로에서 이름을 못 뽑는다 — 윈도우 경로가 통째로 이름이 된다")
 
 
+# ── 원천 CSV가 DB 기간과 겹치면 안 쓰인다는 것을 밝힌다 (1.26.184) ──────────
+
+def test_db에_있는_기간이면_원천_csv가_흐려진다(client, monkeypatch):
+    """`db.read_rental_source()`는 기간이 DB에 있으면 CSV 경로를 아예 안 본다.
+
+    예전에는 '순수요 기간'을 고르고 나서도 '원천 대여 이력 CSV' 칸이 늘 멀쩡해
+    보여, 채워 넣은 값이 조용히 무시되는 죽은 입력이었다. 폼이 그 사실을
+    스크립트로 반영하는지 본다 — 정적 문자열이 아니라 실제 선택에 반응하는
+    부분이라 JS 존재만 확인한다(값이 실제로 disabled 되는지는 브라우저에서
+    확인했다).
+    """
+    import json
+
+    from webapp import store
+
+    monkeypatch.setattr(store, "periods_with_rentals", lambda: frozenset({"26년 03월"}))
+
+    body = client.get("/run").text
+    assert 'data-periods-in-db=' in body, "DB 적재 기간 목록을 폼에 안 실었다"
+    # tojson은 한글을 \uXXXX로 이스케이프한다(ensure_ascii) — 그 형태로 확인한다.
+    assert json.dumps("26년 03월")[1:-1] in body, "폼에 실은 값이 넘긴 기간과 다르다"
+
+    assert 'id="f-raw-note"' in body, "안내 자리가 없다"
+    assert "raw.disabled = known" in body, "고른 기간이 DB에 있어도 칸을 안 흐린다"
+
+
+def test_db_적재_목록_조회는_store_계층을_거친다():
+    """`webapp/`에서 `db.py`를 직접 아는 곳은 `store.py` 하나여야 한다(1.26.110).
+
+    이 조회도 예외가 아니다 — `app.py`가 `db.rental_periods()`를 직접 부르면
+    계층 규약이 새 기능에서부터 깨진다.
+    """
+    import inspect
+
+    from webapp import app as app_module
+
+    src = inspect.getsource(app_module)
+    assert "db.rental_periods" not in src, "app.py가 db.py를 직접 부른다"
+    assert "store.periods_with_rentals()" in src
+
+
 # ── 빈 상태 규약 ────────────────────────────────────────────────────
 
 def test_빈_상태는_무엇이_없는지와_어떻게_채우는지를_같이_말한다():

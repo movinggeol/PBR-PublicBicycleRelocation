@@ -263,6 +263,10 @@ def _index_context(error: Optional[str] = None) -> dict:
         # 최근 달이 위로 오게 뒤집는다(대개 가장 최근 달로 계획한다).
         "periods": list(reversed(periods)),
         "year_ago_period": _year_ago_period(periods),
+        # 이 기간이면 원천 CSV 칸은 안 쓴다 — db.read_rental_source()가 DB에
+        # 있는 기간은 CSV를 아예 안 보기 때문이다. 폼이 그 사실을 알려야
+        # "적어 넣은 CSV가 조용히 무시된다"는 혼란이 없다.
+        "periods_in_db": sorted(store.periods_with_rentals()),
         # 시간대는 네 창이 전부다. 창마다 수요 방향이 반대라 섞지 않는다.
         "durations": [{"value": d, "label": DURATION_LABELS[d]} for d in DURATIONS],
         # 평일과 휴일은 수요 구조가 달라 한 실행에 섞지 않는다 (docs/구현/steps/step0_raw.md).

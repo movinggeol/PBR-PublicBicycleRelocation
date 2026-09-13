@@ -141,12 +141,17 @@
 
         <div class="field wide">
           <label for="f-raw">
-            <span class="tip" data-tip="수요를 계산할 원본 대여 이력입니다. 프로젝트 폴더를 기준으로 한 상대 경로를 적습니다.">원천 대여 이력 CSV</span>
+            <span class="tip" data-tip="위 순수요 기간의 대여이력이 DB에 아직 없을 때만 쓰는 원본 CSV입니다. 이미 DB에 있는 기간이면 이 값은 무시됩니다 — 대여이력은 DB를 우선으로 읽습니다.">원천 대여 이력 CSV</span>
           </label>
-          <input id="f-raw" type="text" name="raw_file" value="{{ defaults.raw_file }}">
+          <input id="f-raw" type="text" name="raw_file" value="{{ defaults.raw_file }}"
+                 data-periods-in-db='{{ periods_in_db | tojson }}'>
           {# 경로가 칸보다 길면 좁은 화면에서 앞쪽만 보인다 — 정작 어느 달 자료인지는
              끝의 파일 이름에 있다. 넘칠 때만 스크립트가 이름을 아래에 적는다. #}
           <span class="hint" id="f-raw-name" hidden></span>
+          {# 위 순수요 기간을 바꾸면 스크립트가 여기를 다시 쓴다 — DB에 있는 기간은
+             이 칸이 아예 안 쓰이므로(db.read_rental_source가 CSV를 안 본다),
+             "적어 넣었는데 조용히 무시된다"는 혼란을 막는다(1.26.184). #}
+          <span class="hint" id="f-raw-note" hidden></span>
         </div>
       </div>
 
@@ -287,6 +292,35 @@
 </div>
 
 <script>
+  /* 순수요 기간이 DB에 이미 있으면 원천 CSV 칸은 안 쓰인다 (1.26.184).
+     db.read_rental_source()가 DB 우선이라, 기간이 있으면 CSV 경로를 아예
+     안 본다 — 적어 넣어도 조용히 무시되던 칸이었다. 여기서 그 사실을
+     밝히고, 쓰이지 않을 때는 손도 못 대게 흐린다(실제로 쓰이지 않는
+     칸을 "편집 가능한 척"으로 남겨 두면 이 문제를 그대로 반복한다). */
+  (function () {
+    var period = document.getElementById("f-period");
+    var raw = document.getElementById("f-raw");
+    var note = document.getElementById("f-raw-note");
+    if (!period || !raw || !note || period.tagName !== "SELECT") return;
+
+    var inDb = {};
+    try {
+      JSON.parse(raw.dataset.periodsInDb || "[]").forEach(function (p) { inDb[p] = true; });
+    } catch (e) { /* 값이 이상해도 폼은 그대로 쓸 수 있어야 한다 */ }
+
+    function sync() {
+      var known = !!inDb[period.value];
+      raw.disabled = known;
+      note.hidden = !known;
+      note.innerHTML = known
+        ? "<b>" + period.value + "</b>은 이미 DB에 있어 이 값은 쓰이지 않습니다."
+        : "";
+    }
+
+    period.addEventListener("change", sync);
+    sync();
+  })();
+
   /* 지금 날씨 — 계획을 내보내기 전에 비가 오는지 알린다.
      비가 오면 눈에 띄게(경고 상자), 아니면 한 줄로 조용히 둔다. */
   (function () {

@@ -752,7 +752,17 @@ def read_step_output(table: str, csv_path, run_label: Optional[str] = None,
 
     path = Path(csv_path)
     if path.is_file():
-        return pd.read_csv(path, encoding="utf-8", low_memory=False), "csv"
+        try:
+            return pd.read_csv(path, encoding="utf-8", low_memory=False), "csv"
+        except pd.errors.EmptyDataError:
+            # 🔴 **헤더조차 없는 파일도 "비었다"이지 크래시가 아니다.**
+            #    위 docstring이 *"여기서 예외를 던지면 한쪽 후보만 있는 시간대가
+            #    크래시가 된다"* 고 약속해 놓고 이 줄이 그 약속을 깼다.
+            #    `pd.DataFrame([]).to_csv()`는 헤더 없이 2바이트만 쓰는데
+            #    (ilp.py가 실제로 그랬다), 그걸 되읽으면 EmptyDataError다.
+            #    1.26.184에서 만드는 쪽도 함께 고쳤지만, **이미 디스크에 남은
+            #    빈 파일**은 이쪽이 받아 줘야 한다.
+            return pd.DataFrame(), "csv"
     return pd.DataFrame(), "none"
 
 
@@ -1484,6 +1494,19 @@ def rental_count(conn: sqlite3.Connection, period: str) -> int:
     except sqlite3.OperationalError:
         return 0
     return row[0] if row else 0
+
+
+def rental_periods(conn: sqlite3.Connection) -> frozenset:
+    """대여이력이 DB에 적재된 기간 전체.
+
+    `read_rental_source()`는 이 목록에 있는 기간이면 CSV 경로를 아예 안 본다
+    (DB 우선). 웹 폼이 "이 기간은 CSV를 안 씁니다"를 알리려면 이 목록이 필요하다.
+    """
+    try:
+        rows = conn.execute("SELECT DISTINCT period FROM rental_history").fetchall()
+    except sqlite3.OperationalError:
+        return frozenset()
+    return frozenset(row[0] for row in rows)
 
 
 def read_rental_source(period: str, csv_path: Optional[Path] = None,

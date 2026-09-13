@@ -284,3 +284,13 @@ def stock_station_count() -> int:
         frame = pd.read_sql(
             "SELECT COUNT(DISTINCT station_id) AS n FROM stock_history", conn)
     return int(frame["n"].iloc[0]) if not frame.empty else 0
+
+
+def periods_with_rentals() -> frozenset:
+    """대여이력이 DB에 이미 적재된 순수요 기간 목록.
+
+    `/run` 폼이 "이 기간은 원천 CSV를 안 씁니다"를 알리는 데 쓴다 —
+    `db.read_rental_source()`가 이 목록에 있는 기간이면 CSV 경로를 안 보기 때문이다.
+    """
+    with db.session() as conn:
+        return db.rental_periods(conn)

@@ -94,6 +94,25 @@ def test_period_isolation(sample, loaded_db):
         conn.execute("DELETE FROM rental_history WHERE period = ?", (other,))
 
 
+def test_rental_periods_lists_only_loaded_periods(loaded_db):
+    """`rental_periods()`는 DB에 실제로 적재된 기간만 담는다 (1.26.184).
+
+    `/run` 폼이 이 목록으로 "원천 CSV는 안 씁니다"를 판단하므로, 적재 안 된
+    기간이 섞이면 실제로는 CSV가 필요한데 안 쓴다고 잘못 알린다.
+    """
+    with db.session(loaded_db) as conn:
+        periods = db.rental_periods(conn)
+
+    assert PERIOD in periods
+    assert f"{PERIOD}-없는기간" not in periods
+
+
+def test_rental_periods_empty_before_any_load(tmp_path):
+    """대여이력이 하나도 없는 새 DB는 빈 집합을 준다(예외가 아니다)."""
+    with db.session(tmp_path / "empty.db") as conn:
+        assert db.rental_periods(conn) == frozenset()
+
+
 def test_read_source_returns_original_columns(sample, loaded_db):
     """DB에서 읽어도 원본 CSV와 같은 컬럼 구성이어야 기존 계산 코드가 그대로 돈다."""
     csv_frame = pd.read_csv(sample, encoding="utf-8")
