@@ -295,7 +295,8 @@ def fetch_hour(when=None, stn: int = STATION_ID, timeout: float = 30) -> dict:
     try:
         response = requests.get(API_URL, params=params, timeout=timeout)
     except requests.RequestException as err:
-        raise WeatherError(f"기상청 API에 연결하지 못했습니다: {type(err).__name__}") from err
+        raise WeatherError("기상청 API에 연결하지 못했습니다"
+                           f"(이쪽 망일 수도 있습니다): {type(err).__name__}") from err
 
     response.encoding = "euc-kr"
     if response.status_code != 200:
@@ -366,7 +367,8 @@ def fetch_forecast(tmfc1=None, tmfc2=None, reg: str = FORECAST_REG_ID,
     try:
         response = requests.get(FORECAST_URL, params=params, timeout=timeout)
     except requests.RequestException as err:
-        raise WeatherError(f"기상청 API에 연결하지 못했습니다: {type(err).__name__}") from err
+        raise WeatherError("기상청 API에 연결하지 못했습니다"
+                           f"(이쪽 망일 수도 있습니다): {type(err).__name__}") from err
 
     response.encoding = "euc-kr"
     if response.status_code != 200:
@@ -450,7 +452,8 @@ def fetch_grid(tmfc, tmef, var: str = "PCP", timeout: float = 30) -> np.ndarray:
     try:
         response = requests.get(GRID_URL, params=params, timeout=timeout)
     except requests.RequestException as err:
-        raise WeatherError(f"기상청 API에 연결하지 못했습니다: {type(err).__name__}") from err
+        raise WeatherError("기상청 API에 연결하지 못했습니다"
+                           f"(이쪽 망일 수도 있습니다): {type(err).__name__}") from err
 
     response.encoding = "euc-kr"
     if response.status_code != 200:

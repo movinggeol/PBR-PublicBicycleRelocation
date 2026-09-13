@@ -53,7 +53,13 @@ def fetch_stations(timeout: float = 30) -> pd.DataFrame:
     try:
         response = requests.get(API_URL, headers={"api-token": api_key}, timeout=timeout)
     except requests.RequestException as err:
-        raise TashuError(f"타슈 API에 연결하지 못했습니다: {type(err).__name__}") from err
+        # ⚠️ **상대가 죽었다고 단정하지 마라.** requests의 ConnectionError는
+        #    DNS·거부·**이쪽 망 끊김**을 모두 덮으므로 여기서는 가릴 수 없다.
+        #    2026-09-12에 20틱을 잃은 원인은 타슈가 아니라 **와이파이 끊김**이었는데
+        #    (사용자 확인), 이 문구가 "타슈 API"만 지목해 분석과 문서까지
+        #    번졌다(1.26.183).
+        raise TashuError("타슈 API에 연결하지 못했습니다"
+                         f"(이쪽 망일 수도 있습니다): {type(err).__name__}") from err
 
     if response.status_code != 200:
         raise TashuError(f"타슈 API 호출 실패: {response.status_code} {response.text[:200]}")
