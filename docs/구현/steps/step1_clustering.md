@@ -137,4 +137,7 @@
       — 합성 데이터 60개로 검증: K=9 생성, 재실행 결정성 확인,
       `adjust_clustering` 수렴(|balance| 최대 33 → 4)
 - [ ] `compute_objective` 증분 계산(이동 노드가 속한 두 군집만 재계산)으로 성능 개선
-- [ ] 선정 기준(상위 N, |rebal_qty| 임계값)·군집 파라미터를 설정/CLI로 노출
+- [x] ~~선정 기준(상위 N, |rebal_qty| 임계값)·군집 파라미터를 설정/CLI로 노출~~ —
+  `TOP_STATION_LIMIT`(`PBR_TOP_STATION_LIMIT`, 기본 50)과 `REBAL_MIN_QTY`
+  (`PBR_REBAL_MIN_QTY`, 기본 2)가 이미 환경변수로 노출돼 있다(`CLUSTER_ALPHA/BETA/GAMMA`와
+  같은 방식)

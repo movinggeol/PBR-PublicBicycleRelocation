@@ -34,7 +34,7 @@
 | $M$ | 보유 차량 = **21대**(상한), 회차당 투입 상한 = **21대** — 실제 K는 작업량이 정한다(12~16) | `FLEET_SIZE`, `VEHICLES_PER_ROUND` |
 | $0$ | depot (타슈 관제센터 ST0001) | `DEPOT_ID` |
 | $\theta$ | 작업 대상 임계 = **2대** | `REBAL_MIN_QTY` |
-| $N$ | Pick·Drop 각각 상위 컷 = **50곳** ⚠️ **근거 없는 값, 재검토 중** | `TOP_STATION_LIMIT` |
+| $N$ | Pick·Drop 각각 상위 컷 = **50곳** ⚠️ **관행값 — 결품·예산 준수의 맞바꿈 위에 있다, 유지 결정됨(3장)** | `TOP_STATION_LIMIT` |
 | $s_{\text{pick}},\, s_{\text{drop}}$ | 자전거 1대 싣기·내리기 = **각 30초** | `PICK_TIME_SEC`, `DROP_TIME_SEC` |
 | $c_{\text{tr}}$ | 대여소 하나당 이동 시간 = **12.5분** (실측) | `TRAVEL_MIN_PER_STATION` |
 | $\rho$ | 군집 불균형 여유 = **1.4** (최장/평균 실측) | `CLUSTER_IMBALANCE_ALLOWANCE` |
@@ -58,7 +58,8 @@ N_{i,d} = \sum_{h \in H(D)} n_{i,d,h}, \qquad
 $$
 
 $d$는 **평일과 휴일 중 한쪽만** 쓴다. 휴일 = 주말 ∪ 공휴일이며, 두 구분을 섞으면
-대여소의 33~37%가 부호가 반대라 상쇄된다([step0_raw.md](../구현/steps/step0_raw.md)).
+대여소의 33~37%가 **순수요(대여−반납)의 부호**가 반대라 상쇄된다
+([step0_raw.md](../구현/steps/step0_raw.md)).
 
 
 > 코드: `calculate_target_qty.build_stats()`, `project_config.select_day_type()`

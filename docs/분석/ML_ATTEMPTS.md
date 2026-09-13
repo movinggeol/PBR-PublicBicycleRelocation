@@ -246,7 +246,7 @@ leg_sec = travel_sec + work_sec     ← 오차 중앙값 0.000초로 정확히 �
 
 > 재현: `python experiments/structure/od_flow.py`
 
-`rental_history` 539만 건에 **출발지–도착지**가 다 있는데 파이프라인은 건수 차이
+`rental_history` 539만 건에 **출발지–도착지(OD)**가 다 있는데 파이프라인은 건수 차이
 하나로 접어 쓴다. 거기에 신호가 있는지 쟀습니다.
 
 **이번에는 타깃 출처부터 확인했습니다**(7번의 교훈) — `rental_history`는
