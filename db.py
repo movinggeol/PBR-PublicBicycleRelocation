@@ -760,7 +760,7 @@ def read_step_output(table: str, csv_path, run_label: Optional[str] = None,
             #    크래시가 된다"* 고 약속해 놓고 이 줄이 그 약속을 깼다.
             #    `pd.DataFrame([]).to_csv()`는 헤더 없이 2바이트만 쓰는데
             #    (ilp.py가 실제로 그랬다), 그걸 되읽으면 EmptyDataError다.
-            #    1.26.184에서 만드는 쪽도 함께 고쳤지만, **이미 디스크에 남은
+            #    1.26.185에서 만드는 쪽도 함께 고쳤지만, **이미 디스크에 남은
             #    빈 파일**은 이쪽이 받아 줘야 한다.
             return pd.DataFrame(), "csv"
     return pd.DataFrame(), "none"

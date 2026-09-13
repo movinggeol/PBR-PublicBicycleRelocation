@@ -26,6 +26,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import db
 from project_config import (
     DATA_ROOT, DEFAULT_NOW, DEFAULT_PERIOD, PROJECT_ROOT, ensure_output_dirs, is_holiday,
 )
@@ -96,6 +97,14 @@ def generate(
     stock_path = DATA_ROOT / STOCK_FILE.format(now=now)
     stock_path.parent.mkdir(parents=True, exist_ok=True)
     stock_df.to_csv(stock_path, encoding="utf-8", index=False)
+
+    # 🔴 **DB에도 남긴다 — tashu_api.py가 하는 것과 같게.** 이 함수는 라이브
+    #    API를 대신하는 **오프라인 대역**인데, CSV만 쓰고 DB를 비워 두면
+    #    반쪽짜리 대역이 된다. 배선이 DB로 옮겨진 뒤로(1.26.164·166) 그 차이가
+    #    드러났다: `--skip-api` 재실행이 스냅샷을 물려받지 못해
+    #    *"물려받을 재고 스냅샷이 없습니다"* 로 멈춘다(1.26.185에서 실측).
+    #    save_output은 실패해도 경고만 남기므로 합성 생성을 막지 않는다.
+    db.save_output("station_stock", stock_df, run_label=now, period=period)
 
     source_pool = station_ids[: stations // 2]
     sink_pool = station_ids[stations // 2:]
@@ -171,12 +180,15 @@ def main() -> None:
     # 표본이 조용히 줄었다(1.26.143). 기본값을 `generate()`와 맞춘다.
     parser.add_argument("--days", type=int, default=28,
                         help="합성 기간(달력 일수, 평일 수가 아님). 기본 28 = 평일 20 + 휴일 8")
+    parser.add_argument("--rentals-per-day", type=int, default=700,
+                        help="하루 대여 건수. 기본 700 (generate()와 같다)")
     parser.add_argument("--raw-file", default=None, help="대여이력 CSV 저장 경로")
     args = parser.parse_args()
 
     info = generate(
         now=args.now, period=args.period, stations=args.stations,
-        days=args.days, raw_path=Path(args.raw_file) if args.raw_file else None,
+        days=args.days, rentals_per_day=args.rentals_per_day,
+        raw_path=Path(args.raw_file) if args.raw_file else None,
     )
 
     print(f"대여소 {info['stations']}곳, 대여이력 {info['rentals']:,}건 생성")

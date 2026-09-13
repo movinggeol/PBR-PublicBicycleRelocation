@@ -485,6 +485,58 @@ def test_앞_단계를_DB에서_읽고_없으면_CSV로_물러선다(tmp_path, m
                                         run_label="없는라벨", duration="_05_10")
     assert source == "none" and frame.empty
 
+    # ④ 🔴 **헤더조차 없는 파일도 '비었다'이지 크래시가 아니다** (1.26.185).
+    #    이 함수의 docstring이 *"여기서 예외를 던지면 한쪽 후보만 있는 시간대가
+    #    크래시가 된다"* 고 약속해 놓고, `read_csv`가 EmptyDataError를 던졌다.
+    #    실제로 ilp.py가 그런 파일을 만들어 vrp가 죽었다 — vrp의
+    #    `if ilp_plan.empty: 건너뜀` 가드는 **도달조차 못 했다.**
+    빈파일 = tmp_path / "헤더없음.csv"
+    빈파일.write_text("\n", encoding="utf-8")
+    frame, source = db.read_step_output("pick_drop", 빈파일,
+                                        run_label="없는라벨", duration="_05_10")
+    assert frame.empty, "헤더 없는 파일에서 예외가 나면 회차 하나가 크래시가 된다"
+
+
+# ---- 빈 ILP 계획은 크래시가 아니라 건너뜀이다 (1.26.185) ----
+
+def test_빈_ILP_계획도_헤더를_갖춘_표로_저장된다(tmp_path, monkeypatch):
+    """🔴 **빈 계획은 정상이다** — 한쪽 후보만 있는 시간대에서 늘 생긴다.
+    파이프라인 규약도 *"크래시가 아니라 건너뛴다"* 고 못박고 있다.
+
+    그런데 `pd.DataFrame([])`를 그냥 저장하면 **헤더조차 없는 2바이트 파일**이
+    나오고, 되읽는 쪽이 `EmptyDataError`로 죽었다. 2026-09-13에 실측했다 —
+    `ILP_plan_05_10 (dbonly).csv`가 2바이트였고 vrp가 거기서 멈췄다.
+
+    여기서 지키는 것은 **헤더가 있다**는 것 하나다. 그래야 vrp의 건너뛰기
+    가드까지 **도달한다.**
+    """
+    import importlib
+    import pandas as pd
+
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "빈계획.db"))
+    monkeypatch.setenv("PBR_DATA_ROOT", str(tmp_path / "data"))
+    ilp = importlib.import_module("pipeline.step2_optimize.ilp")
+
+    저장 = tmp_path / "빈계획.csv"
+    monkeypatch.setattr(ilp, "ilp_plan_path", str(저장).replace("{", "{{"))
+
+    # 후보가 한쪽뿐이라 옮길 것이 없는 입력 — rebal_qty가 전부 음수라
+    # pick만 있고 drop이 없다(`solve_cluster_moves`가 바로 []를 돌려준다).
+    metrics = pd.DataFrame({
+        "station_id": ["ST0001", "ST0002"], "cluster": [0, 0],
+        "rebal_qty": [-5, -3],
+        "lat": [36.35, 36.36], "lon": [127.38, 127.39],
+    })
+    ilp.run_ilp_plan(metrics, "_05_10", ilp.build_solver())
+
+    assert 저장.exists(), "빈 계획이어도 파일은 남아야 한다"
+    내용 = 저장.read_text(encoding="utf-8")
+    assert 내용.strip(), "2바이트 빈 파일을 만들면 되읽는 쪽이 죽는다"
+
+    다시 = pd.read_csv(저장)          # EmptyDataError가 나면 여기서 터진다
+    assert 다시.empty
+    assert list(다시.columns) == ilp.ILP_PLAN_COLUMNS
+
 
 # ---- CSV를 다 지워도 DB만으로 돈다 (1.26.167) ----
 
@@ -501,20 +553,39 @@ def test_CSV를_전부_지워도_DB만으로_다시_돈다(tmp_path):
     CSV를 실제로 지우고 완주시켜 본 적이 없었다.
 
     원천(합성 대여이력)은 남긴다 — 그건 입력이지 단계 간 배선이 아니다.
+
+    🔴 **1차 실행도 `--skip-fetch`로 돈다**(1.26.185). 예전에는 이 줄이 없어
+    **라이브 타슈 API를 불렀다** — 그래서 (1) `TASHU_API_KEY`가 없는 CI에서는
+    아예 못 돌고, (2) 합성 대여소 40곳과 **실재 대여소 1,374곳**이 섞여
+    계획이 설 때도 안 설 때도 있었다. 2026-09-13에 같은 날 한 번은 통과하고
+    한 번은 실패하는 것을 보고 찾았다. 배선을 재는 시험이 **바깥 세계의
+    지금 재고**에 기대고 있었던 것이다.
     """
     raw = tmp_path / "합성.csv"
-    generate(now="dbonly", period="dbonly", stations=40, days=8,
-             rentals_per_day=300, raw_path=raw)
-
     data_root = tmp_path / "data"
     env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8",
                PBR_DATA_ROOT=str(data_root), PBR_DB_PATH=str(tmp_path / "d.db"))
+
+    # 🔴 **합성 데이터도 하위 프로세스로 만든다.** `generate()`를 여기서 직접
+    #    부르면 이 프로세스가 import할 때 굳은 `DATA_ROOT`(=진짜 `data/`)에
+    #    대여소 파일을 쓴다 — 아래 실행은 tmp를 보므로 **못 찾고**, 덤으로
+    #    사용자의 `data/`를 더럽힌다. 원천 CSV만 tmp로 간 탓에 겉보기엔
+    #    격리된 듯 보였다(1.26.185).
+    지음 = subprocess.run(
+        [sys.executable, "tools/make_sample_data.py",
+         "--now", "dbonly", "--period", "dbonly", "--stations", "40",
+         "--days", "8", "--rentals-per-day", "300", "--raw-file", str(raw)],
+        cwd=PROJECT_ROOT, env=env, capture_output=True, text=True,
+        encoding="utf-8", errors="replace")
+    assert 지음.returncode == 0, (
+        "합성 데이터 생성 실패:" + 지음.stdout + 지음.stderr)
     공통 = ["--now", "dbonly", "--period", "dbonly",
            "--duration", DURATION, "--raw-file", str(raw)]
 
     def 돌린다(*추가):
         return subprocess.run(
-            [sys.executable, "run_pipeline.py", "--skip-eda", "--skip-map", *공통, *추가],
+            [sys.executable, "run_pipeline.py",
+             "--skip-eda", "--skip-map", "--skip-fetch", *공통, *추가],
             cwd=PROJECT_ROOT, env=env, capture_output=True, text=True,
             encoding="utf-8", errors="replace")
 

@@ -19,6 +19,12 @@ metrics_path = str(DATA_ROOT / "pp_data/ILP/후보/top{duration} ({now}).csv")  
 # to_csv
 ilp_plan_path = str(DATA_ROOT / "pp_data/ILP/ILP_plan{duration} ({now}).csv")
 
+# 계획표의 컬럼. **빈 계획일 때 헤더를 세우는 데 쓴다** — 행이 있으면 dict에서
+# 그대로 나오지만, 0행이면 여기 적힌 이름이 없어 헤더 없는 파일이 된다(1.26.185).
+# 앞의 둘은 run_ilp_plan()이 붙이고 뒤의 넷은 solve_cluster_moves()가 돌려준다.
+ILP_PLAN_COLUMNS = ['hour', 'cluster', 'pick_station_id', 'drop_station_id',
+                    'qty', 'travel_time_sec']
+
 config = get_runtime_config()
 now = config.now
 
@@ -280,8 +286,12 @@ def run_ilp_plan(metrics: pd.DataFrame, duration: str, solver: pulp.LpSolver):
                                        vehicle_speed_kmph):
             rows.append({'hour': duration, 'cluster': c, **row})
 
-    # 재배치 계획표 도출
-    ilp_plan = pd.DataFrame(rows)
+    # 재배치 계획표 도출.
+    # ⚠️ **빈 계획도 헤더를 갖춘 표로 쓴다.** `pd.DataFrame([])`를 그냥 저장하면
+    #    헤더조차 없는 2바이트 파일이 나와 되읽는 쪽이 EmptyDataError로 죽는다
+    #    — vrp의 `if ilp_plan.empty: 건너뜀` 가드가 **도달조차 못 했다**(1.26.185).
+    #    빈 계획은 정상이다: 한쪽 후보만 있는 시간대에서 늘 생긴다.
+    ilp_plan = pd.DataFrame(rows, columns=None if rows else ILP_PLAN_COLUMNS)
     ilp_plan.to_csv(ilp_plan_path.format(duration=duration, now=now), index=False)
     print(f"\nilp_plan_path 파일이 저장되었습니다. ({ilp_plan_path.format(duration=duration, now=now)})")
 
