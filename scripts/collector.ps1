@@ -91,7 +91,12 @@ function Format-Result {
         2147946784 { '로그온 세션 없음 (0x80070520 — 로그오프/세션 종료. PC가 켜져 있어도 멈춘다)' }
         # 0x800710E0. 운영자·관리자가 요청을 거부했다. 위와 같은 뿌리에서
         # 나오며, 2026-09-12에 재고 작업이 이 코드로 계속 거부됐다.
-        2147946720 { '요청 거부됨 (0x800710E0 — 로그온 세션·전원 상태를 확인하십시오)' }
+        # 🔴 **두 가지가 같은 코드로 나온다** (2026-09-14 회사환경 실측). ① 로그온 세션·전원
+        # 문제로 진짜 거부된 것 ② **앞 실행이 아직 돌고 있어 새 요청을 무시한 것**
+        # (MultipleInstances = IgnoreNew). ②는 수집이 멀쩡한데도 찍힌다 — 09:31·11:11·14:01의
+        # 거부 바로 앞 정각 틱(09:30·11:10·14:00)이 모두 성공이었다. 어느 쪽인지는
+        # Invoke-Status가 **직전 정각 틱**을 함께 찍어 보여 준다.
+        2147946720 { '요청 거부됨 (0x800710E0 — 로그온 세션·전원, 또는 앞 실행이 아직 도는 중)' }
         default { "코드 $Code (0x{0:X8})" -f $Code }
     }
 }
@@ -119,6 +124,26 @@ function Get-WindowSpan {
     $end   = [datetime]::ParseExact($parts[1].Trim(), 'HH:mm', $null)
     if ($start -ge $end) { throw "수집 창의 끝이 시작보다 늦어야 합니다: '$Text'" }
     [pscustomobject]@{ Start = $start; Duration = $end - $start }
+}
+
+function Get-TickAround {
+    <#
+        실패 코드가 찍힌 시각의 **직전 정각 틱**이 실제로 기록됐는지 본다.
+
+        🔴 스케줄러의 '마지막 결과'만 보면 거짓 경보가 난다(2026-09-14 실측) — 09:31·11:11·14:01에
+        `요청 거부됨`이 찍혔는데 바로 앞 정각 틱은 모두 성공이었다. **판정은 틱 기록으로 한다.**
+        로그가 없거나 읽지 못하면 $null을 돌려주고, 부르는 쪽이 '기록 없음'으로 말한다.
+    #>
+    param([datetime]$When)
+    $log = Join-Path $Root 'data\raw_data\재고이력\collect_log.csv'
+    if (-not (Test-Path $log)) { return $null }
+    $slot = $When.AddMinutes(- ($When.Minute % 10)).ToString('yyyy-MM-dd HH:mm')
+    try {
+        return Import-Csv -Path $log -Encoding UTF8 |
+            Where-Object { $_.observed_at -eq $slot } | Select-Object -Last 1
+    } catch {
+        return $null
+    }
 }
 
 function Test-PowerSettings {
@@ -308,6 +333,17 @@ function Invoke-Status {
             Write-Host "  마지막   : 아직 실행 전 — 첫 수집은 다음 실행 시각입니다"
         } else {
             Write-Host "  마지막   : $last · $(Format-Result $info.LastTaskResult)"
+            if ($info.LastTaskResult -ne 0) {
+                # 실패 코드는 **그 실행 한 번**의 결과다. 수집이 도는지는 틱으로 본다.
+                $tick = Get-TickAround -When $info.LastRunTime
+                if ($tick) {
+                    Write-Host ("             ↳ 직전 정각 틱 $($tick.observed_at) $($tick.status)" +
+                                " — 수집은 돌고 있습니다. 판정은 아래 틱 표로 하십시오.") -ForegroundColor DarkGray
+                } else {
+                    Write-Host ("             ↳ 직전 정각 틱 기록이 없습니다" +
+                                " — 아래 틱 표와 전원·세션을 확인하십시오.") -ForegroundColor DarkYellow
+                }
+            }
         }
     }
     $live = Get-RegisteredArgs
