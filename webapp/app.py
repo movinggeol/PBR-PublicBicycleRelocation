@@ -402,6 +402,33 @@ def index(request: Request):
     return templates.TemplateResponse(request, "index.html", _index_context())
 
 
+def _device_frame_path(path: str) -> str:
+    """기기 프레임에 띄울 경로. **이 사이트 안의 경로만** 받는다.
+
+    쿼리로 받은 값을 그대로 iframe `src`에 넣으므로, 막지 않으면 남의 사이트를
+    이 화면 이름으로 띄우는 통로가 된다. 브라우저가 URL을 고쳐 읽는 방식까지
+    막는다 — `/\\evil`과 `/<탭>/evil`은 둘 다 `//evil`(다른 사이트)로 읽힌다.
+    `/device` 자신을 넣으면 프레임 안에 프레임이 끝없이 들어가므로 뺀다.
+    """
+    if (not path.startswith("/") or path.startswith("//") or "\\" in path
+            or any(ord(ch) < 32 for ch in path)):
+        return "/"
+    if re.split(r"[?#]", path, maxsplit=1)[0].rstrip("/") == "/device":
+        return "/"
+    return path
+
+
+@app.get("/device")
+def device_preview(request: Request, path: str = "/"):
+    """모바일 미리보기 — 크롬 개발자 도구의 기기 모드처럼 폰 크기 iframe에 띄운다 (1.26.193).
+
+    넓은 창에서 CSS로 본문만 좁히면 뷰포트는 여전히 넓어서 폭 기준 `@media`가
+    하나도 안 켜진다. iframe은 **뷰포트 자체가** 430px이라 폰과 같은 화면이 나온다.
+    """
+    return templates.TemplateResponse(
+        request, "device.html", {"path": _device_frame_path(path)})
+
+
 @app.get("/api/weather")
 def weather_now(refresh: int = 0):
     """지금 날씨. 계획 화면이 비 여부를 띄우는 데 쓴다 (docs/분석/WEATHER.md).

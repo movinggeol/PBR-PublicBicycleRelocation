@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>모바일 미리보기</title>
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+        href="/static/fonts/PretendardVariable.subset.woff2">
+  {# ════════════════════════════════════════════════════════════════
+     모바일 미리보기 — 기기 프레임 (1.26.193)
+
+     크롬 개발자 도구의 기기 모드(Dimensions: iPhone 15 Pro Max 430×932)를
+     웹 화면 안에서 재현한다. 개발자 도구 자체는 페이지가 켤 수 없으므로
+     **폭이 고정된 iframe**에 같은 화면을 띄운다 — iframe 안에서는
+     `innerWidth`가 진짜로 430이라 @media·vh·position:fixed가 폰과 같다.
+
+     base.html을 상속하지 않는다. 상속하면 내비 3단이 프레임 바깥에도 서서
+     "어느 쪽이 미리보기인가"가 흐려진다.
+
+     무대는 테마와 무관하게 **늘 어둡다.** 라이트박스와 같은 이유 — 밝은
+     화면을 미리 볼 때 무대가 밝으면 폰 테두리가 사라진다.
+     ════════════════════════════════════════════════════════════════ #}
+  <style>
+    @font-face {
+      font-family: "Pretendard Variable";
+      src: url("/static/fonts/PretendardVariable.subset.woff2") format("woff2-variations");
+      font-weight: 300 700;
+      font-display: swap;
+    }
+    :root {
+      color-scheme: dark;
+      --stage: #1c1c1e;
+      --bar: #2c2c2e;
+      --control: #3a3a3c;
+      --control-hover: #48484a;
+      --line: #545458;
+      --ink: #f5f5f7;
+      --ink-2: #aeaeb2;          /* --bar 위 명암비 6.4:1 */
+      --focus: #4da3ff;
+      --bar-h: 52px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; background: var(--stage); color: var(--ink);
+      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+                   "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      font-size: 13px; letter-spacing: -.1px;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+
+    /* ── 도구 막대 — 개발자 도구의 Dimensions 줄 ── */
+    .devbar {
+      flex: 0 0 auto; min-height: var(--bar-h);
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 8px 16px; background: var(--bar); border-bottom: 1px solid #000;
+    }
+    .devbar label { color: var(--ink-2); white-space: nowrap; }
+    .devbar select, .devbar button, .devbar a.dev-btn {
+      font: inherit; color: var(--ink); background: var(--control);
+      border: 1px solid var(--line); border-radius: 6px;
+      min-height: 32px; padding: 5px 10px; cursor: pointer;
+      text-decoration: none; white-space: nowrap;
+      display: inline-flex; align-items: center;
+    }
+    .devbar select:hover, .devbar button:hover, .devbar a.dev-btn:hover { background: var(--control-hover); }
+    .devbar :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+    .dev-dims {
+      font-variant-numeric: tabular-nums; color: var(--ink); min-width: 9ch;
+      white-space: nowrap;
+    }
+    .dev-sep { width: 1px; align-self: stretch; background: var(--line); margin: 4px 4px; }
+    .dev-path {
+      margin-left: auto; color: var(--ink-2); min-width: 0; max-width: 40ch;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px;
+    }
+    /* 닫기는 동작이라 파랑 — 디자인 시스템의 '누르는 것 = 파랑'과 같다. */
+    .devbar a.dev-close { background: #0066cc; border-color: #0066cc; color: #fff; }
+    .devbar a.dev-close:hover { background: #0071e3; }
+    @media (max-width: 720px) { .dev-path { display: none; } }
+
+    /* ── 무대 ── */
+    .stage {
+      flex: 1 1 auto; min-height: 0; overflow: auto;
+      display: flex; padding: 32px;
+    }
+    /* 배율을 곱한 크기만큼 자리를 잡는 상자. transform은 레이아웃 크기를
+       바꾸지 않으므로, 이것이 없으면 줄인 폰 둘레에 원래 크기의 빈 자리가 남아
+       스크롤이 생긴다. `margin: auto`로 가운데 둔다 — flex의 center 정렬은
+       무대보다 클 때 위·왼쪽이 잘려 스크롤로도 못 닿는다. */
+    .device-box { margin: auto; flex: 0 0 auto; position: relative; }
+    .device-frame {
+      position: absolute; top: 0; left: 0;
+      border: 0; display: block; background: #fff;
+      transform-origin: 0 0;
+      /* 그림자 대신 가는 테두리 — 디자인 시스템이 그림자를 쓰지 않는다. */
+      outline: 1px solid var(--line);
+    }
+  </style>
+</head>
+<body>
+  <h1 class="sr-only">모바일 미리보기</h1>
+
+  <div class="devbar" role="toolbar" aria-label="미리보기 설정">
+    <label for="dev-preset">기기</label>
+    {# 크기는 CSS 픽셀(뷰포트)이다 — 기기 해상도가 아니다. 각 기기의
+       개발자 도구 기본값과 같다. 목록을 JS에 두 벌 두지 않고 여기서만 읽는다. #}
+    <select id="dev-preset">
+      <option value="iphone15promax" data-w="430" data-h="932" selected>iPhone 15 Pro Max</option>
+      <option value="iphone15" data-w="393" data-h="852">iPhone 15</option>
+      <option value="iphonese" data-w="375" data-h="667">iPhone SE</option>
+      <option value="galaxys24" data-w="360" data-h="780">Galaxy S24</option>
+      <option value="galaxyfold" data-w="344" data-h="882">Galaxy Z Fold (접힘)</option>
+    </select>
+    <output class="dev-dims" id="dev-dims" aria-live="polite">430 × 932</output>
+    <button type="button" id="dev-rotate" aria-pressed="false">가로로</button>
+    <span class="dev-sep" aria-hidden="true"></span>
+    <label for="dev-zoom">배율</label>
+    <select id="dev-zoom">
+      <option value="fit" selected>창에 맞춤</option>
+      <option value="1">100%</option>
+      <option value="0.75">75%</option>
+      <option value="0.5">50%</option>
+    </select>
+    <button type="button" id="dev-reload">새로고침</button>
+    <span class="dev-path" id="dev-path" title="{{ path }}">{{ path }}</span>
+    <a class="dev-btn dev-close" id="dev-close" href="{{ path }}"
+       aria-label="미리보기를 닫고 넓은 화면으로 보기">넓게 보기</a>
+  </div>
+
+  <main class="stage" id="stage">
+    <div class="device-box" id="device-box">
+      <iframe class="device-frame" id="device-frame" data-device-frame
+              src="{{ path }}" width="430" height="932"
+              title="휴대폰 화면 미리보기"></iframe>
+    </div>
+  </main>
+
+  <script>
+    (function () {
+      var frame = document.getElementById("device-frame");
+      var box = document.getElementById("device-box");
+      var stage = document.getElementById("stage");
+      var preset = document.getElementById("dev-preset");
+      var zoom = document.getElementById("dev-zoom");
+      var rotate = document.getElementById("dev-rotate");
+      var dims = document.getElementById("dev-dims");
+      var pathOut = document.getElementById("dev-path");
+      var closeLink = document.getElementById("dev-close");
+      var KEY = "pbr-device";
+      var landscape = false;
+
+      /* 기기·방향·배율은 기억한다(다른 화면의 pbr-* 열쇠와 같은 체계).
+         못 읽으면 기본값 — 기억이 안 될 뿐 미리보기는 그대로 돈다. */
+      try {
+        var saved = JSON.parse(localStorage.getItem(KEY) || "{}");
+        if (saved.preset && preset.querySelector('option[value="' + saved.preset + '"]')) {
+          preset.value = saved.preset;
+        }
+        if (saved.zoom && zoom.querySelector('option[value="' + saved.zoom + '"]')) {
+          zoom.value = saved.zoom;
+        }
+        landscape = saved.landscape === true;
+      } catch (e) {}
+
+      function remember() {
+        try {
+          localStorage.setItem(KEY, JSON.stringify(
+            {preset: preset.value, zoom: zoom.value, landscape: landscape}));
+        } catch (e) {}
+      }
+
+      function layout() {
+        var opt = preset.options[preset.selectedIndex];
+        var w = Number(opt.dataset.w), h = Number(opt.dataset.h);
+        if (landscape) { var t = w; w = h; h = t; }
+        var scale;
+        if (zoom.value === "fit") {
+          /* 무대 안쪽(패딩 제외)에 통째로 들어가는 배율. 키우지는 않는다 —
+             100%보다 크게 그리면 글자 크기가 폰과 달라 보인다. */
+          var cs = getComputedStyle(stage);
+          var aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+          var ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+          scale = Math.min(1, aw / w, ah / h);
+        } else {
+          scale = Number(zoom.value);
+        }
+        scale = Math.max(scale, 0.25);
+        frame.width = w; frame.height = h;
+        frame.style.width = w + "px"; frame.style.height = h + "px";
+        frame.style.transform = scale === 1 ? "" : "scale(" + scale + ")";
+        box.style.width = Math.round(w * scale) + "px";
+        box.style.height = Math.round(h * scale) + "px";
+        dims.textContent = w + " × " + h +
+          (scale === 1 ? "" : " · " + Math.round(scale * 100) + "%");
+        rotate.setAttribute("aria-pressed", landscape ? "true" : "false");
+        rotate.textContent = landscape ? "세로로" : "가로로";
+      }
+
+      preset.addEventListener("change", function () { remember(); layout(); });
+      zoom.addEventListener("change", function () { remember(); layout(); });
+      rotate.addEventListener("click", function () {
+        landscape = !landscape; remember(); layout();
+      });
+      document.getElementById("dev-reload").addEventListener("click", function () {
+        try { frame.contentWindow.location.reload(); } catch (e) { frame.src = frame.src; }
+      });
+      window.addEventListener("resize", layout);
+
+      /* 프레임 안에서 링크를 누르면 **주소창도 따라간다.** 안 따라가면
+         새로고침했을 때 처음 화면으로 돌아가고, 주소를 남에게 보내도 다른
+         화면이 열린다. replaceState라 뒤로 가기 기록은 늘지 않는다 —
+         뒤로 가기는 프레임 안의 기록이 받는다. */
+      frame.addEventListener("load", function () {
+        try {
+          var loc = frame.contentWindow.location;
+          var here = loc.pathname + loc.search + loc.hash;
+          history.replaceState(null, "", "/device?path=" + encodeURIComponent(here));
+          closeLink.href = here;
+          pathOut.textContent = here;
+          pathOut.title = here;
+          var inner = frame.contentDocument && frame.contentDocument.title;
+          document.title = (inner ? inner + " · " : "") + "모바일 미리보기";
+        } catch (e) { /* 다른 사이트로 나갔다 — 주소를 따라가지 않는다 */ }
+      });
+
+      layout();
+    })();
+  </script>
+</body>
+</html>

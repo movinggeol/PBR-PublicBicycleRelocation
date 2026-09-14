@@ -862,7 +862,7 @@ def test_모바일_토글이_모든_화면에_있다(client):
 
 
 def test_모바일_규칙은_한_벌만_유지한다():
-    """폭(@media)과 버튼(data-view) 양쪽에서 켜지지만 **규칙 본문은 한 벌**이다.
+    """폭(@media)으로 켜지고 좁은 화면에서 버튼으로 끌 수 있지만 **규칙 본문은 한 벌**이다.
 
     CSS의 `@media`는 버튼으로 끌 수 없다. 그래서 폭 판정을 스크립트가 하고
     `<html data-narrow>`를 붙였다 뗀다 — CSS는 그 속성 하나만 본다. 규칙을
@@ -884,6 +884,55 @@ def test_모바일_규칙은_한_벌만_유지한다():
     for block in media_blocks:
         assert "m-cards" not in block, (
             "표 카드 규칙이 @media 안에도 있다 — 두 벌이 되면 한쪽만 고치게 된다")
+
+
+def test_모바일_미리보기는_폭을_흉내_내지_않는다():
+    """넓은 창에서 본문만 430px로 묶는 방식(1.26.47~192)은 폰과 다른 화면을 냈다.
+
+    뷰포트는 그대로 1400px이라 폭 기준 `@media`가 하나도 안 켜졌고(표 팝업이
+    바닥 판으로 안 눕는다), 그 규칙의 오른쪽 여백이 가중치로 이겨 통계 타일이
+    폰(2열)과 달리 1열로 접혔다(실측). 지금은 버튼이 `/device`로 간다 — iframe
+    안의 뷰포트가 **진짜로** 430px이다(1.26.193).
+    """
+    import re
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    base = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    # 주석은 옛 방식을 **왜 걷었는지** 인용하므로 글자 자체는 남는다 — 규칙
+    # (선택자 뒤의 `{`)과 속성을 붙이는 스크립트만 본다.
+    assert not re.search(r'\[data-view="mobile"\][^`\n]*\{', base), (
+        "폭을 흉내 내는 CSS 규칙이 되살아났다")
+    assert "dataset.view" not in base, "넓은 창에 data-view를 붙이는 스크립트가 되살아났다"
+    assert '"/device?path="' in base, "넓은 창의 모바일 버튼이 기기 프레임으로 가지 않는다"
+    # 같은 브라우저라 localStorage를 함께 쓴다 — 폰 화면에서 '넓게'를 눌러 둔
+    # 값을 프레임 안에서 읽으면 미리보기가 데스크톱 배치로 뜬다.
+    assert "if (framed) return null;" in base, "기기 프레임이 저장된 '넓게'를 따른다"
+
+
+def test_기기_프레임은_폭이_고정된_iframe에_같은_화면을_띄운다(client):
+    res = client.get("/device", params={"path": "/orders?vehicle=V01"})
+    assert res.status_code == 200
+    html = res.text
+    assert "data-device-frame" in html, "base.html이 프레임을 알아볼 표지가 없다"
+    assert 'src="/orders?vehicle=V01"' in html, "쿼리까지 그대로 띄우지 않는다"
+    # 기본 기기는 크롬 개발자 도구의 iPhone 15 Pro Max와 같은 뷰포트다.
+    assert 'data-w="430" data-h="932" selected' in html
+    assert 'class="global-nav"' not in html, (
+        "프레임 바깥에도 내비가 서면 어느 쪽이 미리보기인지 흐려진다")
+
+
+def test_기기_프레임은_이_사이트_경로만_받는다(client):
+    """쿼리 값을 그대로 iframe `src`에 넣으므로 남의 사이트를 띄우는 통로가 되면
+    안 된다. 브라우저가 고쳐 읽는 형태(`/\\x` · `/<탭>/x` → `//x`)까지 막는다."""
+    for bad in ("//evil.example", "https://evil.example", "javascript:alert(1)",
+                "/\\evil.example", "/\t/evil.example", "kpi",
+                "/device", "/device/?path=/kpi"):
+        html = client.get("/device", params={"path": bad}).text
+        assert 'src="/"' in html, f"{bad!r}를 걸러내지 않았다"
 
 
 def test_카드로_눕는_표는_모든_칸에_라벨이_있다():
