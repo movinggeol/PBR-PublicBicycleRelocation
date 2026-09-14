@@ -343,6 +343,24 @@ def test_통합_판정은_사전_등록한_경계와_평평함_기준으로만_�
         "야간 창이 섞인 조합(34장의 26.0%)으로 곡선을 읽으면 안 된다"
 
 
+def test_하루_전체_곡선도_같은_규칙으로_읽는다(bc):
+    """D-6 — 낮 세 회차 곡선이 가팔라 `_20_05`까지 넣은 하루 전체를 본다(1.26.197이 가리킨 다음 수).
+
+    규칙은 3회차와 같다 — **마지막 증분이 직전 증분의 절반 이하**면 평평이다. 낮 세 회차도
+    하루 전체도 아닌 조합은 여전히 판정하지 않는다(34장의 `_05_10` + `_20_05`가 그 예다).
+    """
+    def curve(cumulative, rounds=bc.FULL_DAY_ROUNDS):
+        return pd.DataFrame({"회차": list(rounds), "누적비율": cumulative})
+
+    assert bc.FULL_DAY_ROUNDS == bc.DAY_ROUNDS + ("_20_05",)
+    평평 = bc.flattening(curve([15.0, 20.0, 25.0, 27.5]))       # 증분 5 → 2.5
+    assert "평평" in 평평 and "하루 전체" in 평평, 평평
+    가파름 = bc.flattening(curve([15.0, 20.0, 25.0, 29.0]))      # 증분 5 → 4
+    assert "가파르" in 가파름 and "로드맵 밖" in 가파름, 가파름
+    assert "판정하지 않는다" in bc.flattening(
+        curve([15.0, 20.0, 25.0], rounds=("_05_10", "_10_15", "_20_05")))
+
+
 # ─────────────────────────────────────────── ⑥ 우측 절단 (고장수거_로드맵 E)
 
 def _trip(bike, day, station="ST0500"):

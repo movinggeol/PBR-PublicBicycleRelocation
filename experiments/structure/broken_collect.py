@@ -304,6 +304,10 @@ OVERLAP_SIDE = 35.0
 OVERLAP_MAJOR = 60.0
 # 곡선을 읽는 회차 — 하루 재배치의 낮 세 회차다. `_20_05`는 야간 창이라 재배치 회차가 아니다.
 DAY_ROUNDS = ("_05_10", "_10_15", "_15_20")
+# D-6 — 낮 세 회차 곡선이 세 기간 모두 가팔라(1.26.197) 사전 등록이 가리킨 다음 수다.
+# 야간 창까지 넣은 **가정 시나리오**의 하루 전체이고, 평평함은 3회차와 같은 규칙으로 읽는다
+# (마지막 증분 ≤ 직전 증분의 절반). 논문 결론은 재배치 회차인 낮 세 회차 기준 그대로 둔다.
+FULL_DAY_ROUNDS = DAY_ROUNDS + ("_20_05",)
 
 
 def overlap_table(visited: pd.DataFrame, broken: pd.DataFrame) -> pd.DataFrame:
@@ -345,15 +349,20 @@ def flattening(table: pd.DataFrame) -> str:
     결과를 보기 전에 정했다(2026-09-14). 낮 세 회차가 다 있을 때만 판정한다.
     """
     rounds = tuple(table["회차"])
-    if rounds != DAY_ROUNDS:
-        return f"판정하지 않는다 — 회차가 {', '.join(rounds)}다(낮 세 회차 곡선만 읽는다)"
-    first, second, third = table["누적비율"].tolist()
-    gain2, gain3 = second - first, third - second
-    if gain3 <= gain2 / 2:
-        return (f"평평해진다 — 3회차 증분 {gain3:.1f}%p가 2회차 증분 {gain2:.1f}%p의 절반 이하."
-                " 통합의 상한에 가깝다")
-    return (f"계속 가파르다 — 3회차 증분 {gain3:.1f}%p가 2회차 증분 {gain2:.1f}%p의 절반보다 크다."
-            " `_20_05`까지 넣어 하루 전체를 볼 값이 있다")
+    if rounds not in (DAY_ROUNDS, FULL_DAY_ROUNDS):
+        return (f"판정하지 않는다 — 회차가 {', '.join(rounds)}다"
+                f"(낮 세 회차, 또는 야간까지 넣은 하루 전체 곡선만 읽는다)")
+    cumulative = table["누적비율"].tolist()
+    n = len(cumulative)
+    앞, 뒤 = cumulative[-2] - cumulative[-3], cumulative[-1] - cumulative[-2]
+    이름 = "하루 전체" if rounds == FULL_DAY_ROUNDS else "3회차"
+    다음 = ("`_20_05`까지 넣어 하루 전체를 볼 값이 있다" if rounds == DAY_ROUNDS
+            else "야간까지 넣어도 아직 안 꺾인다 — 하루를 넘는 범위는 이 로드맵 밖이다")
+    if 뒤 <= 앞 / 2:
+        return (f"평평해진다 — {n}회차 증분 {뒤:.1f}%p가 {n - 1}회차 증분 {앞:.1f}%p의 절반 이하."
+                f" {이름} 기준으로 통합의 상한에 가깝다")
+    return (f"계속 가파르다 — {n}회차 증분 {뒤:.1f}%p가 {n - 1}회차 증분 {앞:.1f}%p의 절반보다 크다."
+            f" {다음}")
 
 
 def integration_overlap(conn, broken: pd.DataFrame, run_label: str) -> pd.DataFrame:
@@ -385,8 +394,12 @@ def integration_overlap(conn, broken: pd.DataFrame, run_label: str) -> pd.DataFr
     last = table.iloc[-1]
     print(f"\n  전체 고장 추정 {len(broken):,}대가 {broken['station_id'].nunique()}곳에 흩어져 있고,"
           f" 그중 {int(last['누적겹침곳'])}곳을 재배치가 이미 들른다(합집합 {last['누적비율']:.1f}%).")
-    if tuple(table["회차"]) == DAY_ROUNDS:
+    rounds = tuple(table["회차"])
+    if rounds == DAY_ROUNDS:
         print(f"  판정(합집합) — {union_verdict(last['누적비율'])}")
+    elif rounds == FULL_DAY_ROUNDS:
+        print(f"  판정(합집합 · 하루 전체 **가정**) — {union_verdict(last['누적비율'])}")
+        print("    ⚠️ `_20_05`는 야간 창이라 재배치 회차가 아니다 — 논문 결론은 낮 세 회차 기준 그대로다(D-6).")
     else:
         print("  판정(합집합) — 하지 않는다: 낮 세 회차가 다 있는 실행이 아니다"
               " (사전 등록한 기준은 세 회차 합집합에 대한 것이다)")
