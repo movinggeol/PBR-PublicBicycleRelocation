@@ -4,6 +4,8 @@
 저장소를 바꾸는 작업이므로 값이 달라지면 이관 자체가 실패다.
 
 모든 테스트가 임시 DB를 쓴다(conftest.py의 autouse fixture + 명시적 경로).
+모듈 스코프 픽스처는 함수 스코프 격리보다 먼저 서므로 conftest의 **세션 격리**가
+받는다(1.26.189 — 그 전에는 `sample`이 사용자 DB에 `rentaltest-*`를 남겼다).
 """
 import os
 import subprocess
@@ -25,6 +27,7 @@ DURATION = "_05_10"
 def sample(tmp_path_factory):
     """합성 대여이력 CSV와 재고 CSV를 만든다."""
     raw_path = tmp_path_factory.mktemp("raw") / "합성_대여이력.csv"
+    # `generate()`는 이 프로세스에서 `station_stock`을 DB에 쓴다 — 세션 격리가 받는다.
     generate(now=NOW, period=PERIOD, stations=40, days=6,
              rentals_per_day=200, raw_path=raw_path)
     yield raw_path

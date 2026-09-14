@@ -99,6 +99,9 @@ def test_holiday_mask_matches_scalar_rule():
 def prepared(tmp_path_factory):
     """합성 데이터로 순수요까지 만들어 둔다(요일 구분과 무관한 단계들)."""
     raw_path = tmp_path_factory.mktemp("raw") / "합성_대여이력.csv"
+    # `generate()`는 **이 프로세스에서** `station_stock`을 DB에 쓴다. 모듈 스코프라
+    # 함수 스코프 격리가 아직 안 걸린 때이고, 받아 주는 것은 conftest의 세션
+    # 격리다(1.26.189 — 그 전에는 사용자 DB에 `daytype-*`가 남았다).
     generate(now=LABEL, period=LABEL, stations=70, days=28,
              rentals_per_day=400, raw_path=raw_path)
 

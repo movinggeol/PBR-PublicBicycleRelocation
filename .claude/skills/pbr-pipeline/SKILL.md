@@ -18,7 +18,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 826개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 828개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -323,7 +323,7 @@ python experiments/params/road_time_model.py  # 이동시간 모형 재추정 (E
 ## 테스트
 
 ```powershell
-python -m pytest                 # 826개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 828개, 약 100초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 
@@ -333,6 +333,9 @@ python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
   **테스트를 추가할 때 이 규칙을 깨지 마라** — 고정 라벨을 쓰면 사용자 데이터가 지워진다.
 - `conftest.py`의 autouse fixture가 모든 테스트에 `PBR_DB_PATH`를 임시 경로로 강제한다.
   이걸 지우면 테스트가 실제 `data/bike_system.db`를 만들고 오염시킨다.
+  🔴 **함수 스코프(`isolate_db`)는 모듈·세션 스코프 픽스처에 닿지 않는다** — pytest가
+  넓은 스코프를 먼저 세우기 때문이다. 그 틈에 `generate()`가 사용자 DB에 쓰고
+  있었고(1.26.189), 지금은 세션 스코프 `isolate_db_session`이 받는다. 둘 다 지우지 마라.
 - 새 step이나 라우트를 추가하면 해당 테스트도 함께 추가한다.
 
 ## 🔴 문서화는 철저히 — 이 저장소에서 가장 자주 강조된 요구다

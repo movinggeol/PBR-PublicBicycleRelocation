@@ -8,6 +8,29 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 
+@pytest.fixture(scope="session", autouse=True)
+def isolate_db_session(tmp_path_factory):
+    """모듈·세션 스코프 픽스처도 임시 DB를 쓰게 한다 (1.26.189).
+
+    🔴 **아래 함수 스코프 `isolate_db`만으로는 새고 있었다.** pytest는 넓은
+    스코프의 픽스처를 먼저 세우므로, 모듈 스코프 픽스처가 돌 때는
+    `PBR_DB_PATH`가 아직 안 바뀌어 있다. `test_day_type.py`·`test_rentals.py`의
+    모듈 픽스처가 이 프로세스에서 부른 `make_sample_data.generate()`가 그 틈에
+    **사용자의 `data/bike_system.db`에 실행과 `station_stock` 행을 남겼다**
+    (2026-09-14 발견). 1.26.188은 `test_pipeline.py`에서 `generate()`를 하위
+    프로세스로 돌려 **비켜 갔을 뿐** 틈은 그대로였다 — 파일마다 비켜 가는 대신
+    틈을 막는다.
+
+    세션 전체의 기본값만 바꾼다. 테스트마다 빈 DB를 주는 약속은 `isolate_db`가
+    그대로 지키고, 그 테스트가 끝나면 값이 이 세션 경로로 되돌아온다
+    (`tests/test_db_isolation.py`가 둘 다 지킨다).
+    """
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("PBR_DB_PATH",
+                     str(tmp_path_factory.mktemp("session-db") / "isolated.db"))
+        yield
+
+
 @pytest.fixture(autouse=True)
 def isolate_db(tmp_path, monkeypatch):
     """모든 테스트가 임시 DB를 쓰도록 강제한다.
@@ -15,6 +38,9 @@ def isolate_db(tmp_path, monkeypatch):
     웹 API가 DB를 조회하게 되면서(DB_PLAN 3단계), 라우트를 한 번 부르기만 해도
     실제 data/bike_system.db가 생성된다. 테스트는 사용자 데이터를 건드리면 안 되므로
     기본값을 임시 경로로 덮어쓴다. 개별 테스트가 다른 경로를 원하면 다시 setenv 하면 된다.
+
+    ⚠️ **함수 스코프라 모듈·세션 스코프 픽스처에는 닿지 않는다** — 그쪽은 위
+    `isolate_db_session`이 받는다(1.26.189).
     """
     monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "isolated.db"))
 

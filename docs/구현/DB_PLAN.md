@@ -213,6 +213,8 @@ GET /api/pipeline-runs                        # 실행 이력 목록
 - **테스트 격리** — API가 DB를 조회하게 되면서 라우트를 한 번 부르기만 해도 실제
   `data/bike_system.db`가 생성됩니다. `tests/conftest.py`의 autouse fixture가
   모든 테스트에 `PBR_DB_PATH`를 임시 경로로 강제합니다.
+  ⚠️ 함수 스코프만으로는 모듈 스코프 픽스처가 먼저 서서 새고 있었습니다 —
+  세션 스코프 격리를 더해 막았습니다(1.26.189, [TESTING.md](TESTING.md) 2장).
 
 ## 4단계 — 대여이력 적재와 step0 전환 (완료)
 

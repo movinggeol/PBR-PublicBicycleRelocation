@@ -1,11 +1,11 @@
 # 테스트
 
 이 프로젝트는 처음에 테스트가 하나도 없었고, **의존성이 전부 깨진 상태**로
-파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 822개 테스트입니다.
+파이프라인이 아예 돌지 않았습니다. 그때 만든 안전망이 지금의 828개 테스트입니다.
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 826개 (약 200초)
+python -m pytest              # 전체 828개 (약 200초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -45,7 +45,8 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_stockout_map.py](../../tests/test_stockout_map.py) | 4 | **결품 지도** — '늘 빔'(재배치로 못 고치는 곳)을 섞어 세지 않는지, 관측이 없는 시간을 '결품 없음'으로 읽지 않는지 |
 | [tests/test_commit_guard.py](../../tests/test_commit_guard.py) | 7 | **커밋에 남의 변경이 섞이는지** — 세션 둘이 같은 `.git/index`를 쓰는 저장소라, 파일을 이름으로 집어 스테이징하고 `git diff --cached`로 확인해도 **확인과 커밋 사이에 뒤바뀐다**(2026-09-08 실측: 남의 파일 8개가 섞이고 내 파일 4개가 빠졌다). 여기서 묻는 것은 *"판정 함수가 옳은 값을 내는가"* 가 아니라 **"`git commit`이 실제로 멈추는가"** 다 — 임시 저장소에 훅을 놓고 커밋을 시켜 **HEAD가 안 움직였는지**로 잰다. 한글 경로(`core.quotepath`)와 하위 폴더 실행도 함께 본다: 둘 다 실제로 깨졌고 테스트가 잡았다 |
 | [tests/test_broken_collect.py](../../tests/test_broken_collect.py) | 14 | **고장 추정 자전거 수거** — 🔴 이 기능은 **거의 안 돌던 코드 경로**를 쓴다. `greedy_route()`의 '적재가 막히면 depot 복귀' 분기는 재배치 입력에서 **구조상 실행될 수 없어**(ILP가 총 pick = 총 drop을 맞춘다) 실데이터 1,224행에 `return`이 0건이었고, 살아 있던 호출부는 대조군 B1뿐이었다. 순수 픽업이 그 경로에 **처음으로 체중을 싣는다** — 여기가 조용히 틀리면 이동거리·출동 횟수가 통째로 틀리고 그 숫자가 배치 임계치 판정을 정한다. 다회 왕복으로 **전부 회수되는지**, 용량을 바꿔도 처리 대수가 같은지, 1대뿐인 대여소(실측 466곳 중 286곳)도 왕복하는지. 그리고 **임계치를 바꿔도 모집단이 안 흔들리는지** — 임계치는 *언제* 수거할지만 바꾸지 *어느* 자전거인지는 안 바꾼다(분모가 흔들리면 서로 다른 자로 잰 값이다, 17·18장). 🔴 **소모 함정은 직접 고정한다**(함정 12) — `route_once()`가 노드를 매 호출마다 새로 만들어 *"두 번 불러도 같다"* 는 저절로 통과한다(내 첫 테스트가 실제로 공허했다). 대여소가 출동마다 겹쳐 **노드 캐싱이 자연스러운 최적화**인데 그러면 두 번째 출동부터 빈 경로를 받는다 ([EXPERIMENTS.md](../분석/EXPERIMENTS.md) 34장) |
-| **합계** | **826** | 28개 파일 · 약 200초 (`python -m pytest`) |
+| [tests/test_db_isolation.py](../../tests/test_db_isolation.py) | 2 | **테스트 DB 격리가 픽스처 스코프와 무관하게 듣는지** — 함수 스코프 `isolate_db`는 **모듈 스코프 픽스처보다 늦게 선다.** 그 틈에 `test_day_type.py`·`test_rentals.py`의 모듈 픽스처가 부른 `generate()`가 사용자 DB에 실행과 `station_stock` 행을 남겼다(1.26.189). 모듈 픽스처가 **쓰지 않고 경로만 보게** 해서, 세션 격리가 빠지면 실제 DB 경로를 보고 실패한다 — 고치기 전에 실제로 그렇게 실패했다 |
+| **합계** | **828** | 29개 파일 · 약 200초 (`python -m pytest`) |
 
 > **이 합계는 손으로 세지 마세요.** 1.26.88이 손으로 세어 548이라 적었는데
 > 실측은 555였습니다 — `test_version_log.py` 한 파일을 통째로 빠뜨린 것입니다.
@@ -82,13 +83,26 @@ DB로 한 번 계산해 결과가 **완전히 같은지** 봅니다. 저장소�
 
 | 장치 | 위치 | 하는 일 |
 | --- | --- | --- |
-| `isolate_db` (autouse) | [tests/conftest.py](../../tests/conftest.py) | 모든 테스트에 `PBR_DB_PATH`를 임시 경로로 강제 |
+| `isolate_db_session` (autouse, 세션) | [tests/conftest.py](../../tests/conftest.py) | **모듈·세션 스코프 픽스처**까지 `PBR_DB_PATH`를 임시 경로로 (1.26.189) |
+| `isolate_db` (autouse, 함수) | [tests/conftest.py](../../tests/conftest.py) | 테스트마다 **새** 임시 DB — 끝나면 세션 경로로 되돌아간다 |
 | `isolate_csv_fallback` (autouse) | [tests/test_webapp_db.py](../../tests/test_webapp_db.py) | `catalog.PP_ROOT`를 **빈** 임시 폴더로. 실데이터가 있으면 *'산출물이 없을 때 404'* 검사가 폴백에서 진짜 파일을 찾아 200을 돌려주며 실패한다 |
 | 고유 실행 라벨 | `tests/test_pipeline.py` · `test_day_type.py` · `test_rentals.py` | `now`/`period`를 `smoketest-{PID}` 같은 라벨로 두고, 끝나면 그 라벨 파일만 삭제 |
 
 `isolate_db`가 **autouse**인 것이 핵심입니다. 웹 API가 DB를 조회하게 되면서
 라우트를 한 번 부르기만 해도 실제 `data/bike_system.db`가 생성되기 때문에,
 개별 테스트가 깜빡해도 자동으로 막히도록 했습니다.
+
+> 🔴 **autouse여도 함수 스코프는 모듈 스코프 픽스처를 못 막았습니다** (1.26.189에 고침).
+> pytest는 넓은 스코프의 픽스처를 **먼저** 세웁니다. 그래서 모듈 픽스처가 도는
+> 순간에는 `PBR_DB_PATH`가 아직 바뀌기 전이었고, `test_day_type.py`·`test_rentals.py`의
+> 모듈 픽스처가 부른 `make_sample_data.generate()`가 **사용자 DB에 실행과
+> `station_stock` 행을 남겼습니다.** *"모든 테스트에 강제"* 는 **함수 스코프에서만
+> 참이었습니다.**
+>
+> 실제 DB를 건드리지 않고 재현했습니다 — 바깥 환경의 `PBR_DB_PATH`를 표지 DB로 두고
+> 두 파일을 돌리면 **격리 밖에서 쓴 행만** 표지에 찍힙니다(실행 `daytype-*`·
+> `rentaltest-*`, `station_stock` 70행·40행). 두 파일을 비켜 가게 하는 대신 세션
+> 스코프 `isolate_db_session`을 더해 틈을 막았고, `test_db_isolation.py`가 지킵니다.
 
 > 🔴 **세 번째 장치는 실패했을 때 작동하지 않았습니다** (1.26.124에 고침).
 > 라벨 정리는 fixture의 `yield` **뒤**에 있는데 `pytest.fail()`이 `yield`
@@ -214,6 +228,9 @@ python "pipeline/step3_map/main.py" --now "<라벨>" --duration "_15_20"
 1. **실데이터를 건드리지 않는지 먼저 확인하세요.** `conftest.py`의 autouse fixture가
    DB는 막아주지만, `data/pp_data/`에 파일을 쓰는 테스트라면 고유 라벨을 쓰고
    끝나면 그 라벨 파일만 지워야 합니다 (`test_pipeline.py` 참고).
+   ⚠️ **모듈·세션 스코프 픽스처에서 DB에 쓴 행은 세션 DB에 쌓여 테스트 안에서는
+   안 보입니다** — 테스트는 저마다 새 DB를 받기 때문입니다. 그 행이 필요하면 경로를
+   명시적으로 넘기세요(`test_rentals.py`의 `loaded_db` 참고, 1.26.189).
 2. **왜 이 테스트가 필요한지 docstring에 적으세요.** 기존 테스트 파일들은
    맨 위에 "무엇을 막으려는 테스트인가"를 적어 뒀습니다 —
    예: "라이브러리 업그레이드로 라우트가 통째로 깨지는 사고를 잡는 것이 목적".
