@@ -128,6 +128,16 @@ REVIVAL_MINOR = 10.0
 REVIVAL_MAJOR = 30.0
 REVIVAL_FOLLOW_MONTHS = 3
 
+# 양성 대조(G) — **결과를 보기 전에** 못박은 판정 기준(docs/기록/고장수거_로드맵.md 5장).
+# *"정비대기(ST0001)로 반납된 자전거는 정말 안 돌아오나"* 를 전 기간에서 다시 묻는다(34장은
+# 코호트 안에 2대뿐이라 검정이 안 됐다). 처치군은 자전거당 **첫** 정비대기 반납 하나이고,
+# 대조군은 정비대기 반납이 한 번도 없는 자전거의 **같은 달 첫 일반 반납**이다. 창은 90일
+# (34장의 추적 3개월과 같은 자)이고, 창이 자료 끝을 넘는 관측은 양쪽 모두 뺀다.
+# 통과는 세 조건 AND — 양측 p < 0.01 · 처치군 재등장률이 더 낮음 · 월별로 방향이 뒤집힌 달이 절반 미만.
+CONTROL_HORIZON_DAYS = 90
+CONTROL_MIN_SAMPLE = 30        # 처치군이 이보다 적으면 판정하지 않는다 — 억지로 유의성을 만들지 않는다
+REPAIR_STATION = "ST0001"      # 정비대기. 나머지 운영시설(ST1220·ST1418)은 양쪽에서 뺀다
+
 
 # ──────────────────────────────────────────────────── ① 대상 도출
 
@@ -438,6 +448,113 @@ def revival_verdict(report: dict, follow_months: list) -> str:
     return "34장의 대수 자체를 다시 써야 한다"
 
 
+# ──────────────────────────────────────────────────── ⑤ 양성 대조 (로드맵 G)
+
+def positive_control(conn, horizon_days: int = CONTROL_HORIZON_DAYS) -> dict:
+    """정비대기(`ST0001`) 반납 뒤 자전거가 돌아오는가 — 같은 달 일반 반납과 견준다.
+
+    34장의 양성 대조는 코호트 안에 정비대기 반납이 2대뿐이라 검정이 안 됐다(로드맵 G).
+    코호트 제약을 풀고 전 기간에서 모으되 **자전거마다 관측 창을 맞춘다** — 반납 시점이
+    제각각이라 창을 안 맞추면 늦게 반납된 자전거가 저절로 '안 돌아온 것'이 된다.
+
+    처치군은 자전거당 **첫** 정비대기 반납 하나다. 뒤의 반납을 쓰면 그 사이의 복귀를 못 보고
+    지나가 *"안 돌아온다"* 쪽으로 기운다 — 불리한 쪽을 고른다. 대조군은 정비대기 반납이 한
+    번도 없는 자전거의 **같은 달 첫 일반 반납**이고, 운영시설 반납은 양쪽에서 뺀다. 창이
+    자료 끝을 넘는 관측은 양쪽 모두 뺀다 — E에서 본 우측 절단이 '안 돌아옴'을 부풀린다.
+    """
+    rentals = pd.read_sql("SELECT bike_no, rent_at FROM rental_history", conn,
+                          parse_dates=["rent_at"])
+    treated = pd.read_sql(
+        "SELECT bike_no, MIN(return_at) AS t0 FROM rental_history"
+        " WHERE return_station = ? GROUP BY bike_no",
+        conn, params=[REPAIR_STATION], parse_dates=["t0"])
+    control = pd.read_sql(
+        "SELECT bike_no, substr(return_at,1,7) AS 달, MIN(return_at) AS t0"
+        "  FROM rental_history"
+        " WHERE return_station NOT IN (?, ?, ?)"
+        "   AND bike_no NOT IN (SELECT bike_no FROM rental_history WHERE return_station = ?)"
+        " GROUP BY bike_no, 달",
+        conn, params=[*OPS_STATIONS, REPAIR_STATION], parse_dates=["t0"])
+
+    treated = treated.dropna(subset=["t0"])
+    control = control.dropna(subset=["t0"])
+    treated["달"] = treated["t0"].dt.strftime("%Y-%m")
+    treated["군"] = "정비대기 반납"
+    control["군"] = "일반 반납"
+    control = control[control["달"].isin(set(treated["달"]))]   # 처치군이 있는 달만 견준다
+
+    columns = ["bike_no", "t0", "달", "군"]
+    obs = pd.concat([treated[columns], control[columns]], ignore_index=True)
+    horizon = pd.Timedelta(days=horizon_days)
+    data_end = rentals["rent_at"].max()
+    keep = obs["t0"] + horizon <= data_end
+    cut = int((~keep).sum())
+    obs = obs[keep]
+
+    merged = pd.merge_asof(obs.sort_values("t0"), rentals.sort_values("rent_at"),
+                           left_on="t0", right_on="rent_at", by="bike_no",
+                           direction="forward", allow_exact_matches=False)
+    merged["재등장"] = merged["rent_at"].notna() & (merged["rent_at"] <= merged["t0"] + horizon)
+
+    by_month = (merged.groupby(["달", "군"])["재등장"]
+                .agg(관측="size", 재등장="sum").reset_index())
+    by_month["재등장률"] = (by_month["재등장"] / by_month["관측"] * 100).round(1)
+    총 = merged.groupby("군")["재등장"].agg(관측="size", 재등장="sum")
+
+    def cell(group, column):
+        return int(총.loc[group, column]) if group in 총.index else 0
+
+    처치, 처치_재등장 = cell("정비대기 반납", "관측"), cell("정비대기 반납", "재등장")
+    대조, 대조_재등장 = cell("일반 반납", "관측"), cell("일반 반납", "재등장")
+
+    p, 방법 = float("nan"), "검정 불가 — 한쪽이 비었다"
+    if 처치 and 대조:
+        from scipy.stats import chi2_contingency, fisher_exact
+
+        table = [[처치_재등장, 처치 - 처치_재등장], [대조_재등장, 대조 - 대조_재등장]]
+        chi2, chi_p, _, expected = chi2_contingency(table, correction=False)
+        if expected.min() >= 5:
+            p, 방법 = float(chi_p), "카이제곱(연속성 보정 없음)"
+        else:
+            result = fisher_exact(table)
+            p = float(getattr(result, "pvalue", result[1]))
+            방법 = "Fisher 정확검정(기대빈도 5 미만)"
+
+    rates = by_month.pivot(index="달", columns="군", values="재등장률")
+    both = rates.dropna() if {"정비대기 반납", "일반 반납"} <= set(rates.columns) else rates.iloc[:0]
+    뒤집힌 = int((both["정비대기 반납"] > both["일반 반납"]).sum()) if len(both) else 0
+
+    return {
+        "처치": 처치, "처치_재등장": 처치_재등장,
+        "처치율": 처치_재등장 / 처치 * 100 if 처치 else float("nan"),
+        "대조": 대조, "대조_재등장": 대조_재등장,
+        "대조율": 대조_재등장 / 대조 * 100 if 대조 else float("nan"),
+        "p": p, "검정": 방법, "월별": by_month, "비교한_달": len(both), "뒤집힌_달": 뒤집힌,
+        "창일수": horizon_days, "잘린_관측": cut, "자료끝": data_end,
+    }
+
+
+def control_verdict(report: dict) -> str:
+    """양성 대조를 사전 등록한 갈래로만 말한다(로드맵 G)."""
+    if report["처치"] < CONTROL_MIN_SAMPLE:
+        return (f"판정하지 않는다 — 처치군이 {report['처치']}대뿐이다(사전 등록한 최소"
+                f" {CONTROL_MIN_SAMPLE}대). 34장처럼 **못 한 검증**으로 다시 남긴다")
+    낮음 = report["처치율"] < report["대조율"]
+    유의 = report["p"] == report["p"] and report["p"] < SIGNIFICANCE
+    방향일관 = report["비교한_달"] > 0 and report["뒤집힌_달"] * 2 < report["비교한_달"]
+    if 낮음 and 유의 and 방향일관:
+        return ("양성 대조 통과 — 정비대기로 들어간 자전거는 덜 돌아온다."
+                " '사라짐 = 고장' 해석이 한 번 더 지지된다")
+    if 낮음 and 유의:
+        return ("판정하지 않는다 — 합쳐서는 낮지만 월별로 방향이 뒤집힌 달이 절반 이상이다"
+                "(달마다 대상이 달라 합치면 뒤집힐 수 있다)")
+    if 유의:
+        return ("반대 방향으로 유의하다 — 정비대기로 들어간 자전거가 **오히려 더 돌아온다**."
+                " 정비대기 반납은 퇴역이 아니라 수리 뒤 복귀에 가깝다")
+    return ("차이를 못 가렸다 — 정비대기 반납이 곧 퇴역은 아니다(수리 후 복귀)."
+            " 34장은 '사라짐'만 말하고 '고장'은 더 조심해서 쓴다")
+
+
 # ──────────────────────────────────────────────────── 감사
 
 def cohort_usage(conn, base_months: list, follow_months: list) -> pd.DataFrame:
@@ -592,6 +709,11 @@ def main() -> None:
     parser.add_argument("--verify", default="",
                         help="검증 창 월 목록 — 주면 우측 절단(로드맵 E)의 되살아남만 재고 끝낸다"
                              " (추적 창보다 뒤여야 한다)")
+    parser.add_argument("--positive-control", action="store_true",
+                        help="양성 대조(로드맵 G)만 잰다 — 정비대기 반납 뒤 자전거가 돌아오는가")
+    parser.add_argument("--horizon-days", type=int, default=CONTROL_HORIZON_DAYS,
+                        help=f"양성 대조의 관측 창 (기본 {CONTROL_HORIZON_DAYS}일 —"
+                             " 34장의 추적 3개월과 같은 자)")
     parser.add_argument("--out", default="", help="정책 표를 CSV로 저장")
     args = parser.parse_args()
 
@@ -605,6 +727,21 @@ def main() -> None:
         print(f"  적재 용량 {args.capacity}대 · depot {DEPOT_ID}"
               f" ({DEPOT_LAT}, {DEPOT_LON})")
         print("=" * 78)
+
+        if args.positive_control:
+            report = positive_control(conn, args.horizon_days)
+            print(f"\n=== ⑤ 양성 대조 — 정비대기({REPAIR_STATION}) 반납 뒤"
+                  f" {report['창일수']}일 안에 다시 빌려졌나 (로드맵 G) ===")
+            print(f"  처치군(정비대기 반납) {report['처치']:,}대 중 {report['처치_재등장']:,}대 재등장"
+                  f" ({report['처치율']:.1f}%)")
+            print(f"  대조군(같은 달 일반 반납) {report['대조']:,}대 중 {report['대조_재등장']:,}대 재등장"
+                  f" ({report['대조율']:.1f}%)")
+            print(f"  {report['검정']} 양측 p = {report['p']:.3g} · 비교한 달 {report['비교한_달']}개"
+                  f" 중 방향이 뒤집힌 달 {report['뒤집힌_달']}개")
+            print(f"  창이 자료 끝({report['자료끝']:%Y-%m-%d})을 넘어 뺀 관측 {report['잘린_관측']:,}개")
+            print(report["월별"].to_string(index=False))
+            print(f"\n  판정 — {control_verdict(report)}")
+            return
 
         # 검증 창을 주면(로드맵 E) 마지막 위치를 추적 창 끝까지의 기록에서 찾는다 — 되살아난
         # 뒤의 반납이 판정 시점에는 알 수 없던 정보로 코호트를 바꾸지 않게.
