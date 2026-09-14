@@ -295,6 +295,131 @@ def simulate(broken: pd.DataFrame, rule: str, value, capacity: int) -> dict:
     }
 
 
+# ──────────────────────────────────────────────────── ⑥ 코호트 크기 민감도 (로드맵 E-6)
+
+# E-5가 외부 기준으로 코호트를 745대에서 N대로 **자를** 텐데, 그러면 34장이 745대로 낸
+# 결론이 그대로 서는가. **결과를 보기 전에** 못박은 기준이다(고장수거_로드맵 3장 E-6).
+#
+#   ① 무릎 = `depot왕복`이 물리적 하한 ceil(N/용량)에 **처음 도달하는** 대수 임계치.
+#      모든 N에서 무릎 = 용량이면 그것은 실측이 아니라 **구조**이고, 34장을 그렇게 고쳐 쓴다.
+#   ② 짝짓기 = 일수 정책마다 `방치평균_일`이 가장 가까운 대수 정책(같으면 value가 작은 쪽).
+#      두 축(`방치평균_일`·`대당km`)이 모두 작거나 같으면 그쪽 승, 섞이면 무승부.
+#      일수 승이 하나라도 나오면 34장의 "지배"를 철회한다.
+#   ③ 대조 = 같은 N을 **무작위로** 뽑아 함께 돌린다. 판정이 갈리면 원인은 크기가 아니라
+#      **정렬 기준**이다. 씨앗은 셋 이상 — 이 저장소는 씨앗 하나로 결론이 뒤집힌 적이 있다.
+COHORT_SIZES = (100, 200, 300, 500)
+COHORT_SEEDS = (1, 2, 3)
+
+
+def knee_threshold(table: pd.DataFrame, size: int, capacity: int) -> int | None:
+    """무릎 — `depot왕복`이 하한 ceil(size/capacity)에 처음 도달하는 대수 임계치.
+
+    없으면 None. 표는 `simulate()` 행들이고 '대'로 끝나는 정책만 본다.
+    """
+    floor = -(-size // capacity)                     # ceil
+    counts = table[table["정책"].str.endswith("대")].copy()
+    counts["값"] = counts["정책"].str.rstrip("대").astype(int)
+    hit = counts[counts["depot왕복"] <= floor].sort_values("값")
+    return int(hit["값"].iloc[0]) if len(hit) else None
+
+
+def pair_policies(table: pd.DataFrame) -> pd.DataFrame:
+    """일수 정책마다 `방치평균_일`이 가장 가까운 대수 정책을 짝지어 승패를 매긴다.
+
+    ⚠️ 짝짓기 규칙은 **결과를 보기 전에** 정했다 — 34장이 *0.5일대·1.5일대…* 로 묶은 것과
+    같은 방식이다. 같은 거리면 value가 작은 쪽을 고른다(동점을 사람이 고르면 기준이 결과를
+    따라간다).
+    """
+    days = table[table["정책"].str.endswith("일")]
+    counts = table[table["정책"].str.endswith("대")]
+    rows = []
+    for d in days.itertuples():
+        gap = (counts["방치평균_일"] - d.방치평균_일).abs()
+        값 = counts["정책"].str.rstrip("대").astype(int)
+        c = counts.loc[gap.sort_values(kind="stable").index].assign(_v=값)
+        c = c.iloc[[0]] if len(c) == 1 else c[gap[c.index] == gap.min()].sort_values("_v").iloc[[0]]
+        c = c.iloc[0]
+        대수승 = c.방치평균_일 <= d.방치평균_일 and c.대당km <= d.대당km
+        일수승 = d.방치평균_일 <= c.방치평균_일 and d.대당km <= c.대당km
+        rows.append({
+            "일수": d.정책, "일수_방치": d.방치평균_일, "일수_km": d.대당km,
+            "대수": c.정책, "대수_방치": c.방치평균_일, "대수_km": c.대당km,
+            "승자": "대수" if 대수승 and not 일수승 else
+                    ("일수" if 일수승 and not 대수승 else "무승부"),
+        })
+    return pd.DataFrame(rows)
+
+
+def cohort_row(broken: pd.DataFrame, size: int, counts: list, days: list,
+               capacity: int, how: str) -> dict:
+    """코호트 하나(정렬 앞 N대 또는 무작위 N대)를 돌려 ①·②를 요약한다."""
+    table = pd.DataFrame(
+        [simulate(broken, "count", v, capacity) for v in counts]
+        + [simulate(broken, "days", v, capacity) for v in days])
+    pairs = pair_policies(table)
+    승 = pairs["승자"].value_counts()
+    return {
+        "코호트": how, "N": len(broken),
+        "무릎": knee_threshold(table, size, capacity),
+        "대수승": int(승.get("대수", 0)), "일수승": int(승.get("일수", 0)),
+        "무승부": int(승.get("무승부", 0)),
+        "하루발생": round(len(broken) /
+                        ((broken["broken_at"].max() - broken["broken_at"].min()).days or 1), 1),
+    }
+
+
+def cohort_sensitivity(broken: pd.DataFrame, sizes: list, seeds: list,
+                       counts: list, days: list, capacity: int) -> pd.DataFrame:
+    """N을 줄여 가며 ①·②를 다시 재고, 같은 N의 무작위 코호트와 견준다.
+
+    🔴 `broken`은 `broken_at` **오름차순**이므로 `head(N)`이 곧 E-5의 정렬
+    (*마지막 대여 이후 경과일 내림차순*)이다 — 새 정렬 규칙을 만들지 않는다.
+    """
+    rows = []
+    for size in list(sizes) + [len(broken)]:
+        if size > len(broken):
+            continue
+        rows.append(cohort_row(broken.head(size).reset_index(drop=True),
+                               size, counts, days, capacity, "정렬"))
+        if size < len(broken):
+            for seed in seeds:
+                뽑음 = (broken.sample(size, random_state=seed)
+                        .sort_values("broken_at").reset_index(drop=True))
+                rows.append(cohort_row(뽑음, size, counts, days, capacity,
+                                       f"무작위(씨앗 {seed})"))
+    return pd.DataFrame(rows)
+
+
+def cohort_verdict(table: pd.DataFrame, capacity: int) -> str:
+    """사전 등록한 갈래 그대로 한 줄로 답한다(고장수거_로드맵 3장 E-6)."""
+    정렬 = table[table["코호트"] == "정렬"]
+    무릎들 = set(정렬["무릎"].dropna())
+    if 정렬["일수승"].sum():
+        머리 = ("🔴 일수 승이 나왔다 — 34장의 '대수 기준이 지배한다'를 **철회하고**"
+               " 갈리는 지점을 밝힌다.")
+    elif (정렬["대수승"] == 정렬[["대수승", "일수승", "무승부"]].sum(axis=1)).all():
+        머리 = "✅ 모든 N에서 네 짝 전부 대수 승 — 지배는 코호트 크기와 무관하다."
+    else:
+        머리 = ("🟡 N이 줄면 대수 승이 줄어든다 — *\"코호트가 클 때만 지배한다\"* 로"
+               " 조건을 붙여 쓴다.")
+
+    꼬리 = ("🔴 모든 N에서 무릎 = 적재 용량이다 — 그것은 실측이 아니라 **구조**다."
+           f" 34장의 '무릎이 정확히 {capacity}대'를 발견처럼 쓰지 않는다."
+           if 무릎들 == {capacity} else
+           f"무릎이 N에 따라 갈린다({sorted(무릎들)}) — 실측값이다.")
+
+    갈림 = []
+    for size, grp in table.groupby("N"):
+        정 = grp[grp["코호트"] == "정렬"]
+        무 = grp[grp["코호트"] != "정렬"]
+        if len(무) and set(무["대수승"]) != set(정["대수승"]):
+            갈림.append(str(size))
+    대조 = ("🔴 정렬 코호트와 무작위 코호트의 판정이 갈린다"
+           f"(N = {', '.join(갈림)}) — 원인은 크기가 아니라 **정렬 기준**이다."
+           if 갈림 else "대조: 무작위 코호트도 같은 판정이다 — 원인은 크기다.")
+    return f"{머리}\n           {꼬리}\n           {대조}"
+
+
 # ──────────────────────────────────────────────────── ③ 통합 vs 분리
 
 # 로드맵 D의 해석 기준 — **결과를 보기 전에** 정했다(고장수거_로드맵 2장).
@@ -727,6 +852,14 @@ def main() -> None:
     parser.add_argument("--horizon-days", type=int, default=CONTROL_HORIZON_DAYS,
                         help=f"양성 대조의 관측 창 (기본 {CONTROL_HORIZON_DAYS}일 —"
                              " 34장의 추적 3개월과 같은 자)")
+    parser.add_argument("--cohort", action="store_true",
+                        help="코호트 크기 민감도 — E-5가 자르면 결론이 버티나 (로드맵 E-6)")
+    parser.add_argument("--cohort-sizes",
+                        default=",".join(str(n) for n in COHORT_SIZES),
+                        help=f"N 격자. 기본 {','.join(str(n) for n in COHORT_SIZES)} (전체는 늘 포함)")
+    parser.add_argument("--cohort-seeds",
+                        default=",".join(str(n) for n in COHORT_SEEDS),
+                        help="무작위 대조 씨앗. 빈 값이면 대조를 돌리지 않는다")
     parser.add_argument("--out", default="", help="정책 표를 CSV로 저장")
     args = parser.parse_args()
 
@@ -798,6 +931,21 @@ def main() -> None:
         for raw in args.days.split(","):
             if raw.strip():
                 rows.append(simulate(broken, "days", int(raw), args.capacity))
+
+        if args.cohort:
+            sizes = [int(v) for v in args.cohort_sizes.split(",") if v.strip()]
+            seeds = [int(v) for v in args.cohort_seeds.split(",") if v.strip()]
+            counts = [int(v) for v in args.counts.split(",") if v.strip()]
+            daylist = [int(v) for v in args.days.split(",") if v.strip()]
+            표 = cohort_sensitivity(broken, sizes, seeds, counts, daylist, args.capacity)
+            print(f"\n=== ⑥ 코호트 크기 민감도 — E-5가 자르면 결론이 버티나 (로드맵 E-6) ===")
+            print(표.to_string(index=False))
+            print(f"\n  판정 — {cohort_verdict(표, args.capacity)}")
+            print("  ⚠️ 통합 겹침(③)은 이 환경에서 못 잰다 — 낮 세 회차를 다 가진 실행이 없다.")
+            if args.out:
+                표.to_csv(args.out, index=False, encoding="utf-8-sig")
+                print(f"\n저장: {args.out}")
+            return
 
         table = pd.DataFrame(rows)
 
