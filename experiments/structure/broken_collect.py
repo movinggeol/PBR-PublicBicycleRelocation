@@ -119,10 +119,20 @@ GENERATIONS = ("DJ2", "DJ3")
 SIGNIFICANCE = 0.01
 QUINTILES = ["최저", "하", "중", "상", "최고"]
 
+# 우측 절단(E) — **결과를 보기 전에** 못박은 판정 기준(docs/기록/고장수거_로드맵.md 3장).
+# 창을 통째로 앞으로 옮겨(기준 2025-04~05 → 추적 2025-07~09 → 검증 2025-10~2026-03) 소멸로
+# 판정한 자전거 가운데 검증 창에 다시 나타난 비율을 잰다. 10% 미만은 사소, 10~30%는 "745대는
+# 상한"으로 쓰고, 30% 초과면 34장의 대수를 다시 쓴다. 경계값(10·30)은 가운데 갈래에 넣는다(D와 같다).
+# 판정은 **추적 3개월**(34장과 같은 길이)일 때만 낸다 — 1·2개월은 민감도(E-3)로만 본다.
+REVIVAL_MINOR = 10.0
+REVIVAL_MAJOR = 30.0
+REVIVAL_FOLLOW_MONTHS = 3
+
 
 # ──────────────────────────────────────────────────── ① 대상 도출
 
-def detect_broken(conn, base_months: list, follow_months: list) -> pd.DataFrame:
+def detect_broken(conn, base_months: list, follow_months: list,
+                  until_month: str | None = None) -> pd.DataFrame:
     """고장 추정 자전거와 **마지막으로 알려진 위치**를 뽑는다.
 
     기준기간에 돌던 자전거 중 추적기간에 한 번도 안 나타나는 것을 고른다.
@@ -132,9 +142,16 @@ def detect_broken(conn, base_months: list, follow_months: list) -> pd.DataFrame:
     *"적게 쓰인 자전거가 고장난다"* 가 공짜로 나온다. 같은 창에서 재야 한다.
 
     씨앗이 없다 — **결정적**이다. 같은 DB에서 늘 같은 목록이 나온다.
+
+    ⚠️ `until_month`를 주면 **마지막 위치를 그 달까지의 기록에서** 찾는다(로드맵 E). 창을
+    앞으로 옮기면 추적 창 뒤에도 자료가 있어서, 끝을 두지 않으면 **되살아난 뒤의 반납**이
+    위치·운영시설 판정에 섞인다 — 판정 시점에는 알 수 없던 정보로 코호트가 바뀐다. 기본값은
+    끝을 두지 않는다: 34장은 자료가 추적 창에서 끝나 결과가 같고, 그 재현을 그대로 둔다.
     """
     qs_base = ",".join("?" * len(base_months))
     qs_follow = ",".join("?" * len(follow_months))
+    last_filter = "WHERE substr(rent_at,1,7) <= ?" if until_month else ""
+    params = list(base_months) + list(follow_months) + ([until_month] if until_month else [])
 
     frame = pd.read_sql(
         f"""
@@ -145,7 +162,7 @@ def detect_broken(conn, base_months: list, follow_months: list) -> pd.DataFrame:
              gone AS (SELECT bike_no FROM base
                        WHERE bike_no NOT IN (SELECT bike_no FROM live)),
              last AS (SELECT bike_no, MAX(rent_at) AS m
-                        FROM rental_history GROUP BY bike_no)
+                        FROM rental_history {last_filter} GROUP BY bike_no)
         SELECT r.bike_no,
                r.return_station AS station_id,
                r.return_lat     AS lat,
@@ -154,7 +171,7 @@ def detect_broken(conn, base_months: list, follow_months: list) -> pd.DataFrame:
           FROM rental_history r
           JOIN last  ON r.bike_no = last.bike_no AND r.rent_at = last.m
           JOIN gone  ON r.bike_no = gone.bike_no
-        """, conn, params=base_months + follow_months)
+        """, conn, params=params)
 
     frame = frame.drop_duplicates("bike_no")
     before = len(frame)
@@ -369,6 +386,58 @@ def integration_overlap(conn, broken: pd.DataFrame, run_label: str) -> pd.DataFr
     return table
 
 
+# ──────────────────────────────────────────────────── ④ 우측 절단 (로드맵 E)
+
+def revival_table(conn, broken: pd.DataFrame, follow_months: list, verify_months: list) -> dict:
+    """소멸로 판정한 자전거 가운데 **검증 창에 다시 나타난** 것을 센다.
+
+    추적 창에 없다는 것만으로 '고장'이라 부르면, 추적이 끝난 뒤 돌아온 자전거까지 고장으로
+    센다(우측 절단). 뒤를 볼 자료가 없으므로 창을 통째로 앞으로 옮겨 그 편향의 크기를 직접
+    잰다. **다시 나타남 = 검증 창에 대여 기록이 1건 이상.** 자료가 없는 달도 함께 돌려준다 —
+    추적 창에 빈 달이 있으면 소멸이 부풀려지므로 판정하지 않는다(`revival_verdict`).
+    """
+    if min(verify_months) <= max(follow_months):
+        raise SystemExit(f"검증 창({min(verify_months)}~)은 추적 창({max(follow_months)}까지)보다 뒤여야"
+                         " 합니다 — 겹치면 추적 창에 나타난 자전거를 되살아났다고 셉니다.")
+    months = list(follow_months) + list(verify_months)
+    present = set(pd.read_sql(
+        f"SELECT DISTINCT substr(rent_at,1,7) AS m FROM rental_history"
+        f" WHERE substr(rent_at,1,7) IN ({','.join('?' * len(months))})",
+        conn, params=months)["m"])
+    seen = pd.read_sql(
+        f"SELECT bike_no, MIN(substr(rent_at,1,7)) AS 첫달 FROM rental_history"
+        f" WHERE substr(rent_at,1,7) IN ({','.join('?' * len(verify_months))}) GROUP BY bike_no",
+        conn, params=list(verify_months))
+    back = seen[seen["bike_no"].isin(broken["bike_no"])]
+    total = len(broken)
+    return {
+        "대상": total,
+        "되살아남": len(back),
+        "비율": len(back) / total * 100 if total else float("nan"),
+        "첫달": back["첫달"].value_counts().sort_index(),
+        "빈_추적달": [m for m in follow_months if m not in present],
+        "빈_검증달": [m for m in verify_months if m not in present],
+    }
+
+
+def revival_verdict(report: dict, follow_months: list) -> str:
+    """되살아남 비율을 사전 등록한 세 갈래로만 읽는다 — 추적 3개월 · 빈 달 없음일 때만."""
+    if report["빈_추적달"]:
+        return (f"판정하지 않는다 — 추적 창에 자료가 없는 달이 있다({', '.join(report['빈_추적달'])})."
+                " 소멸이 부풀려진다")
+    if len(follow_months) != REVIVAL_FOLLOW_MONTHS:
+        return (f"판정하지 않는다 — 추적이 {len(follow_months)}개월이다(34장과 같은"
+                f" {REVIVAL_FOLLOW_MONTHS}개월에서만 판정하고, 나머지는 민감도로 본다)")
+    percent = report["비율"]
+    if percent != percent:
+        return "판정하지 않는다 — 대상이 없다"
+    if percent < REVIVAL_MINOR:
+        return "우측 절단은 사소하다 — 745대를 그대로 쓴다"
+    if percent <= REVIVAL_MAJOR:
+        return "본문에 비율을 밝히고 '745대는 상한'이라 쓴다"
+    return "34장의 대수 자체를 다시 써야 한다"
+
+
 # ──────────────────────────────────────────────────── 감사
 
 def cohort_usage(conn, base_months: list, follow_months: list) -> pd.DataFrame:
@@ -520,6 +589,9 @@ def main() -> None:
                         help="탐지 방법의 근거를 되짚는다")
     parser.add_argument("--audit-only", action="store_true",
                         help="감사만 하고 정책 시뮬레이션·통합 비교는 건너뛴다")
+    parser.add_argument("--verify", default="",
+                        help="검증 창 월 목록 — 주면 우측 절단(로드맵 E)의 되살아남만 재고 끝낸다"
+                             " (추적 창보다 뒤여야 한다)")
     parser.add_argument("--out", default="", help="정책 표를 CSV로 저장")
     args = parser.parse_args()
 
@@ -534,7 +606,11 @@ def main() -> None:
               f" ({DEPOT_LAT}, {DEPOT_LON})")
         print("=" * 78)
 
-        broken = detect_broken(conn, base_months, follow_months)
+        # 검증 창을 주면(로드맵 E) 마지막 위치를 추적 창 끝까지의 기록에서 찾는다 — 되살아난
+        # 뒤의 반납이 판정 시점에는 알 수 없던 정보로 코호트를 바꾸지 않게.
+        verify_months = [m.strip() for m in args.verify.split(",") if m.strip()]
+        until = max(follow_months) if verify_months else None
+        broken = detect_broken(conn, base_months, follow_months, until_month=until)
         if broken.empty:
             raise SystemExit("수거 대상이 없습니다 — 기간을 확인하세요.")
 
@@ -545,6 +621,20 @@ def main() -> None:
         print(f"  발생 {broken['broken_at'].min():%Y-%m-%d}"
               f" ~ {broken['broken_at'].max():%Y-%m-%d} ({span}일)"
               f" · 하루 {len(broken) / span:.1f}대")
+
+        if verify_months:
+            report = revival_table(conn, broken, follow_months, verify_months)
+            print(f"\n=== ④ 우측 절단 — 검증 창 {verify_months}에 다시 나타났나 ===")
+            print(f"  소멸로 판정한 {report['대상']:,}대 중 {report['되살아남']:,}대가 다시 나타났다"
+                  f" ({report['비율']:.1f}%)")
+            if len(report["첫달"]):
+                print("  처음 다시 나타난 달: "
+                      + " · ".join(f"{month} {count}대" for month, count in report["첫달"].items()))
+            if report["빈_검증달"]:
+                print(f"  검증 창 중 자료가 없는 달: {', '.join(report['빈_검증달'])}")
+            print(f"  판정 — {revival_verdict(report, follow_months)}")
+            print("  ⚠️ 창이 34장과 계절이 달라 이 값은 편향의 크기지 정확한 보정 계수가 아니다.")
+            return
 
         if args.audit or args.audit_only:
             audit(conn, base_months, follow_months)

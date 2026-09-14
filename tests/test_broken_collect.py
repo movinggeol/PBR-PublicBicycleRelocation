@@ -12,12 +12,13 @@ depot에 비우고 다시 나간다(다회 왕복). 즉 **이 기능이 그 경�
 체중을 싣는다.** 여기가 조용히 틀리면 이동거리·출동 횟수가 통째로 틀리고,
 그 숫자가 배치 임계치 판정을 정한다.
 
-지키려는 것 다섯:
+지키려는 것 여섯:
   ① 순수 픽업에서 다회 왕복이 실제로 일어나고 **모든 자전거가 회수된다**
   ② `greedy_route()`가 호출 측 dict를 소모하는 함정(함정 12)에 안 걸린다
   ③ 임계치를 바꿔도 **모집단이 흔들리지 않는다**
   ④ 세대 층화가 **세대 안에서** 분위를 나누고, 사전 등록한 세 갈래로만 판정한다(로드맵 F)
   ⑤ 통합 겹침이 회차 **시작순·합집합**으로 누적되고, 사전 등록한 경계·평평함 기준으로만 읽는다(로드맵 D)
+  ⑥ 우측 절단의 되살아남을 **추적 창 뒤에서만** 세고, 사전 등록한 경계로만 읽는다(로드맵 E)
 """
 import importlib.util
 import sys
@@ -339,3 +340,67 @@ def test_통합_판정은_사전_등록한_경계와_평평함_기준으로만_�
         "2회차에 안 늘다 3회차에 늘면 평평이 아니다"
     assert "판정하지 않는다" in bc.flattening(curve([26.0, 30.0], rounds=("_05_10", "_20_05"))), \
         "야간 창이 섞인 조합(34장의 26.0%)으로 곡선을 읽으면 안 된다"
+
+
+# ─────────────────────────────────────────── ⑥ 우측 절단 (고장수거_로드맵 E)
+
+def _trip(bike, day, station="ST0500"):
+    """대여 한 건 — `rental_history`의 탐지에 쓰는 열만."""
+    return (bike, f"{day} 10:00:00", f"{day} 10:12:00", station, 36.35, 127.38)
+
+
+def test_되살아남은_추적_창_뒤에_다시_나타난_자전거만_센다(bc, tmp_path):
+    """소멸 판정 뒤 **검증 창에 대여 기록이 생긴** 자전거만 되살아났다고 센다.
+
+    추적 창에 나타난 자전거는 소멸이 아니고, 운영시설로 들어간 자전거는 대상이 아니다.
+    🔴 창을 앞으로 옮기면 뒤에 자료가 있다 — 마지막 위치를 **추적 창 끝까지**에서 찾지
+    않으면, 정비대기로 들어갔다가 나중에 돌아온 자전거(G)가 코호트에 섞인다.
+    검증 창이 추적 창과 겹치면 추적 창에 나타난 자전거를 되살아났다고 세므로 막는다.
+    """
+    import sqlite3
+
+    con = sqlite3.connect(tmp_path / "t.db")
+    con.execute("""CREATE TABLE rental_history (
+        bike_no TEXT, rent_at TEXT, return_at TEXT,
+        return_station TEXT, return_lat REAL, return_lon REAL)""")
+    rows = [
+        _trip("DJ3-A", "2025-04-03"), _trip("DJ3-A", "2025-11-20"),          # 소멸 → 되살아남
+        _trip("DJ3-B", "2025-04-04"),                                          # 소멸 → 안 돌아옴
+        _trip("DJ3-C", "2025-04-05"), _trip("DJ3-C", "2025-08-01"),          # 추적에 나타남
+        _trip("DJ3-D", "2025-04-06", station="ST0001"),                        # 정비대기 반납
+        _trip("DJ3-G", "2025-04-07", station="ST0001"), _trip("DJ3-G", "2025-11-02"),  # 정비 뒤 복귀
+        _trip("DJ3-F", "2025-07-01"), _trip("DJ3-F", "2025-08-01"), _trip("DJ3-F", "2025-09-01"),
+    ]
+    con.executemany("INSERT INTO rental_history VALUES (?,?,?,?,?,?)", rows)
+    con.commit()
+    follow = ["2025-07", "2025-08", "2025-09"]
+
+    unbounded = bc.detect_broken(con, ["2025-04"], follow)
+    broken = bc.detect_broken(con, ["2025-04"], follow, until_month="2025-09")
+    report = bc.revival_table(con, broken, follow, ["2025-10", "2025-11", "2025-12"])
+
+    assert "DJ3-G" in set(unbounded["bike_no"]), "전제 — 끝을 두지 않으면 나중 반납이 섞인다"
+    assert sorted(broken["bike_no"]) == ["DJ3-A", "DJ3-B"], (
+        f"추적 창 끝까지의 기록으로 판정하지 않았다: {sorted(broken['bike_no'])}")
+    assert report["대상"] == 2 and report["되살아남"] == 1
+    assert report["비율"] == pytest.approx(50.0)
+    assert report["빈_추적달"] == [] and "2025-12" in report["빈_검증달"]
+
+    with pytest.raises(SystemExit):
+        bc.revival_table(con, broken, follow, ["2025-09", "2025-10"])
+    con.close()
+
+
+def test_되살아남_판정은_사전_등록한_경계로만_말한다(bc):
+    """10%·30%는 가운데 갈래에 넣고, 추적 3개월이 아니거나 추적 창에 빈 달이 있으면 판정하지 않는다."""
+    follow = ["2025-07", "2025-08", "2025-09"]
+
+    def verdict(percent, follow_months=follow, empty=()):
+        return bc.revival_verdict({"비율": percent, "빈_추적달": list(empty)}, follow_months)
+
+    assert "사소" in verdict(9.9)
+    assert "상한" in verdict(10.0) and "상한" in verdict(30.0)
+    assert "다시 써야" in verdict(30.1)
+    assert "판정하지 않는다" in verdict(50.0, follow_months=follow[:2]), "1·2개월은 민감도로만 본다"
+    assert "판정하지 않는다" in verdict(5.0, empty=["2025-08"]), "빈 달이 있으면 소멸이 부풀려진다"
+    assert "판정하지 않는다" in verdict(float("nan"))
