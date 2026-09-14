@@ -413,6 +413,65 @@ def test_지도_다시_그리기_dry_run은_성공이다(monkeypatch):
     assert redraw_maps.main() == 0
 
 
+def _가짜_다시그리기(monkeypatch, redraw_maps, 부른것):
+    """군집·불균형은 성공한 척, 경로는 부른 사실만 적는다 (TMAP을 안 부른다)."""
+    monkeypatch.setattr(redraw_maps, "redraw",
+                        lambda label, dur, cand: [f"{label}{dur}.html"])
+    monkeypatch.setattr(redraw_maps, "redraw_route",
+                        lambda label, dur, cand: 부른것.append((label, dur))
+                        or [f"vrp_{label}{dur}.html"])
+
+
+def test_경로_지도는_with_route를_줘야_TMAP을_부른다(monkeypatch, capsys):
+    """🔴 TMAP 호출은 **기본값이 되면 안 된다** — 요금은 없지만 일일 호출 한도를
+    쓰기 때문이다(1.26.210, 사용자 확인). 모르고 `--all`을 돌린 사람이 그날
+    남은 호출을 통째로 태우는 일이 없어야 한다.
+
+    반대쪽도 같이 지킨다 — **깃발을 줬는데 안 부르면** 경로 지도가 영영 낡은
+    채로 남는다. 실제로 그 상태로 오래 있었다: 도구가 *"TMAP 호출이 필요해
+    여기서 다루지 않습니다"* 라고만 말하고 길을 안 줬다.
+    """
+    import tools.redraw_maps as redraw_maps
+
+    if not redraw_maps.available():
+        pytest.skip("다시 그릴 산출물이 없다")
+
+    부른것 = []
+    _가짜_다시그리기(monkeypatch, redraw_maps, 부른것)
+
+    monkeypatch.setattr(sys, "argv", ["redraw_maps.py", "--all"])
+    assert redraw_maps.main() == 0
+    assert 부른것 == [], "깃발을 안 줬는데 TMAP을 부른다"
+    assert "--with-route" in capsys.readouterr().out, "부르는 길을 알려 주지 않는다"
+
+    monkeypatch.setattr(sys, "argv", ["redraw_maps.py", "--all", "--with-route"])
+    assert redraw_maps.main() == 0
+    assert 부른것, "깃발을 줬는데 경로 지도를 안 그린다"
+
+
+def test_경로_지도가_안_나와도_나머지는_실패가_아니다(monkeypatch, capsys):
+    """🔴 VRP 계획이 없는 회차는 **흔하다** — step2가 '대상 없음'으로 건너뛴
+    시간대가 그렇다. 그걸 실패로 세면 종료 코드가 거짓말을 한다: 군집·불균형은
+    멀쩡히 나왔는데 `$?`가 1이라 `&&` 사슬이 끊긴다.
+    """
+    import tools.redraw_maps as redraw_maps
+
+    if not redraw_maps.available():
+        pytest.skip("다시 그릴 산출물이 없다")
+
+    monkeypatch.setattr(redraw_maps, "redraw",
+                        lambda label, dur, cand: [f"{label}{dur}.html"])
+
+    def 계획_없음(label, dur, cand):
+        raise RuntimeError("입력이 없습니다 (VRP 계획)")
+
+    monkeypatch.setattr(redraw_maps, "redraw_route", 계획_없음)
+    monkeypatch.setattr(sys, "argv", ["redraw_maps.py", "--all", "--with-route"])
+
+    assert redraw_maps.main() == 0, "경로 지도만 없는데 전체를 실패로 센다"
+    assert "경로 지도는 건너뜁니다" in capsys.readouterr().out
+
+
 # ───────── step 모듈을 패키지로 import할 수 있는가 (1.26.154) ─────────
 
 STEP_MODULES = [

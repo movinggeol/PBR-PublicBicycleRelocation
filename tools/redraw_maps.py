@@ -17,10 +17,20 @@
 
 ## 무엇을 하지 않나
 
-- **TMAP을 부르지 않는다.** 경로 지도(step3)는 실도로 좌표가 있어야 그려지고
-  그것은 호출로만 얻는다 — 그래서 여기서는 다루지 않는다. 군집 지도(step1)와
-  불균형 지도(step4)만 다시 그린다. 둘 다 DB의 `pick_drop`을 먼저 읽고, 없으면
-  후보 CSV로 물러선다(1.26.164) — 읽기만 하고 쓰지 않는다.
+- **기본으로는 TMAP을 부르지 않는다.** 군집 지도(step1)와 불균형 지도(step4)만
+  다시 그린다. 둘 다 DB의 `pick_drop`을 먼저 읽고, 없으면 후보 CSV로
+  물러선다(1.26.164) — 읽기만 하고 쓰지 않는다.
+
+  🔴 **`--with-route`를 주면 경로 지도(step3)까지 그린다** — 그때는 TMAP을
+  실제로 부른다. 예전에 이 자리에는 *"그래서 여기서는 다루지 않는다"* 라고만
+  적혀 있었는데, 그 한 줄 때문에 세션마다 경로 지도를 **낡은 채로 두고
+  지나갔다**(1.26.210에서 사용자가 지적). **TMAP은 무료 요금제다 — 아무리
+  불러도 요금이 청구되지 않고 일일 호출 한도만 있다.** 아껴야 할 것은 돈이
+  아니라 그날 남은 호출 수다.
+
+  ⚠️ 이 갈래에서만은 **DB에 쓴다** — step3가 TMAP 실측을 `road_leg`에 남긴다
+  (같은 (실행, 회차)의 기존 행을 갈아끼우므로 중복은 안 쌓인다). 게이트를
+  판정하는 패널 행(`roadprobe-*`)과는 라벨이 달라 서로 섞이지 않는다.
 - **다시 계산하지 않는다.** step4의 `__main__`을 그냥 돌리면 지표를 새로
   구해 `metrics`·`kpi_summary`에 덮어쓴다. 입력이 그대로면 같은 값이 나오겠
   지만, *"그렇겠지"* 로 과거 실행의 기록을 덮는 것은 다시 그리기가 아니다.
@@ -34,6 +44,11 @@
     python tools/redraw_maps.py                    # 가장 최근 실행
     python tools/redraw_maps.py --all              # 남아 있는 것 전부
     python tools/redraw_maps.py --run-label "obs-cmp-1520"
+    python tools/redraw_maps.py --all --with-route # 경로 지도까지 (TMAP 호출)
+
+경로 지도는 군집 하나에 호출 하나다 — 회차당 14~16건이라 `--all --with-route`도
+보통 수십 건이면 끝난다. 한 회차씩 따로 프로세스를 띄우므로
+`PBR_TMAP_MAX_CALLS`(기본 35) 예산에 걸리지 않는다.
 """
 from __future__ import annotations
 
@@ -61,6 +76,11 @@ CLUSTER_MAP = str(DATA_ROOT
                   / "pp_data/ILP/visualization/clusterd_map{duration} ({now}).html")
 IMBALANCE_MAP = str(DATA_ROOT
                     / "pp_data/성능 지표/visualization/imbalance_map{duration} ({now}).html")
+# 경로 지도(step3)는 `--with-route`일 때만 그린다. 이름은 step3의 result_path와
+# **같은 문자열이라야** 한다 — 위의 둘과 같은 이유다.
+ROUTE_MAP = str(DATA_ROOT
+                / "pp_data/VRP/visualization/vrp_map{duration} ({now}).html")
+STEP3_MAIN = PROJECT_ROOT / "pipeline" / "step3_map" / "main.py"
 
 
 def available() -> list:
@@ -157,6 +177,40 @@ def redraw(run_label: str, duration: str, candidates: Path) -> list:
     return made
 
 
+def redraw_route(run_label: str, duration: str, candidates: Path) -> list:
+    """경로 지도(step3) 한 장을 **TMAP을 실제로 불러** 다시 그린다.
+
+    위의 `redraw()`와 달리 step 모듈을 직접 부르지 않고 `step3_map/main.py`를
+    스크립트로 띄운다 — 그쪽 `__main__`이 `.env`에서 `API_KEY`를 읽고 엔드포인트
+    폴백(`routeSequential30` → `100`)까지 세워 두기 때문이다. 그 준비를 여기서
+    베껴 쓰면 두 벌이 갈린다.
+
+    ⚠️ **DB에 쓴다.** step3는 TMAP 실측을 `road_leg`에 남긴다(같은 (실행, 회차)
+    범위를 갈아끼우므로 중복은 안 쌓인다). 이 도구의 다른 갈래는 읽기만 하므로
+    쓰는 것은 여기뿐이다. 게이트를 판정하는 패널 행(`roadprobe-*`)과는 라벨이
+    달라 서로 섞이지 않는다.
+    """
+    proc = subprocess.run(
+        [sys.executable, str(STEP3_MAIN), "--now", run_label, "--duration", duration],
+        env=dict(os.environ, PYTHONIOENCODING="utf-8"),
+        capture_output=True, text=True, encoding="utf-8")
+    if proc.returncode != 0:
+        raise RuntimeError((proc.stderr or proc.stdout or "").strip()[-400:])
+
+    # 호출 수를 그대로 올려 보여 준다 — 일일 한도는 돈이 아니라 **횟수**라,
+    # 얼마나 썼는지가 다음 판단의 유일한 근거다.
+    for line in (proc.stdout or "").splitlines():
+        if line.startswith("TMAP 호출") or "엔드포인트" in line:
+            print(f"    {line.strip()}")
+
+    path = Path(ROUTE_MAP.format(duration=duration, now=run_label))
+    if not path.is_file():
+        raise RuntimeError(f"저장되지 않았습니다: {path.name}")
+    if candidates.is_file():
+        _keep_mtime(path, candidates)
+    return [str(path)]
+
+
 def _keep_mtime(target: Path, source: Path) -> None:
     """산출물의 수정 시각을 **원래대로 되돌린다.**
 
@@ -180,6 +234,9 @@ def main() -> int:
     parser.add_argument("--run-label", help="이 실행만 (기본: 가장 최근 실행)")
     parser.add_argument("--all", action="store_true", help="남아 있는 것 전부")
     parser.add_argument("--dry-run", action="store_true", help="목록만 보고 그리지 않는다")
+    parser.add_argument("--with-route", action="store_true",
+                        help="경로 지도(step3)까지 그린다 — TMAP을 실제로 부른다"
+                             " (무료 요금제, 일일 호출 한도만 있음)")
     args = parser.parse_args()
 
     found = available()
@@ -204,10 +261,18 @@ def main() -> int:
         print(f"가장 최근 실행만 다시 그립니다: {newest}"
               f"  (전부 하려면 --all)")
 
-    print(f"\n다시 그릴 지도: {len(targets)}쌍 (군집 + 불균형)")
+    묶음 = "셋(군집 + 불균형 + 경로)" if args.with_route else "쌍(군집 + 불균형)"
+    print(f"\n다시 그릴 지도: {len(targets)}{묶음}")
     for run_label, duration, _ in targets:
         print(f"  - {run_label} {duration}")
-    print("\n⚠️ 경로 지도(step3)는 TMAP 호출이 필요해 여기서 다루지 않습니다.")
+    if args.with_route:
+        print("\n⚠️ 경로 지도는 TMAP을 **실제로 부릅니다** — 군집 하나에 호출 하나,"
+              f" 최대 {len(targets)}회차분입니다.")
+        print("   무료 요금제라 요금이 청구되지는 않지만 일일 호출 한도를 씁니다.")
+        print("   VRP 계획이 없는 회차는 조용히 건너뜁니다.")
+    else:
+        print("\n⚠️ 경로 지도(step3)는 빠집니다 — 그리려면 --with-route를 주십시오"
+              " (TMAP을 부릅니다).")
 
     if args.dry_run:
         print("\n--dry-run이라 그리지 않았습니다.")
@@ -224,6 +289,16 @@ def main() -> int:
                 print(f"  ✓ {Path(path).name}")
                 total += 1
                 drawn += 1
+            if args.with_route:
+                # 경로 지도는 **따로 센다.** VRP 계획이 없는 회차가 흔한데
+                # (step2가 '대상 없음'으로 건너뛴 시간대), 그걸 실패로 세면
+                # 종료 코드가 거짓말을 한다 — 군집·불균형은 멀쩡히 나왔다.
+                try:
+                    for path in redraw_route(run_label, duration, candidates):
+                        print(f"  ✓ {Path(path).name}")
+                        total += 1
+                except Exception as err:              # noqa: BLE001
+                    print(f"  · 경로 지도는 건너뜁니다: {type(err).__name__}: {err}")
             if not drawn:
                 # 예외 없이 **한 장도 안 나온** 경우도 실패다. 자식이 조용히
                 # 죽으면 여기로 온다 — 성공과 구분하지 않으면 종료 코드가
