@@ -12,10 +12,11 @@ depot에 비우고 다시 나간다(다회 왕복). 즉 **이 기능이 그 경�
 체중을 싣는다.** 여기가 조용히 틀리면 이동거리·출동 횟수가 통째로 틀리고,
 그 숫자가 배치 임계치 판정을 정한다.
 
-지키려는 것 셋:
+지키려는 것 넷:
   ① 순수 픽업에서 다회 왕복이 실제로 일어나고 **모든 자전거가 회수된다**
   ② `greedy_route()`가 호출 측 dict를 소모하는 함정(함정 12)에 안 걸린다
   ③ 임계치를 바꿔도 **모집단이 흔들리지 않는다**
+  ④ 세대 층화가 **세대 안에서** 분위를 나누고, 사전 등록한 세 갈래로만 판정한다(로드맵 F)
 """
 import importlib.util
 import sys
@@ -201,3 +202,95 @@ def test_detect_broken_excludes_ops_and_keeps_the_rest(bc, tmp_path):
     assert list(found["bike_no"]) == ["DJ3-0001"], (
         f"운영시설 반납분이나 생존 자전거가 섞였다: {list(found['bike_no'])}")
     assert found["broken_at"].dtype.kind == "M", "발생 시각이 시간 타입이어야 한다"
+
+
+# ─────────────────────────────────────────── ④ 세대 층화 (고장수거_로드맵 F)
+
+def _cohort(generation, trips, gone):
+    """`cohort_usage()`와 같은 모양의 코호트 표를 손으로 만든다."""
+    return pd.DataFrame({
+        "bike_no": [f"{generation}-{i:04d}" for i in range(len(trips))],
+        "trips": list(trips),
+        "survived": [not flag for flag in gone],
+        "세대": generation,
+    })
+
+
+def _graded(generation, *, reverse=False):
+    """이용량 1~100회 100대. 분위마다 40·30·20·10·0%가 사라진다(H2 방향).
+
+    reverse=True면 거꾸로 — 많이 쓰인 쪽이 사라진다(H1 방향).
+    """
+    gone = []
+    for quintile in range(5):
+        k = 8 - 2 * quintile
+        gone.extend(i < k for i in range(20))
+    if reverse:
+        gone = gone[::-1]
+    return _cohort(generation, range(1, 101), gone)
+
+
+def test_세대_층화는_세대_안에서_5분위를_나눈다(bc):
+    """전체 기준으로 자르면 덜 쓰이는 세대가 아래 분위에 몰려 세대 효과가 다시 섞인다."""
+    frame = pd.concat([
+        _cohort("DJ2", range(1, 51), [i < 10 for i in range(50)]),
+        _cohort("DJ3", range(1001, 1051), [i < 10 for i in range(50)]),
+    ], ignore_index=True)
+
+    for generation in ("DJ2", "DJ3"):
+        counts = bc.generation_test(frame, generation)["표"]["대수"].tolist()
+        assert counts == [10] * 5, (
+            f"{generation}의 분위가 세대 안에서 나뉘지 않았다: {counts}"
+            " — 전체 기준 분위면 DJ2가 아래 분위에만 몰린다")
+
+
+def test_세_조건을_다_채워야_지지로_센다(bc):
+    """단조 감소·방향·유의 셋의 AND — 유의해도 방향이 반대면 H1 쪽이다."""
+    supportive = bc.generation_test(_graded("DJ3"), "DJ3")
+    assert supportive["단조감소"] and supportive["방향"]
+    assert supportive["p"] < bc.SIGNIFICANCE, f"p = {supportive['p']}"
+    assert supportive["지지"]
+
+    reversed_ = bc.generation_test(_graded("DJ3", reverse=True), "DJ3")
+    assert reversed_["p"] < bc.SIGNIFICANCE, "반대 방향도 차이 자체는 유의하게 만들었다"
+    assert not reversed_["방향"] and not reversed_["단조감소"]
+    assert not reversed_["지지"], "많이 쓰인 쪽이 사라지는데 H2 지지로 셌다"
+
+
+def test_세대_판정은_사전_등록한_세_갈래로만_말한다(bc):
+    yes = {"세대": "DJ2", "지지": True}
+    no = {"세대": "DJ3", "지지": False}
+
+    assert "세대와 독립" in bc.generation_verdict([yes, {"세대": "DJ3", "지지": True}])
+    limited = bc.generation_verdict([yes, no])
+    assert "DJ2" in limited and "한정" in limited
+    assert "철회" in bc.generation_verdict([dict(yes, 지지=False), no])
+
+
+def test_유의하지_않음을_차이_없음으로_쓰지_않는다(bc):
+    """세대로 나누면 표본이 절반이다 — 못 가린 것을 '같다'로 쓰면 안 된다."""
+    assert "차이가 없다는 뜻이 아니라" in bc.describe_p(0.2)
+    assert "유의하다" in bc.describe_p(1e-5)
+    assert "검정할 수 없다" in bc.describe_p(float("nan"))
+
+
+def test_코호트에_없는_세대는_지지하지_않고_죽지도_않는다(bc):
+    result = bc.generation_test(_graded("DJ3"), "DJ2")
+    assert result["대수"] == 0 and not result["지지"]
+
+
+def test_단조이고_방향이_맞아도_유의하지_않으면_지지하지_않는다(bc):
+    """p 조건을 따로 고정한다 — 세대로 나누면 표본이 절반이라 이 경우가 실제로 나올 수 있다.
+
+    위 반대 방향 사례는 단조 감소부터 깨져 **p 조건이 빠져도 통과한다**(처음 짠 시험이
+    그랬다). 분위마다 10대 중 4·3·2·1·0대가 사라지되 **분위 안에서 많이 쓰인 쪽**이
+    사라지게 해 효과를 약하게 만든다(p ≈ 0.12).
+    """
+    gone = []
+    for k in (4, 3, 2, 1, 0):
+        gone.extend(i >= 10 - k for i in range(10))
+    result = bc.generation_test(_cohort("DJ2", range(1, 51), gone), "DJ2")
+
+    assert result["단조감소"] and result["방향"], "전제가 깨졌다 — 단조·방향은 맞아야 한다"
+    assert result["p"] >= bc.SIGNIFICANCE, f"전제가 깨졌다 — 유의하지 않아야 한다: {result}"
+    assert not result["지지"], "유의하지 않은데 지지로 셌다"

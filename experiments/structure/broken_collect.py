@@ -51,6 +51,9 @@
 일부는 개별 고장이 아니라 구형 일괄 퇴역이다). 문서·논문에 쓸 때 반드시
 `고장 추정`으로 쓸 것.
 
+세대 **안에서도** 이용량-소멸 단조성이 유지되는지는 `--audit`의 감사 ③이 잰다
+(docs/기록/고장수거_로드맵.md F — 판정 기준은 결과를 보기 전에 못박았다).
+
 ## 무엇을 묻나
 
 **① 배치 임계치 — 몇 대 모이면 나가나**
@@ -106,6 +109,15 @@ OPS_STATIONS = ("ST0001", "ST1220", "ST1418")
 
 DEFAULT_BASE = "2025-09,2025-10"
 DEFAULT_FOLLOW = "2026-01,2026-02,2026-03"
+
+# 세대 층화(F) — **결과를 보기 전에** 못박은 판정 기준(docs/기록/고장수거_로드맵.md 4장).
+# 두 세대 **모두**에서 ① 세대 안 5분위 소멸률이 엄격히 단조 감소하고 ② 사라진 쪽
+# 기준기간 이용량 중앙값이 살아남은 쪽보다 작고 ③ Mann-Whitney U 양측 p < 0.01이면
+# H2는 세대와 독립이다. 한쪽만이면 그 세대에 한정하고, 둘 다 아니면 34장의 단조성은
+# 세대 혼합이 만든 것으로 보고 철회한다(generation_verdict).
+GENERATIONS = ("DJ2", "DJ3")
+SIGNIFICANCE = 0.01
+QUINTILES = ["최저", "하", "중", "상", "최고"]
 
 
 # ──────────────────────────────────────────────────── ① 대상 도출
@@ -297,8 +309,12 @@ def integration_overlap(conn, broken: pd.DataFrame, run_label: str) -> None:
 
 # ──────────────────────────────────────────────────── 감사
 
-def audit(conn, base_months: list, follow_months: list) -> None:
-    """탐지 방법이 근거 있는지 되짚는다 — 두 가설을 실제로 가른다."""
+def cohort_usage(conn, base_months: list, follow_months: list) -> pd.DataFrame:
+    """기준기간 코호트의 자전거별 이용량·생존·세대 — 감사 ①~③이 **같은 표**를 쓴다.
+
+    🔴 **기간을 고정한다**(`detect_broken()`과 같은 이유). 누적 이용량을 그냥
+    비교하면 일찍 사라진 자전거가 공짜로 '적게 쓰인' 쪽이 된다.
+    """
     qs_b = ",".join("?" * len(base_months))
     qs_f = ",".join("?" * len(follow_months))
     base = pd.read_sql(
@@ -310,14 +326,87 @@ def audit(conn, base_months: list, follow_months: list) -> None:
         f" WHERE substr(rent_at,1,7) IN ({qs_f})", conn, params=follow_months)
     base["survived"] = base["bike_no"].isin(set(live["bike_no"]))
     base["세대"] = base["bike_no"].str.split("-").str[0]
+    return base
+
+
+def quintile_table(frame: pd.DataFrame) -> pd.DataFrame:
+    """이용량 5분위별 대수·주행 중앙값·소멸률(%). **넘긴 표 안에서** 분위를 나눈다.
+
+    세대 층화에서는 세대마다 따로 넘긴다 — 전체 기준으로 자르면 덜 쓰이는 세대가
+    아래 분위에 몰려, 보려던 '세대 안' 비교에 세대 효과가 다시 섞인다.
+    """
+    frame = frame.assign(분위=pd.qcut(frame["trips"], 5, labels=QUINTILES))
+    return frame.groupby("분위", observed=True).agg(
+        대수=("bike_no", "size"), 주행중앙=("trips", "median"),
+        소멸률=("survived", lambda s: (~s).mean() * 100))
+
+
+def generation_test(frame: pd.DataFrame, generation: str) -> dict:
+    """한 세대 **안에서** 이용량-소멸 단조성을 잰다 (고장수거_로드맵 F).
+
+    세 조건을 모두 채워야 '지지'다 — 엄격한 단조 감소 · 사라진 쪽 이용량 중앙값이
+    작음 · Mann-Whitney U 양측 p < SIGNIFICANCE. 유의해도 **방향이 반대면**
+    (많이 쓰인 쪽이 사라지면) 그것은 H1 쪽이라 지지로 세지 않는다.
+    """
+    part = frame[frame["세대"] == generation]
+    if part.empty:
+        return {"세대": generation, "대수": 0, "소멸": 0, "표": pd.DataFrame(),
+                "단조감소": False, "p": float("nan"), "중앙_소멸": float("nan"),
+                "중앙_생존": float("nan"), "방향": False, "지지": False}
+
+    from scipy.stats import mannwhitneyu
+
+    table = quintile_table(part)
+    rates = table["소멸률"].tolist()
+    monotone = (len(rates) == len(QUINTILES)
+                and all(high > low for high, low in zip(rates, rates[1:])))
+
+    gone = part.loc[~part["survived"], "trips"]
+    alive = part.loc[part["survived"], "trips"]
+    testable = len(gone) > 0 and len(alive) > 0
+    p = (float(mannwhitneyu(gone, alive, alternative="two-sided").pvalue)
+         if testable else float("nan"))
+    direction = bool(testable and gone.median() < alive.median())
+    return {
+        "세대": generation, "대수": int(len(part)), "소멸": int(len(gone)),
+        "표": table, "단조감소": monotone, "p": p,
+        "중앙_소멸": float(gone.median()) if len(gone) else float("nan"),
+        "중앙_생존": float(alive.median()) if len(alive) else float("nan"),
+        "방향": direction,
+        "지지": bool(monotone and direction and p < SIGNIFICANCE),
+    }
+
+
+def describe_p(p: float) -> str:
+    """p를 문장으로 — **유의하지 않음을 '차이가 없다'로 쓰지 않는다.**
+
+    세대로 나누면 표본이 절반씩이다. 유의하지 않게 나온 것은 *못 가렸다*는
+    뜻이지 *같다*는 뜻이 아니다(docs/연구/집필_과정.md 4-3에서 한 번 겪었다).
+    """
+    if p != p:                                   # NaN
+        return "검정할 수 없다(한쪽 표본이 비었다)"
+    if p < SIGNIFICANCE:
+        return f"Mann-Whitney p = {p:.1e} — 유의하다(기준 {SIGNIFICANCE})"
+    return (f"Mann-Whitney p = {p:.3f} — 유의하지 않다(기준 {SIGNIFICANCE})."
+            " 차이가 없다는 뜻이 아니라 이 표본으로 못 가렸다는 뜻이다")
+
+
+def generation_verdict(results: list) -> str:
+    """사전 등록한 세 갈래로만 판정한다 — 결과를 본 뒤 갈래를 늘리지 않는다."""
+    supported = [r["세대"] for r in results if r["지지"]]
+    if results and len(supported) == len(results):
+        return "두 세대 모두 지지 — H2는 세대와 독립이다(34장의 핵심 주장이 단단해진다)"
+    if supported:
+        return f"{'·'.join(supported)}에서만 지지 — 그 세대에 한정해 쓴다"
+    return "어느 세대에서도 지지되지 않음 — 34장의 단조성은 세대 혼합이 만든 것이다(결론 철회)"
+
+
+def audit(conn, base_months: list, follow_months: list) -> None:
+    """탐지 방법이 근거 있는지 되짚는다 — 두 가설을 실제로 가른다."""
+    base = cohort_usage(conn, base_months, follow_months)
 
     print("\n=== 감사 ① 이용량과 소멸의 관계 (H1 마모설 vs H2 방치설) ===")
-    base["분위"] = pd.qcut(base["trips"], 5,
-                          labels=["최저", "하", "중", "상", "최고"])
-    tbl = base.groupby("분위", observed=True).agg(
-        대수=("bike_no", "size"), 주행중앙=("trips", "median"),
-        소멸률=("survived", lambda s: round((~s).mean() * 100, 1)))
-    print(tbl.to_string())
+    print(quintile_table(base).round({"소멸률": 1}).to_string())
     print("  단조 감소면 H2(상태가 나빠 안 빌려간다)가 지지된다 —"
           " H1(많이 써서 고장난다)이면 반대로 증가해야 한다.")
 
@@ -327,6 +416,24 @@ def audit(conn, base_months: list, follow_months: list) -> None:
         소멸률=("survived", lambda s: round((~s).mean() * 100, 1)))
     print(gen.to_string())
     print("  세대 간 격차가 크면 **개별 고장이 아니라 일괄 퇴역**이 섞여 있다는 뜻이다.")
+
+    print("\n=== 감사 ③ 세대 안에서도 단조인가 (고장수거_로드맵 F) ===")
+    print("  판정 기준(결과를 보기 전에 못박음): 두 세대 모두에서 세대 안 5분위 소멸률이"
+          f" 엄격히 단조 감소 · 사라진 쪽 이용량 중앙값이 작음 · 양측 p < {SIGNIFICANCE}")
+    results = []
+    for generation in GENERATIONS:
+        result = generation_test(base, generation)
+        results.append(result)
+        print(f"\n  [{generation}] 코호트 {result['대수']:,}대 · 사라짐 {result['소멸']:,}대")
+        if result["대수"]:
+            print(result["표"].round({"소멸률": 1}).to_string())
+            print(f"  단조 감소 {'예' if result['단조감소'] else '아니오'}"
+                  f" · 이용량 중앙값 사라짐 {result['중앙_소멸']:.0f}회"
+                  f" vs 살아남음 {result['중앙_생존']:.0f}회 · {describe_p(result['p'])}")
+    others = sorted(set(base["세대"]) - set(GENERATIONS))
+    if others:
+        print(f"\n  (판정 밖 세대 {others} — 사전 등록이 DJ2·DJ3만 정했다)")
+    print(f"\n  판정: {generation_verdict(results)}")
 
 
 # ──────────────────────────────────────────────────── 실행
@@ -349,6 +456,8 @@ def main() -> None:
                         help="통합 비교에 쓸 재배치 실행 (기본: vrp_plan 최신)")
     parser.add_argument("--audit", action="store_true",
                         help="탐지 방법의 근거를 되짚는다")
+    parser.add_argument("--audit-only", action="store_true",
+                        help="감사만 하고 정책 시뮬레이션·통합 비교는 건너뛴다")
     parser.add_argument("--out", default="", help="정책 표를 CSV로 저장")
     args = parser.parse_args()
 
@@ -375,8 +484,10 @@ def main() -> None:
               f" ~ {broken['broken_at'].max():%Y-%m-%d} ({span}일)"
               f" · 하루 {len(broken) / span:.1f}대")
 
-        if args.audit:
+        if args.audit or args.audit_only:
             audit(conn, base_months, follow_months)
+        if args.audit_only:
+            return
 
         rows = []
         for raw in args.counts.split(","):
