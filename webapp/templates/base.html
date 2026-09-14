@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  {# 폰 브라우저의 주소창 색을 맨 위 검은 줄과 잇는다 — 라이트·다크 모두 검정이다. #}
+  <meta name="theme-color" content="#000000">
   <title>{% block title %}PBR 대시보드{% endblock %}</title>
   <link rel="preload" as="font" type="font/woff2" crossorigin
         href="/static/fonts/PretendardVariable.subset.woff2">
@@ -376,6 +378,34 @@
     .group-nav a:hover { color: var(--ink); background: var(--parchment); text-decoration: none; }
     .group-nav a[aria-current] { color: var(--on-blue); background: var(--blue); font-weight: 500; }
     .group-nav a[aria-current]:hover { color: var(--on-blue); background: var(--blue); }
+
+    /* ════════ 하단 탭 막대 — 좁은 화면 전용 (1.26.195) ════════
+       폰에서는 2단(작업 흐름)을 이것으로 바꾼다. 3단 내비가 좁은 화면에서도
+       위에 쌓여 첫 화면을 96~150px 먹었고, 작업 흐름은 **엄지가 닿지 않는
+       맨 위**에 있었다(실측). 순서를 번호(1 → 2 → 3)로 말하는 규칙은 그대로
+       두고 자리만 엄지 쪽으로 옮긴다.
+
+       넓은 화면에서는 그리지 않는다. 켜는 규칙은 아래 모바일 모드 절의
+       `[data-narrow] .tabbar` 한 벌이다. */
+    .tabbar { display: none; }
+    .tabbar a {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px; min-height: 56px; padding: 6px 2px 5px;
+      color: var(--ink-3); font-size: 11px; letter-spacing: -.1px; line-height: 1.2;
+      text-decoration: none; white-space: nowrap;
+    }
+    .tabbar svg {
+      width: 24px; height: 24px; fill: none; stroke: currentColor;
+      stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+    }
+    /* 현재 위치는 색만으로 말하지 않는다 — 위쪽 막대와 굵기가 함께 선다. */
+    .tabbar a[aria-current] {
+      color: var(--blue); font-weight: 600; box-shadow: inset 0 2px 0 var(--blue);
+    }
+    .tabbar .step-no { font-variant-numeric: tabular-nums; margin-right: 3px; }
+    .tabbar a:focus-visible {
+      outline: 2px solid var(--blue-focus); outline-offset: -4px; border-radius: var(--r-sm);
+    }
 
     /* ── 본문 폭 ── */
     main { max-width: 1200px; margin: 0 auto; padding: 0 var(--sp-lg) var(--sp-section); }
@@ -761,6 +791,10 @@
       .table-panel {
         top: auto; bottom: 0; left: 0; right: 0; transform: none;
         width: auto; max-height: 70vh; border-radius: var(--r-lg) var(--r-lg) 0 0;
+        /* 기본 규칙의 폭 상한(min(560px, 100vw - 2*sp-md))을 풀어야 left·right 0이
+           먹는다. 안 풀어서 430px 화면에 396px로 서, 오른쪽 34px 틈으로 뒤 카드가
+           비치고 오른쪽 둥근 모서리가 화면 가운데 떠 있었다(1.26.195 실측). */
+        min-width: 0; max-width: none;
       }
       .table-panel-head { cursor: default; }
     }
@@ -1201,12 +1235,35 @@
        기존 폭 기준 반응형(640/860/900/980px)이 그대로 살아 있어서 읽지 못할
        화면이 되지는 않는다. */
 
-    /* ① 내비·여백 — 3단 내비가 세로를 179px 먹는다(44+83+52). 좁은 화면에서
-       그건 첫 화면의 5분의 1이다. 줄이되 **터치 타깃 44px은 지킨다.** */
-    [data-narrow] .flow-nav-inner { padding: 0 var(--sp-md); gap: var(--sp-xs); min-height: 48px; }
-    [data-narrow] .flow-title { font-size: var(--fs-body); }
-    [data-narrow] .flow-steps { gap: 0; }
-    [data-narrow] .flow-steps a { padding: 12px 10px; }
+    /* ① 내비 — 앱 배치 (1.26.195).
+       예전(1.26.47~193)에는 3단 내비를 줄여서 위에 그대로 쌓았다. 430×932
+       실측에서 내비가 첫 화면 932px 중 96px(결과·데이터 묶음은 150px)을
+       먹었고, 둘째 줄의 작업 흐름은 엄지가 닿지 않는 맨 위였다. 흐름은
+       **하단 탭 막대**로 옮긴다. 맨 위 검은 줄은 붙들지 않는다(스크롤과 함께
+       올라간다) — 어느 화면에서나 탭 막대로 옮겨 갈 수 있으니 위에 자리를
+       잡아 둘 이유가 없다. API 문서 링크는 폰에서 쓸 일이 없어 뺀다(넓은
+       화면에는 그대로 있다). 터치 타깃 44px은 그대로 지킨다. */
+    [data-narrow] .flow-nav { display: none; }
+    [data-narrow] .global-nav { position: static; }
+    [data-narrow] .global-nav .util[href="/api/docs"] { display: none; }
+    [data-narrow] .tabbar {
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      background: color-mix(in srgb, var(--nav-flow) 92%, transparent);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      backdrop-filter: saturate(180%) blur(20px);
+      border-top: 1px solid var(--divider-soft);
+    }
+    @supports not (background: color-mix(in srgb, red 50%, transparent)) {
+      [data-narrow] .tabbar { background: var(--nav-flow); }
+    }
+    /* 막대가 덮는 만큼 문서 끝을 띄운다 — 안 띄우면 바닥글과 마지막 표 행이
+       막대 뒤에 숨어 끝까지 내려도 못 본다. 57px = 탭 56px + 윗선 1px —
+       56px로 두었다가 바닥글 마지막 1px이 윗선 밑에 깔린 것을 좌표로
+       잡았다(8개 화면 모두 -1px). 표 팝업(바닥 판, z-index 60)과 풍선(200)은
+       막대(50) 위로 올라온다. */
+    [data-narrow] body { padding-bottom: calc(57px + env(safe-area-inset-bottom, 0px)); }
     [data-narrow] .group-nav-inner {
       padding: 4px var(--sp-md); flex-wrap: nowrap;
       overflow-x: auto; -webkit-overflow-scrolling: touch;
@@ -1241,7 +1298,6 @@
     [data-narrow] button:not(.btn):not(.theme-toggle):not(.m-sortbar button):not(.tipclose) { min-height: 44px; }
     /* 내비의 유틸 링크(사용 안내·API)와 브랜드는 줄 높이가 18~25px이었다. */
     [data-narrow] .brand { padding: 13px 0; min-height: 44px; }
-    [data-narrow] .flow-title { padding: 13px 0; display: inline-flex; align-items: center; min-height: 44px; }
     [data-narrow] .skip-link { padding: 13px 16px; }
     /* 아이콘 단추 두 개(모바일·테마)는 글자가 짧아 세로만으로는 안 찬다. */
     [data-narrow] .theme-toggle { padding: 14px 10px; min-height: 44px; }
@@ -1409,7 +1465,7 @@
          필터 칩·쪽 단추·열 접기 단추가 그대로 찍혔다. **선택자로 한 번에**
          거는 이유는 `.no-print`를 템플릿마다 붙이게 두면 빠뜨리기 때문이다 —
          실제로 orders.html에만 9개 붙어 있고 나머지 화면은 0개였다. */
-      header.global-nav, nav.flow-nav, nav.group-nav, footer.site,
+      header.global-nav, nav.flow-nav, nav.group-nav, nav.tabbar, footer.site,
       .filterbar, .pager, .col-toggle-wrap, .row-more-wrap { display: none !important; }
     }
   </style>
@@ -1479,6 +1535,26 @@
     <a class="btn" href="/run#run"
        data-tip="새 재배치 계획을 계산합니다.">계획 실행</a>
   </div>
+</nav>
+
+{# 하단 탭 막대 — 좁은 화면에서 위의 작업 흐름을 대신한다 (1.26.195).
+   이름을 위와 같게("작업 흐름") 둔다: 둘 중 하나는 늘 display:none이라 보조기기에는
+   한 번만 들린다. 현재 위치 판정도 위와 같은 `group`을 쓴다 — 따로 판정하면 위아래가
+   다른 곳을 가리킨다. 아이콘은 인라인 SVG다(담아 둔 글꼴 서브셋에 이모지·도형 문자가
+   없다 — 전역 내비 주석 참고). 풍선(data-tip)은 달지 않는다: 폰에는 커서가 없다. #}
+<nav class="tabbar" aria-label="작업 흐름">
+  <a href="/" {% if group == 'home' %}aria-current="page"{% endif %}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5.5h4V20"/></svg>
+    <span>현황</span></a>
+  <a href="/run" {% if group == 'run' %}aria-current="page"{% endif %}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M10.2 8.6v6.8l5.3-3.4z"/></svg>
+    <span><span class="step-no">1</span>실행</span></a>
+  <a href="/kpi" {% if group == 'result' %}aria-current="page"{% endif %}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M7.5 16.5V12"/><path d="M12 16.5V6.5"/><path d="M16.5 16.5v-6"/></svg>
+    <span><span class="step-no">2</span>결과</span></a>
+  <a href="/data" {% if group == 'data' %}aria-current="page"{% endif %}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4.5" width="16" height="15" rx="2"/><path d="M4 9.5h16"/><path d="M4 14.5h16"/><path d="M10 9.5v10"/></svg>
+    <span><span class="step-no">3</span>데이터</span></a>
 </nav>
 
 {% if group == 'result' %}

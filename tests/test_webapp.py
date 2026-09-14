@@ -935,6 +935,68 @@ def test_기기_프레임은_이_사이트_경로만_받는다(client):
         assert 'src="/"' in html, f"{bad!r}를 걸러내지 않았다"
 
 
+def test_좁은_화면의_작업_흐름은_하단_탭_막대가_맡는다(client):
+    """폰에서는 3단 내비가 첫 화면 932px 중 96~150px을 먹었고, 작업 흐름이 엄지가
+    안 닿는 맨 위에 있었다(1.26.195). 흐름을 하단 탭 막대로 옮기되 **번호로 순서를
+    말하는 규칙과 현재 위치 판정은 위 내비와 같아야** 한다 — 따로 판정하면 위아래가
+    다른 곳을 가리킨다. 안내는 흐름 밖이라 어느 탭도 켜지지 않는다."""
+    import re
+
+    expect = {"/": "/", "/run": "/run", "/kpi": "/kpi", "/orders": "/kpi",
+              "/data": "/data", "/guide": None}
+    for path, lit in expect.items():
+        html = client.get(path).text
+        m = re.search(r'<nav class="tabbar"[^>]*>(.*?)</nav>', html, re.S)
+        assert m, f"{path}에 하단 탭 막대가 없다"
+        tabs = m.group(1)
+        current = re.findall(r'<a href="([^"]+)" aria-current="page"', tabs)
+        assert current == ([lit] if lit else []), f"{path}: 켜진 탭이 {current}"
+        for no, name in (("1", "실행"), ("2", "결과"), ("3", "데이터")):
+            assert f'<span class="step-no">{no}</span>{name}' in tabs, (
+                f"{path}: 탭 '{name}'에 순서 번호가 없다")
+
+
+def test_탭_막대는_좁은_화면에서만_서고_문서_끝을_가리지_않는다():
+    """넓은 화면에는 위 흐름 내비가 있으므로 막대를 그리지 않는다. 좁은 화면에서
+    켜는 규칙은 `[data-narrow]` 한 벌이다 — `@media`에 두 벌 두면 '넓게'로 끈 폰
+    화면에 막대가 남는다. 막대가 덮는 만큼 문서 끝을 띄우지 않으면 바닥글과 마지막
+    표 행이 막대 뒤에 숨는다."""
+    import re
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    css = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+
+    assert ".tabbar { display: none; }" in css
+    assert "[data-narrow] .tabbar {" in css
+    assert "[data-narrow] .flow-nav { display: none; }" in css, (
+        "좁은 화면에서 위아래에 흐름 내비가 두 벌 선다")
+    # 57px = 탭 56px + 윗선 1px. 56px이면 바닥글 마지막 1px이 윗선 밑에 깔린다.
+    assert re.search(r"\[data-narrow\] body \{ padding-bottom: calc\(57px", css), (
+        "막대가 문서 끝을 가린다")
+    for block in re.findall(r"@media \(max-width: \d+px\) \{(.*?)\n    \}", css, re.S):
+        assert "tabbar" not in block, "탭 막대 규칙이 @media 안에도 있다"
+
+
+def test_표_팝업_바닥_판은_화면_폭을_다_쓴다():
+    """좁은 화면의 바닥 판은 `left: 0; right: 0`인데 기본 규칙의 폭 상한
+    (`min(560px, 100vw - 2*sp-md)`)을 풀지 않아 430px 화면에서 396px로 섰다 —
+    오른쪽 34px 틈으로 뒤 카드가 비치고 오른쪽 둥근 모서리가 화면 가운데 떴다
+    (1.26.195, 탭 막대를 확인하다 좌표로 잡았다)."""
+    import re
+    from pathlib import Path
+
+    from webapp import app as webapp_app
+
+    css = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
+        encoding="utf-8")
+    block = re.search(r"@media \(max-width: 560px\) \{\s*\.table-panel \{(.*?)\}", css, re.S)
+    assert block, "좁은 화면의 표 팝업 규칙을 찾지 못했다(선택자가 바뀌었나?)"
+    assert "max-width: none" in block.group(1), "바닥 판이 폭 상한에 묶여 화면을 다 못 쓴다"
+
+
 def test_카드로_눕는_표는_모든_칸에_라벨이_있다():
     """`.m-cards` 표의 `<td>`는 전부 `data-label`을 갖는다.
 
@@ -1426,7 +1488,7 @@ def test_인쇄하면_화면_골격이_빠진다():
     css = _css()
     printed = css[css.index("@media print"):]
 
-    for sel in ("header.global-nav", "nav.flow-nav", "nav.group-nav", "footer.site",
+    for sel in ("header.global-nav", "nav.flow-nav", "nav.group-nav", "nav.tabbar", "footer.site",
                 ".filterbar", ".pager", ".col-toggle-wrap", ".row-more-wrap"):
         assert sel in printed, f"인쇄에서 {sel}를 감추지 않는다"
 
