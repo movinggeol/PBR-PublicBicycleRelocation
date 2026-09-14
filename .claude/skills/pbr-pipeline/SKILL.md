@@ -18,7 +18,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 828개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 829개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -72,6 +72,10 @@ pipeline/step4          : imbalance
   하드코딩 값을 코드에 넣지 마라 — 단계 간 파일명이 어긋난다.
 - 각 스크립트는 독립 실행되며(상호 import 없음) 실행 로직은
   `if __name__ == '__main__':` + `main()` 아래에 둔다. 순서는 run_pipeline.py가 제어한다.
+  **그 블록 첫머리에서 `exit_if_help(__doc__)`를 부른다**(1.26.190) — 공용 파서가
+  `add_help=False`라 안 부르면 `--help`가 계산으로 흘러간다(자료가 있으면 실제로 돈다).
+  `get_runtime_config()` 안에 넣지 마라 — step 모듈을 import하는 실험의 `--help`를
+  가로챈다. `test_pipeline.py`가 `run_pipeline.STAGES` 전부를 정적으로 본다.
 - step 폴더의 스크립트는 상단에서 `sys.path.insert(0, str(Path(__file__).resolve().parents[1]))`
   후 project_config를 import한다 — 새 스크립트를 만들 때 같은 패턴을 따르라.
 - **데이터 경로는 `DATA_ROOT` 기준으로 만든다**: `str(DATA_ROOT / "pp_data/...")`.
@@ -323,7 +327,7 @@ python experiments/params/road_time_model.py  # 이동시간 모형 재추정 (E
 ## 테스트
 
 ```powershell
-python -m pytest                 # 828개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 829개, 약 100초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

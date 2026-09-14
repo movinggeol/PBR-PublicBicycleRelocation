@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd
 
 import db
-from project_config import DATA_ROOT, PROJECT_ROOT, ensure_output_dirs, get_runtime_config
+from project_config import DATA_ROOT, PROJECT_ROOT, ensure_output_dirs, get_runtime_config, exit_if_help
 
 # read_csv
 file_path = str(DATA_ROOT / "pp_data/대여소별 재고/대여소별_자전거대수 ({now}).csv")
@@ -83,4 +83,5 @@ def main() -> None:
 
 
 if __name__ == '__main__':
+    exit_if_help(__doc__)
     main()

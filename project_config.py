@@ -761,6 +761,44 @@ def get_runtime_config(argv: Optional[list[str]] = None) -> RuntimeConfig:
     )
 
 
+def exit_if_help(description: Optional[str] = None,
+                 parser: Optional[argparse.ArgumentParser] = None,
+                 argv: Optional[list[str]] = None) -> None:
+    """`-h`/`--help`면 도움말만 찍고 **아무것도 계산하지 않고** 끝낸다 (1.26.190).
+
+    🔴 공용 파서(`_parser()`)는 `add_help=False`라 **`--help`를 받아 주는 곳이
+    없었다.** 단계 스크립트에 `--help`를 주면 모르는 인자로 흘려보내고 그대로
+    계산했다 — `top_st_clustering.py --help`는 기본 라벨 자료가 있으면 **군집을
+    실제로 돌렸고**, 없으면 *"대여소 정보가 없습니다"* 로 죽었다. `vrp.py`는 자료가
+    없을 때 건너뛰기 가드가 0을 내 통과하는 것처럼 보였을 뿐이다.
+
+    ⚠️ **`get_runtime_config()` 안에 넣지 않는다.** 단계 모듈 여섯은 import 시점에
+    그 함수를 부르므로, 거기서 `--help`를 받으면 단계 모듈을 import하는 **실험
+    스크립트의 `--help`를 가로챈다.** 그래서 스크립트로 띄워졌을 때만 — 각 파일의
+    `if __name__ == '__main__':` 첫머리에서 부른다. `run_pipeline.py`가 띄우는
+    스크립트 전부가 그렇게 하는지 `tests/test_pipeline.py`가 정적으로 본다.
+
+    parser: 자기 옵션을 따로 받는 스크립트(`concat_1year_file.py`)는 그 파서를 넘긴다.
+    """
+    args = sys.argv[1:] if argv is None else argv
+    if not {"-h", "--help"} & set(args):
+        return
+    shown = parser if parser is not None else _parser()
+    shown.prog = Path(sys.argv[0]).name or shown.prog
+    shown.description = (description or "").strip() or None
+    shown.formatter_class = argparse.RawDescriptionHelpFormatter
+    if parser is None:
+        shown.epilog = ("보통은 run_pipeline.py가 옵션을 넘깁니다. 같은 값을 환경변수"
+                        "(PBR_NOW 등)로도 줄 수 있습니다 — 우선순위: 인자 → 환경변수 → 기본값.")
+    text = shown.format_help()
+    try:
+        print(text)
+    except UnicodeEncodeError:        # cp949 콘솔은 docstring의 이모지를 못 찍는다
+        encoding = sys.stdout.encoding or "utf-8"
+        print(text.encode(encoding, "replace").decode(encoding))
+    raise SystemExit(0)
+
+
 def normalize_day_type(value, target_date=None) -> str:
     """요일 구분 값을 검증하고 'auto'를 실제 값으로 풀어 준다.
 

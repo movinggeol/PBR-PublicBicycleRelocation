@@ -37,7 +37,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 import db
-from project_config import PP_ROOT, get_runtime_config
+from project_config import PP_ROOT, get_runtime_config, exit_if_help
 from webapp import charts
 
 EDA_DIR = PP_ROOT / "EDA"
@@ -351,4 +351,5 @@ def main() -> None:
 
 
 if __name__ == '__main__':
+    exit_if_help(__doc__)
     main()

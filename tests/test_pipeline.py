@@ -450,24 +450,76 @@ def test_step_모듈을_폴더_이름으로_import할_수_있다(module):
     assert mod is not None
 
 
-def test_step_모듈은_직접_실행도_된다():
+def test_step_모듈은_직접_실행도_된다(tmp_path):
     """파이프라인이 부르는 방식(스크립트 경로)이 안 깨졌는지 본다.
 
     위 테스트를 통과시키려고 맨 이름 import를 지우면 이쪽이 깨진다 —
     `run_pipeline.py`가 쓰는 것은 이 경로다. 둘은 함께 지켜야 한다.
+
+    🔴 **`--help`가 정말 계산 없이 끝나는지도 함께 잰다** (1.26.190). 전에는
+    공용 파서가 `add_help=False`라 `--help`를 아무도 받지 않았다 — `vrp.py`는 자료가
+    없으면 건너뛰기 가드로 0을 내 통과했고, `top_st_clustering.py`는 기본 라벨 자료가
+    **있는 PC에서만** 통과했다(그 PC에서는 도움말 대신 군집을 실제로 계산했다).
+    그래서 자료 경로를 빈 임시 폴더로 돌리고, **도움말이 찍혔는지**와 **아무것도
+    만들지 않았는지**를 본다.
     """
+    data_root = tmp_path / "data"
+    help_db = tmp_path / "help.db"
+    env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8",
+               PBR_DATA_ROOT=str(data_root), PBR_DB_PATH=str(help_db))
     for script in ("pipeline/step2_optimize/vrp.py", "pipeline/step1_cluster/top_st_clustering.py"):
         # run_pipeline.py와 **같은 형태**로 부른다: `python <경로>`. 이때
         # 파이썬이 그 폴더를 sys.path[0]에 놓으므로 맨 이름 import가 성립한다.
-        # `--help`로 세워 둔다 — 실제 계산까지 돌리면 자료가 있어야 한다.
         result = subprocess.run(
             [sys.executable, str(PROJECT_ROOT / script), "--help"],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
-            cwd=str(PROJECT_ROOT), timeout=180,
+            cwd=str(PROJECT_ROOT), env=env, timeout=180,
         )
         assert result.returncode == 0, (
             f"{script}를 스크립트로 띄울 수 없다 — 파이프라인이 이 경로를 쓴다:\n"
             f"{(result.stderr or '')[-600:]}")
+        assert "--now" in result.stdout, (
+            f"{script} --help가 도움말을 찍지 않았다(계산으로 흘러갔을 수 있다):\n"
+            f"{result.stdout[-600:]}")
+
+    made = sorted(p for p in data_root.rglob("*") if p.is_file()) if data_root.exists() else []
+    assert not made, f"--help가 산출물을 만들었다: {made[:5]}"
+    assert not help_db.exists(), "--help가 DB를 만들었다"
+
+
+def test_파이프라인이_띄우는_스크립트는_일하기_전에_도움말부터_받는다():
+    """`run_pipeline.STAGES`의 스크립트 전부가 일을 시작하기 전에 `exit_if_help`를 부른다.
+
+    위 시험은 두 파일만 실제로 띄운다(파일마다 import에 수 초가 든다). 나머지에서
+    호출이 빠지면 그 스크립트의 `--help`는 다시 **계산으로 흘러간다** — 한 곳만
+    고치고 덮는 것을 막으려고 전부를 정적으로 본다(1.26.190). 도움말보다 앞에
+    와도 되는 것은 자기 파서를 세우는 줄뿐이다(`concat_1year_file.py`).
+    """
+    import ast
+    import importlib
+
+    allowed_before = {"argparse.ArgumentParser", "parser.add_argument"}
+    stages = importlib.import_module("run_pipeline").STAGES
+    problems = []
+    for script in [path for paths in stages.values() for path in paths]:
+        tree = ast.parse((PROJECT_ROOT / script).read_text(encoding="utf-8"))
+        blocks = [node for node in tree.body
+                  if isinstance(node, ast.If) and "__main__" in ast.unparse(node.test)]
+        if len(blocks) != 1:
+            problems.append(f"{script}: __main__ 블록이 {len(blocks)}개")
+            continue
+        for stmt in blocks[0].body:
+            calls = {ast.unparse(node.func) for node in ast.walk(stmt)
+                     if isinstance(node, ast.Call)}
+            if "exit_if_help" in calls:
+                break
+            early = calls - allowed_before
+            if early:
+                problems.append(f"{script}: 도움말보다 먼저 {sorted(early)}를 부른다")
+                break
+        else:
+            problems.append(f"{script}: exit_if_help를 부르지 않는다")
+    assert not problems, "\n".join(problems)
 
 
 # ---- 단계 간 배선이 DB로 옮겨졌다 (1.26.166) ----

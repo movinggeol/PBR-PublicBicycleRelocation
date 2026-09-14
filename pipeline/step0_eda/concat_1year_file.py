@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pandas as pd
 
-from project_config import DATA_ROOT, PROJECT_ROOT
+from project_config import DATA_ROOT, PROJECT_ROOT, exit_if_help
 
 path = str(DATA_ROOT / "raw_data/타슈 대여이력 정보(25.04~26.03)/대전시 공영자전거 타슈 대여이력 정보({period}).csv")
 result_file = str(DATA_ROOT / "raw_data/타슈 대여이력(25.04~26.03).csv")
@@ -121,6 +121,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--concat", action="store_true", help="월별 파일 병합 실행")
     parser.add_argument("--preprocess", action="store_true", help="이상치 제거 실행")
+    exit_if_help(__doc__, parser)
     args, _ = parser.parse_known_args()
 
     period = [

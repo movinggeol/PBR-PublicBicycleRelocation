@@ -21,6 +21,7 @@ except ModuleNotFoundError:                      # 패키지 경로로 불렸다
 import db
 import project_config
 from project_config import (
+    exit_if_help,
     DATA_ROOT, ADJUST_BALANCE_LIMIT, ADJUST_BALANCE_OK, ADJUST_MAX_ITER,
     CLUSTER_ALPHA, CLUSTER_BETA, CLUSTER_GAMMA, CLUSTER_SEED,
     PROJECT_ROOT, REBAL_MIN_QTY,
@@ -479,6 +480,7 @@ def adjust_clustering(pick_drop):
 
 
 if __name__ == '__main__':
+    exit_if_help("step1 — 불균형이 큰 대여소를 골라 차량 한 대가 맡을 군집으로 묶는다.")
 
     ensure_output_dirs()
 

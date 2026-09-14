@@ -20,6 +20,7 @@ import pandas as pd
 import db
 import demand_model
 from project_config import (
+    exit_if_help,
     DATA_ROOT, PROJECT_ROOT,
     TARGET_QTY_UPPER_RATIO, TARGET_Z, VEHICLE_CAPACITY,
     duration_hours,
@@ -211,6 +212,7 @@ def calculate_rebal_qty(stats: pd.DataFrame, duration: str, now: str, z=None,
 
 # 메인
 if __name__ == '__main__':
+    exit_if_help(__doc__)
     config = get_runtime_config()
     now = config.now
     period = config.period

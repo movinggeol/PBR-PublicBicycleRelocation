@@ -28,6 +28,7 @@ except ModuleNotFoundError:                      # 패키지 경로로 불렸다
 
 import db
 from project_config import (
+    exit_if_help,
     DATA_ROOT, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DROP_TIME_SEC, PICK_TIME_SEC, PROJECT_ROOT,
     ENFORCE_TIME_BUDGET, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY,
     VEHICLE_SPEED_KMPH,
@@ -408,6 +409,7 @@ def _assign_fleet(vrp_result: pd.DataFrame, duration: str) -> pd.DataFrame:
 
 
 if __name__ == '__main__':
+    exit_if_help(__doc__)
     ensure_output_dirs()
 
     for duration in duration_list(config):

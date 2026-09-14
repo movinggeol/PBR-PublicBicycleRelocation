@@ -13,6 +13,7 @@ import db
 from mapviz import (DROP_LABEL, PICK_LABEL, cluster_color, legend_html,
                     qty_radius, swatch_circle, swatch_size_scale)
 from project_config import (
+    exit_if_help,
     DATA_ROOT, MAP_TILES, PROJECT_ROOT, VEHICLE_CAPACITY,
     duration_list, ensure_output_dirs, get_runtime_config,
 )
@@ -184,6 +185,7 @@ def make_clustered_map(durations: list):
 
 
 if __name__ == '__main__':
+    exit_if_help("step1 — 군집 결과를 지도(HTML)로 그린다.")
 
     ensure_output_dirs()
     make_clustered_map(duration_list(config))

@@ -10,6 +10,7 @@ import pulp
 
 import db
 from project_config import (
+    exit_if_help,
     DATA_ROOT, PROJECT_ROOT, VEHICLE_SPEED_KMPH, duration_list, ensure_output_dirs, get_runtime_config,
     require_columns, travel_seconds,
 )
@@ -301,6 +302,7 @@ def run_ilp_plan(metrics: pd.DataFrame, duration: str, solver: pulp.LpSolver):
 
 # main
 if __name__ == "__main__":
+    exit_if_help("step2 — 군집마다 어느 대여소에서 몇 대를 싣고 내릴지 ILP로 정한다.")
     ensure_output_dirs()
 
     # 솔버 객체 생성 후 실행 (시간 제한/갭 포함)

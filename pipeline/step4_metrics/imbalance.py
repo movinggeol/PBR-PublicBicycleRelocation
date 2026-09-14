@@ -14,6 +14,7 @@ from mapviz import (DROP_COLOR, DROP_LABEL, DROP_WORD, PICK_COLOR, PICK_LABEL,
 from dataclasses import replace
 
 from project_config import (
+    exit_if_help,
     DATA_ROOT, DAY_TYPE_LABELS, MAP_TILES, PICK_HARM_WARN_SHARE, PROJECT_ROOT,
     TIME_BUDGET_MINUTES,
     VEHICLE_CAPACITY, duration_hours, duration_list, ensure_output_dirs,
@@ -745,6 +746,7 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
 
 
 if __name__ == "__main__":
+    exit_if_help("step4 — 재배치 전후의 불균형·결품 지표를 계산해 저장한다.")
     ensure_output_dirs()
 
     for duration in duration_list(config):

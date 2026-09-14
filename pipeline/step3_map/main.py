@@ -24,6 +24,7 @@ from module import (
 from mapviz import (DROP_WORD, PICK_WORD, cluster_color, legend_html,
                     swatch_circle, swatch_line)
 from project_config import (
+    exit_if_help,
     DATA_ROOT, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, MAP_TILES, PROJECT_ROOT,
     VEHICLE_CAPACITY,
     duration_list, ensure_output_dirs, get_runtime_config,
@@ -593,6 +594,7 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
 
 # ---------------- 메인 ----------------
 if __name__ == "__main__":
+    exit_if_help("step3 — TMAP 실도로 경로로 차량 경로 지도를 그린다(.env의 API_KEY 필요).")
 
     load_dotenv(PROJECT_ROOT / ".env")
     API_KEY = os.getenv("API_KEY")
