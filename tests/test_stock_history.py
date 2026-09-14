@@ -11,7 +11,7 @@
 API는 부르지 않는다(monkeypatch로 대체). 실호출 검증은 docs/구현/TESTING.md 참고.
 """
 import sys
-from datetime import datetime, time
+from datetime import date, datetime, time
 from pathlib import Path
 
 import pandas as pd
@@ -360,6 +360,42 @@ def test_현황은_기대_격자와_대조해_결측을_센다(history_dir):
     assert row["틱"] == 3
     assert row["기대"] == 49
     assert row["결측"] == 46     # 로그가 아니라 격자와 대조한다(절전은 로그도 안 남긴다)
+
+
+def test_현황은_오늘_창이_아니라_그날_창으로_기대를_센다(history_dir):
+    """🔴 오늘 창을 모든 날에 적용하면 **옛 날짜가 통째로 결측**이 된다 (2026-09-14 발견).
+
+    09~17시 시절에 49틱을 다 채운 2026-08-25가 07~23시(97틱) 기준으로 *"48 결측"* 이
+    됐고, 그래서 `--status`의 **'온전한 날'이 영영 0일**이었다 — 게이트 C가 기다리는
+    것이 바로 그 숫자다(docs/기록/수집완료_계획.md 5장). 창은 앞으로도 바뀌므로
+    (오늘 24시간으로 넓혔다) 날짜별 판정을 시험이 고정한다.
+    """
+    with db.session() as conn:
+        for hour in range(9, 17):                     # 09:00~16:50
+            for minute in range(0, 60, 10):
+                db.save_stock_snapshot(
+                    conn, f"2026-08-25 {hour:02d}:{minute:02d}", sample_frame())
+        db.save_stock_snapshot(conn, "2026-08-25 17:00", sample_frame())   # 49틱째
+
+    # 오늘 창(07~23시 · 97틱)으로 물어도 그날 창(09~17시 · 49틱)으로 판정해야 한다
+    row = collector.coverage(time(7, 0), time(23, 0), 10).set_index("날짜").loc["2026-08-25"]
+    assert row["틱"] == 49
+    assert row["기대"] == 49
+    assert row["결측"] == 0
+    assert row["상태"] == "온전"
+
+
+def test_창_이력은_바뀐_날짜부터_적용된다():
+    """경계는 **바꾼 날 그날부터**다 — 하루 어긋나면 그날이 통째로 결측이 된다."""
+    assert collector.window_on(date(2026, 8, 26)) == (time(9, 0), time(17, 0), 10)
+    assert collector.window_on(date(2026, 8, 27)) == (time(7, 0), time(22, 0), 10)   # 1.25.1
+    assert collector.window_on(date(2026, 9, 2)) == (time(7, 0), time(22, 0), 10)
+    assert collector.window_on(date(2026, 9, 3)) == (time(7, 0), time(23, 0), 10)    # 1.26.106
+    assert collector.window_on(date(2026, 9, 15)) == (time(0, 0), time(23, 50), 10)  # 1.26.206
+
+    assert collector.expected_ticks_on(date(2026, 8, 26)) == 49
+    assert collector.expected_ticks_on(date(2026, 9, 3)) == 97
+    assert collector.expected_ticks_on(date(2026, 9, 15)) == 144   # 24시간
 
 
 # ---------------------------------------------------------------- 창 기준 해석

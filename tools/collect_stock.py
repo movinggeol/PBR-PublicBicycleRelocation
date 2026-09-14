@@ -182,6 +182,32 @@ def expected_ticks(start: clock, end: clock, interval: int) -> int:
     return int(span.total_seconds() // 60 // interval) + 1
 
 
+# 창을 넓힌 날들. 🔴 **오늘 창을 모든 날에 적용하면 옛 날짜가 통째로 결측이 된다** —
+# 09~17시에 49틱을 다 채운 2026-08-25가 97틱 기준으로 '48 결측'이 되고, 그래서
+# '온전한 날'이 영영 0일이었다(2026-09-14 발견). 그날 등록돼 있던 창으로 판정한다.
+# ⚠️ **창을 바꾸면 여기 한 줄 추가한다** — 근거는 docs/기록/버전관리.md의 해당 판.
+WINDOW_HISTORY: Tuple[Tuple[date, clock, clock, int], ...] = (
+    (date(2026, 8, 27), clock(7, 0), clock(22, 0), 10),    # 1.25.1
+    (date(2026, 9, 3), clock(7, 0), clock(23, 0), 10),     # 1.26.106
+    (date(2026, 9, 15), clock(0, 0), clock(23, 50), 10),   # 1.26.206 — 24시간
+)
+FIRST_WINDOW = (clock(9, 0), clock(17, 0), 10)
+
+
+def window_on(day: date) -> Tuple[clock, clock, int]:
+    """그날 등록돼 있던 수집 창 — 이력에 없는 옛 날짜는 최초 창(09~17시)으로 본다."""
+    chosen = FIRST_WINDOW
+    for since, start, end, interval in WINDOW_HISTORY:
+        if day >= since:
+            chosen = (start, end, interval)
+    return chosen
+
+
+def expected_ticks_on(day: date) -> int:
+    """**그날** 창 기준 기대 틱 수. 표의 '기대' 열은 이것을 쓴다."""
+    return expected_ticks(*window_on(day))
+
+
 # ---- 절전 ----
 
 def keep_awake() -> None:
@@ -401,7 +427,6 @@ def coverage(start: clock, end: clock, interval: int) -> pd.DataFrame:
         return pd.DataFrame(columns=columns)
 
     stamps = pd.to_datetime(ticks["observed_at"])
-    target = expected_ticks(start, end, interval)
     today = date.today()
     now = datetime.now().time()
 
@@ -409,6 +434,8 @@ def coverage(start: clock, end: clock, interval: int) -> pd.DataFrame:
     for day, group in stamps.groupby(stamps.dt.strftime("%Y-%m-%d")):
         stamp = datetime.strptime(day, "%Y-%m-%d").date()
         count = int(len(group))
+        # 오늘 창이 아니라 **그날** 창으로 센다 (WINDOW_HISTORY).
+        target = expected_ticks_on(stamp)
         missing = max(target - count, 0)
         if stamp == today and now < end:
             status = "수집 중"
