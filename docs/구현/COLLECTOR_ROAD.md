@@ -288,8 +288,9 @@ collect_road_time.py  →  road_leg에 실측 쌓기
         ↓
 road_time_model.py     →  9-2 기준으로 판정 (사람이 결과를 읽는다)
         ↓ 통과 + 10일 이상이면
-사람이 .env에 PBR_USE_ROAD_MODEL=1 · PBR_ROAD_FIXED_SEC=... ·
-       PBR_ROAD_SPEED_KMPH=... 를 직접 씀
+사람이 .env에 PBR_USE_ROAD_MODEL=1 · PBR_ROAD_FIXED_SEC_WEEKDAY=... ·
+       PBR_ROAD_SPEED_KMPH_WEEKDAY=... 를 직접 씀
+       (road_time_model.py가 붙여넣을 세 줄을 그대로 찍어 준다)
         ↓
 travel_seconds()가 그때부터 실측 계수를 씀 → ILP·VRP 계산이 바뀐다
 ```
@@ -309,6 +310,8 @@ travel_seconds()가 그때부터 실측 계수를 씀 → ILP·VRP 계산이 바
 아직 없어서입니다(위 9-2-A). 옛 이름 `PBR_ROAD_FIXED_SEC`·
 `PBR_ROAD_SPEED_KMPH`(접미사 없음)는 평일 값의 폴백으로 계속 읽습니다 —
 기존 `.env`가 조용히 무시되지 않습니다.
+
+🔴 **`.env`가 실제로 읽히기 시작한 것은 1.26.208부터입니다.** 그 전에는 `project_config`가 `PBR_*`를 import 시점에 굳히는데 `load_dotenv()`를 부르는 곳이 전부 함수 안이라 **28개가 전부 무시**됐습니다 — 위 흐름도의 *"사람이 .env에 직접 씀"* 이 아무 효과가 없었다는 뜻입니다 ([버전관리 1.26.208](../기록/버전관리.md)).
 
 ### 9-3. 파이프라인 실행분과 섞지 말 것
 

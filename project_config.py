@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
 
+from dotenv import load_dotenv
+
 
 def _force_utf8_output() -> None:
     """출력 인코딩을 UTF-8로 못 박는다.
@@ -50,6 +52,22 @@ def _force_utf8_output() -> None:
 _force_utf8_output()
 
 PROJECT_ROOT = Path(__file__).resolve().parent
+
+# 🔴 **`.env`는 여기서 읽어야 한다** — 이 모듈이 `PBR_*`를 전부 **import 시점에**
+# 읽어 상수로 굳히기 때문이다. 2026-09-14 실측: 이 줄이 없을 때 `.env`에
+# `PBR_TARGET_Z=9.9`를 적어도 코드는 1.99를, `PBR_FLEET_SIZE=77`을 적어도 21을
+# 썼다. `PBR_USE_ROAD_MODEL=1`도 꺼진 채였다 — `.env.example`이 안내하는
+# `PBR_*` 28개가 **전부 조용히 무시**되고 있었다.
+# 저장소에서 `load_dotenv()`를 부르던 네 곳(tashu·weather·step3_map·
+# collect_road_time)은 모두 **자기 함수 안**이라 이 모듈이 상수를 굳힌 뒤였다.
+# API 키는 그때 읽어도 늦지 않지만 `PBR_*`는 늦는다.
+#
+# ⚠️ **`override=False`다 — 진짜 환경변수가 `.env`를 이긴다.** 실험 하네스가
+# 자식 프로세스에 값을 꽂는 방식(`_limit_plan_worker`·`_convention_worker`)이
+# `.env`에 가려지면 격자 탐색이 통째로 같은 값을 돌고도 다른 값을 돈 것처럼
+# 보인다 — 조용히 틀린 답이라 가장 나쁜 부류다.
+# 파일이 없으면 아무 일도 일어나지 않는다(새 PC 첫 실행).
+load_dotenv(PROJECT_ROOT / ".env", override=False)
 
 # 🔴 **데이터 경로는 여기서만 만든다.** 예전에는 스텝마다
 # `PROJECT_ROOT / "data/..."`로 직접 조립했는데, 그래서 `PBR_DATA_ROOT`를

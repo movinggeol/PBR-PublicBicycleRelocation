@@ -229,7 +229,8 @@ def leave_one_day_out(frame: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def verdict(frame: pd.DataFrame, by_day: pd.DataFrame, oos: pd.DataFrame) -> None:
+def verdict(frame: pd.DataFrame, by_day: pd.DataFrame, oos: pd.DataFrame,
+            day_type: str = "weekday") -> None:
     print("\n" + "=" * 66)
     print("판정")
     print("=" * 66)
@@ -287,8 +288,11 @@ def verdict(frame: pd.DataFrame, by_day: pd.DataFrame, oos: pd.DataFrame) -> Non
         fixed, speed = fit_linear(frame["straight_km"].to_numpy(),
                                   frame["road_sec"].to_numpy())
         print(f"\n  ✅ 세 기준을 모두 통과했습니다 — 계수를 갱신할 근거가 있습니다.")
-        print(f"     PBR_ROAD_FIXED_SEC={fixed:.0f}"
-              f" · PBR_ROAD_SPEED_KMPH={speed:.1f}")
+        suffix = "_HOLIDAY" if day_type == "holiday" else "_WEEKDAY"
+        print(f"     .env 에 아래 세 줄을 적으십시오 (접미사까지 그대로):")
+        print(f"       PBR_ROAD_FIXED_SEC{suffix}={fixed:.1f}")
+        print(f"       PBR_ROAD_SPEED_KMPH{suffix}={speed:.2f}")
+        print(f"       PBR_USE_ROAD_MODEL=1")
         print(f"     (현행 {ROAD_FIXED_SEC:.0f}초 / {ROAD_SPEED_KMPH}km/h)")
         print("     ⚠️ 켜면 문서의 모든 소요시간 수치가 바뀝니다 — 대조군·γ·z"
               " 실험을 함께 다시 돌려야 재현성이 유지됩니다.")
@@ -354,7 +358,7 @@ def main() -> int:
     print(oos.to_string(index=False) if not oos.empty
           else "  (날짜가 2일 이상 쌓여야 잴 수 있습니다)")
 
-    verdict(frame, by_day, oos)
+    verdict(frame, by_day, oos, day_type=args.day_type)
     return 0
 
 
