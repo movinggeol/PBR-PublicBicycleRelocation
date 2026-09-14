@@ -124,9 +124,30 @@ def make_clustered_map(durations: list):
             유형: {status}<br>
             재배치 수량: {rebal}<br>
             현재 재고: {row['stock']}<br>
-            클러스터: {cluster}<br>
-            Target: {row['target_qty']:.2f}<br>
-            mu: {row['mu']:.2f}, sigma: {row['sigma']:.2f}
+            클러스터: {cluster}
+            """
+
+            # 눌러서 **고정**되는 창. 커서를 떼면 사라지는 풍선(tooltip)과 달리
+            # 남아 있으므로 값을 따져 보거나 옮겨 적을 때 쓴다.
+            #
+            # ⚠️ 세 지도 중 **이 지도만 없었다** — 경로 지도(step3)와 불균형
+            #    지도(step4)는 진작 풍선과 팝업을 짝으로 달아 두었는데
+            #    (수정안 38), 군집 지도는 풍선만 있어 점이 촘촘한 도심에서
+            #    옆 점으로 커서가 넘어가면 읽던 값이 그대로 사라졌다
+            #    (1.26.209, 사용자 확인).
+            #
+            # 풍선은 지나가며 훑는 것이라 짧게, 팝업은 멈춰 서서 읽는 것이라
+            # 목표·mu·sigma까지 싣는다 — 같은 글을 두 벌 띄우면 클릭이
+            # 아무것도 더 주지 않는다.
+            popup_html = f"""
+            <b>{row['station_name']}</b><br>
+            군집 : {cluster}<br>
+            작업 유형 : {status}<br>
+            재배치 수량 : {rebal}<br>
+            현재 재고 : {row['stock']}<br>
+            목표 재고 : {row['target_qty']:.2f}<br>
+            수요 평균(mu) : {row['mu']:.2f}<br>
+            수요 표준편차(sigma) : {row['sigma']:.2f}
             """
 
             folium.CircleMarker(
@@ -143,7 +164,8 @@ def make_clustered_map(durations: list):
 
                 # sticky: 풍선이 커서를 따라온다. 점이 촘촘한 곳에서
                 # 어느 점의 설명인지 헷갈리지 않는다 (세 지도가 같게).
-                tooltip=folium.Tooltip(tooltip, sticky=True)
+                tooltip=folium.Tooltip(tooltip, sticky=True),
+                popup=folium.Popup(popup_html, max_width=260)
             ).add_to(layer)
 
         # 군집 중심(메도이드) 마커는 그리지 않는다. 예전에 주석으로 남아 있던
@@ -172,7 +194,7 @@ def make_clustered_map(durations: list):
                  + swatch_size_scale(
                      [qty_radius(q, VEHICLE_CAPACITY) for q in (3, 6, 9)],
                      ["3대", "6대", "9대"])
-                 + "<br>점에 커서를 대면 자세한 값이 뜹니다.")))
+                 + "<br>점에 커서를 대면 값이 뜨고, <b>누르면 고정</b>됩니다.")))
 
         # ⚠️ 레이어 컨트롤은 지도 **위에** 겹쳐 뜬다. 펴 두면 군집 수만큼
         # 줄이 서서 지도 오른쪽을 위에서 아래까지 덮는다 — 군집 19개짜리

@@ -2763,3 +2763,20 @@ def test_빈_CSV_미리보기가_500으로_죽지_않는다(client, tmp_path, mo
 
     assert 응답.status_code == 200, "빈 CSV는 404도 500도 아니다 — 빈 표다"
     assert "내용이 없는 파일입니다" in 응답.text
+
+
+def test_지도_미리보기는_납작하지도_화면을_다_먹지도_않는다(client):
+    """🔴 46vh는 *"너무 짧다"* 는 지적을 받았다(1.26.209, 사용자 확인) — 대전
+    전역이 들어가야 하는 지도라 세로가 짧으면 시가지가 위아래로 잘린다.
+
+    그렇다고 마음껏 키울 수도 없다. `/maps`에는 분류마다 한 장씩 **여러 장이
+    세로로 선다** — 각각이 화면을 다 먹으면 아래 목록(파일 표)에 스크롤이
+    닿지 않는다. 전용 화면(view.html, 76vh)보다는 낮게 둔다.
+    """
+    body = client.get("/maps").text
+    미리보기 = re.search(r"\.map-preview \.map-frame \{ height: (\d+)vh", body)
+    전용 = re.search(r"iframe\.map-frame \{\s*width: 100%; height: (\d+)vh", body)
+    assert 미리보기 and 전용, "지도 높이 규칙을 찾지 못했다"
+    assert 60 <= int(미리보기.group(1)) < int(전용.group(1)), (
+        f"미리보기 {미리보기.group(1)}vh · 전용 {전용.group(1)}vh — "
+        "납작하거나, 전용 화면만큼 커져 목록에 닿지 못한다")

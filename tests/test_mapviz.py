@@ -440,3 +440,32 @@ def test_실측_표에_가짜_출발점이_들어가지_않는다():
     # 그리고 첫 구간은 실측 표에서 빠져야 한다.
     assert "for i in range(1, min(len(route_pts), len(elapsed_sec)) - 1)" in body, \
         "road_leg가 여전히 첫 구간(leg 0)을 담는다"
+
+
+def test_범례는_작지만_눈금의_원까지_줄이지는_않는다():
+    """🔴 범례가 *"너무 크다"* 는 지적을 받아 줄였다(1.26.209, 사용자 확인).
+
+    `/maps`의 미리보기 틀 안에 다시 담기면 같은 범례가 더 커 보인다 — 화면
+    한 칸을 차지한 지도 위에 또 한 칸짜리 상자가 앉는 꼴이다.
+
+    ⚠️ **같이 줄이면 안 되는 것이 하나 있다.** `swatch_size_scale()`이 그리는
+    원은 장식이 아니라 **실제 마커 반지름**이라, 상자와 함께 줄이면 눈금이
+    지도와 다른 말을 한다 — "3대짜리 원"이라 적힌 것보다 지도의 3대짜리
+    점이 커진다. 글자만 줄인다.
+    """
+    눈금 = mapviz.swatch_size_scale([mapviz.qty_radius(q, 15) for q in (3, 6, 9)],
+                                    ["3대", "6대", "9대"])
+    html = mapviz.legend_html("범례 — 군집",
+                              [(mapviz.swatch_circle("#000", "0"), "군집 0")],
+                              note="원 크기는 재배치 수량입니다." + 눈금)
+
+    상자 = re.search(r"font: ([\d.]+)px", html)
+    assert 상자 and float(상자.group(1)) <= 11.5, "범례 글자가 다시 커졌다"
+    폭 = re.search(r"max-width: (\d+)px", html)
+    assert 폭 and int(폭.group(1)) <= 180, "범례 상자가 다시 넓어졌다"
+
+    # 눈금의 원은 **지름 = 반지름 × 2**다. 범례를 줄인다고 이것까지 줄면
+    # 눈금이 거짓말을 한다 — 지도의 마커는 그대로인데 눈금만 작아진다.
+    지름들 = [int(x) for x in re.findall(r"display:block;width:(\d+)px", 눈금)]
+    기대 = [round(mapviz.qty_radius(q, 15) * 2) for q in (3, 6, 9)]
+    assert 지름들 == 기대, f"눈금 원이 실제 마커 반지름과 어긋난다: {지름들} != {기대}"

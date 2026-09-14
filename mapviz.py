@@ -121,10 +121,10 @@ def _shift(hex_color: str, factor: float) -> str:
 def swatch_circle(color: str, label_inside: str = "") -> str:
     """범례용 작은 원 배지. 마커가 원(CircleMarker/DivIcon)일 때 모양을 맞춘다."""
     return (
-        f'<span style="display:inline-block;width:15px;height:15px;'
-        f'border-radius:50%;background:{color};color:#fff;font-size:9px;'
-        f'font-weight:700;text-align:center;line-height:15px;'
-        f'vertical-align:-3px;">{label_inside}</span>'
+        f'<span style="display:inline-block;width:12px;height:12px;'
+        f'border-radius:50%;background:{color};color:#fff;font-size:8px;'
+        f'font-weight:700;text-align:center;line-height:12px;'
+        f'vertical-align:-2px;">{label_inside}</span>'
     )
 
 
@@ -137,9 +137,9 @@ def swatch_circle_dashed(color: str = "#8a8a8f") -> str:
     있어 뜻을 하나 더 실을 수 없으므로, 테두리 모양으로 가른다.
     """
     return (
-        f'<span style="display:inline-block;width:15px;height:15px;'
+        f'<span style="display:inline-block;width:12px;height:12px;'
         f'border-radius:50%;background:transparent;'
-        f'border:2px dashed {color};vertical-align:-3px;"></span>'
+        f'border:2px dashed {color};vertical-align:-2px;"></span>'
     )
 
 
@@ -165,7 +165,7 @@ def swatch_size_scale(radii: Sequence[float], labels: Sequence[str],
             f'<span style="display:block;width:{d:.0f}px;height:{d:.0f}px;'
             f'margin:0 auto 3px;border-radius:50%;background:{color};'
             f'opacity:.55;border:1.5px solid {color};"></span>'
-            f'<span style="font-size:11px;color:#555;">{label}</span></span>')
+            f'<span style="font-size:10px;color:#555;">{label}</span></span>')
     return ('<span style="display:inline-flex;gap:6px;align-items:flex-end;'
             'margin-top:4px;">' + "".join(cells) + "</span>")
 
@@ -278,6 +278,13 @@ def legend_html(title: str, rows: Sequence[Tuple[str, str]], *,
     그대로 기준으로 삼았다 — 이 저장소에서 이미 한 번 다듬어진 모양이라
     처음부터 새로 디자인하지 않는다.
 
+    ⚠️ **범례는 지도 위에 얹히는 것이지 지도가 아니다.** 13px/220px로 잡았던
+    처음 판은 *"너무 크다"* 는 지적을 받았다(1.26.209, 사용자 확인) — `/maps`의
+    미리보기 틀(그 자체가 화면의 일부)에 다시 담기면 상대적으로 더 커 보인다.
+    지금은 11px/172px다. 눈금(`swatch_size_scale`)의 **원 크기만은 같이 줄이지
+    않았다** — 그것은 장식이 아니라 실제 마커 반지름이라, 줄이면 눈금이 지도와
+    다른 말을 한다.
+
     collapse_after: 이 개수를 넘는 줄은 `<details>`로 접는다.
       ⚠️ **접지 않으면 범례가 지도를 가린다.** 군집은 실제로 18개라 한 줄씩
       세우면 범례가 610~688px, 화면 세로의 2/3가 됐다(실측). 앞의 몇 줄
@@ -290,7 +297,7 @@ def legend_html(title: str, rows: Sequence[Tuple[str, str]], *,
 
     def _lines(items):
         return "".join(
-            f'<div style="margin-top:4px">{badge} {label}</div>'
+            f'<div style="margin-top:3px">{badge} {label}</div>'
             for badge, label in items
         )
 
@@ -298,8 +305,8 @@ def legend_html(title: str, rows: Sequence[Tuple[str, str]], *,
     if hidden:
         # 접힌 채로 시작한다 — 펴 두면 접는 뜻이 없다.
         row_html += (
-            '<details style="margin-top:4px;">'
-            '<summary style="cursor:pointer; color:#555; font-size:12px;">'
+            '<details style="margin-top:3px;">'
+            '<summary style="cursor:pointer; color:#555; font-size:10.5px;">'
             f'{collapse_label} {len(hidden)}개 더 보기</summary>'
             f'<div style="max-height:40vh; overflow-y:auto;">{_lines(hidden)}</div>'
             '</details>'
@@ -308,8 +315,8 @@ def legend_html(title: str, rows: Sequence[Tuple[str, str]], *,
     note_html = ""
     if note:
         note_html = (
-            '<div style="margin-top:7px; padding-top:7px; '
-            'border-top:1px solid rgba(0,0,0,.12); color:#555; font-size:12px;">'
+            '<div style="margin-top:6px; padding-top:6px; '
+            'border-top:1px solid rgba(0,0,0,.12); color:#555; font-size:10.5px;">'
             f'{note}</div>'
         )
     # 그린 코드의 지문을 산출물에 남긴다 — `/maps`가 이것으로 낡음을 안다.
@@ -319,12 +326,12 @@ def legend_html(title: str, rows: Sequence[Tuple[str, str]], *,
          style="position: fixed; {position} z-index: 9999;
                 background: rgba(255,255,255,.94);
                 -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-                padding: 12px 14px; border-radius: 10px;
+                padding: 8px 10px; border-radius: 8px;
                 border: 1px solid rgba(0,0,0,.14);
                 box-shadow: rgba(0,0,0,.22) 3px 5px 30px 0;
-                font: 13px/1.7 -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
-                color: #1a1a1a; max-width: 220px;">
-      <div style="font-weight:700; margin-bottom:2px;">{title}</div>
+                font: 11px/1.55 -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
+                color: #1a1a1a; max-width: 172px;">
+      <div style="font-weight:700; font-size:12px; margin-bottom:1px;">{title}</div>
       {row_html}
       {note_html}
     </div>

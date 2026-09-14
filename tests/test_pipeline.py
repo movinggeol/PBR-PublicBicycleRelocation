@@ -741,3 +741,43 @@ def test_step4도_헤더_없는_파일을_비었다로_읽는다(tmp_path, monke
     frame = imbalance.load_step_output("vrp_plan", str(빈파일),
                                        duration="_05_10", run_label="없는라벨")
     assert isinstance(frame, pd.DataFrame) and frame.empty
+
+
+def test_군집_지도의_점은_눌러도_값이_남는다(tmp_path, monkeypatch):
+    """🔴 세 지도 중 **군집 지도만** 풍선(tooltip)뿐이었다(1.26.209, 사용자 확인).
+
+    풍선은 커서를 떼면 사라진다 — 점이 촘촘한 도심에서 옆 점으로 커서가
+    한 칸만 넘어가도 읽던 값이 그대로 날아갔다. 경로 지도(step3)와 불균형
+    지도(step4)는 진작 풍선과 **팝업**(클릭해 고정되는 창)을 짝으로 달아
+    두었는데 여기만 빠져 있었다.
+
+    ⚠️ 소스에 `folium.Popup`이 적혀 있는지가 아니라 **그려 낸 HTML에
+    `bindPopup`이 나오는지**를 본다 — 마커에 안 달고 만들기만 해도 소스
+    검사는 통과한다.
+    """
+    import importlib
+    import pandas as pd
+
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "step1.db"))
+    monkeypatch.setenv("PBR_DATA_ROOT", str(tmp_path / "data"))
+    stviz = importlib.import_module("pipeline.step1_cluster.st_visualization")
+
+    후보 = pd.DataFrame([
+        {"station_name": "둔산동", "lat": 36.35, "lon": 127.38, "cluster": 0,
+         "rebal_qty": 4, "stock": 1, "target_qty": 5.0, "mu": 4.2, "sigma": 1.1},
+        {"station_name": "유성온천", "lat": 36.36, "lon": 127.34, "cluster": 1,
+         "rebal_qty": -3, "stock": 9, "target_qty": 6.0, "mu": 5.8, "sigma": 0.9},
+    ])
+    monkeypatch.setattr(stviz, "load_candidates", lambda duration: 후보)
+    나온곳 = tmp_path / "지도{duration} ({now}).html"
+    monkeypatch.setattr(stviz, "clusterd_map", str(나온곳))
+    monkeypatch.setattr(stviz, "now", "시험")
+
+    stviz.make_clustered_map(["_05_10"])
+    html = (tmp_path / "지도_05_10 (시험).html").read_text(encoding="utf-8")
+
+    assert "bindPopup" in html, "점을 눌러도 값이 고정되지 않는다"
+    assert "bindTooltip" in html, "커서를 대도 값이 뜨지 않는다"
+    # 팝업은 멈춰 서서 읽는 것이라 풍선보다 더 싣는다 — 같은 글을 두 벌
+    # 띄우면 클릭이 아무것도 더 주지 않는다.
+    assert "수요 표준편차(sigma)" in html, "팝업이 풍선과 같은 것만 말한다"

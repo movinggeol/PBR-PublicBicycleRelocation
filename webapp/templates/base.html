@@ -1180,9 +1180,14 @@
       box-shadow: var(--shadow-product);
     }
     /* 목록 위에 미리 띄우는 지도. 전용 화면(view.html)보다 낮게 잡는다 —
-       한 화면에 세 장이 서므로 각각이 화면을 다 먹으면 목록에 닿지 못한다. */
+       한 화면에 세 장이 서므로 각각이 화면을 다 먹으면 목록에 닿지 못한다.
+
+       ⚠️ 처음엔 46vh였는데 **너무 납작하다**는 지적을 받았다(1.26.209, 사용자
+       확인). 대전 전역이 들어가야 하는 지도라 세로가 짧으면 시가지가 위아래로
+       잘려 군집이 어디까지 퍼졌는지가 안 보인다 — 1.5배인 69vh로 올린다.
+       전용 화면(76vh)보다는 여전히 낮아서 아래 목록에 스크롤이 닿는다. */
     .map-preview { margin: 0 0 var(--sp-md); }
-    .map-preview .map-frame { height: 46vh; min-height: 280px; }
+    .map-preview .map-frame { height: 69vh; min-height: 420px; }
     .map-preview figcaption { display: block; margin-top: var(--sp-xs); }
     .back { display: inline-block; margin-top: var(--sp-lg); font-size: var(--fs-ui); }
     .preview-table { font-size: 13px; }
