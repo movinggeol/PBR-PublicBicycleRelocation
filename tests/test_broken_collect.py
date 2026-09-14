@@ -12,11 +12,12 @@ depot에 비우고 다시 나간다(다회 왕복). 즉 **이 기능이 그 경�
 체중을 싣는다.** 여기가 조용히 틀리면 이동거리·출동 횟수가 통째로 틀리고,
 그 숫자가 배치 임계치 판정을 정한다.
 
-지키려는 것 넷:
+지키려는 것 다섯:
   ① 순수 픽업에서 다회 왕복이 실제로 일어나고 **모든 자전거가 회수된다**
   ② `greedy_route()`가 호출 측 dict를 소모하는 함정(함정 12)에 안 걸린다
   ③ 임계치를 바꿔도 **모집단이 흔들리지 않는다**
   ④ 세대 층화가 **세대 안에서** 분위를 나누고, 사전 등록한 세 갈래로만 판정한다(로드맵 F)
+  ⑤ 통합 겹침이 회차 **시작순·합집합**으로 누적되고, 사전 등록한 경계·평평함 기준으로만 읽는다(로드맵 D)
 """
 import importlib.util
 import sys
@@ -294,3 +295,47 @@ def test_단조이고_방향이_맞아도_유의하지_않으면_지지하지_�
     assert result["단조감소"] and result["방향"], "전제가 깨졌다 — 단조·방향은 맞아야 한다"
     assert result["p"] >= bc.SIGNIFICANCE, f"전제가 깨졌다 — 유의하지 않아야 한다: {result}"
     assert not result["지지"], "유의하지 않은데 지지로 셌다"
+
+
+# ─────────────────────────────────────────── ⑤ 통합 겹침 (고장수거_로드맵 D)
+
+def _visits(plan):
+    """{회차: [대여소, …]} → `vrp_plan`에서 읽은 것과 같은 모양."""
+    return pd.DataFrame([(duration, station) for duration, stations in plan.items()
+                         for station in stations], columns=["duration", "station_id"])
+
+
+def test_누적_겹침은_회차_시작순으로_쌓이고_마지막이_합집합이다(bc):
+    """누적은 시작 시각순(_05_10 → _10_15 → _15_20)이라야 곡선의 모양을 읽는다.
+
+    DB에서 읽은 순서가 섞여 와도 같은 표가 나와야 하고, 두 회차가 함께 들른 대여소를
+    두 번 세면 누적이 부풀려진다 — 마지막 누적 행은 합집합과 같아야 한다.
+    """
+    broken = _bikes(10, station_span=5)                  # ST0000~ST0004에 2대씩
+    plan = {"_15_20": ["ST0004"], "_05_10": ["ST0000", "ST0001"],
+            "_10_15": ["ST0001", "ST0002"]}              # 일부러 섞인 순서
+    table = bc.overlap_table(_visits(plan), broken)
+
+    assert list(table["회차"]) == ["_05_10", "_10_15", "_15_20"]
+    assert list(table["겹친대수"]) == [4, 4, 2]
+    assert list(table["누적대수"]) == [4, 6, 8], "두 회차가 함께 들른 ST0001을 두 번 셌다"
+    assert table["누적비율"].is_monotonic_increasing
+    assert table["누적비율"].iloc[-1] == pytest.approx(80.0)
+
+
+def test_통합_판정은_사전_등록한_경계와_평평함_기준으로만_말한다(bc):
+    """35%·60%는 '혼합'에 넣고, 평평함은 '3회차 증분 ≤ 2회차 증분의 절반'이다(결과 보기 전에 정함)."""
+    assert "곁가지" in bc.union_verdict(34.9)
+    assert "혼합" in bc.union_verdict(35.0) and "혼합" in bc.union_verdict(60.0)
+    assert "결론" in bc.union_verdict(60.1)
+
+    def curve(cumulative, rounds=("_05_10", "_10_15", "_15_20")):
+        return pd.DataFrame({"회차": list(rounds), "누적비율": cumulative})
+
+    assert "평평" in bc.flattening(curve([20.0, 30.0, 35.0])), "증분 10 → 5는 절반이라 평평이다"
+    assert "가파르" in bc.flattening(curve([20.0, 30.0, 35.1]))
+    assert "평평" in bc.flattening(curve([20.0, 20.0, 20.0]))
+    assert "가파르" in bc.flattening(curve([20.0, 20.0, 21.0])), \
+        "2회차에 안 늘다 3회차에 늘면 평평이 아니다"
+    assert "판정하지 않는다" in bc.flattening(curve([26.0, 30.0], rounds=("_05_10", "_20_05"))), \
+        "야간 창이 섞인 조합(34장의 26.0%)으로 곡선을 읽으면 안 된다"

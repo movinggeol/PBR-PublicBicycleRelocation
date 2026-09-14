@@ -270,11 +270,74 @@ def simulate(broken: pd.DataFrame, rule: str, value, capacity: int) -> dict:
 
 # ──────────────────────────────────────────────────── ③ 통합 vs 분리
 
-def integration_overlap(conn, broken: pd.DataFrame, run_label: str) -> None:
+# 로드맵 D의 해석 기준 — **결과를 보기 전에** 정했다(고장수거_로드맵 2장).
+# 합집합 비율 35% 미만은 곁가지, 35~60%는 혼합 운영, 60% 초과는 34장 결론을 고친다.
+# 경계값(35·60)은 '혼합'에 넣는다 — "35% 미만 / 35~60% / 60% 초과"를 글자 그대로 읽었다.
+OVERLAP_SIDE = 35.0
+OVERLAP_MAJOR = 60.0
+# 곡선을 읽는 회차 — 하루 재배치의 낮 세 회차다. `_20_05`는 야간 창이라 재배치 회차가 아니다.
+DAY_ROUNDS = ("_05_10", "_10_15", "_15_20")
+
+
+def overlap_table(visited: pd.DataFrame, broken: pd.DataFrame) -> pd.DataFrame:
+    """회차별·누적 겹침 표. 누적은 회차 **시작 시각순**으로 쌓는다(로드맵 D-4).
+
+    회차를 더하면 방문 합집합은 단조 증가하므로 누적 비율은 오르기만 한다 — 새
+    정보는 **곡선의 모양**이다. 마지막 누적 행이 곧 합집합이다. 누적은 대여소
+    **합집합**으로 센다(회차별 겹침을 더하면 같은 자전거를 두 번 센다).
+    """
+    per_station = broken.groupby("station_id").size()
+    rows, union = [], set()
+    for duration in sorted(visited["duration"].unique()):   # _05_10 < _10_15 < _15_20 < _20_05
+        stations = set(visited.loc[visited["duration"] == duration, "station_id"])
+        union |= stations
+        hit = per_station.index.intersection(sorted(stations))
+        cum_hit = per_station.index.intersection(sorted(union))
+        bikes = int(per_station.loc[hit].sum()) if len(hit) else 0
+        cum_bikes = int(per_station.loc[cum_hit].sum()) if len(cum_hit) else 0
+        rows.append({"회차": duration, "방문": len(stations), "겹침곳": len(hit),
+                     "겹친대수": bikes, "비율": bikes / len(broken) * 100,
+                     "누적방문": len(union), "누적겹침곳": len(cum_hit),
+                     "누적대수": cum_bikes, "누적비율": cum_bikes / len(broken) * 100})
+    return pd.DataFrame(rows)
+
+
+def union_verdict(percent: float) -> str:
+    """합집합 비율을 사전 등록한 세 갈래로만 읽는다."""
+    if percent < OVERLAP_SIDE:
+        return "곁가지 — 논문은 '전용 출동이 주 경로'로 쓴다"
+    if percent <= OVERLAP_MAJOR:
+        return "혼합 운영 — 어느 대여소를 통합하고 어느 곳을 전용으로 갈지가 새 물음이다"
+    return "전용 출동 필요량이 절반 이하 — 34장의 결론 문장을 고친다"
+
+
+def flattening(table: pd.DataFrame) -> str:
+    """누적 곡선이 3회차에서 평평해지는가 — **3회차 증분이 2회차 증분의 절반 이하**면 평평하다.
+
+    로드맵은 *"평평해지면"* 만 적었다. 수치로 못박지 않으면 결과를 보고 읽게 되므로
+    결과를 보기 전에 정했다(2026-09-14). 낮 세 회차가 다 있을 때만 판정한다.
+    """
+    rounds = tuple(table["회차"])
+    if rounds != DAY_ROUNDS:
+        return f"판정하지 않는다 — 회차가 {', '.join(rounds)}다(낮 세 회차 곡선만 읽는다)"
+    first, second, third = table["누적비율"].tolist()
+    gain2, gain3 = second - first, third - second
+    if gain3 <= gain2 / 2:
+        return (f"평평해진다 — 3회차 증분 {gain3:.1f}%p가 2회차 증분 {gain2:.1f}%p의 절반 이하."
+                " 통합의 상한에 가깝다")
+    return (f"계속 가파르다 — 3회차 증분 {gain3:.1f}%p가 2회차 증분 {gain2:.1f}%p의 절반보다 크다."
+            " `_20_05`까지 넣어 하루 전체를 볼 값이 있다")
+
+
+def integration_overlap(conn, broken: pd.DataFrame, run_label: str) -> pd.DataFrame:
     """재배치가 이미 들르는 대여소에 고장 자전거가 얼마나 있나.
 
     겹치면 **전용 출동 없이 지나가는 길에** 실을 수 있다. 재배치도 고장도
     둘 다 번잡한 대여소를 향하므로 겹칠 여지가 있다.
+
+    ⚠️ 고장 추정(2025-09~2026-03 코호트)과 재배치 계획은 **시점이 다르다** — 같은 날
+    같은 차가 실을 수 있다는 뜻이 아니라 *"재배치가 어느 대여소를 향하는가"* 라는
+    공간 구조를 본다(로드맵 D).
     """
     visited = pd.read_sql(
         "SELECT duration, to_id AS station_id FROM vrp_plan"
@@ -282,29 +345,28 @@ def integration_overlap(conn, broken: pd.DataFrame, run_label: str) -> None:
         conn, params=[run_label])
     if visited.empty:
         print(f"\n[건너뜀] '{run_label}'의 vrp_plan이 비어 있습니다.")
-        return
+        return pd.DataFrame()
 
-    per_station = broken.groupby("station_id").size()
+    table = overlap_table(visited, broken)
     print(f"\n=== ③ 통합 가능성 — 재배치 실행 '{run_label}' ===")
-    print(f"{'회차':<10}{'재배치 방문':>12}{'고장 겹침':>10}{'겹친 자전거':>12}{'비율':>8}")
+    print(f"{'회차':<10}{'재배치 방문':>12}{'고장 겹침':>10}{'겹친 자전거':>12}{'비율':>8}"
+          f"  |{'누적 방문':>10}{'누적 겹침':>10}{'누적 자전거':>12}{'누적 비율':>10}")
+    for row in table.itertuples(index=False):
+        print(f"{row.회차:<10}{row.방문:>12}{row.겹침곳:>10}{row.겹친대수:>12}{row.비율:>7.1f}%"
+              f"  |{row.누적방문:>10}{row.누적겹침곳:>10}{row.누적대수:>12}{row.누적비율:>9.1f}%")
 
-    union = set()
-    for duration, grp in visited.groupby("duration"):
-        stations = set(grp["station_id"])
-        union |= stations
-        hit = per_station.index.intersection(stations)
-        bikes = int(per_station.loc[hit].sum()) if len(hit) else 0
-        print(f"{duration:<10}{len(stations):>12}{len(hit):>10}{bikes:>12}"
-              f"{bikes / len(broken) * 100:>7.1f}%")
-
-    hit = per_station.index.intersection(union)
-    bikes = int(per_station.loc[hit].sum()) if len(hit) else 0
-    print(f"{'세 회차 합':<10}{len(union):>12}{len(hit):>10}{bikes:>12}"
-          f"{bikes / len(broken) * 100:>7.1f}%")
-    print(f"\n  전체 고장 추정 {len(broken):,}대가 {per_station.size}곳에 흩어져 있고,"
-          f" 그중 {len(hit)}곳을 재배치가 이미 들른다.")
+    last = table.iloc[-1]
+    print(f"\n  전체 고장 추정 {len(broken):,}대가 {broken['station_id'].nunique()}곳에 흩어져 있고,"
+          f" 그중 {int(last['누적겹침곳'])}곳을 재배치가 이미 들른다(합집합 {last['누적비율']:.1f}%).")
+    if tuple(table["회차"]) == DAY_ROUNDS:
+        print(f"  판정(합집합) — {union_verdict(last['누적비율'])}")
+    else:
+        print("  판정(합집합) — 하지 않는다: 낮 세 회차가 다 있는 실행이 아니다"
+              " (사전 등록한 기준은 세 회차 합집합에 대한 것이다)")
+    print(f"  판정(곡선) — {flattening(table)}")
     print("  ⚠️ 겹친다고 공짜는 아니다 — 재배치 차량은 이미 자전거를 싣고 있어"
           " 적재를 나눠 써야 한다(용량 10대는 상한이고 통상 7대다).")
+    return table
 
 
 # ──────────────────────────────────────────────────── 감사
