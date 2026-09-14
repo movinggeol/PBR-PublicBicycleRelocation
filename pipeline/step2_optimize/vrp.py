@@ -97,8 +97,10 @@ def greedy_route(nodes: dict, cluster, time_budget_sec: float = None) -> list:
 
     nodes: {(station_id, 'pick'|'drop'): {'qty', 'lat', 'lon'}}  (호출 측에서 소모된다)
     time_budget_sec: 주면 예산을 넘기는 작업 앞에서 멈추고 depot으로 돌아온다.
-        **파이프라인은 주지 않는다**(None) — 현행 설계에서 시간 예산은 제약이 아니라
-        사후 점검이다(docs/기록/RETROSPECTIVE.md 6장). 대조군처럼 클러스터 없이 한 대가
+        **파이프라인은 기본으로 주지 않는다**(None) — 시간 예산은 제약이 아니라 사후
+        점검이다(docs/기록/RETROSPECTIVE.md 6장). 다만 `--enforce-time-budget`
+        (`PBR_ENFORCE_TIME_BUDGET=1`)이면 run_vrp_plan()이 TIME_BUDGET_MINUTES×60을
+        넘겨 주고, 예산을 넘는 작업은 미집행으로 남는다. 대조군처럼 클러스터 없이 한 대가
         전체 후보를 훑는 경우에는 멈출 곳이 있어야 해서 넣어 둔 선택 인자다.
     반환: VRP 행 목록(from/to·action·qty·거리·시간)
     """
@@ -148,7 +150,9 @@ def greedy_route(nodes: dict, cluster, time_budget_sec: float = None) -> list:
         #   · 적재가 꽉 차 못 실으면  -> 남은 drop = 남은 pick + 용량 > 0  (내릴 곳이 있다)
         #   · 적재가 0이라 못 내리면  -> 남은 drop = 남은 pick (있으면 실을 수 있고,
         #                                없으면 위 while 조건에서 이미 끝났다)
-        # 실데이터 15개 실행·회차 1,224행에 `return` 행이 0건인 이유다.
+        # 1.19.1 이전 실데이터(15개 실행·회차 1,224행)에 `return` 행이 0건이던
+        # 이유다. 지금 산출물의 return 행(클러스터당 1건)은 아래 최종 복귀가
+        # 만드는 것이지 이 분기가 아니다.
         #
         # 살아 있는 호출부는 수급이 안 맞는 노드 집합을 주는
         # experiments/baseline/baseline_compare.py의 그리디 대조군(B1)뿐이다. 지우지 마라.
@@ -404,7 +408,10 @@ def _assign_fleet(vrp_result: pd.DataFrame, duration: str) -> pd.DataFrame:
         print(f"\n[경고] {len(workload)}개 중 {over}개가 시간 예산"
               f" {TIME_BUDGET_MINUTES:.0f}분을 넘었습니다.")
         print("  작업이 늦어지면 수요 예측 시간대가 이미 지나가 계획의 효과가 줄어듭니다.")
-        print("  클러스터를 더 잘게 나누거나(VEHICLES_PER_ROUND 확대) 대상 대여소를 줄이세요.")
+        print("  군집이 지리적으로 흩어져 생긴 초과일 수 있습니다 — 대상 대여소를 줄이거나"
+              "(PBR_TOP_STATION_LIMIT), 예산을 제약으로 거십시오(--enforce-time-budget).")
+        print("  step1이 '회차당 가용 차량 N대로 제한'을 알렸을 때만 --vehicles-per-round를 올리세요"
+              " (기본값은 이미 보유 대수와 같습니다).")
     return vrp_result
 
 

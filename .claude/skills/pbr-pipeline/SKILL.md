@@ -46,10 +46,10 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 ```text
 pipeline/step0_collect  : tashu_api → extract_parking_lot → api_to_info → raw_to_net → calculate_target_qty
 pipeline/step0_eda      : concat_1year_file, EDA (선택적)
-pipeline/step1          : top_st_clustering → st_visualization
-pipeline/step2          : ilp → vrp
-pipeline/step3          : main (TMAP 지도)
-pipeline/step4          : imbalance
+pipeline/step1_cluster  : top_st_clustering → st_visualization
+pipeline/step2_optimize : ilp → vrp
+pipeline/step3_map      : main (TMAP 지도)
+pipeline/step4_metrics  : imbalance
 ```
 
 각 단계는 `data/pp_data/…/<이름>{duration} ({now}).csv` 형식의 파일로 통신한다.
@@ -76,8 +76,10 @@ pipeline/step4          : imbalance
   `add_help=False`라 안 부르면 `--help`가 계산으로 흘러간다(자료가 있으면 실제로 돈다).
   `get_runtime_config()` 안에 넣지 마라 — step 모듈을 import하는 실험의 `--help`를
   가로챈다. `test_pipeline.py`가 `run_pipeline.STAGES` 전부를 정적으로 본다.
-- step 폴더의 스크립트는 상단에서 `sys.path.insert(0, str(Path(__file__).resolve().parents[1]))`
-  후 project_config를 import한다 — 새 스크립트를 만들 때 같은 패턴을 따르라.
+- step 폴더의 스크립트는 상단에서 `sys.path.insert(0, str(Path(__file__).resolve().parents[2]))`
+  (저장소 루트) 후 project_config를 import한다 — 새 스크립트를 만들 때 같은 패턴을
+  따르라. 1.26.173에서 step 폴더가 `pipeline/` 아래로 내려가며 `parents[1]`이
+  `parents[2]`가 됐다(아래 함정 1번).
 - **데이터 경로는 `DATA_ROOT` 기준으로 만든다**: `str(DATA_ROOT / "pp_data/...")`.
   🔴 `PROJECT_ROOT / "data/..."`로 직접 조립하지 마라 — 그러면 `PBR_DATA_ROOT`
   재정의가 **그 파일에만 안 듣는다.** 1.26.124가 이 관습 때문에 격리 스위치를
@@ -90,8 +92,10 @@ pipeline/step4          : imbalance
 1. **step 폴더는 ASCII 이름이다** (1.18.3에서 정리했다 — 예전 이름은
    `step0 (raw데이터 처리)`처럼 공백·괄호·한글이 있어 셸 인용이 필요했다).
    `step0_collect`(수집·전처리)와 `step0_eda`(이력 병합·EDA)는 **별개 폴더**다.
-   **파일명은 아직 정리 전이다** — `top_st_clustering.py`는 숫자로
-   시작해 일반 import가 안 되므로 `importlib`으로 불러야 한다.
+   **파일명 앞의 숫자 접두는 1.18.8에서 뗐다** — `top_st_clustering.py`는 이제
+   `pipeline.step1_cluster.top_st_clustering`으로 일반 import가 된다. 테스트가
+   `importlib`으로 경로를 직접 읽는 것은 테스트마다 독립된 모듈 이름으로 올려
+   import 캐시를 공유하지 않기 위해서다(`tests/test_calculations.py`의 `_load`).
    🔴 **모든 step 폴더는 `pipeline/` 아래에 있다** (1.26.168) — 예전에는 프로젝트
    루트에 `step0_collect`~`step4_metrics` 6개가 `docs`·`data`·`tools` 같은
    대분류와 나란히 나열돼 있어 중분류가 대분류처럼 보였다. 옮기며 각 스크립트의
@@ -110,12 +114,15 @@ pipeline/step4          : imbalance
    OSM 서브도메인 URL을 써서 경고를 받았기 때문이다(1.19.4에서 되돌렸다).
 5. **재고 시계열은 `stock_history`가 정본이고 `station_stock`이 아니다.**
    후자는 PK가 `(run_label, station_id)`라 실행 1건당 스냅샷 1장이고, `run_label`에
-   시각을 넣으면 `latest_label()`(**사전순** MAX)이 파이프라인 실행을 밀어낸다.
+   시각을 넣으면 `latest_label()`(1.26.125부터 **`runs.created_at` 순** — 사전순 MAX가
+   아니다)이 가장 나중에 쓴 수집 라벨을 최신으로 골라 파이프라인 실행을 밀어낸다.
    수집기(`tools/collect_stock.py`)는 `runs`·`station_stock`을 건드리지 않는다 —
    테스트가 지킨다. **휴일을 거르는 것은 스케줄러가 아니라 스크립트의 창 가드다**
    (작업 스케줄러는 요일만 안다). 자세한 것은 docs/구현/COLLECTOR.md.
    **수집기의 요일 옵션은 세 갈래다** — 없음(평일만) / `--include-holidays`
-   (평일+휴일) / `--holidays-only`(휴일만, B PC용). 셋 다 **창 가드는 지킨다**
+   (평일+휴일) / `--holidays-only`(휴일만 — 옛 B PC 전담 분담용이고 2026-09-03에
+   폐기됐다. 지금은 두 PC 모두 `--include-holidays`다 · docs/구현/두_PC_작업.md
+   0장). 셋 다 **창 가드는 지킨다**
    (`--force`만 창까지 푼다). 이것은 **관측 범위**지 분석의 `--day-type`이
    아니다 — 평일·휴일을 섞어 통계 내지 말라는 규약은 그대로고, 거를 때는
    `db.load_stock_history(day_type=...)`을 쓴다.
@@ -189,11 +196,10 @@ python run_pipeline.py --target-date 2026-09-25                # 그날로 자�
 python run_pipeline.py --warmup-period "26년 03월"             # 계절 보정 (기본 14일)
 python tools/rebuild_net_demand.py            # 전 기간 순수요 재계산(휴일 포함)
 python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8000)
-.\scripts\collector.ps1 install           # 재고 시계열 수집 시작 (평일 07~22시, 10분)
-.\scripts\collector.ps1 install -HolidaysOnly  # 두 번째 PC — 휴일만 (COLLECTOR.md 11장)
+.\scripts\collector.ps1 install -Window 07:00-23:00 -IncludeHolidays  # 재고 수집 (매일 07~23시, 10분 — 인자를 빼면 평일 09~17시로 등록된다)
 python tools/collect_stock.py --status    # 수집 현황
 python tools/merge_stock.py <경로> --dry-run  # 다른 PC 수집분 합치기 (COLLECTOR.md 11장)
-.\scripts\road_collector.ps1 install      # TMAP 실도로 소요시간 수집 (매 평일 03:30)
+.\scripts\road_collector.ps1 install      # TMAP 실도로 소요시간 수집 (매일 09/12/15/18/21시 + 로그온, 모자란 회차만)
 python tools/collect_road_time.py --status    # 고정 패널 수집 현황
 python experiments/params/road_time_model.py  # 이동시간 모형 재추정 (EXPERIMENTS.md 9장)
 ```
@@ -276,7 +282,8 @@ python experiments/params/road_time_model.py  # 이동시간 모형 재추정 (E
   운영 코드가 다른 함수를 쓰면 측정이 거짓말을 한다 — 실제로 겪었다.
 - 예측 정확도는 **작업 대상 대여소(`|rebal_qty| > 2`)에서** 재야 한다. 전체 평균은
   파이프라인이 손대지 않는 대여소에 희석돼 정반대 결론이 나온 적이 있다.
-- pandas 2.x 기준으로 작성 (`.loc` 슬라이스에 inplace 연산 금지).
+- pandas 3.x(Copy-on-Write 기본) 기준으로 작성한다 — `.loc` 슬라이스·연쇄 할당에
+  inplace 연산을 쓰면 원본에 반영되지 않는다(`requirements.txt`는 `pandas>=3.0.5`).
 - 버전에 영향 주는 수정을 하면 `docs/기록/버전관리.md`에 이유와 함께 기록한다.
 - **의도적 근사·단순화(`improvement_rate`, `TARGET_Z` 등 위 항목들)를 새로
   도입할 때는 코드에 `# ponytail: <한계> — <다음 수>` 한 줄을 남긴다** —

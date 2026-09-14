@@ -6,8 +6,7 @@
 
 사용 예:
     import db
-    with db.connect() as conn:
-        db.init_schema(conn)
+    with db.session() as conn:          # 스키마 보장 + 끝나면 커밋하고 닫는다
         db.record_run(conn, "2026-05-21 18", period="25년 11월", duration="_05_10")
         db.save_frame(conn, "pick_drop", df, run_label="2026-05-21 18", duration="_05_10")
         latest = db.load_frame(conn, "pick_drop")      # 라벨 생략 시 최신 실행
@@ -328,7 +327,9 @@ CREATE TABLE IF NOT EXISTS kpi_summary (
     improvement_per_km    REAL,      -- 1km 이동으로 줄인 불균형 대수
     -- E. 품질
     cluster_max_imbalance INTEGER,
-    -- B. 실측 — KPI.md 4·5단계에서 채운다(지금은 NULL)
+    -- B. 실측(복원) — step4 imbalance.stockout_simulation()이 채운다
+    --   (stockout_* 1.10.0~, saturation_*·demand_fulfill_* 1.26.101~ — 그 이전
+    --    실행과 순수요가 없는 실행은 NULL). demand_mae는 아직 채우는 곳이 없다.
     stockout_hours_before REAL,
     stockout_hours_after  REAL,      -- VRP가 **실제로 옮긴 양** 기준 (1.18.4~)
     stockout_hours_plan   REAL,      -- 계획량(rebal_qty)이 전부 집행됐다고 본 값
@@ -406,7 +407,8 @@ CREATE TABLE IF NOT EXISTS demand_backtest (
 );
 
 -- 재고 시계열 (1.20.0, docs/구현/COLLECTOR.md).
--- tools/collect_stock.py가 평일 09~17시에 10분마다 한 틱씩 쌓는다.
+-- tools/collect_stock.py가 등록된 창(운영: 매일 07:00–23:00,
+-- docs/구현/두_PC_작업.md 0장)에서 10분마다 한 틱씩 쌓는다.
 -- 파이프라인 실행과 무관한 관측 기록이라 run_label이 없다 — 축은 (시각, 대여소)다.
 -- day_type·duration을 컬럼으로 두지 않는 이유: observed_at에서 파생되는 값이고,
 -- 요일 판정은 project_config.holiday_mask() 하나가 독점해야 하기 때문이다.
@@ -419,10 +421,11 @@ CREATE TABLE IF NOT EXISTS stock_history (
 );
 
 -- 대여소 이름·좌표는 틱마다 반복하지 않고 **하루 한 번**만 남긴다.
--- 1,374행 × 49틱마다 같은 문자열을 넣으면 용량이 몇 배가 된다.
+-- 1,374행 × 하루 97틱마다 같은 문자열을 넣으면 용량이 몇 배가 된다.
 -- station_stock에 얹지 않는 이유가 두 가지다:
---   1. latest_label()이 run_label의 **사전순** MAX라 'collect-…'가 파이프라인
---      실행 라벨을 밀어낸다(숫자로 시작하는 라벨보다 항상 크다).
+--   1. (당시) latest_label()이 run_label의 **사전순** MAX라 'collect-…'가
+--      파이프라인 실행 라벨을 밀어냈다. 1.26.125부터는 runs.created_at 기준이지만,
+--      수집은 실행이 아니므로 runs에 줄을 남기지 않는 결정은 그대로다.
 --   2. runs 이력이 수집일마다 한 줄씩 늘어 실행 이력 화면이 흐려진다.
 CREATE TABLE IF NOT EXISTS stock_station_master (
     observed_on   TEXT NOT NULL,     -- 'YYYY-MM-DD' 수집일
@@ -835,7 +838,8 @@ def save_output(table: str, df: pd.DataFrame, run_label: Optional[str] = None,
                 db_path: Optional[Path] = None, day_type: Optional[str] = None) -> int:
     """단계 산출물을 DB에 기록한다 (CSV·DB 이중 기록 전환기용).
 
-    아직 **CSV가 정본**이므로 DB 기록이 실패해도 파이프라인을 멈추지 않는다.
+    CSV 기록(`to_csv`)이 아직 함께 남아 있으므로 DB 기록이 실패해도 파이프라인을
+    멈추지 않는다(DB_PLAN 2단계 — 조회·배선은 1.26.165부터 DB가 정본이다).
     대신 경고를 남겨 문제를 감추지 않는다. 회귀는 테스트가 잡는다
     (tests/test_pipeline.py의 DB 적재 검증).
 
@@ -933,7 +937,10 @@ def set_run_kind(conn: sqlite3.Connection, run_label: str, kind: str) -> None:
 
 
 def list_runs(conn: sqlite3.Connection) -> pd.DataFrame:
-    """실행 이력을 최신순으로. `kind`가 비어 있으면 라벨로 채워서 돌려준다.
+    """실행 이력을 **run_label 사전 역순**으로. `kind`가 비어 있으면 라벨로 채운다.
+
+    사전 역순은 최신순이 아니다 — `obs-cmp-*`·`roadprobe-*`가 날짜 라벨을 이긴다.
+    최신이 필요하면 `latest_label()`(runs.created_at 기준)을 쓴다.
 
     화면이 종류를 다시 짐작하지 않게 **여기서 한 번만** 채운다 — 라우트마다
     따로 짐작하면 화면마다 다른 답이 나온다(그래서 겪은 일이 1.26.107이다).
@@ -1179,7 +1186,10 @@ def stock_history_ticks(conn: sqlite3.Connection, start: Optional[str] = None,
 
 def load_kpi(conn: sqlite3.Connection, run_label: Optional[str] = None,
              duration: Optional[str] = None) -> pd.DataFrame:
-    """지표를 읽는다(최신 실행순). 인자를 주면 그 실행·회차로 좁힌다."""
+    """지표를 읽는다(run_label 사전 역순 — 최신순이 아니다, `latest_label()` 참고).
+
+    인자를 주면 그 실행·회차로 좁힌다.
+    """
     conditions, params = [], []
     if run_label:
         conditions.append("run_label = ?")

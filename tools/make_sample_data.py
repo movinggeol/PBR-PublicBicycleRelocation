@@ -114,7 +114,7 @@ def generate(
     bike_no = 0
     window_share = 0.85 / 3                     # 15%는 그 외 시간대에 흩뿌린다
     # bdate_range(평일만)가 아니라 date_range를 쓴다 — 주말이 없으면
-    # --day-type weekend 경로를 검증할 수 없다.
+    # --day-type holiday(주말 ∪ 공휴일) 경로를 검증할 수 없다.
     for day in pd.date_range("2025-11-03", periods=days):
         windows = FLOW_WINDOWS["holiday" if is_holiday(day) else "weekday"]
         for _ in range(rentals_per_day):

@@ -98,7 +98,7 @@ def verify(expected_stations: int) -> None:
     print(f"\n[검증] 파이프라인이 합성 대여소 {actual}곳을 그대로 봤습니다.")
 
 
-def report(db_path: Path, durations: str) -> None:
+def report(db_path: Path, durations: str, keep: bool = False) -> None:
     """무엇이 나왔는지 보여 준다 — 결품 시간이 실제로 줄었는지까지."""
     import db as db_mod
 
@@ -127,8 +127,12 @@ def report(db_path: Path, durations: str) -> None:
     print("=" * 68)
     print(f"DB       : {db_path}")
     print(f"산출물   : {PP_ROOT}  (라벨 '{LABEL}')")
-    print("웹으로 보려면:")
-    print(f'  set PBR_DB_PATH={db_path}  &&  python -m webapp')
+    if keep:
+        print("웹으로 보려면 (PowerShell):")
+        print(f'  $env:PBR_DB_PATH = "{db_path}"; python -m webapp')
+    else:
+        print("웹으로 보려면 `python tools/reproduce.py --keep`으로 다시 실행하십시오"
+              " — 지금은 끝나면 이 DB를 지웁니다.")
 
 
 def cleanup(db_path: Path, raw_path: Path) -> None:
@@ -171,7 +175,7 @@ def main() -> None:
     try:
         run_pipeline(raw_path, db_path, args.duration)
         verify(args.stations)
-        report(db_path, args.duration)
+        report(db_path, args.duration, args.keep)
     finally:
         if args.keep:
             print(f"\n[보존] 산출물과 DB를 남겼습니다: {db_path}")

@@ -517,6 +517,7 @@ if __name__ == '__main__':
         pick_drop.to_csv(clustered_file.format(duration=duration, now=now),encoding='utf-8', index=False)
         print(f"\n{len(pick_drop)}개의 행이 저장된 {clustered_file.format(duration=duration, now=now)} 파일이 저장되었습니다.")
 
-        # CSV·DB 이중 기록 (DB_PLAN 2단계). CSV가 아직 정본이다.
+        # CSV·DB 이중 기록 (DB_PLAN 2단계). 다음 단계는 DB를 먼저 읽는다
+        # (db.read_step_output, 1.26.166) — CSV는 DB가 비었을 때의 폴백이다.
         db.save_output("pick_drop", pick_drop, run_label=now,
                        period=config.period, duration=duration)

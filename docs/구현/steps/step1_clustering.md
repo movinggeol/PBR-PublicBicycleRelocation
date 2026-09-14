@@ -123,7 +123,7 @@
 
 | 우선순위 | 문제 |
 | --- | --- |
-| 🟡 | `try_move_node()`가 이동 후보마다 `pick_drop.copy()` + 전체 목적함수 재계산 → 실행 5분 이상 (버전관리.md 1.0.1에 기록된 성능 문제) |
+| ✅ | ~~`try_move_node()`가 이동 후보마다 `pick_drop.copy()` + 전체 목적함수 재계산 → 실행 5분 이상~~ — 1.23.8(넘파이화)·1.26.8(후보 복사 제거·군집별 캐시)로 step1이 374초 → 약 20초, 결과는 동일 |
 | ✅ | ~~상위 50개 컷·target_cluster_size=7 등 매직 넘버~~ — 1.18.8에서 설정으로 분리했고, `target_cluster_size`는 1.19.1에서 작업량 추정으로 대체돼 사라졌다 |
 | 🟢 | 거리 항이 위경도 '도' 단위라 값이 작고 직관적이지 않음 — km로 바꾸면 γ를 해석하기 쉬워짐 |
 
@@ -136,7 +136,8 @@
 - [x] ~~`sklearn_extra.cluster.KMedoids` → `kmedoids.KMedoids` 교체~~ (1.2.1)
       — 합성 데이터 60개로 검증: K=9 생성, 재실행 결정성 확인,
       `adjust_clustering` 수렴(|balance| 최대 33 → 4)
-- [ ] `compute_objective` 증분 계산(이동 노드가 속한 두 군집만 재계산)으로 성능 개선
+- [x] ~~`compute_objective` 증분 계산(이동 노드가 속한 두 군집만 재계산)~~ —
+  `_objective_parts(cache=…)`가 바뀐 두 군집만 다시 잰다 (1.26.8)
 - [x] ~~선정 기준(상위 N, |rebal_qty| 임계값)·군집 파라미터를 설정/CLI로 노출~~ —
   `TOP_STATION_LIMIT`(`PBR_TOP_STATION_LIMIT`, 기본 50)과 `REBAL_MIN_QTY`
   (`PBR_REBAL_MIN_QTY`, 기본 2)가 이미 환경변수로 노출돼 있다(`CLUSTER_ALPHA/BETA/GAMMA`와

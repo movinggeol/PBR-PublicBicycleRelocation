@@ -32,7 +32,9 @@ import db
 from project_config import DAY_TYPES, TARGET_Z, normalize_day_type, select_day_type
 
 WINDOWS = {"_05_10": range(5, 10), "_10_15": range(10, 15), "_15_20": range(15, 20)}
-TARGET_CUT = 2          # 파이프라인이 실제로 손대는 대여소 (|mu| > 2)
+# 분석 관례의 '작업 대상' 근사(|mu| > 2). 파이프라인의 실제 대상은 |rebal_qty| 문턱
+# 뒤 Pick·Drop 각 상위 TOP_STATION_LIMIT곳이라 같은 집합이 아니다.
+TARGET_CUT = 2
 
 # 정규분포의 분위수 — 실측과 비교할 기준
 NORMAL_Q = {0.90: 1.282, 0.95: 1.645, 0.99: 2.326}

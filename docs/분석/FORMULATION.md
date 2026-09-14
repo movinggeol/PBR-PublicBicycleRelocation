@@ -69,6 +69,12 @@ $d$는 **평일과 휴일 중 한쪽만** 쓴다. 휴일 = 주말 ∪ 공휴일�
 지난달 통계로 이번 달을 맞히므로, 계절이 도약하는 달에는 구조적으로 낮게 나온다
 (2월→3월 수요 1.5~1.8배). 계획 대상 달의 **첫 $W = 14$일** 실적으로 배율 하나를 구한다.
 
+> 이 정형화는 *'직전 달 통계 → 이번 달'* 을 가정한다. 실행 기본값은 **보유한 가장
+> 최근 달**(`latest_period()`)이라 계획 대상 달과 떨어질 수 있고, 계획 대상 달의
+> 순수요가 아직 없으면 배율을 구하지 못해 **보정을 건너뛴다**($s = 1$ —
+> `calculate_target_qty.py`가 *"[안내] 계절 보정 건너뜀"* 을 찍는다). 아래 정확도
+> 수치는 연속한 두 달로 잰 백테스트 값이다.
+
 $$
 s = \operatorname{clip}\!\left(
 \frac{\sum_{i \in S^{+}} \left| \overline{N^{\text{head}}_i} \right|}
@@ -151,12 +157,16 @@ G' = \{\, i \in G : \text{cumsum}(r)_i \le \Lambda \,\}
 $$
 
 받아 줄 곳이 없는데 싣기만 하는 계획을 막는 장치다.
-**$P'$ 또는 $G'$가 비면 그 회차는 건너뛴다** — 한쪽만 있으면 재배치가 성립하지 않는다.
+**$P' \cup G'$가 비면 step1이 그 회차를 건너뛴다.** 한쪽만 남는 경우(작은 쪽 총량이
+반대쪽의 가장 큰 단일 작업량보다 작을 때)에는 step1이 군집을 저장하지만 ILP 계획이
+비어 step2에서 건너뛴다 — 어느 쪽이든 재배치는 일어나지 않는다.
 
 > 코드: `top_st_clustering.select_top_unbalanced_st()`
 > $\theta$·$N$은 `project_config`에서 읽는다(1.18.8).
-> ⚠️ **셋 다 실험으로 정한 값이 아니라 관행값이다.** $z$·$\gamma$와 달리 재실험
-> 기록이 없으므로, 논문에서 근거를 묻는다면 그렇게 답해야 한다.
+> ⚠️ **셋 다 관행으로 둔 값이지만 흔들어 봤다.** $\theta$는
+> [EXPERIMENTS.md](EXPERIMENTS.md) 19장(문턱 1~3은 결품 차이가 씨앗 잡음 수준인
+> 평지이고 5부터 나빠진다), $N$은 같은 문서 17장(결품과 예산 준수의 맞바꿈)에서
+> 쟀다. 논문에서는 *"관행값이며 민감도를 측정했다"* 로 답한다.
 >
 > 🔴 **$N = 50$은 "최적"이 아니라 맞바꿈 위의 값이다**(2026-09-01 갱신).
 > 집행 기준·고정 모집단으로 두 달을 재면 **상한이 클수록 결품이 낮다**
@@ -180,11 +190,14 @@ $$
 한 대가 감당할 수 있는 양을 시간으로 따진다.
 
 $$
-\hat{T} = \Lambda \,(s_{\text{pick}} + s_{\text{drop}}) + |P' \cup G'| \cdot c_{\text{tr}},
+\hat{T} = \Big(\sum_{i \in G'} r_i\Big) \frac{s_{\text{pick}} + s_{\text{drop}}}{60}
+        + |P' \cup G'| \cdot c_{\text{tr}} \quad [\text{분}],
 \qquad
-K = \min\!\left( \left\lceil \frac{\rho \hat{T}}{B} \right\rceil,\ M_{\text{round}} \right)
+K = \min\!\left( \max\!\left(1, \left\lceil \frac{\rho \hat{T}}{B} \right\rceil \right),\ M_{\text{round}} \right)
 $$
 
+$s_{\text{pick}}$·$s_{\text{drop}}$는 **초**라서 60으로 나눠 분으로 맞춘다.
+작업량은 내릴 쪽 합($\sum_{G'} r_i \le \Lambda$ — 누적합 컷 뒤의 값)으로 센다.
 $\hat{T}$는 회차 전체의 추정 소요시간이다. 앞항(작업)은 정확히 계산되고,
 뒷항(이동)은 대여소 수에 비례한다고 본다 — 같은 재고로 $K$만 바꿔 재면 총 소요시간이
 거의 변하지 않기 때문이다(군집을 쪼개면 depot 왕복이 늘지만 군집 안 이동이 그만큼 준다).
@@ -232,7 +245,9 @@ $\left| \sum r_i \right| > 5$(`ADJUST_BALANCE_LIMIT`)다. 이 셋도 관행값�
 ## 5. ILP — 군집 안의 이동 수량
 
 군집 $k$마다 독립적으로 푼다. Pick 집합 $I = \{i \in C_k : r_i < 0\}$,
-Drop 집합 $J = \{j \in C_k : r_j > 0\}$, 공급 $s_i = |r_i|$, 수요 $d_j = r_j$.
+Drop 집합 $J = \{j \in C_k : r_j > 0\}$, 공급 $\text{sup}_i = |r_i|$, 수요
+$\text{dem}_j = r_j$ (1장의 계절 배율 $s$·작업시간 $s_{\text{pick}}$과 글자가 겹치지
+않게 따로 쓴다).
 
 **결정변수** $x_{ij} \in \mathbb{Z}_{\ge 0}$ — $i$에서 $j$로 옮기는 자전거 대수.
 
@@ -244,14 +259,19 @@ $$
 T_{ij} = \frac{\operatorname{haversine}(i, j)}{v} \times 3600 \ \text{(초)}
 $$
 
+기본값이다. `PBR_USE_ROAD_MODEL=1`이면 실측으로 맞춘 계수를 쓴다 —
+$T_{ij} = F + 3600 \cdot \operatorname{haversine}(i,j) / v_r$ (평일 $F$=275초,
+$v_r$=27.3 km/h, TMAP 실측 239구간 · [EXPERIMENTS.md](EXPERIMENTS.md) 5-F장).
+ILP·VRP·군집 $K$ 추정이 모두 같은 `project_config.travel_seconds()`를 거친다.
+
 **제약**
 
 $$
 \begin{aligned}
-\text{(공급)}\quad & \sum_{j \in J} x_{ij} \le s_i && \forall i \in I \\
-\text{(수요)}\quad & \sum_{i \in I} x_{ij} \le d_j && \forall j \in J \\
+\text{(공급)}\quad & \sum_{j \in J} x_{ij} \le \text{sup}_i && \forall i \in I \\
+\text{(수요)}\quad & \sum_{i \in I} x_{ij} \le \text{dem}_j && \forall j \in J \\
 \text{(작업량 강제)}\quad & \sum_{i \in I} \sum_{j \in J} x_{ij} = \Lambda_k,
-& \Lambda_k &= \min\Big( \sum_i s_i,\ \sum_j d_j \Big)
+& \Lambda_k &= \min\Big( \sum_i \text{sup}_i,\ \sum_j \text{dem}_j \Big)
 \end{aligned}
 $$
 
@@ -308,7 +328,7 @@ $0.1$ 보너스는 **노드를 한 번에 끝낼 수 있으면 우선한다**는
 
 코드에는 "후보가 없으면 depot으로 복귀해 다시 시작한다"는 분기가 있지만,
 **ILP를 거친 입력에서는 실행될 수 없다.** 5장의 '작업량 강제' 제약이 군집마다
-$\sum_i s_i' = \sum_j d_j'$를 보장하므로, 임의 시점에
+$\sum_i \text{sup}_i' = \sum_j \text{dem}_j'$를 보장하므로, 임의 시점에
 
 $$
 \text{남은 drop} = \text{남은 pick} + \ell
@@ -329,10 +349,12 @@ $$
 \tau_k \le B = 120\ \text{분}
 $$
 
-⚠️ **이 제약은 현재 모델에 들어 있지 않다.** 계산 후 초과 여부를 경고할 뿐 계획을
-바꾸지 않는다(사후 점검). 논문에서는 이를 한계로 밝혀야 한다 — [THESIS.md](../연구/THESIS.md) 6장.
-`greedy_route(time_budget_sec=…)`로 예산 안에서 멈추는 경로도 만들 수 있지만
-파이프라인은 쓰지 않는다(대조군 실험 전용).
+⚠️ **기본값에서는** 이 제약이 모델에 들어 있지 않다 — 계산 후 초과 여부를 경고할 뿐
+계획을 바꾸지 않는다(사후 점검). 논문에서는 이를 한계로 밝혀야 한다 —
+[THESIS.md](../연구/THESIS.md) 6장. `--enforce-time-budget`
+(`PBR_ENFORCE_TIME_BUDGET=1`, 1.21.6)을 켜면 `run_vrp_plan()`이
+`greedy_route(time_budget_sec = B·60)`으로 예산을 넘기는 작업 앞에서 멈추고 depot으로
+돌아온다(기본 꺼짐 · 넘는 작업은 미집행). 대조군 실험도 이 인자를 쓴다.
 
 > 코드: `vrp.greedy_route()`
 
@@ -345,17 +367,21 @@ $$
 재고 궤적을 순수요로 복원한다.
 
 $$
-q_i(h+1) = \operatorname{clip}\big( q_i(h) - n_{i,d,h},\ 0,\ c_i \big),
+q_i^{(k+1)} = \operatorname{clip}\big( q_i^{(k)} - n_{i,d,h_k},\ 0,\ c_i \big),
 \qquad
-\text{Stockout}_i = \sum_{h \in H(D)} \mathbb{1}\!\left[ q_i(h) \le 0 \right]
+\text{Stockout}_i = \sum_{k=0}^{|H(D)|-1} \mathbb{1}\!\left[ q_i^{(k+1)} \le 0 \right]
 $$
 
-재배치 전은 $q_i(0) = q_i$, 재배치 후는 $q_i(0) = q_i + \Delta_i$.
+$h_k$는 $H(D)$의 $k$번째 시각이고, 재배치 전은 $q_i^{(0)} = q_i$, 재배치 후는
+$q_i^{(0)} = q_i + \Delta_i$다. **그 시각의 순수요를 반영한 뒤의 재고를 센다** —
+초기 상태는 세지 않는다.
 
-- $\Delta_i = r_i$ — **계획 기준**. step4가 쓰는 방식이며, 계획이 100% 집행된다고 가정한다.
-- $\Delta_i$ = VRP가 실제로 싣고 내린 양 — **집행 기준**. 대조군 비교는 이쪽을 쓴다
-  (`experiments/baseline/baseline_compare.py`). 계획 기준으로 재면 군집·ILP를 건너뛴 대조군도
-  같은 점수가 나와 비교가 성립하지 않는다.
+- $\Delta_i$ = VRP가 실제로 싣고 내린 양 — **집행 기준**. step4의
+  `stockout_hours_after`와 대조군 비교(`experiments/baseline/baseline_compare.py`)가
+  이쪽을 쓴다(1.18.4~, `imbalance.executed_delta()`). 계획 기준으로 재면 군집·ILP를
+  건너뛴 대조군도 같은 점수가 나와 비교가 성립하지 않는다.
+- $\Delta_i = r_i$ — **계획 기준**. `stockout_hours_plan` 컬럼과, VRP 산출물이 없을
+  때의 폴백에만 쓴다. 계획이 100% 집행된다고 가정한 값이다.
 - 0에서 자르므로 이 값은 **결품의 하한**이다. 못 빌린 수요는 사라진다.
 
 > 코드: `imbalance._stockout_hours()`

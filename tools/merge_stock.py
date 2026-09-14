@@ -1,9 +1,9 @@
 """다른 PC가 모은 재고 시계열을 이 PC의 DB로 합친다 (docs/구현/COLLECTOR.md 11장).
 
 **왜 필요한가.** 수집기의 정본은 `data/bike_system.db`인데, 이 파일은 1GB를 넘고
-`.gitignore`에 걸려 있다 — git으로는 절대 오갈 수 없다. 두 PC가 서로 다른 창을
-맡아 수집하면(예: A는 09~17시, B는 야간·휴일) 두 DB에 따로 쌓이므로, 분석 전에
-한쪽으로 모아야 한다.
+`.gitignore`에 걸려 있다 — git으로는 절대 오갈 수 없다. 두 PC가 **같은 창**으로
+걸어 두고 켜져 있는 시간이 다르면(예: A는 낮, B는 저녁) 두 DB에 따로 쌓이므로,
+분석 전에 한쪽으로 모아야 한다.
 
 **먼저 수집한 것이 이긴다.** 저장은 `INSERT OR IGNORE`다 — 로컬에 이미 있는
 `(observed_at, station_id)`는 건드리지 않고 **비어 있는 틱만 채운다.** 수집기 본체의
@@ -324,7 +324,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             for 줄 in describe_road(road):
                 print(줄)
             print("    ⚠ 다른 패널로 잰 회차가 섞이면 계수가 흔들립니다 —"
-                  " 합치기 전에 tools/collect_road_time.py --status로 확인하십시오.")
+                  " 합치기 전에 **보내는 PC**에서"
+                  " tools/collect_road_time.py --status를 돌려 지문이 같은지"
+                  " 보십시오. 이 PC의 --status는 합친 뒤에야 이 행들을 봅니다.")
         if 빈_마스터:
             print(f"\n  ⚠ 이름·좌표가 없는 날: {', '.join(빈_마스터)}")
         print("\n[모의] 저장하지 않았습니다.")

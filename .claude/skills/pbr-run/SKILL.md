@@ -25,13 +25,14 @@ description: PBR 프로젝트의 앱을 실제로 띄우고 조작해 변경이 
 
 ---
 
-## 1. 자동 테스트 (가장 먼저, 40초)
+## 1. 자동 테스트 (가장 먼저, 약 100초)
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-**849개 통과가 기준선이다.** 여기서 깨지면 아래로 내려가지 마라.
+**849개 수집 · 실패 0이 기준선이다.** cbcbox 미설치·산출물 없음 같은 환경 차이로
+몇 개는 skip된다. 여기서 깨지면 아래로 내려가지 마라.
 
 ---
 
@@ -63,19 +64,27 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
 **실데이터를 건드리지 않는다.** 라벨을 붙여 돌리고 끝나면 지운다.
 
 ```powershell
-.\.venv\Scripts\python.exe tools\make_sample_data.py --now "테스트"
-.\.venv\Scripts\python.exe run_pipeline.py --skip-api --skip-eda --skip-map `
-  --now "테스트" --period "26년 03월" --raw-file "data/raw_data/합성_대여이력.csv"
+.\.venv\Scripts\python.exe tools\reproduce.py          # 합성 90곳 생성 → step0~4 → 대여소 수 대조 → 정리
+.\.venv\Scripts\python.exe tools\reproduce.py --keep   # 화면까지 볼 때만 (산출물을 남긴다)
 ```
+
+🔴 **직접 `run_pipeline.py --skip-api`로 돌리지 마라.** 합성 대여소 90곳을
+만들어 놓고 **실데이터 1,361곳이 돌아간다** — `--skip-api`가 직전 실행의 재고
+스냅샷을 물려받기 때문이다(README '5분 안에 직접 돌려보기'). `reproduce.py`는
+`--skip-fetch`를 쓰고 **파이프라인이 정말 합성 대여소를 봤는지 수를 대조하며**,
+DB도 별도 파일(`data/재현.db`)을 쓴다.
 
 **기준선: 전체 약 33초** (step1이 20초로 가장 오래 걸린다). 6분씩 걸리면
 1.23.8의 넘파이 최적화가 되돌려진 것이다.
 
 - `--skip-map`을 **빼면** TMAP을 실제로 부른다(유료·한도 있음). 지도나
   `road_leg` 정답표를 확인할 때만 빼라.
-- `--skip-api`는 `extract_parking_lot`·`api_to_info`도 건너뛴다.
+- `--skip-api`는 수집 단계를 전부 건너뛰고 **직전 실행의 재고 스냅샷(주차대수·
+  st_info)을 물려받는다**(`run_pipeline.inherit_snapshot`). 합성 검증에 쓰지 마라 —
+  물려받을 스냅샷이 없는 PC에서는 아예 멈춘다. 라이브 API 호출만 뺄 때는
+  `--skip-fetch`다.
 
-### 끝나면 반드시 정리
+### 끝나면 정리 (`--keep`을 줬을 때만)
 
 ```powershell
 # 파일
@@ -282,7 +291,7 @@ import os
 from playwright.sync_api import sync_playwright
 
 BASE = "http://127.0.0.1:8000"
-PAGES = ["/", "/run", "/kpi", "/vehicles", "/orders", "/maps", "/guide", "/api"]
+PAGES = ["/", "/run", "/kpi", "/vehicles", "/orders", "/maps", "/guide", "/api/docs"]
 
 # 고정 버전으로 받는다 — 최신을 그때그때 받으면 결과가 날짜마다 달라진다.
 os.system(
@@ -381,7 +390,7 @@ m.call_tmap_chunked = fake_chunked      # step3 모듈을 로드한 뒤 갈아�
 
 ## 8. 마무리 체크리스트
 
-- [ ] `pytest` 통과 (849개)
+- [ ] `pytest` 실패 0 (849개 수집, skip 허용)
 - [ ] 서버를 **PowerShell로** 껐다
 - [ ] 테스트 라벨 파일·DB 행을 **둘 다** 지웠다
 - [ ] `git status`가 깨끗하다 (합성 데이터가 남지 않았나)

@@ -19,7 +19,8 @@
 
 - **TMAP을 부르지 않는다.** 경로 지도(step3)는 실도로 좌표가 있어야 그려지고
   그것은 호출로만 얻는다 — 그래서 여기서는 다루지 않는다. 군집 지도(step1)와
-  불균형 지도(step4)만 다시 그린다. 둘 다 CSV만 읽는다.
+  불균형 지도(step4)만 다시 그린다. 둘 다 DB의 `pick_drop`을 먼저 읽고, 없으면
+  후보 CSV로 물러선다(1.26.164) — 읽기만 하고 쓰지 않는다.
 - **다시 계산하지 않는다.** step4의 `__main__`을 그냥 돌리면 지표를 새로
   구해 `metrics`·`kpi_summary`에 덮어쓴다. 입력이 그대로면 같은 값이 나오겠
   지만, *"그렇겠지"* 로 과거 실행의 기록을 덮는 것은 다시 그리기가 아니다.
@@ -56,10 +57,10 @@ CANDIDATE_RE = re.compile(r"^top(_\d+_\d+) \((.+)\)\.csv$")
 
 # 두 지도의 산출 경로. step 모듈의 상수와 **같은 문자열이라야** 한다 —
 # 여기서 확인하는 이름과 저쪽이 저장하는 이름이 갈리면 확인이 뜻이 없다.
-CLUSTER_MAP = str(PROJECT_ROOT
-                  / "data/pp_data/ILP/visualization/clusterd_map{duration} ({now}).html")
-IMBALANCE_MAP = str(PROJECT_ROOT
-                    / "data/pp_data/성능 지표/visualization/imbalance_map{duration} ({now}).html")
+CLUSTER_MAP = str(DATA_ROOT
+                  / "pp_data/ILP/visualization/clusterd_map{duration} ({now}).html")
+IMBALANCE_MAP = str(DATA_ROOT
+                    / "pp_data/성능 지표/visualization/imbalance_map{duration} ({now}).html")
 
 
 def available() -> list:
@@ -183,7 +184,7 @@ def main() -> int:
 
     found = available()
     if not found:
-        print("다시 그릴 산출물이 없습니다 — step1 후보 파일이 있어야 합니다.")
+        print("다시 그릴 산출물이 없습니다 — step1 후보(DB `pick_drop` 또는 후보 CSV)가 있어야 합니다.")
         print(f"  찾은 곳: {CANDIDATE_DIR}")
         return 1
 

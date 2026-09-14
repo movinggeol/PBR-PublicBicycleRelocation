@@ -3,8 +3,11 @@
 각 단계 파일을 프로젝트 루트에서 subprocess로 호출합니다.
 공통 설정(--now/--period/--duration/--raw-file/--day-type/--target-date/
 --warmup-period/--warmup-days)은 그대로 하위 스크립트에 전달되며, 각 스크립트는
-project_config를 통해 이를 읽습니다. 차량 대수만 예외로 환경변수로 전달합니다
-(project_config가 import 시점의 상수로 읽기 때문 — build_env 참고).
+project_config를 통해 이를 읽습니다. 차량 대수·회차 상한·씨앗·시간 예산 강제·실행
+종류(--fleet-size/--vehicles-per-round/--seed/--enforce-time-budget/--run-kind)는
+예외로 환경변수(PBR_FLEET_SIZE·PBR_VEHICLES_PER_ROUND·PBR_CLUSTER_SEED·
+PBR_ENFORCE_TIME_BUDGET·PBR_RUN_KIND)로 전달합니다 — project_config가 import 시점의
+상수로 읽기 때문입니다(build_env 참고).
 
 기본 실행:
     python run_pipeline.py

@@ -4,6 +4,10 @@ step0의 `calculate_target_qty`가 만든 표가 그럴듯한지 빠르게 보�
 Pick 가능량과 Drop 필요량이 얼마나 어긋나 있는지가 핵심이다 — 둘 중 **적은 쪽**까지만
 옮길 수 있으므로(step1의 누적합 컷), 격차가 크면 그만큼 계획에서 잘려 나간다.
 
+⚠️ **여기서 세는 '옮길 수 있는 최대'는 상한이지 계획 규모가 아니다.** step1은 누적합
+컷 **전에** Pick·Drop을 각각 작업량 상위 `TOP_STATION_LIMIT`(기본 50)곳으로 먼저
+자르므로(`top_st_clustering.select_top_unbalanced_st`), 실제 계획은 이 값보다 작다.
+
 1.18.8 이전에는 `duration = '_05_15'`(지금은 없는 시간대)와 `datetime.now()`가
 박혀 있어 **실행하면 그냥 깨졌다.** now는 실행 시각이 아니라 파이프라인 실행을 묶는
 라벨이므로 `project_config`에서 읽어야 한다.

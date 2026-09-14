@@ -7,13 +7,16 @@
     Register-ScheduledTask를 쓰는 이유는 아래 설정 절반이 schtasks 플래그로
     표현되지 않기 때문이다(동시 실행 억제, 실행 시간 제한, 놓친 작업 따라잡기 끄기).
 
-    실행 파일로 pythonw.exe를 쓴다 — python.exe로 걸면 10분마다, 하루 49번
-    콘솔 창이 깜빡인다.
+    실행 파일로 pythonw.exe를 쓴다 — python.exe로 걸면 10분마다(07~23시 창이면
+    하루 97번) 콘솔 창이 깜빡인다.
 
 .EXAMPLE
-    .\scripts\collector.ps1 install     # 수집 시작 (최초 1회 등록)
+    .\scripts\collector.ps1 install -Window 07:00-23:00 -IncludeHolidays
+                                        # 운영 설정으로 등록 (docs/구현/두_PC_작업.md 0장)
+                                        # 인자를 빼면 파라미터 기본값(평일 09:00-17:00)으로
+                                        # 기존 작업까지 덮어쓴다
     .\scripts\collector.ps1 install -Window 07:00-22:00 -HolidaysOnly
-                                        # 두 번째 PC — 휴일만 맡는다 (11장)
+                                        # 옛 구성(11장) — 지금은 두 PC 모두 -IncludeHolidays
     .\scripts\collector.ps1 pause       # 일시정지 — 작업은 남기고 안 깨움
     .\scripts\collector.ps1 resume      # 재개
     .\scripts\collector.ps1 uninstall   # 완전 중지 — 작업 삭제
@@ -346,8 +349,13 @@ function Invoke-Status {
             }
         }
     }
-    $live = Get-RegisteredArgs
-    & $Python $Script --status --window $live.Window --interval $live.Interval
+    # 등록값 되읽기는 파이썬 쪽 registered_args()에 맡긴다 — 여기서 늘 넘기면
+    # 출력의 '기준'이 언제나 '직접 지정'으로 찍혀, 기본값으로 떨어진 것을
+    # 사용자가 알아챌 수 없다. 사용자가 준 값만 넘긴다.
+    $extra = @()
+    if ($script:GivenWindow) { $extra += @('--window', $Window) }
+    if ($script:GivenInterval) { $extra += @('--interval', $Interval) }
+    & $Python $Script --status @extra
 }
 
 function Invoke-Now {

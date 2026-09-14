@@ -17,7 +17,8 @@ TASHU API와 공공데이터포털 대여 이력을 받아, 이후 최적화 단
 읽으며, 각 파일은 독립 실행된다(상호 import 없음). 실행 순서는 `run_pipeline.py`가 제어한다.
 
 각 단계는 CSV와 함께 **SQLite에도 기록**한다(이중 기록, [DB_PLAN.md](../DB_PLAN.md) 2단계).
-CSV가 아직 정본이며 DB 기록 실패는 경고만 남긴다.
+DB 기록 실패는 경고만 남긴다. 다음 단계는 산출물을 **DB에서 먼저** 읽고 없을 때만
+CSV로 물러선다(`db.read_step_output`, 1.26.164~167).
 
 | 스크립트 | DB 테이블 |
 | --- | --- |
@@ -54,8 +55,8 @@ python tools/load_rentals.py --status         # 기간별 적재 현황
 - **주의**: API 응답의 `x_pos`가 위도, `y_pos`가 경도 (순서 주의, 코드에 반영됨)
 - **한계**: 이 CSV는 **실행하는 순간의 스냅샷 한 장**입니다. 계획 대상일의 요일
   구분과 일치한다는 보장이 없습니다 ([TODO.md](../../기록/TODO.md) 1-4).
-  시간에 따른 실측 재고가 필요하면 `tools/collect_stock.py`가 평일 07~22시에
-  10분마다 `stock_history`에 쌓습니다 — [COLLECTOR.md](../COLLECTOR.md).
+  시간에 따른 실측 재고가 필요하면 `tools/collect_stock.py`가 **매일(휴일 포함)
+  07~23시**에 10분마다 `stock_history`에 쌓습니다 — [COLLECTOR.md](../COLLECTOR.md).
   **둘은 별개 저장소입니다**: 파이프라인은 이 CSV/`station_stock`을 쓰고,
   수집기는 그 둘을 건드리지 않습니다.
 
@@ -199,9 +200,11 @@ python tools/rebuild_net_demand.py --dry-run  # 대상만 확인
 > 희석된 것이고, 작업 대상 31곳만 보면 오차를 40.2% 줄입니다
 > ([EXPERIMENTS.md](../../분석/EXPERIMENTS.md) 2장).
 >
-> 남은 약점은 **계절 전환기**입니다. 2월→3월처럼 수요가 1.5배 뛰는 구간은
-> z를 올려도 커버리지가 90% 언저리에 머뭅니다. 분석 달 초 실적으로 배율을 보정하면
-> 95%대로 회복되지만 아직 구현하지 않았습니다 ([EXPERIMENTS.md](../../분석/EXPERIMENTS.md) 3장).
+> 남은 약점은 **계절 전환기**였습니다. 2월→3월처럼 수요가 1.5배 뛰는 구간은
+> z를 올려도 커버리지가 90% 언저리에 머뭅니다. 그래서 1.15.1에서 계획 대상 달 첫
+> 14일 실적으로 도시 전체 배율을 곱하는 warmup 보정을 넣었고 **기본으로 켜져
+> 있습니다**(위 '계절이 바뀌는 달' 절, `--warmup-days 0`으로 끔 ·
+> [EXPERIMENTS.md](../../분석/EXPERIMENTS.md) 3장).
 
 ### 5. `calculate_target_qty.py`
 - **입력**: st_info, st_net_daily

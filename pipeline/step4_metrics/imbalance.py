@@ -257,8 +257,9 @@ def _simulate_stock(net: pd.DataFrame, initial: pd.Series,
     🔴 **양쪽 clip이 버리던 값을 여기서 거둔다.** 지금까지는 `clip(0, 거치대)`로
     잘라내고 **얼마나 잘렸는지는 버렸다.** 그런데 잘려 나간 양이 곧
     *"빌리려다 못 빌린 수"*(아래 clip)와 *"반납하려다 못 한 수"*(위 clip)다 —
-    [KPI.md](../docs/분석/KPI.md) 3-B가 미구현으로 남겨 둔 **순수요 충족률·포화
-    시간**이 바로 이 두 값이다. 궤적을 두 번 돌 필요 없이 같은 루프에서 나온다.
+    [KPI.md](../../docs/분석/KPI.md) 3-B가 1.26.101 전까지 미구현으로 남겨 뒀던
+    **순수요 충족률·포화 시간**이 바로 이 두 값이다. 궤적을 두 번 돌 필요 없이
+    같은 루프에서 나온다.
 
     반환 키:
       `stockout`  재고 0인 시간 수      (기존 지표)
@@ -649,11 +650,11 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
             #
             # ⚠️ **반지름은 3에서 막힌다.** 그리지 않으면 개선량이 작은 점이
             #    사라져 ‘대여소가 어디 있는지’조차 안 보이기 때문이다. 문제는
-            #    `improvement`가 **0이거나 음수**일 수 있다는 것이다
-            #    (`bf_imbalance - af_imbalance`라 계획이 오히려 악화시킨 대여소가
-            #    여기 온다). 그럴 땐 악화된 점과 3대 해소한 점이 **픽셀까지
-            #    똑같아진다** — 범례가 그것을 "3대"라고 단언하면 거짓말이 된다.
-            #    크기로는 구분할 수 없으니 **테두리로** 구분하고, 범례에도 적는다.
+            #    `improvement`가 **작다**는 것이다. 파이프라인 입력에서는
+            #    `improvement`가 |rebal_qty|와 같아(tanh 포화·0 방향 절삭이라
+            #    부호가 같고 목표를 넘지 않는다) 음수가 되지 않지만, 0~2대 해소한
+            #    점이 3대 해소한 점과 **픽셀까지 똑같아진다.** 아래 점선 테두리는
+            #    입력이 이 규약을 벗어나 음수가 들어왔을 때의 방어다.
             worsened = row['improvement'] < 0
             radius = max(3, row['improvement'])
             # 개선률이 음수면 불투명도가 0 아래로 내려가 folium이 무시한다 —
@@ -769,7 +770,8 @@ if __name__ == "__main__":
         imbalance_df.to_csv(result_file_path.format(duration=duration, now=now), index=False, encoding='utf-8')
         print(f"\nresult_file_path 파일이 저장되었습니다. ({result_file_path.format(duration=duration, now=now)})")
 
-        # CSV·DB 이중 기록 (DB_PLAN 2단계). CSV가 아직 정본이다.
+        # CSV·DB 이중 기록 (DB_PLAN 2단계). 다음 단계는 DB를 먼저 읽는다
+        # (db.read_step_output, 1.26.166) — CSV는 DB가 비었을 때의 폴백이다.
         db.save_output("metrics", imbalance_df, run_label=now,
                        period=config.period, duration=duration)
 

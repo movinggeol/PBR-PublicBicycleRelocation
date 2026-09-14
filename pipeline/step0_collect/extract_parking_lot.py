@@ -78,7 +78,8 @@ def main() -> None:
     df.to_csv(out_file_path.format(now=now), encoding='utf-8', index=False)
     print(f"\n{out_file_path.format(now=now)} 가 저장되었습니다.")
 
-    # CSV·DB 이중 기록 (DB_PLAN 2단계). CSV가 아직 정본이다.
+    # CSV·DB 이중 기록 (DB_PLAN 2단계). 다음 단계는 DB를 먼저 읽는다
+    # (db.read_step_output, 1.26.166) — CSV는 DB가 비었을 때의 폴백이다.
     db.save_output("parking_lot", df, run_label=now, period=config.period)
 
 

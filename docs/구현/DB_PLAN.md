@@ -101,7 +101,9 @@ data/bike_system.db  (WAL 모드)
 - [x] 4. **대여이력 원본 적재 + step0 전환** — `tools/load_rentals.py`로 적재하면
       `raw_to_net.py`·`api_to_info.py`가 CSV 대신 DB에서 읽는다.
       CSV·DB 경로의 산출물이 완전히 같음을 테스트로 보증 (아래 "4단계" 참고)
-- [ ] 5. 실행 이력 비교 기능 (run_label 간 개선률 비교 API·화면)
+- [~] 5. **CSV를 걷어낸다** — ①~④+ 완료, ⑤ `to_csv` 제거는 사용자 지시로 보류
+      (아래 "5단계" 절)
+- [ ] 6. 실행 이력 비교 기능 (run_label 간 개선률 비교 API·화면)
 
 ## 1단계 사용법
 

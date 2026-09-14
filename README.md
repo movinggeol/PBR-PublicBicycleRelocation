@@ -107,6 +107,7 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 ├── webapp/                                # 웹 대시보드 (FastAPI, 파이썬 단독)
 ├── tests/                                 # 스모크 테스트 (pytest)
 ├── tools/                                 # 합성 데이터 생성기 등 보조 도구
+├── scripts/                               # 작업 스케줄러 등록 (재고·도로 수집기 PowerShell)
 ├── experiments/                           # 검증·실험 스크립트 (성격별 5분류)
 │   ├── params/ baseline/ structure/       #   파라미터·대조군·설계 측정
 │   └── diagnostic/ learning/              #   산출물 진단·학습용 예제
@@ -196,15 +197,18 @@ python run_pipeline.py --now "2026-05-21 18" --period "25년 11월" --duration "
 python run_pipeline.py --duration "_05_10,_10_15"   # 여러 시간대 일괄 처리
 ```
 
-`run_pipeline.py`의 옵션은 전부 하위 단계로 그대로 전달됩니다(차량 대수만 예외 —
-`project_config`가 import 시점 상수로 읽으므로 환경변수로 내려보냅니다).
+날짜·기간·시간대·원천 파일·요일 구분·계절 보정은 CLI 인자로 하위 단계에 그대로
+넘깁니다. 차량 대수·회차당 상한·씨앗(`--seed`)·예산 강제(`--enforce-time-budget`)·
+실행 종류(`--run-kind`)는 `project_config`가 import 시점에 읽으므로 환경변수
+(`PBR_FLEET_SIZE`·`PBR_CLUSTER_SEED` 등)로 내려보냅니다. `--skip-*`·`--dry-run`·
+`--continue-on-error`는 실행기 자신의 옵션입니다.
 
 | 옵션 | 뜻 | 기본값 |
 | --- | --- | --- |
 | `--now` | 실행을 묶는 라벨. 산출물 파일명과 DB `run_label`이 됩니다 | `2026-05-21 18` |
 | `--period` | 순수요를 뽑을 기간 | **계산해 둔 것 중 가장 최근 달** |
 | `--duration` | 시간대. 콤마로 여러 개 (`_05_10`·`_10_15`·`_15_20`·`_20_05`) | `_05_10` |
-| `--raw-file` | 원천 대여이력 CSV(루트 기준 상대 경로) | `data/raw_data/…(25년11월).csv` |
+| `--raw-file` | 원천 대여이력 CSV(루트 기준 상대 경로). ⚠️ 기본 파일은 12개월이 섞여 있어, DB에 없는 새 기간을 돌릴 때는 **그 달만 담긴 CSV**를 지정해야 합니다 | `data/raw_data/타슈 대여이력(25.04~26.03).csv` |
 | `--day-type` | `weekday` \| `holiday` \| `auto`. **휴일 = 주말 ∪ 공휴일** | `auto` |
 | `--target-date` | 계획 대상일(YYYY-MM-DD). `auto` 판정의 기준 | 오늘 |
 | `--warmup-period` | 계절 보정에 쓸 기간 | 계획 대상일의 달 |
@@ -249,11 +253,11 @@ python "pipeline/step4_metrics/imbalance.py"
 
 파이프라인이 쓰는 초기 재고는 **실행하는 순간의 스냅샷 한 장**입니다. 실측 재고가
 시간에 따라 어떻게 움직이는지 남겨 두면, 결품을 시뮬레이션이 아니라 **실측으로**
-잴 수 있습니다. 그래서 평일 07~22시 재고를 10분마다 모읍니다
+잴 수 있습니다. 그래서 매일(휴일 포함) 07~23시 재고를 10분마다 모읍니다
 ([docs/구현/COLLECTOR.md](docs/구현/COLLECTOR.md)).
 
 ```powershell
-.\scripts\collector.ps1 install     # 수집 시작 (최초 1회 등록)
+.\scripts\collector.ps1 install -Window 07:00-23:00 -IncludeHolidays   # 수집 시작 (최초 1회 등록)
 .\scripts\collector.ps1 pause       # 일시정지 — 작업은 남기고 안 깨움
 .\scripts\collector.ps1 resume      # 재개
 .\scripts\collector.ps1 uninstall   # 완전 중지 — 작업 삭제
@@ -261,8 +265,11 @@ python "pipeline/step4_metrics/imbalance.py"
 .\scripts\collector.ps1 now         # 지금 한 틱 즉시 수집
 ```
 
-`install` 한 번이면 평일 07:00에 저절로 시작해 22:00에 멈추고, 주말·공휴일은
-건너뜁니다. **일시정지·중지는 스케줄만 건드리며 모은 데이터를 지우지 않습니다.**
+위 명령 한 번이면 매일 07:00에 저절로 시작해 23:00에 멈춥니다. ⚠️ **인자 없이
+`install`하면 스크립트 기본값인 평일 09:00–17:00으로 등록되고, 이미 등록된 작업도
+그 값으로 덮어씁니다.** 어느 PC가 무엇을 맡는지는
+[docs/구현/두_PC_작업.md](docs/구현/두_PC_작업.md) 0장에 있습니다.
+**일시정지·중지는 스케줄만 건드리며 모은 데이터를 지우지 않습니다.**
 
 수집기 자체를 직접 부를 수도 있습니다.
 
@@ -272,8 +279,9 @@ python tools/collect_stock.py --status   # 수집 현황만 (API 호출 안 함)
 python tools/collect_stock.py --loop     # 창이 끝날 때까지 상주
 ```
 
-- **공휴일 제외는 스케줄러가 아니라 스크립트가 합니다** — 작업 스케줄러는 요일만
-  알기 때문입니다. 판정은 `project_config.is_holiday()`(주말 ∪ 공휴일) 하나입니다.
+- **휴일을 거르는 것은 스케줄러가 아니라 스크립트입니다** — 작업 스케줄러는 요일만
+  알기 때문입니다. `-IncludeHolidays` 없이 등록하면 깨어나도 주말·공휴일은 스크립트가
+  거릅니다. 판정은 `project_config.is_holiday()`(주말 ∪ 공휴일) 하나입니다.
 - 저장 위치는 `stock_history` 테이블이고, `data/raw_data/재고이력/`에 일별 CSV
   백업과 수집 로그가 함께 남습니다. **실패도 로그에 남습니다** — 그래야 나중에
   '결측'과 '재고 0'을 구분할 수 있습니다.
@@ -313,8 +321,9 @@ $env:PBR_DB_PATH = "data/재현.db"; python -m webapp   # http://127.0.0.1:8000
 > 대여소를 봤는지 수를 대조해 확인합니다.**
 
 `data/`와 `*.csv`는 저장소에 포함되지 않습니다(.gitignore). 실데이터로 돌리려면
-`.env`에 API 키를 넣고 `data/raw_data/`에 타슈 대여 이력을 두어야 합니다 — 아래 '환경변수'와
-'데이터 준비' 절을 보세요.
+`.env`에 API 키를 넣고(위 '환경변수' 절) `data/raw_data/`에 타슈 대여 이력을 두어
+`--raw-file`로 지정하거나 `python tools/load_rentals.py`로 DB에 적재해야 합니다
+(아래 '데이터 저장' 절).
 
 ## 테스트
 
@@ -354,7 +363,8 @@ python tools/make_sample_data.py --now "데모"
 python -m webapp        # http://127.0.0.1:8000
 ```
 
-- `/` 실행 폼·DB 실행 이력·작업 이력·최신 산출물 + **지금 날씨**
+- `/` 현황판 — 마지막 계획 요약과 세 구역 입구
+- `/run` 실행 폼·DB 실행 이력·작업 이력·최신 산출물 + **지금 날씨**
   (비가 오면 "실제 재배치 필요량은 평소의 40~55% 수준"을 알립니다 — 계획을 바꾸지는 않습니다)
 - `/guide` 사용 안내 — 시작 순서·입력 항목·지표 읽는 법·문제 해결·용어
 - `/runs/{id}` 실행 상태·진행 단계·로그 (실행 중단 포함)
@@ -442,7 +452,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/분석/DEMAND_DISTRIBUTION.md](docs/분석/DEMAND_DISTRIBUTION.md) | **순수요 분포** — 정규분포 전제 검증, 커버리지 원인 정정, ML 방향 |
 | [docs/구현/DB_SCHEMA.md](docs/구현/DB_SCHEMA.md) | **DB 스키마** — ERD, 테이블 20개 컬럼 레퍼런스, 조인 쿼리 |
 | [docs/구현/DB_PLAN.md](docs/구현/DB_PLAN.md) | SQLite 도입 결정·이관 계획·성능 측정 |
-| [docs/구현/COLLECTOR.md](docs/구현/COLLECTOR.md) | **재고 시계열 수집** — 평일 07–22시 10분 간격 수집기·운영(시작/일시정지/중지), 두 번째 PC로 휴일 맡기기 |
+| [docs/구현/COLLECTOR.md](docs/구현/COLLECTOR.md) | **재고 시계열 수집** — 매일(휴일 포함) 07–23시 10분 간격 수집기·운영(시작/일시정지/중지), 두 PC 수집분 병합(`merge_stock.py`) |
 | [docs/구현/두_PC_작업.md](docs/구현/두_PC_작업.md) | **두 PC로 번갈아 작업** — `.gitignore` 항목별 판단(옮길 것·다시 만들 것), 새 PC 세팅 순서 |
 | [docs/구현/DB_이관.md](docs/구현/DB_이관.md) | **DB 이관 절차서** — 실행 스냅샷을 하나만/기간별/전부 내보내고 받는 방법 |
 | [docs/분석/WEATHER.md](docs/분석/WEATHER.md) | **날씨** — 어떤 기상청 API를 받는지, 결측·겨울 3시간 누적 처리, 순수요 설명력 측정 |
@@ -458,7 +468,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/분석/ML_ATTEMPTS.md](docs/분석/ML_ATTEMPTS.md) | **ML 시도 기록** — 해 보고 안 된 것과 **왜 안 됐는지** |
 | [docs/분석/VISUALIZATION.md](docs/분석/VISUALIZATION.md) | **시각화 대안 조사** — HTML 말고 더 나은 수단이 있나 (조사) |
 | [docs/연구/COMPARISON.md](docs/연구/COMPARISON.md) | **선행연구 축별 비교** — 문헌 전부를 한 줄에 놓고 본 표 |
-| [docs/연구/초안/](docs/연구/초안/) | **논문 초안** — 1~8장 + 3-보(방법 선택의 근거) |
+| [docs/연구/초안/](docs/연구/초안/) | **논문 초안** — 초록 · 1~9장 + 3-보(방법 선택의 근거) · 참고문헌 · 그림 |
 | [docs/구현/steps/step0_raw.md](docs/구현/steps/step0_raw.md) | Step 0: 수집·전처리·순수요·재배치량 |
 | [docs/구현/steps/step0_eda.md](docs/구현/steps/step0_eda.md) | Step 0: 이력 병합·EDA |
 | [docs/구현/steps/step1_clustering.md](docs/구현/steps/step1_clustering.md) | Step 1: Pick/Drop 선정·클러스터링 |

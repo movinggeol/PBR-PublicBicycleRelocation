@@ -645,14 +645,15 @@ def test_구간이_갈라져도_실패가_있으면_PC_탓으로_단정하지_�
     assert "수집 실패: 1일 · 3틱" in out
 
 
-def test_실패가_없는_날의_공백은_여전히_PC_탓이다(history_dir, capsys):
+def test_실패가_없는_날의_공백은_스크립트가_안_돈_것이다(history_dir, capsys):
     """위 테스트가 공허해지지 않게 반대쪽을 함께 고정한다 — 로그에 실패가
-    없으면 스크립트가 아예 안 돈 것이고, 그때는 예전 판정이 맞다.
+    없으면 스크립트가 아예 실행되지 않은 것이다(전원·절전·로그오프·스케줄러
+    거부). 어느 쪽인지는 이 출력만으로 가릴 수 없다.
     """
     _split_day("2026-08-24")
 
     collector.print_status(*WINDOW, INTERVAL)
     out = capsys.readouterr().out
 
-    assert "PC가 꺼져" in out
+    assert "아예 실행되지" in out
     assert "수집 실패:" not in out

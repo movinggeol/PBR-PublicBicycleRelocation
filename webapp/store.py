@@ -40,7 +40,7 @@ def load(table: str, run_label: Optional[str] = None,
          duration: Optional[str] = None) -> Tuple[pd.DataFrame, str]:
     """산출물을 읽는다.
 
-    반환: (DataFrame, 출처). 출처는 "db" | "csv" | "none".
+    반환: (DataFrame, 출처). 출처는 "db" | "none" (CSV 폴백은 1.26.165에 제거).
     run_label을 생략하면 DB의 최신 실행분을 쓴다.
     """
     try:
@@ -53,7 +53,7 @@ def load(table: str, run_label: Optional[str] = None,
                                   duration=duration, kinds=("plan",))
         if not frame.empty:
             return frame, "db"
-    except Exception as err:      # DB가 없거나 손상돼도 CSV로 응답할 수 있게 한다
+    except Exception as err:      # DB가 없거나 손상돼도 화면이 죽지 않게 빈 결과로 떨어진다
         print(f"[경고] DB 조회 실패 ({table}): {type(err).__name__}: {err}")
 
     # DB에 없으면 없다고 답한다 — 파일 수정시각으로 고른 것을 계획이라 내놓지
@@ -234,7 +234,7 @@ def records(frame: pd.DataFrame) -> list:
 
 
 # 계획이 '낡았다'고 볼 경계(시간). **실측에서 골랐다** — 하루가 지나면 대여소
-# 55~64%의 재고가 달라진다(stock_history 12일, 날짜쌍 11개 전수). 계획은 그
+# 54~64%의 재고가 달라진다(stock_history 12일, 날짜쌍 11개 전수). 계획은 그
 # 시점 재고 스냅샷으로 세우므로, 하루가 지나면 전제의 절반 이상이 어긋난다.
 #
 # ⚠️ *"틀렸다"* 가 아니라 *"전제가 흔들렸다"* 는 뜻이다. 화면도 그렇게 말한다 —

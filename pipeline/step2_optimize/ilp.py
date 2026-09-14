@@ -296,7 +296,8 @@ def run_ilp_plan(metrics: pd.DataFrame, duration: str, solver: pulp.LpSolver):
     ilp_plan.to_csv(ilp_plan_path.format(duration=duration, now=now), index=False)
     print(f"\nilp_plan_path 파일이 저장되었습니다. ({ilp_plan_path.format(duration=duration, now=now)})")
 
-    # CSV·DB 이중 기록 (DB_PLAN 2단계). CSV가 아직 정본이다.
+    # CSV·DB 이중 기록 (DB_PLAN 2단계). 다음 단계는 DB를 먼저 읽는다
+    # (db.read_step_output, 1.26.166) — CSV는 DB가 비었을 때의 폴백이다.
     db.save_output("ilp_plan", ilp_plan, run_label=now, duration=duration)
 
 

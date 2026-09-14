@@ -24,7 +24,7 @@
 | **실행** | `run_label` | 파이프라인 실행 1건. CSV 파일명의 `{now}`가 컬럼이 된 것 | `station_stock`, `station_info`, `parking_lot` |
 | **실행 + 회차** | `run_label` + `duration` | 한 실행 안의 시간대(`_05_10` 등). 하루 3회차면 3행 세트 | `rebalance_plan`, `pick_drop`, `ilp_plan`, `vrp_plan`, `metrics`, `route_summary`, `vehicle_assignment`, `kpi_summary` |
 | **기간** | `period` | 원천 데이터 기간(`25년 11월`). **실행과 무관** | `net_demand`, `rental_history` |
-| **관측 시각** | `observed_at` | 실행과 무관한 **실측 시계열**. 매일(휴일 포함) 07~22시 10분마다 쌓인다 | `stock_history`, `stock_station_master`(일 단위) |
+| **관측 시각** | `observed_at` | 실행과 무관한 **실측 시계열**. 등록된 창(운영: 매일(휴일 포함) 07:00–23:00 · [두_PC_작업.md](두_PC_작업.md) 0장)에서 10분마다 쌓인다 | `stock_history`, `stock_station_master`(일 단위) |
 | **전역** | — | 실행에 딸리지 않는 마스터 | `vehicle` |
 
 **`net_demand`가 `period` 스코프인 것이 이 설계의 핵심 판단입니다.** 순수요는 과거
@@ -71,7 +71,8 @@ erDiagram
         TEXT period "순수요 입력 기간"
         TEXT duration "시간대(마지막 기록값)"
         TEXT raw_file "원천 CSV 경로"
-        TEXT day_type "weekday / weekend"
+        TEXT day_type "weekday / holiday"
+        TEXT kind "plan / experiment / probe (NULL이면 라벨로 짐작)"
         TEXT created_at "기록 시각"
     }
     net_demand {
@@ -163,12 +164,13 @@ erDiagram
 | **파이프라인 순서** | 앞 단계 산출물을 읽어 뒤 단계를 만들므로 고아 행이 생기기 어려움 |
 | **테스트** | `tests/test_db.py`가 스코프·멱등성을, `test_pipeline.py`가 실제 적재를 검사 |
 
-**FK를 안 건 이유**는 이중 기록 구조 때문입니다. CSV가 아직 정본이고, `save_output()`은
+**FK를 안 건 이유**는 이중 기록 구조 때문입니다. 조회와 단계 간 배선은 이미 DB가
+정본이지만(DB_PLAN 5단계 ①~④) `to_csv`가 남아 CSV 경로가 살아 있고, `save_output()`은
 DB 기록이 실패해도 파이프라인을 멈추지 않습니다(DB_PLAN 2단계). 단계 하나가 DB 기록에
 실패한 상태에서 다음 단계가 FK 위반으로 **연쇄 실패**하면, "DB 문제로 파이프라인을
 멈추지 않는다"는 설계가 무너집니다.
 
-> CSV 기록을 걷어내고 DB를 정본으로 삼는 시점(DB_PLAN 5단계)에는 FK를 선언하는 편이
+> `to_csv`까지 걷어내는 시점(DB_PLAN 5단계 ⑤, 보류 중)에는 FK를 선언하는 편이
 > 낫습니다. 그때는 `runs`를 부모로 두고 `ON DELETE CASCADE`를 걸면 실행 1건을 통째로
 > 지우는 일이 `DELETE FROM runs` 한 줄이 됩니다.
 
@@ -394,7 +396,7 @@ CSV의 `hour` 컬럼은 `duration`과 같은 값이라 **저장하지 않습니�
 | 키·시각 | `run_label`, `duration`, `computed_at` |
 | 규모 | `stations`, `clusters`, `vehicles_used`, `bikes_moved` |
 | A. 계획 | `avg_improvement_rate`, `pick_improvement_rate`, `drop_improvement_rate`, `target_met_ratio` |
-| B. 실측 | `stockout_hours_before`, `stockout_hours_after`(**집행 기준**), `stockout_hours_plan`(계획 기준), `demand_mae` |
+| B. 실측 | `stockout_hours_before`, `stockout_hours_after`(**집행 기준**), `stockout_hours_plan`(계획 기준), `saturation_hours_before`, `saturation_hours_after`(반납을 못 받는 시간), `demand_fulfill_before`, `demand_fulfill_after`(**순수요 기준** 충족률 — 총 대여 대비가 아닙니다), `demand_mae` |
 | C. 운영 | `total_distance_km`, `max_cluster_minutes`, `avg_cluster_minutes`, `time_budget_minutes`, `time_budget_met`, `vehicle_load_gap`, `depot_returns`, `stations_total`, `station_coverage` |
 | D. 효율 | `improvement_per_km`, `bikes_per_minute`, `travel_time_ratio`, `empty_distance_ratio` |
 | E. 품질 | `cluster_max_imbalance`, `gap_median`, `gap_max`, `reachable_ratio` |
@@ -518,7 +520,7 @@ PK 선두가 `run_label`이라 차량으로 거는 조회는 PK 인덱스를 못
 
 ### 4-7. 재고 시계열 — 실측 관측 (1.20.0)
 
-`tools/collect_stock.py`가 매일(휴일 포함) 07~22시에 10분마다 쌓습니다. **파이프라인 실행과
+`tools/collect_stock.py`가 등록된 창(운영: 매일(휴일 포함) 07:00–23:00)에서 10분마다 쌓습니다. **파이프라인 실행과
 무관한 관측 기록**이라 `run_label`이 없고, 축은 (시각, 대여소)입니다.
 배경과 운영은 [COLLECTOR.md](COLLECTOR.md)에 있습니다.
 
@@ -545,7 +547,7 @@ PK 선두가 `run_label`이라 차량으로 거는 조회는 PK 인덱스를 못
 1. **`day_type`·`duration` 컬럼이 없습니다.** 둘 다 `observed_at`에서 파생되고,
    요일 판정은 `project_config.holiday_mask()` 하나가 독점해야 합니다. 저장해 두면
    판정이 두 곳으로 갈립니다. 거를 때는 `db.load_stock_history(day_type=...)`를 쓰세요.
-2. **이름·좌표를 틱마다 반복하지 않습니다.** 1,372행 × 49틱마다 같은 문자열을
+2. **이름·좌표를 틱마다 반복하지 않습니다.** 1,372행 × 하루 97틱마다 같은 문자열을
    넣으면 용량이 몇 배가 됩니다. 그래서 마스터를 따로 뒀습니다.
 3. **마스터를 `station_stock`에 얹지 않았습니다.** 당시 `latest_label()`이
    `run_label`의 **사전순** MAX였고, `collect-…`는 숫자로 시작하는 실행 라벨보다
@@ -587,8 +589,10 @@ step3이 지도를 그리며 받은 값을 그대로 남깁니다. `VEHICLE_SPEE
 | `observed_at` | TEXT | 관측 시각 |
 | `start_time` | TEXT | 요청한 출발 시각. 같은 구간도 시간대에 따라 달라집니다 |
 
-> ⚠️ **PC 간 이관에서 이 표는 따라가지 않습니다.** 양쪽 PC가 각자 쌓는 관측치라,
-> 섞으면 *'어느 PC에서 잰 것인가'* 가 사라집니다 ([두_PC_작업.md](두_PC_작업.md)).
+> ⚠️ **실행 라벨 이관(`transfer_run.py`)에는 따라가지 않습니다** — 파이프라인이
+> 지도를 그리며 받은 구간은 그 PC의 실행에 속하기 때문입니다. **고정 패널분
+> (`roadprobe-*`)은 합칩니다** — `export_collected.py --road` → `merge_stock.py`
+> (먼저 수집한 것이 이깁니다, [DB_이관.md](DB_이관.md) 3-B장).
 
 **`stockout_calibration`** — 결품 지표 보정 계수 (1.26.1, PK: `measured_at`, `duration`, `day_type`)
 
@@ -668,8 +672,12 @@ SEARCH metrics USING INDEX sqlite_autoindex_metrics_1 (run_label=? AND duration=
 SELECT run_label, duration, ROUND(AVG(improvement_rate), 3) AS rate
 FROM metrics GROUP BY run_label, duration ORDER BY run_label DESC;
 
--- 최신 실행 라벨
-SELECT run_label FROM runs ORDER BY run_label DESC LIMIT 1;
+-- 가장 최근에 기록된 실행 (종류 무관 — roadprobe-·실험 라벨도 나옵니다).
+-- 🔴 라벨 사전순 정렬은 쓰지 마십시오(1장) — 1.26.125부터 created_at 기준입니다.
+SELECT run_label, kind FROM runs ORDER BY created_at DESC LIMIT 1;
+
+-- '마지막 계획'은 SQL 한 줄로 못 고릅니다(kind가 NULL인 옛 행은 라벨로 짐작).
+-- 파이썬: db.latest_label(conn, "metrics", kinds=("plan",))
 
 -- 시간 예산을 넘긴 회차·클러스터와 담당 차량
 SELECT r.run_label, r.duration, r.cluster, r.total_min, a.vehicle_id

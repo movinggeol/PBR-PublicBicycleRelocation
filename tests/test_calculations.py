@@ -34,7 +34,8 @@ def _load(path, name):
     """step 모듈을 경로로 직접 읽는다.
 
     테스트마다 독립된 이름으로 올려 import 캐시를 공유하지 않게 한다.
-    `top_st_clustering.py`는 숫자로 시작해 애초에 일반 import가 안 된다.
+    (1.18.8에서 숫자 접두를 떼어 지금은 `pipeline.step1_cluster...`로 일반
+    import도 되지만, 캐시를 나누려고 경로로 읽는 방식을 유지한다.)
     """
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)

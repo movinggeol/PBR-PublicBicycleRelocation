@@ -12,8 +12,10 @@ experiments/
 └── learning/     학습용 예제 (파이프라인과 무관)
 ```
 
-**서로 import 하는 스크립트는 같은 폴더에 뒀습니다** — `gamma_recheck.py`가
-`baseline_compare.py`를 부르므로 둘 다 `baseline/`입니다.
+**`baseline/baseline_compare.py`는 갈래를 가리지 않고 공용으로 불립니다** —
+`gamma_recheck.py`처럼 같은 폴더에서 부르는 것도 있고, `params/`·`structure/`·
+`diagnostic/`의 스크립트들이 `sys.path`에 `baseline/`을 넣거나 `importlib`으로 경로를
+직접 지정해 부르기도 합니다. **그 함수들의 시그니처를 바꾸면 갈래를 넘어 깨집니다.**
 
 > 새 실험을 추가할 때: 어느 갈래인지 정하고, 스크립트 맨 위의 `sys.path.insert`는
 > `parents[2]`(저장소 루트)를 가리켜야 합니다. 한 칸 깊어졌기 때문입니다.
@@ -30,19 +32,19 @@ experiments/
 | `seasonal_window.py` | 계절 전환기를 어떻게 넘나 | 분석 달 첫 14일로 배율 보정 |
 | `travel_estimate.py` | 이동시간 추정에 '퍼짐'을 넣으면 나아지나 | **아니다.** 계수가 음수로 나온다 — 퍼짐은 대여소 수의 대리 변수일 뿐 |
 | `min_qty_sweep.py` | 작업 문턱(2)이 맞나 | **문턱이 작동하지 않는다.** TOP_STATION_LIMIT(50)이 먼저 자른다 |
-| `top_limit_sweep.py` | 후보 상한(50)이 맞나 | **맞다.** 넓힐수록 결품은 주지만 **필요 차량이 보유 21대를 넘어** 집행이 안 된다 |
-| `limit_fixedpop_grid.py` | 후보 상한을 **같은(고정) 모집단**으로 다시 재면 `top_limit_sweep.py`(위)와 결론이 같나 | **반대다.** 두 달 모두 상한이 클수록 결품이 낮다 — 자기 모집단으로 잰 12장의 상한 비교는 무효였다(17장) |
+| `top_limit_sweep.py` | 후보 상한(50)이 맞나 | ⚠️ **계획 기준(`moved = rebal_qty`)이라 결품 크기 비교에 쓰지 말 것**(12장). 옛 결론 '50이 맞다'는 닫혔고, 상한 50은 17장에서 **정책 선택으로 유지**한다(최적이라 주장하지 않는다) |
+| `limit_fixedpop_grid.py` | 후보 상한을 **같은(고정) 모집단**으로 다시 재면, 자기 모집단으로 잰 `limit_fleet_grid.py`(12장)의 '상한 30~40이 낫다'가 유지되나 | **반대다.** 두 달 모두 상한이 클수록 결품이 낮다 — 자기 모집단으로 잰 12장의 상한 비교는 무효였다(17장) |
 | `limit_fleet_grid.py` | 상한 × 회차당 차량 수를 함께 흔들면 현행이 파레토 프론티어 위에 있나 | 🔴 **상한 축은 무효**(자기 모집단 결함 — 상한 비교는 `limit_fixedpop_grid.py`를 쓸 것). **차량 축은 유효** — 현행(21대)이 파레토 밖(12장) |
 | `gamma_sweep.py` | 거리 가중치 `γ`(3000)를 바꿔 예산 초과를 줄일 수 있나 | **두 목표를 동시에 개선하는 γ가 없다.** γ↓는 결품 −24%이나 예산 초과 0건 조합이 0개, γ↑는 결품 +74% → **γ=3000 유지, 운영 결정으로 넘김** |
 | `z_stockout_grid.py` | `z`를 **판정 지표(결품 시간)** 로 재면 1.99인가 | 1.65·1.80보다는 낫다. 2.10·2.33과는 못 가린다 ⚠️ **자기 후보를 모집단으로 써서 결함이 있다 — 판정에 쓰지 말 것**(18장) |
 | `z_fixedpop_grid.py` | 모집단을 바꿔도 같은 `z`가 이기나 | **각 모집단은 자기를 정의한 z를 뽑는다.** 중립(전체 대여소)으로 보면 전체 폭 5~23초 → `z=1.99` 유지. **z 판정은 이 스크립트로 한다** |
 | `center_stat_grid.py` | 중심 통계를 **중앙값 + z·MAD**로 바꾸면 나은가 | **가릴 수 없다.** 중립 모집단에서 1~18초(신호/잡음 0.1~2.8)이고 승자가 회차마다 갈린다. 각 방법은 **자기 후보를 모집단으로 삼으면 신호/잡음 5~31로 압승**한다 → **현행 유지**(28장) |
-| `z_fixedpop_grid.py --z-grid wide` | 🔴 **미실행(TODO 대기-7).** 0.0~2.81 **16개 값**으로 넓혀도 회차별 `z`가 필요한가 | — |
+| `z_fixedpop_grid.py --z-grid wide` | 0.0~2.81 **16개 값**으로 넓혀도 회차별 `z`가 필요한가 | **아니다.** 최저점은 회차마다 갈리지만 이득이 9~28초뿐이고 `z=0.25`는 +194초다 → 회차별 `z`를 두지 않는다(22장, TODO 대기-7 닫음) |
 | `cluster_count_sweep.py` | 군집 수 `K`를 줄이면 물량 손실이 주나 | **준다 — 결품 −17%·물량 +8%(24개 중 18개 우세). 그런데 군집의 80%가 예산 초과** → 채택 못 함. `K` 산정식이 거리를 모르는 것이 진짜 문제 |
 | `wanted_vehicles_geo_sweep.py` | 대여소 수 대신 후보 집합의 기하(BHH 근사)로 `K`를 정하면 나은가 | 채택 보류(5-H장) — 뒤이어 `tour_length_estimate.py`(diagnostic/)가 **세 어림 모두 현행보다 못함**을 확인(13장) |
 | `cluster_time_term.py` | 군집 목적함수의 거리 항을 메도이드 거리합 대신 **순회거리**로 바꾸면 나은가 | 예산 초과는 줄어도 **결품이 는다** — 맞바꿈, 채택 안 함(21장) |
 | `convention_sweep.py` | 관행값 넷(`REBAL_MIN_QTY`·`ADJUST_MAX_ITER`·`ADJUST_BALANCE_OK`·`ADJUST_BALANCE_LIMIT`)이 결품에 영향을 주나 | **셋은 씨앗 잡음에 묻혀 무의미, `REBAL_MIN_QTY`만 유의하나 문턱 1~3은 평지** → 넷 다 현행 유지(19장) |
-| `road_time_model.py` | 이동시간 계수를 쌓인 실측(고정 패널)으로 다시 추정하면 날짜·회차에 안정적인가 | 표본 밖 MAE 기준은 통과, **날짜별 변동계수 기준 미충족** — 아직 채택 안 함(20-A장, 자료 대기) |
+| `road_time_model.py` | 이동시간 계수를 쌓인 실측(고정 패널)으로 다시 추정하면 날짜·회차에 안정적인가 | 두 기준(표본 밖 MAE −20% 이상·날짜별 변동계수 15% 미만)은 **이미 통과**(MAE −25%대, 변동계수 2%대). 사전 등록한 **10일 표본 조건(09-02부터)을 아직 못 채워** 채택 안 함(20-A장) |
 
 `_convention_worker.py`·`_limit_plan_worker.py`는 표에 올리지 않았습니다 — 각각
 `convention_sweep.py`·`limit_fixedpop_grid.py`가 셀 하나를 별도 프로세스로 돌리려고
@@ -55,13 +57,17 @@ python experiments/params/seasonal_window.py    # 학습 창 비교
 python experiments/params/gamma_sweep.py         # γ 다월·다씨앗 (120회, 약 90분)
 python experiments/params/cluster_count_sweep.py  # 군집 수 K (약 15분)
 
-# z 넓은 격자 — 16개 값 x 씨앗 5 x 3회차 = 240회. 오래 걸리니 --out을 꼭 줄 것
+# z 넓은 격자(22장에서 돌려 닫았다) — 16개 값 x 씨앗 x 3회차. 오래 걸리니 --out을 꼭 줄 것
+# 22장 자료는 experiments/params/z_wide_2511.csv에 있다(씨앗 3개)
 python experiments/params/z_fixedpop_grid.py --z-grid wide `
   --seeds "42,7,13,21,99" --out experiments/params/z_wide_2511.csv
 ```
 
-셋 다 DB의 `net_demand`를 읽으므로 **여러 달의 순수요가 적재돼 있어야** 합니다
-(연속된 달이 최소 2개). 적재는 `tools/load_rentals.py --split-by-month` 참고.
+위 명령들은 DB의 `net_demand`(연속된 달 최소 2개 — 적재는
+`tools/load_rentals.py --split-by-month`)와 **`station_info` 스냅샷**을 함께 읽습니다.
+`z_fixedpop_grid.py`는 기본 라벨이 정본 `2026-08-11 real`이라 그 라벨이 없는 PC에서는
+돌지 않습니다 — `python tools/transfer_run.py --import <파일>`로 먼저 옮기십시오
+(EXPERIMENTS.md 1장 상자).
 
 ## baseline/ — 대조군 비교와 반복 실행 (논문용, 결과는 [../docs/분석/EXPERIMENTS.md](../docs/분석/EXPERIMENTS.md) 5장)
 
@@ -73,11 +79,12 @@ python experiments/params/z_fixedpop_grid.py --z-grid wide `
 | `baseline_compare.py` | 군집·ILP·`z`는 각각 제 몫을 하나 | 셋 다 한다. 특히 계획 기준 지표로는 **대조군을 구분조차 못 한다** |
 | `repeat_eval.py` | 그 차이가 달·씨앗을 바꿔도 유지되나 | 평균±표준편차와 Wilcoxon 검정으로 확인 |
 | `gamma_recheck.py` | `γ = 3000`이 다른 달에서도 맞나 | 편익(결품)과 비용(거리·시간)을 함께 본다 |
-| `budget_enforce.py` | 시간 예산을 제약으로 걸면 무엇을 잃나 | 초과 4건 → 0건, 대가는 **결품 +40초**. 기본은 꺼 둠 |
-| `ortools_gap.py` | greedy 경로가 최적에서 얼마나 떨어져 있나 | 갭을 재고, **빠져 있는 depot 복귀**도 함께 잰다 |
+| `budget_enforce.py` | 시간 예산을 제약으로 걸면 무엇을 잃나 | 추정 120분 기준으로는 결품 +40초로 싸 보이지만, **그것은 실도로로 158분을 허용한 것**이었다(5-E장). 실제 120분을 지키면 물량의 약 16%(126대)가 미집행되고 결품 악화는 3.6배. 기본은 계속 꺼 둠 |
+| `ortools_gap.py` | greedy 경로가 최적에서 얼마나 떨어져 있나 | 갭을 잰다 — greedy·OR-Tools **양쪽 다 depot 복귀 포함**(2026-08-27 정정). 이 실험이 1.19.1 이전의 **복귀 누락**을 찾아냈다(6장). 갭은 탐색 시간에 따라 커지므로 `--limit-sec`를 함께 밝힐 것 |
 | `ortools_gap_seeds.py` | 위 갭이 **씨앗에 얼마나 흔들리나** | **2.5배 흔들린다**(평균 1.93~4.86%, 최대 9.0~19.5%) — 논문의 "2.2%·최악 10.1%"는 씨앗 하나의 값이었다. 교체 결론은 유지, 서술만 범위로 고침(24장) |
 
-`ortools_gap.py`만 별도 설치가 필요합니다 — **파이프라인 의존성이 아닙니다.**
+`ortools_gap.py`(와 그것을 자식 프로세스로 부르는 `ortools_gap_seeds.py`)가 쓰는
+`ortools`는 2026-09-12부터 `requirements.txt` 기본 의존성입니다 — 따로 설치할 것이 없습니다.
 
 ```powershell
 # ortools는 2026-09-12부터 requirements.txt에 있다 — 따로 설치할 것 없다
@@ -101,8 +108,12 @@ python experiments/baseline/repeat_eval.py --periods "25년 09월,25년 10월,25
 
 ## structure/ — 설계를 정하기 위한 측정
 
-파라미터가 아니라 **설계를 정하기 위해** 잰 것들입니다. 결과는
-[docs/구현/steps/step0_raw.md](../docs/구현/steps/step0_raw.md)에 정리돼 있습니다.
+파라미터가 아니라 **설계를 정하기 위해** 잰 것들입니다. 결과는 스크립트마다
+흩어져 있습니다 — 평일/휴일·공휴일(`weekend_profile`·`holiday_impact`)은
+[step0_raw.md](../docs/구현/steps/step0_raw.md), 순수요 분포·모델 시도는
+[DEMAND_DISTRIBUTION.md](../docs/분석/DEMAND_DISTRIBUTION.md), 나머지는
+[EXPERIMENTS.md](../docs/분석/EXPERIMENTS.md)의 해당 장입니다(아래 표의 결론 칸에
+장 번호를 적었습니다).
 
 | 파일 | 물음 | 결론 |
 | --- | --- | --- |
@@ -111,14 +122,14 @@ python experiments/baseline/repeat_eval.py --periods "25년 09월,25년 10월,25
 | `holiday_impact.py` | 공휴일을 평일에서 빼면 얼마나 달라지나 | 연휴 낀 달의 작업 대상이 20~50% 늘어난다 |
 | `demand_distribution.py` | 순수요가 정규분포인가 | 대여소별로는 거의 정규. 문제는 꼬리가 아니라 추정 오차 |
 | `quantile_model_eval.py` | 분위수 모델이 mu+z·sigma를 이기나 | **아직 못 이긴다**(3개 검증 달 중 2패) |
-| `park2024_compare.py` | 같은 도시 선행연구(박정연 외 2024)의 모형이 mu+z·sigma를 이기나 | **못 이긴다** — 평일·휴일 모두 본 연구 우세(THESIS 9번, 2026-08-27 종료) |
+| `park2024_compare.py` | 같은 도시 선행연구(박정연 외 2024)의 모형이 mu+z·sigma를 이기나 | **못 이긴다** — 평일·휴일 모두 본 연구 우세(THESIS 10장 9번, 2026-08-27 종료). 베이스라인은 warmup을 뺀 직전 달 `mu+zσ`라 기준이 보수적이다 |
 | `pick_feasibility.py` | 빼 올 자전거가 정말 있나 | **있다.** 후보의 재고 0 비율 0%, 못 채우는 양 3.5%. '재고 0이 48.8%'는 전체 평균이었다 |
 | `history_window.py` | 1년치를 하드/소프트 스플릿으로 쓰면 나은가 | **아니다.** 과거를 많이 넣을수록 나빠진다. 겉보기 1위는 여유분(sigma)을 12% 키워 산 것이었다 |
 | `temporal_signal.py` | LSTM 같은 시퀀스 모델을 붙일 값어치가 있나 | **낮다.** 자기상관 0.79는 '기억'이 아니라 대여소 수준 차이다(lag 10일에도 0.77). 잔차 기억은 최대 0.30 |
 | `cross_station.py` | 대여소끼리 정보를 빌려 표본 부족을 메울 수 있나 | **아니다.** 개선 2.1%에 달별 승률 44~78%(우연). 대여소 간 진짜 차이가 추정 잡음의 **8.4배**라 뭉개는 손해가 크다 |
 | `od_flow.py` | 대여 흐름(OD)에 순수요 예측을 도울 신호가 있나 | **없다.** OD 구조는 안정적(상관 0.78)이지만, 흐름 이웃으로 당기면 최적 w=0(3/9). 이웃을 어떻게 정의하든 대여소 자신의 신호가 압도한다 |
 | ~~`travel_time_model.py`~~ | ~~이동시간 예측~~ | **삭제됨(1.23.1).** 정답표인 줄 안 `cum_sec`이 파이프라인 자신의 추정치였다 — 전제가 틀려 결과가 무의미했다. [ML_ATTEMPTS.md](../docs/분석/ML_ATTEMPTS.md) 7번 |
-| `observed_stockout.py` | 결품을 관측에서 직접 세면 복원과 얼마나 다른가 | 실측이 **+13% 크다**(복원은 하한이 맞았다). 수집 하루치라 잠정 |
+| `observed_stockout.py` | 결품을 관측에서 직접 세면 복원과 얼마나 다른가 | 하루치 +13% → 4일치 +7% → 20-B −26% → **32장(8일) −10%** 로 **부호가 뒤집힌 채 아직 안 멎었다.** 편향이 반대 방향으로 둘(복원의 0 절단 · 공사의 실제 재배치)이라 '하한'으로도 '과대추정'으로도 읽으면 안 된다. 수집 창 때문에 `_10_15` 한 회차만 대조 가능 |
 | `stock_decompose.py` | 재고 변화 중 **이용자 몫만 얼마나 크나**(트럭·사람 분리 문턱 1단계) | 이용자만으로도 10분에 **최대 26대**가 움직인다 — 단순 점프 문턱으론 못 가른다. 문턱 8이면 오인율 0.075%(ML_OPPORTUNITIES ②) |
 | `stockout_forecast.py` | **대여소가 N틱 뒤에 비어 있을 확률**을 맞힐 수 있나 (ML 아홉 번째 시도) | ✅ **처음으로 이겼다.** Brier 0.166 — 지속 규칙 0.239·과거 빈도 0.209를 **둘 다** 이긴다(사전 등록 조건). 보정이 거의 정확해(0.8이라 한 것의 실제 0.809) 우선순위에 바로 쓸 수 있고, 매 시각 상위 50곳을 고르면 **93.4%가 실제로 빈다**(무작위 49.9%). 🔴 **이겼을 때가 가장 위험해** 라벨 섞기·시간 겹침·피처 제거를 스크립트가 함께 찍는다(7번 시도는 교차검증을 통과하고도 틀렸다) |
 | `outlier_impact.py` | 이상치 제거가 계획을 바꾸나 | 바꾼다(작업 대상 13.4%). **그런데 IQR이 자르는 것은 오류가 아니라 정상 상위 4%였다** — 옮기지 않는다 |

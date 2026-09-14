@@ -261,7 +261,8 @@ def test_cost_benefit_prefers_stockout_and_says_so():
 
     assert result["y_label"] == "결품 감소 (시간)"
     assert [p["y"] for p in result["points"]] == [1.0, 1.0]
-    assert result["points"][0]["label"] == "05_10", "시간대는 색이 아니라 글자로 구분한다"
+    assert result["points"][0]["label"] == "_05_10", (
+        "시간대는 색이 아니라 글자로 구분하고, 표기는 맨 앞 밑줄까지가 값이다")
 
 
 def test_cost_benefit_falls_back_without_mixing_two_meanings():

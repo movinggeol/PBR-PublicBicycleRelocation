@@ -21,7 +21,11 @@ flowchart TD
     L --> M[불균형 개선 평가]
 ~~~
 
-각 단계는 CSV 파일을 주고받습니다. 따라서 다음 단계가 기대하는 폴더와 파일명으로 이전 단계의 결과가 생성되어야 합니다.
+각 단계는 CSV와 SQLite에 **함께** 씁니다(이중 기록). 다음 단계는 앞 단계 산출물을
+**DB에서 먼저** 읽고, 없을 때만 CSV로 물러섭니다(`db.read_step_output`, 1.26.164~167).
+그래서 같은 실행 라벨(순수요는 기간)의 DB 행이 있으면 **CSV를 고쳐도 반영되지 않습니다.**
+CSV 경로로 갈 때를 대비해 파일명 규약은 그대로 지킵니다 — 다음 단계가 기대하는 폴더와
+파일명으로 이전 단계의 결과가 생성되어야 합니다.
 
 ## 2. 저장소 구조
 
@@ -78,7 +82,14 @@ pipeline/step0_collect/tashu_api.py가 TASHU API에서 대여소별 현재 재�
 
 ### 공공데이터포털 대여 이력
 
-data/raw_data/에 타슈 대여 이력 CSV를 둡니다. 월별 파일은 pipeline/step0_eda/concat_1year_file.py로 병합할 수 있습니다.
+data/raw_data/에 타슈 대여 이력 CSV를 둡니다. 월별 파일은
+`pipeline/step0_eda/concat_1year_file.py --concat`으로 병합할 수 있습니다
+(옵션 없이 부르면 병합하지 않습니다).
+
+⚠️ **파이프라인은 원천 CSV를 기간으로 거르지 않습니다.** `rental_history`에 그 기간이
+적재돼 있지 않으면 `--raw-file` **전체**를 `--period` 한 달로 읽습니다. 병합본(기본
+`--raw-file`)을 쓰려면 먼저 `python tools/load_rentals.py --split-by-month`로 적재하거나,
+그 달만 담긴 CSV를 `--raw-file`로 주십시오(`project_config.DEFAULT_RAW_FILE` 주석).
 
 주요 입력 항목은 대여·반납 시각, 출발·도착 대여소 ID입니다.
 
@@ -155,7 +166,9 @@ K-Medoids 기반 공간 클러스터링은 작업 대여소를 가까운 군집�
 
 pipeline/step2_optimize/ilp.py는 클러스터별 Pick 대여소에서 Drop 대여소로 이동할 자전거 수를 정수선형계획법으로 계산합니다.
 
-입력은 top 후보 CSV이며, 주요 컬럼은 station_id, lat, lon, pick_qty, drop_qty, cluster입니다.
+입력은 step1 후보(`top{duration} ({now})`, DB `pick_drop` 우선)이며 ILP가 요구하는
+컬럼은 station_id, lat, lon, rebal_qty, cluster입니다. pick_qty·drop_qty는 ilp.py가
+rebal_qty의 부호로 나눠 만듭니다(음수 → pick_qty, 양수 → drop_qty).
 
 결정변수 x(i,j)는 Pick 대여소 i에서 Drop 대여소 j로 옮기는 자전거 수입니다.
 
@@ -166,7 +179,9 @@ pipeline/step2_optimize/ilp.py는 클러스터별 Pick 대여소에서 Drop 대�
 3. 클러스터 총 이동량은 총 Pick과 총 Drop 중 작은 값
 4. 이동 수량은 음수가 아닌 정수
 
-목적함수는 대여소 간 Haversine 거리에서 환산한 이동시간과 이동 수량의 합을 최소화합니다.
+목적함수는 `min Σ T(i,j)·x(i,j)`입니다 — Haversine 거리를 25 km/h로 환산한 이동시간
+T에 **옮기는 대수를 곱해** 더한 값을 최소화합니다. 실제 운행시간은 VRP의 방문 순서가
+정하므로 이것은 대리 목적함수입니다(ilp.py 주석 · [FORMULATION.md](../분석/FORMULATION.md)).
 
 - 기본 차량 속도: 25 km/h (`project_config.VEHICLE_SPEED_KMPH`)
 - 요일 구분: `--day-type weekday|holiday|auto` (기본 auto = 계획 대상일로 판정).
@@ -212,11 +227,15 @@ vrp.py는 ILP 결과를 실제 차량이 수행할 방문 순서로 바꿉니다
 출력은 data/pp_data/VRP/VRP_plan{duration} ({now}).csv입니다.
 
 > Pick 후보만 있고 Drop 후보가 없는 시간대(옮길 곳이 없는 경우)에는 재배치가
-> 성립하지 않으므로 step1이 해당 회차를 건너뛰고, step2·step4도 함께 건너뜁니다.
+> 성립하지 않으므로 step1이 해당 회차를 건너뛰고, step2·step3·step4도 함께
+> 건너뜁니다(step3는 1.26.129부터).
 
 ## 8. Step 3: 지도 시각화
 
-pipeline/step3_map/module.py는 CSV 좌표와 경로를 정규화하고 TMAP 응답을 처리합니다. main.py는 VRP 경로, Pick·Drop 마커, 클러스터 정보를 Folium 지도에 표시합니다.
+pipeline/step3_map/module.py는 TMAP 호출(엔드포인트 선택·한도 폴백·호출 예산·분할
+호출), 응답의 누적 도착시간 계산·병합, 회차 출동 시각(`start_time_for`) 계산을 맡습니다.
+main.py는 VRP 계획과 step1 후보로 경로점을 만들고, VRP 경로·Pick·Drop 마커·클러스터
+정보를 Folium 지도에 표시합니다.
 
 - 입력: VRP 계획 CSV, Pick·Drop 후보 CSV
 - API 키: .env의 API_KEY
@@ -253,7 +272,8 @@ python run_pipeline.py                    # 전체 실행
 각 스크립트도 같은 공통 옵션(`--now` 등)을 그대로 받습니다.
 
 ~~~powershell
-python "pipeline/step0_eda/concat_1year_file.py"   # 월별 파일을 합칠 때만
+python "pipeline/step0_eda/concat_1year_file.py" --concat   # 월별 파일을 합칠 때만
+                                                  # (옵션 없이 부르면 병합하지 않는다)
 python "pipeline/step0_collect/tashu_api.py"
 python "pipeline/step0_collect/extract_parking_lot.py"
 python "pipeline/step0_collect/api_to_info.py"
@@ -275,7 +295,8 @@ python "pipeline/step4_metrics/imbalance.py"
 - 대여소 ID와 좌표가 중복·누락되지 않았는가
 - 재고·거치대 수가 음수 또는 비정상 값이 아닌가
 - TASHU_API_KEY와 API_KEY가 .env에 있는가
-- 각 단계의 출력 CSV가 다음 단계의 입력 경로에 존재하는가
+- 각 단계 산출물이 DB(같은 run_label·duration, 순수요는 period)에 있는가 —
+  없으면 CSV 경로에 있는가
 - API 키와 원천 데이터가 Git에 포함되지 않았는가
 
 ## 12. 개선 방향

@@ -1,8 +1,8 @@
 """기존 CSV 산출물을 SQLite(bike_system.db)로 적재한다 (DB_PLAN.md 1단계).
 
 파일명에 박혀 있던 {now}/{period}/{duration} 라벨을 컬럼으로 옮긴다.
-step 스크립트는 아직 CSV를 쓰므로, 이 도구로 DB에 밀어 넣어 두면
-웹 API와 실행 간 비교를 DB 기준으로 시험해볼 수 있다.
+step 스크립트는 `db.save_output()`으로 CSV와 DB에 **함께** 쓴다(이중 기록). 이
+도구는 DB 도입(2026-08-07) 이전에 CSV로만 남은 산출물을 DB로 옮길 때 쓴다.
 
 실행:
     python tools/csv_to_db.py                       # project_config 기본 라벨

@@ -205,7 +205,8 @@ def calculate_rebal_qty(stats: pd.DataFrame, duration: str, now: str, z=None,
             if 최대 < MAX_CAPACITY else "")
     print(f"  한 대여소 최대 계획량 {최대}대{꼬리}")
 
-    # CSV·DB 이중 기록 (DB_PLAN 2단계). CSV가 아직 정본이다.
+    # CSV·DB 이중 기록 (DB_PLAN 2단계). 다음 단계는 DB를 먼저 읽는다
+    # (db.read_step_output, 1.26.166) — CSV는 DB가 비었을 때의 폴백이다.
     db.save_output("rebalance_plan", stats, run_label=now, duration=duration,
                    day_type=day_type)
 
@@ -269,9 +270,10 @@ if __name__ == '__main__':
             print(f"[안내] 계절 보정 건너뜀 — {config.warmup_label} 순수요가 없습니다"
                   f" ({warmup_path.name}). 지난달 통계를 그대로 씁니다.")
 
-    # 재배치 시간은 05시, 15시로 2회, 재배치 시간은 대충 2시간으로 잡고,
-    # 05~07시 재배치 기준은(05~14:59), 15~17시 재배치 기준은(15~04:59) 동안 사용할 양이다.
-    # 시간대 목록은 project_config의 --duration(콤마 구분)으로 지정한다. 예: "_05_10,_10_15"
+    # 시간대 목록은 --duration(콤마 구분)으로 준다. 예: "_05_10,_10_15"
+    # 각 창은 project_config.DURATIONS이고(낮 셋은 5시간, 자정을 넘는 `_20_05`는
+    # 9시간 — duration_hours()), 목표 재고는 **그 창 동안 쓸 양**이다.
+    # 하루 몇 회차를 도는지는 운영 문제다(docs/구현/FLEET.md).
     for duration in duration_list(config):
         net_temp = net_daily
         stats, daily, ratio = build_stats(

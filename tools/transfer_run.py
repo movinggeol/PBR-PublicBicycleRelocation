@@ -23,7 +23,8 @@
 
 ## 무엇을 나르나
 
-`run_label`로 묶이는 **모든 테이블**을 담는다(`runs`부터 `kpi_summary`까지 14개).
+`run_label`로 묶이는 테이블 중 `road_leg`를 뺀 전부를 담는다(아래 `RUN_TABLES`의
+**12개** — `runs`부터 `vehicle_assignment`까지).
 `net_demand`는 **담지 않는다** — 기간(`period`) 스코프이고 원천 대여이력에서
 `tools/rebuild_net_demand.py`로 다시 만들 수 있다. 원천 CSV는 어차피 양쪽에
 있어야 한다.
@@ -43,7 +44,7 @@
 
     # 받는 PC에서 (USB·클라우드로 파일을 옮긴 뒤)
     python tools/transfer_run.py --import data/transfer/run_20260811_real.db --dry-run
-    python tools/transfer_run.py --import run_20260811.db
+    python tools/transfer_run.py --import data/transfer/run_20260811_real.db
 """
 from __future__ import annotations
 

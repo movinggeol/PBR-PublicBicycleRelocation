@@ -1,4 +1,4 @@
-"""실험 — 박정연 외(2024)의 모형이 `mu + z·sigma`를 이기는가 (THESIS 9번).
+"""실험 — 박정연 외(2024)의 모형이 `mu + z·sigma`를 이기는가 (THESIS.md 10장 권장 순서 9번).
 
 같은 도시·같은 시스템(대전 타슈)을 다룬 선행연구가 쓴 세 모형을 **본 연구의
 타깃(순수요)에 적용**해, 현행 방식과 **같은 자로** 비교한다.
@@ -266,7 +266,10 @@ def main() -> int:
             if len(train) < 200 or len(test) < 100:
                 continue
 
-            # ── 베이스라인: 본 연구의 mu + z·sigma (직전 달 통계) ──
+            # ── 베이스라인: 직전 달 mu + z·sigma ──
+            # ⚠️ 현행 파이프라인의 계절 보정(warmup 14일)은 뺐다 — 학습 창을 비교
+            # 대상 모형들과 맞추기 위해서다. 현행(prev1 + warmup)보다 약한 기준이라
+            # 이 비교에서 본 연구가 이기는 것은 보수적인 결과다.
             g = train.groupby("station_id")["demand"]
             base_mu, base_sd = g.mean(), g.std().fillna(0.0)
             base_pred = test["station_id"].map(base_mu).fillna(0.0).to_numpy(float)
@@ -275,7 +278,7 @@ def main() -> int:
                 continue
             fixed = ruler["buffer"]
             rows.append(dict(duration=duration, period=test_period,
-                             method="본 연구 (mu+zσ)", **measure(
+                             method="직전 달 mu+zσ (warmup 없음)", **measure(
                                  base_pred, base_sd, test, args.z, fixed)))
 
             # 쓸 수 있는 변수만 고른다 (한 달 학습이면 계절이 빠진다)
@@ -307,7 +310,7 @@ def main() -> int:
         return 1
 
     frame = pd.DataFrame(rows)
-    order = ["본 연구 (mu+zσ)", "선형혼합효과", "선형회귀"]
+    order = ["직전 달 mu+zσ (warmup 없음)", "선형혼합효과", "선형회귀"]
 
     if dropped:
         print("⚠️ 설계행렬 rank 때문에 뺀 변수: 평균 %.1f개 / %d개"
@@ -331,7 +334,7 @@ def main() -> int:
                             values="mae").reindex(
         [m for m in order if m in frame["method"].unique()]).round(3).to_string())
 
-    base_name = "본 연구 (mu+zσ)"
+    base_name = "직전 달 mu+zσ (warmup 없음)"
     if base_name in summary.index:
         base = summary.loc[base_name]
         print("\n=== 판정 ===")

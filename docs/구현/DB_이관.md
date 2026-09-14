@@ -190,8 +190,9 @@ Expand-Archive data\transfer\collected.zip -DestinationPath data\transfer\  # �
 | `stock_history` | 10분마다 쌓는 **재고 시계열** | `collect_stock.py` |
 | `road_leg` | 고정 패널 **TMAP 실측** | `collect_road_time.py` |
 
-> 🔑 **이쪽은 "합치는" 것이지 "덮는" 것이 아닙니다.** 두 PC가 **각자 다른 창을
-> 맡아** 수집하므로(예: A는 평일, B는 휴일) 양쪽에 서로 다른 관측이 있습니다.
+> 🔑 **이쪽은 "합치는" 것이지 "덮는" 것이 아닙니다.** 두 PC가 **같은 창(매일
+> 07:00–23:00)으로 걸어 두고 켜져 있는 시간이 달라**(회사=낮, 집=저녁)
+> 양쪽에 서로 다른 틱이 있습니다([두_PC_작업.md](두_PC_작업.md) 0장).
 > 덮어쓰면 한쪽 관측이 사라집니다 — 그래서 받는 쪽은 **먼저 수집한 것이
 > 이깁니다**(`INSERT OR IGNORE`).
 
@@ -269,7 +270,7 @@ python tools/merge_stock.py data/transfer/collected.db
 | 내보내기 | `transfer_run.py --export…` | `export_collected.py` |
 | 받기 | `transfer_run.py --import` | **`merge_stock.py`** |
 | 겹칠 때 | **멈춘다** (`--overwrite` 필요) | **합친다** (먼저 것이 이김) |
-| 왜 | 실험 결과가 붙어 있어 덮으면 안 됨 | 각자 다른 창을 관측해 둘 다 필요 |
+| 왜 | 실험 결과가 붙어 있어 덮으면 안 됨 | 각자 켜져 있던 시간의 관측이라 둘 다 필요 |
 
 ---
 

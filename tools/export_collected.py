@@ -166,7 +166,8 @@ def main() -> int:
         for name, rows in counts.items():
             print(f"  {name:16s} {rows:>9,} 행")
         print(f"\n합계 {sum(counts.values()):,}행."
-              f" 받는 PC에서: python tools/merge_stock.py {out.name}")
+              f" 받는 PC에서: python tools/merge_stock.py {out.as_posix()}"
+              "  (파일을 옮긴 뒤 그 PC의 경로로)")
         if not args.road:
             print("  (TMAP 실측도 옮기려면 --road 를 주십시오)")
     return 0

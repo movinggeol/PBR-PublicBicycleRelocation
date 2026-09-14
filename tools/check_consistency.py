@@ -60,6 +60,16 @@ HISTORY_DOCS = {
 }
 
 SKIP_DIRS = {".venv", ".git", "node_modules", "__pycache__", "site-packages"}
+# git worktree 사본은 저장소 안(.claude/worktrees/)에 만들어져도 '지금 문서'가 아니다.
+# 빼지 않으면 사본의 문서까지 훑어 값·링크·파일별 검사가 사본 경로로 거짓 실패한다
+# (1.26.198 점검 중 실제로 167건이 났다).
+SKIP_PREFIXES = (".claude/worktrees/",)
+
+
+def _skipped(path: Path) -> bool:
+    if any(part in SKIP_DIRS for part in path.parts):
+        return True
+    return path.relative_to(ROOT).as_posix().startswith(SKIP_PREFIXES)
 
 
 # ── 진실의 출처 ───────────────────────────────────────────────────────
@@ -281,7 +291,7 @@ def _same_number(found: str, truth: str) -> bool:
 def _scan_targets() -> list[Path]:
     out = []
     for path in ROOT.rglob("*"):
-        if any(part in SKIP_DIRS for part in path.parts):
+        if _skipped(path):
             continue
         if not path.is_file():
             continue
@@ -673,7 +683,7 @@ def check_links() -> list[str]:
     """
     problems: list[str] = []
     for path in sorted(ROOT.rglob("*.md")):
-        if any(part in SKIP_DIRS for part in path.parts):
+        if _skipped(path):
             continue
         rel = path.relative_to(ROOT).as_posix()
         try:

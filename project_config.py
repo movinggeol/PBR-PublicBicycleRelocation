@@ -56,6 +56,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 # 넣어도 **스텝에는 안 들었다**(1.26.124에서 넣었다가 27개가 깨져 되돌림).
 # 반쯤 듣는 격리 스위치는 *지켜 주는 척하는 장치*라 더 나쁘다 — 1.26.141에서
 # 44곳을 `DATA_ROOT` 기준으로 모두 바꾼 뒤에야 이 변수를 열었다.
+# ⚠️ 예외 하나: 원천 입력의 **기본값**(DEFAULT_RAW_FILE·DEFAULT_WEATHER_FILE)은
+# 상대경로를 PROJECT_ROOT에 붙이므로 PBR_DATA_ROOT를 따르지 않는다 — 격리 실행에서
+# 다른 원천을 쓰려면 `--raw-file`·`PBR_WEATHER_FILE`을 절대경로로 준다.
 DATA_ROOT = Path(os.getenv("PBR_DATA_ROOT") or (PROJECT_ROOT / "data")).resolve()
 PP_ROOT = DATA_ROOT / "pp_data"
 
@@ -97,7 +100,8 @@ def env_float(name: str, default) -> float:
 DEFAULT_NOW = os.getenv("PBR_NOW", "2026-05-21 18")
 
 # ---- 시간대 (duration) ----
-# 하루를 5시간 창 넷으로 자른다. **맨 앞 밑줄까지가 값**이다(`_10_15`) — 예시를
+# 하루를 창 넷으로 자른다 — 셋은 5시간, 자정을 넘는 `_20_05`는 9시간이다.
+# **맨 앞 밑줄까지가 값**이다(`_10_15`) — 예시를
 # `10_15`로 적으면 그대로 입력한 사용자가 step4 duration_hours()에서 크래시를 본다.
 # 창마다 수요 방향이 반대라 섞어서 평균 내지 않는다(docs/분석/KPI.md).
 # `_20_05`는 자정을 넘긴다 — 시간 목록을 만드는 곳은 duration_hours() 하나다.
@@ -150,7 +154,8 @@ DEFAULT_PERIOD = os.getenv("PBR_PERIOD") or latest_period()
 
 # ---- 요일 구분 (평일/휴일) ----
 # **휴일 = 주말 ∪ 공휴일**이다. 평일과 휴일은 수요 구조가 다르므로 한 통계로
-# 섞지 않는다. 실측(12개월): `_10_15`·`_15_20`에서 대여소의 33~37%가 두 구분에서
+# 섞지 않는다. 실측(12개월, 1.14.0 — 당시 측정은 평일=월~금 대 주말=토·일이고
+# 공휴일을 가르기 전이다): `_10_15`·`_15_20`에서 대여소의 33~37%가 두 구분에서
 # **부호가 반대**였다(평일엔 채워야 할 곳이 휴일엔 빼 와야 할 곳). 섞어서 평균 내면
 # 서로 상쇄돼 작업 대상에서 빠진다. 근거: experiments/structure/weekend_profile.py
 #
@@ -329,7 +334,10 @@ VEHICLE_SPEED_KMPH = env_float("PBR_VEHICLE_SPEED_KMPH", 25)
 #
 # ⚠️ **기본은 꺼져 있다(USE_ROAD_MODEL=False).** 켜면 문서의 모든 수치
 # (대조군 비교·z·γ 실험)가 그 위에서 나온 값과 달라진다. 재현성을 잃는 대가가
-# 크고, 근거가 아직 **하루치 한 번**이다. 여러 날 쌓인 뒤에 기본값을 정한다.
+# 크고, 현행 계수(275초·27.3km/h)는 **하루치 한 번**(1.26.7)에서 나왔다. 여러 날
+# 수집은 진행 중이고 채택 기준(표본 밖 MAE −20% · 날짜별 계수 변동계수 15% 미만 ·
+# 10일 이상)은 사전 등록돼 있다(docs/구현/COLLECTOR_ROAD.md 9장). 그 조건이 차고
+# 같은 기준으로 다시 재기 전에는 기본값을 바꾸지 않는다.
 # 켜려면 `PBR_USE_ROAD_MODEL=1`.
 USE_ROAD_MODEL = os.getenv("PBR_USE_ROAD_MODEL", "").strip().lower() in (
     "1", "true", "yes", "on")
@@ -453,8 +461,9 @@ def normalize_per_round(value) -> int:
 
 
 FLEET_SIZE = normalize_fleet_size(os.getenv("PBR_FLEET_SIZE", DEFAULT_FLEET_SIZE))
-# 보유 대수보다 많이 투입할 수는 없다. 대수를 10대 미만으로 줄이면 회차 투입
-# 상한도 함께 내려간다(안 그러면 step1이 만든 클러스터에 배정할 차가 모자라 step2가 죽는다).
+# 보유 대수보다 많이 투입할 수는 없다. 회차 투입 상한의 기본값이 보유 대수(21)와
+# 같으므로(1.19.1~), 보유 대수를 줄이면 상한도 그만큼 내려간다 — 안 그러면 step1이
+# 만든 클러스터에 배정할 차가 모자라 step2가 죽는다.
 VEHICLES_PER_ROUND = min(
     normalize_per_round(os.getenv("PBR_VEHICLES_PER_ROUND", DEFAULT_VEHICLES_PER_ROUND)),
     FLEET_SIZE,
@@ -588,9 +597,10 @@ TARGET_QTY_UPPER_RATIO = env_float("PBR_TARGET_QTY_UPPER_RATIO", 1.5)
 # 실데이터에서는 늘 회차당 투입 상한(10)에 걸려 **사실상 10대 고정**이었다.
 #
 # **이동 계수는 실측이다** (26년 03월 평일·복귀 포함, 같은 재고로 K를 바꿔 3회):
-#   이동분/곳 = 10.2 ~ 15.7, 평균 12.5. **K를 바꿔도 거의 변하지 않았다** —
+#   이동분/곳 = 10.2(K=10) → 13.0(K=18). **K를 바꿔도 거의 변하지 않았다** —
 #   군집을 쪼개면 depot 왕복이 늘지만 군집 안 이동이 그만큼 줄어 상쇄된다
 #   (총 소요 1252분@K=10 -> 1278분@K=12 -> 1426분@K=18).
+#   기본값 12.5는 이 범위의 보수 쪽 값으로 1.19.1에서 정했다.
 TRAVEL_MIN_PER_STATION = env_float("PBR_TRAVEL_MIN_PER_STATION", 12.5)
 
 # ── 회차당 필요 차량 추정에 거리를 반영할지 (1.26.10, EXPERIMENTS.md 5-G장) ──

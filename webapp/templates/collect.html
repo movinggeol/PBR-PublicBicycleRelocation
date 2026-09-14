@@ -6,9 +6,9 @@
 
 <section class="hero">
   <h1>재고 수집</h1>
-  <p class="lead">대여소 재고를 10분마다 받아 쌓은 <b>실측 기록</b>입니다.
-    결품 지표가 여기서 나옵니다 — 계획이 만들어 낸 값이 아니라
-    <b>실제로 관측한 것</b>입니다.</p>
+  <p class="lead">대여소 재고를 수집 창 동안 10분마다 받아 쌓은 <b>실측 기록</b>입니다.
+    성과 지표 화면의 결품 시간은 순수요로 복원한 <b>시뮬레이션</b>이고, 이 기록은
+    그 복원값을 <b>실제 관측과 맞대어 보는 데</b>(보정 계수·논문의 관측 결품) 씁니다.</p>
 </section>
 
 {% if error %}
@@ -16,9 +16,10 @@
   터미널에서 <code>python tools/collect_stock.py --status</code>로 확인하세요.</span></div>
 
 {% elif not rows %}
-<p class="empty">아직 수집한 재고가 없습니다.
-  <code>scripts/collector.ps1 install</code>로 수집을 시작하세요
-  (<a href="/guide">사용 안내</a>).</p>
+<p class="empty">아직 수집한 재고가 없습니다. 저장소 폴더의 PowerShell에서
+  <code>.\scripts\collector.ps1 install -Window 07:00-23:00 -IncludeHolidays</code>로
+  등록하세요 — 인자를 빼면 평일 09:00–17:00으로 등록됩니다.
+  <a href="/guide#collect">수집 안내 →</a></p>
 
 {% else %}
 {# 🔴 수집이 두 번 조용히 멈췄고(1.26.103·1.26.140) 둘 다 사람이 터미널을
@@ -43,7 +44,7 @@
 
 <div class="tiles">
   <div class="tile">
-    <p class="label"><span class="tip" data-tip="한 틱은 한 번의 수집입니다. 10분 간격이라 하루 온종일 돌면 91틱입니다.">쌓인 관측</span></p>
+    <p class="label"><span class="tip" data-tip="한 틱은 한 번의 수집입니다. 하루 기대 틱은 등록된 창과 간격이 정합니다 — 지금 기준이면 아래 '기대' 열의 값입니다.">쌓인 관측</span></p>
     <p class="value">{{ "{:,}".format(total_ticks) }}<span class="unit">틱</span></p>
     <p class="sub muted">{{ days }}일 · 대여소 {{ "{:,}".format(stations) }}곳</p>
   </div>

@@ -26,8 +26,11 @@
 >
 > 📌 **이 필터는 계획 경로에 걸리지 않습니다.** 순수요를 만드는
 > [`raw_to_net.py`](step0_raw.md)는 시각·대여소ID 네 컬럼만 읽어서 이용시간·이용거리를
-> 보지 않습니다. 걸었어야 했는지는 `experiments/structure/outlier_impact.py`가 재는
-> 물음이고, 아직 판정이 남아 있습니다([DECISIONS.md](../../분석/DECISIONS.md) 6-1).
+> 보지 않습니다. 걸었어야 했는지는 `experiments/structure/outlier_impact.py`로 쟀고
+> **옮기지 않기로 결론이 났습니다**(1.20.8) — 원천이 이미 46분·3.7km로 캡돼 있어
+> IQR 울타리가 자르는 것은 오류가 아니라 정상 이용의 상위 4%였고, 옮기면 작업 대상이
+> 13.4% 뒤바뀝니다([DECISIONS.md](../../분석/DECISIONS.md) 6-1). 그래서 이 산출물은
+> EDA·문서용입니다.
 
 ### `EDA.py`
 - **처리**: 그래프 3장을 PNG로 만듭니다(1.26.77). 예전에는 `month_graph`가 이름과
@@ -79,4 +82,5 @@ pyplot을 들이기 **전에** `matplotlib.use("Agg")`로 백엔드를 고정합
   3장을 PNG로 남깁니다. 참고 코드
   ([matplotlib_month_graph.py](../../../experiments/learning/matplotlib_month_graph.py))의
   `plt.show()`와 글꼴 경로 하드코딩은 **가져오지 않았습니다**(위 ⚠️ 참고).
-- [ ] 이상치 제거 기준(IQR×1.5)을 README 또는 본 문서의 데이터 품질 섹션에 명시
+- [x] ~~이상치 제거 기준(IQR×1.5) 명시~~ — 본 문서 `concat_1year_file.py` 항목과
+  [DECISIONS.md](../../분석/DECISIONS.md) 6-1(근거·측정·결론, 1.20.8)

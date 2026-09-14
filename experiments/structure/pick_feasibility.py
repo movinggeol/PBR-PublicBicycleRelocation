@@ -1,8 +1,8 @@
 """빼 올 자전거가 정말 있는가 — `pick` 후보의 실재성 검증 (TODO 1-4 후속).
 
-ILP는 군집마다 **총 pick = 총 drop**으로 맞춘다. 즉 "여기서 N대를 빼서 저기에
-N대를 놓는다"가 계획의 뼈대다. 그런데 그 전제가 **`pick` 대여소에 실제로 N대가
-있다**는 것이다.
+ILP는 군집마다 **옮길 총량 = min(총 pick, 총 drop)**으로 정하고, pick 대여소에서
+drop 대여소로 짝지어 옮긴다. 즉 "여기서 N대를 빼서 저기에 N대를 놓는다"가 계획의
+뼈대다. 그런데 그 전제가 **`pick` 대여소에 실제로 N대가 있다**는 것이다.
 
 1.21.0에서 수집 재고를 처음 들여다보니 **관측의 48.8%가 재고 0**이었고 1,372곳 중
 261곳은 내내 비어 있었다. 그렇다면 의심할 만하다.
@@ -122,7 +122,10 @@ def by_hour(picks: pd.DataFrame, observed: pd.DataFrame, duration: str) -> pd.Da
 def main() -> int:
     parser = argparse.ArgumentParser(description="pick 후보 실재성 검증")
     parser.add_argument("--duration", help="시간대 하나만")
-    parser.add_argument("--run-label", help="실행 라벨 (기본: 최신)")
+    # ⚠️ 기본값은 `db.latest_label()`이 아니라 pick_drop의 **사전순 MAX**다 —
+    #    `sweep-*` 같은 실험 라벨이 날짜 라벨을 이긴다. 계획 실행을 보려면 라벨을
+    #    직접 주십시오(1.26.125 기록 참고).
+    parser.add_argument("--run-label", help="실행 라벨 (기본: 사전순 MAX — 실험 라벨이 잡힐 수 있다)")
     args, _ = parser.parse_known_args()
 
     observed = load_observed()

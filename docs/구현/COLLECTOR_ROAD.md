@@ -169,7 +169,7 @@ TMAP에서 **매일 같은 구간**의 실도로 소요시간을 받아 쌓습�
 ## 6. 운영 명령
 
 ```powershell
-.\scripts\road_collector.ps1 install                    # 등록 (관리자 권한 필요)
+.\scripts\road_collector.ps1 install                    # 등록 (기존 작업을 덮어쓸 때는 관리자 권한)
 .\scripts\road_collector.ps1 install -Slots 10:00,16:00 # 시각을 직접 정한다
 .\scripts\road_collector.ps1 status                     # 스케줄 + 쌓인 현황
 .\scripts\road_collector.ps1 now                        # 지금 모자란 회차만
@@ -189,10 +189,10 @@ python tools/collect_road_time.py --durations _05_10,_10_15
 python tools/collect_road_time.py --date 2026-09-04 # 라벨 날짜를 직접
 ```
 
-> ℹ️ **권한** — 이미 등록된 작업을 다시 걸거나(`install` 재실행) 켜고 끄는 것은
-> 일반 권한으로 됩니다(2026-09-03 실측). **작업을 처음 만들 때**는
-> `Access is denied`가 날 수 있는데, 그때만 관리자 권한 PowerShell로 한 번
-> 돌리면 됩니다.
+> ℹ️ **권한** — 켜고 끄기(`pause`·`resume`)는 일반 권한으로 됩니다.
+> **이미 있는 작업을 `install`로 덮어쓸 때는 관리자 권한 PowerShell에서
+> 실행하십시오** — 2026-09-03에는 일반 권한으로 됐지만 2026-09-08에는
+> `Access is denied`로 실패했습니다(11-1장).
 
 **데이터를 지우는 명령은 없습니다.** `pause`·`uninstall` 모두 스케줄만 건드립니다.
 
@@ -206,11 +206,11 @@ python tools/collect_road_time.py --date 2026-09-04 # 라벨 날짜를 직접
 | | **재고** (`collect_stock.py`) | **도로** (이 문서) |
 | --- | --- | --- |
 | 무엇이 값을 정하나 | **부른 시각** — 그때의 재고 | **`startTime`** — 부른 시각과 무관 |
-| 창 가드 | 있음 (07:00–22:00) | **없음** — 아무 때나 |
+| 창 가드 | 있음 (등록된 창 — 운영 07:00–23:00) | **없음** — 아무 때나 |
 | 놓친 틱 | 10분 뒤 다음 틱이 온다 | **하루치가 통째로 걸린다** |
 | `StartWhenAvailable` | 끔 | **켬** |
 | 비용 | 무료 API | **유료 TMAP · 일일 한도** |
-| 하루 호출 | 90틱 × 대여소 | **20건** |
+| 하루 호출 | 97틱 × 1호출 (한 번에 전 대여소) | **20건** |
 | 두 환경이 겹치면 | **안전** — 병합 때 `INSERT OR IGNORE`로 걸러진다 | **낭비** — 표본은 안 늘고 한도만 두 배 |
 | 분담 | **안 나눈다** — 둘 다 매일 07:00–23:00, 켜져 있는 만큼 | **한 환경만** 돌린다 |
 

@@ -165,14 +165,16 @@ webapp/
 ├── app.py        # FastAPI 라우트 (페이지 + JSON API)
 ├── orders.py     # 작업지시서 조립·실시간 재고 대조 판정 (저장 안 함)
 ├── weather_view.py # 지금 날씨·내일 예보 → 화면 문구 (10·30분 캐시, 실패해도 화면은 산다)
-├── charts.py     # 인라인 SVG 그래프 (꺾은선·산점도·히트맵)
+├── charts.py     # 인라인 SVG 그래프 (꺾은선·막대·편차 막대·산점도·히트맵)
 ├── kpi_view.py   # 성과 화면 데이터 조립 (추세·효과비용·예측정확도·수요구조)
 ├── jobs.py       # run_pipeline.py를 subprocess로 실행, 상태·로그 추적
 ├── store.py      # 산출물 조회 계층 — DB가 정본 (폴백 없음, 1.26.165)
 ├── catalog.py    # data/pp_data 파일 스캔(지도·CSV 목록), 안전한 경로 해석
+├── collect_view.py # 재고 수집 현황 화면 재료 (판정은 tools/collect_stock.py가 한다)
 ├── __main__.py   # python -m webapp 진입점 (의존성 확인 후 uvicorn 기동)
-└── templates/    # base(레이아웃·디자인 시스템) + index, guide, run_detail,
-                 #   kpi, vehicles, maps, view, data, preview
+└── templates/    # base(레이아웃·디자인 시스템) + home(현황판), index(실행), guide,
+                 #   run_detail, kpi, vehicles, orders, maps, view, data,
+                 #   preview, collect, device(모바일 기기 프레임), error
 ```
 
 `store.py`는 **데이터**(지표·계획)를, `catalog.py`는 **파일**(지도 HTML·CSV 다운로드)을
@@ -195,12 +197,13 @@ Apple 디자인 언어를 기준으로 다시 만들었습니다. **규칙 전�
 
 ### 메뉴 구조
 
-작업 순서대로 묶은 2단 구조입니다.
+작업 순서대로 묶은 3단 구조입니다.
 
 ```
- 🚲 PBR                            API   ◐          ← 1단: 유틸리티 (검정 44px)
+ 🚲 PBR             사용 안내  API  모바일  ◐        ← 1단: 유틸리티 (검정 44px)
  재배치 계획   1 실행  2 결과  3 데이터   [계획 실행] ← 2단: 작업 흐름 (52px)
-   성과 지표 · 차량 운용 · 지도                      ← 3단: ② 안에 있을 때만
+   성과 지표 · 차량 운용 · 지도 · 작업지시서          ← 3단: ② 결과 안에서
+   산출물 CSV · 재고 수집                            ← 3단: ③ 데이터 안에서
 ```
 
 `계획 실행` 버튼은 어느 화면에서나 같은 자리에 있습니다. 현재 위치는
@@ -230,7 +233,7 @@ Apple 디자인 언어를 기준으로 다시 만들었습니다. **규칙 전�
 
 | 화면 | 전 | 후(첫 화면) | 끊는 단위 |
 | --- | --- | --- | --- |
-| `/` 최신 산출물 | 26행 | 10행 | **분류** 5개 (한 표에 13분류) |
+| `/run` 최신 산출물 | 26행 | 10행 | **분류** 5개 (한 표에 13분류) |
 | `/data` | 122행 | 48행 | **행** 5개 (카드마다 페이저) |
 | `/maps` | 33행 | 15행 | **행** 5개 (카드마다 페이저) |
 

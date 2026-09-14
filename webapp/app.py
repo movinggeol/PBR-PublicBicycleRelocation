@@ -32,9 +32,10 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from project_config import (
     DAY_TYPE_AUTO, DAY_TYPE_LABELS, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_DURATION,
-    DEFAULT_RAW_FILE, DEPOT_NAME, DURATION_LABELS, DURATIONS,
+    DEFAULT_RAW_FILE, DEFAULT_WARMUP_DAYS, DEPOT_NAME, DURATION_LABELS, DURATIONS,
     FLEET_SIZE, MAX_FLEET_SIZE, REBAL_MIN_QTY, TARGET_QTY_UPPER_RATIO, TARGET_Z,
-    TIME_BUDGET_MINUTES, VEHICLE_CAPACITY, VEHICLE_SPEED_KMPH, VEHICLES_PER_ROUND,
+    TIME_BUDGET_MINUTES, TOP_STATION_LIMIT, VEHICLE_CAPACITY, VEHICLE_SPEED_KMPH,
+    VEHICLES_PER_ROUND,
     available_periods, latest_period, normalize_day_type, normalize_durations,
     normalize_fleet_size, normalize_per_round, normalize_period, resolve_day_type,
 )
@@ -259,6 +260,8 @@ def _index_context(error: Optional[str] = None) -> dict:
             "day_type": DEFAULT_DAY_TYPE,
         },
         "max_fleet_size": MAX_FLEET_SIZE,
+        # 계절 보정 창은 설정값이다 — 폼 안내에 숫자를 박으면 바뀐 뒤 거짓말이 된다.
+        "warmup_days": DEFAULT_WARMUP_DAYS,
         # 순수요를 계산해 둔 달만 고르게 한다 — 없는 달을 넣으면 step0가 멈춘다.
         # 최근 달이 위로 오게 뒤집는다(대개 가장 최근 달로 계획한다).
         "periods": list(reversed(periods)),
@@ -314,16 +317,22 @@ def _home_context() -> dict:
         order = _runs_newest_first(rows)
         if order:
             part = rows[rows["run_label"] == order[0]]
-            stockout_after = _sum(part, "stockout_hours_after")
+            # 결품 시간은 **회차 하나 안의 대여소·일 평균**이라 회차끼리 더하면
+            # 안 된다 — 더하면 /kpi 헤드라인의 약 3배가 찍힌다(1.26.198에서
+            # 발견). /kpi와 같은 규칙(대여소 수 가중평균)을 쓴다.
+            stockout_before = kpi_view._weighted(part, "stockout_hours_before", "stations")
+            stockout_after = kpi_view._weighted(part, "stockout_hours_after", "stations")
             last = {
                 "run_label": order[0],
                 "computed_at": str(part["computed_at"].max()) if "computed_at" in part else "",
                 "durations": int(part["duration"].nunique()) if "duration" in part else 0,
                 "bikes": int(_sum(part, "bikes_moved")),
-                "vehicles": int(_sum(part, "vehicles_used")),
+                # 차량은 회차마다 **다시 나가는 같은 차**라 더하면 보유 대수를
+                # 넘는다(14+14+16 = 44대 > 보유 21대). 회차 최대를 보여 준다.
+                "vehicles": int(_max(part, "vehicles_used")),
                 "distance_km": round(float(_sum(part, "total_distance_km")), 1),
-                "stockout_before": round(float(_sum(part, "stockout_hours_before")), 2),
-                "stockout_after": round(float(stockout_after), 2),
+                "stockout_before": round(float(stockout_before), 2) if stockout_before is not None else None,
+                "stockout_after": round(float(stockout_after), 2) if stockout_after is not None else None,
                 "max_minutes": round(float(_max(part, "max_cluster_minutes")), 1),
                 "budget": float(part["time_budget_minutes"].max())
                           if "time_budget_minutes" in part else TIME_BUDGET_MINUTES,
@@ -340,7 +349,7 @@ def _home_context() -> dict:
             # 오늘 날짜와 빼기를 해야 하고, 실제로 12일 된 계획이 아무 말 없이
             # 헤드라인에 올라와 있었다(2026-09-08 실측).
             last["age"] = store.age_note(last["computed_at"])
-            if last["stockout_before"]:
+            if last["stockout_before"] and last["stockout_after"] is not None:
                 last["cut_pct"] = round(
                     (1 - last["stockout_after"] / last["stockout_before"]) * 100, 1)
 
@@ -609,6 +618,10 @@ def guide_page(request: Request):
         "typical_vehicles": _typical_vehicles(),
         # 계획이 쓰는 기준을 안내에 밝힌다 — 코드에만 있으면 현장에서 물어볼 곳이 없다.
         "min_qty": REBAL_MIN_QTY,
+        # 실제로 대상을 자르는 것은 문턱이 아니라 이 순위 제한이다(project_config 주석).
+        "top_limit": TOP_STATION_LIMIT,
+        # 계절 보정 창은 설정값이라 안내에 숫자를 박지 않는다.
+        "warmup_days": DEFAULT_WARMUP_DAYS,
         "upper_ratio": TARGET_QTY_UPPER_RATIO,
     })
 

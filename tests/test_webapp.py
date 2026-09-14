@@ -746,6 +746,24 @@ def test_home_marks_experiment_runs(client, monkeypatch):
     html = client.get("/").text
     assert "실험용 실행" in html, "실험 라벨인데 표시가 없다"
 
+    # 회차가 여럿인 실행을 **더해서** 보여 주면 안 된다 (1.26.198). 결품 시간은
+    # 회차 하나 안의 대여소·일 평균이라 더하면 /kpi 헤드라인의 몇 배가 되고,
+    # 차량은 회차마다 다시 나가는 같은 차라 더하면 보유 대수를 넘는다.
+    three = pd.DataFrame([
+        {"run_label": "세회차", "duration": d, "computed_at": "2026-08-28 10:00:00",
+         "bikes_moved": 100, "vehicles_used": v, "total_distance_km": 200.0,
+         "stations": 1000, "stockout_hours_before": 2.0, "stockout_hours_after": 1.0,
+         "max_cluster_minutes": 110.0, "time_budget_minutes": 120.0}
+        for d, v in (("_05_10", 14), ("_10_15", 14), ("_15_20", 16))
+    ])
+    monkeypatch.setattr(store, "kpi", lambda *a, **k: three)
+    from webapp import app as webapp_app
+
+    last = webapp_app._home_context()["last"]
+    assert last["stockout_after"] == 1.0, "회차별 결품 시간을 더했다 (/kpi와 어긋난다)"
+    assert last["stockout_before"] == 2.0, "회차별 결품 시간을 더했다 (/kpi와 어긋난다)"
+    assert last["vehicles"] == 16, "차량을 회차별로 더했다 — 보유 대수를 넘는다"
+
 
 # ── 작업지시서 조치 제안 — 수정안 39 ──────────────────────────────────
 
@@ -2285,7 +2303,7 @@ def test_계획의_나이를_사람_말로_적는다():
 
 
 def test_하루가_지나면_낡았다고_판정한다():
-    """경계는 실측에서 골랐다 — 하루 지나면 대여소 55~64%의 재고가 달라진다."""
+    """경계는 실측에서 골랐다 — 하루 지나면 대여소 54~64%의 재고가 달라진다."""
     from webapp import store
 
     fresh = store.age_note("2026-09-08 00:00", now="2026-09-08 10:00")

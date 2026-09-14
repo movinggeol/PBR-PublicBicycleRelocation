@@ -353,10 +353,11 @@ def fetch_forecast(tmfc1=None, tmfc2=None, reg: str = FORECAST_REG_ID,
     남은 시간부터 최대 3.5일 앞)를 준다.
 
     ⚠️ **관측과 다르다** — 강수량(mm)이 아니라 **강수확률(%)·강수유무코드**뿐이다.
-    `RAIN_MM`(관측 쪽 mm 문턱)과 같은 자리에 쓰려면 `rain_type != "0"`(어떤
-    형태로든 강수 예보)이나 `rain_prob` 문턱 중 하나를 새로 정해야 한다 —
-    아직 판정하지 않았다(계획에 자동 반영하기 전에 재는 것이 이 저장소의 규칙,
-    docs/분석/WEATHER.md 5장).
+    이것으로 순수요 개선을 재 보니 비 온 날 +1.2%에 그쳐, **계획에 반영하는 '비'
+    문턱으로는 쓰지 않는다**(2026-08-29 — 양이 필요하다는 것이 측정으로 확정됐다,
+    docs/분석/WEATHER.md). 양이 필요하면 `fetch_grid(var="PCP")`를 쓴다. 화면이
+    격자를 부를지 정하는 문턱(`rain_type != "0"` 또는 확률 ≥ `FORECAST_GRID_PROB`)은
+    webapp/weather_view.py에 있고, 그것은 **알림용**이지 계획을 바꾸지 않는다.
 
     반환 컬럼: `issued_at`(발표시각) · `valid_at`(발효시각, 예보 대상 시각) ·
     `temp` · `rain_prob`(%) · `sky_code` · `rain_type`(코드, `FORECAST_RAIN_CODES`
