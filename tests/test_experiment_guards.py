@@ -845,3 +845,137 @@ def test_폴백_경로_자리에_버퍼가_오면_뜻이_보이게_말한다():
     말 = str(err.value)
     assert "조용히 무시" in 말, "왜 위험한지 말해야 한다"
     assert "rebalance_plan" in 말, "어느 표인지 말해야 한다"
+
+
+# ---------------------------------------------------------------------------
+# 출력을 파일로 넘겨도 cp949 한 글자에 죽지 않는가 (2026-09-14)
+#
+# 🔴 회사환경 게이트 A 예행연습에서 `ortools_gap_seeds.py`가 씨앗 계산을 **다
+# 마친 뒤** 보고 첫 줄의 '—' 한 글자에 `UnicodeEncodeError: 'cp949'`로 죽었다.
+# 윈도우 파이썬은 출력이 파일·파이프면 cp949로 쓰고, 저장소는 그것을
+# `project_config._force_utf8_output()` 한 곳에서 막는다. 그런데 이 스크립트는
+# 자식 프로세스만 띄우고 **자기는 project_config를 한 번도 거치지 않았다.**
+# 09-12 집환경 예행은 스냅샷이 없어 보고 단계까지 못 갔고, 그때 훑은 것은
+# **이모지뿐**이었다 — '—'(U+2014)도 cp949에 없다.
+#
+# `z_fixedpop_grid`·`limit_fixedpop_grid`는 죽지 않았지만 같은 자리에 있었다.
+# 가드가 `main()` 안의 늦은 import에서야 돌아 **그 앞 print는 cp949로** 찍혔다
+# (로그 한 파일에 인코딩이 둘). 앞 print에 '—' 하나만 들어가도 죽는다.
+# 그래서 출력 순서에 기대지 않도록, **함수 밖에서** 가드가 도는지를 구문 트리로 본다.
+# ---------------------------------------------------------------------------
+
+_출력_호출 = {"print", "SystemExit", "error", "exit"}
+
+
+def _cp949_밖_글자(tree) -> set:
+    """print·SystemExit 따위에 넘기는 문자열 가운데 cp949로 못 쓰는 글자."""
+    import ast
+
+    found = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", "")
+        if name not in _출력_호출:
+            continue
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                for ch in sub.value:
+                    try:
+                        ch.encode("cp949")
+                    except UnicodeEncodeError:
+                        found.add(ch)
+    return found
+
+
+def _함수_밖_문장(tree):
+    """스크립트로 돌 때 `main()`보다 먼저 도는 자리 — 함수·클래스 몸통만 뺀다."""
+    import ast
+
+    stack = list(tree.body)
+    while stack:
+        node = stack.pop(0)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        yield node
+        if isinstance(node, ast.Try):
+            stack.extend(node.body + node.orelse + node.finalbody
+                         + [s for handler in node.handlers for s in handler.body])
+        elif isinstance(node, (ast.If, ast.For, ast.While)):
+            stack.extend(node.body + node.orelse)
+        elif isinstance(node, ast.With):
+            stack.extend(node.body)
+
+
+def _저장소_모듈(name: str, importer: Path):
+    """모듈 이름을 저장소 안 파일로 — 외부 패키지면 None.
+
+    스크립트들은 `sys.path`에 저장소 루트와 자기 폴더(또는 experiments/baseline)를
+    넣고 부르므로 그 자리만 찾는다.
+    """
+    rel = Path(*name.split("."))
+    for base in (PROJECT_ROOT, importer.parent, PROJECT_ROOT / "experiments" / "baseline"):
+        for candidate in (base / rel.parent / f"{rel.name}.py", base / rel / "__init__.py"):
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def _가드가_먼저_도는가(path: Path, seen=None) -> bool:
+    """함수 밖에서 UTF-8 가드가 도는가 — 직접이든, 함수 밖에서 부르는 저장소 모듈을 거쳐서든."""
+    import ast
+
+    seen = set() if seen is None else seen
+    if path in seen:
+        return False
+    seen.add(path)
+    for node in _함수_밖_문장(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+            func = node.value.func
+            if getattr(func, "attr", getattr(func, "id", "")) in ("reconfigure", "_force_utf8_output"):
+                return True        # 스스로 스트림을 고친다 (tools/commit_guard.py 등)
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            names = [node.module] + [f"{node.module}.{alias.name}" for alias in node.names]
+        else:
+            continue
+        for name in names:
+            if name == "project_config":
+                return True
+            target = _저장소_모듈(name, path)
+            if target is not None and _가드가_먼저_도는가(target, seen):
+                return True
+    return False
+
+
+def test_출력을_파일로_넘겨도_cp949_한_글자에_죽지_않는다(tmp_path):
+    """**2026-09-14 회사환경 예행연습에서 실제로 죽은 결함이다** (`ortools_gap_seeds.py`).
+
+    cp949로 못 쓰는 글자를 출력하는 실험·도구는 **함수 밖에서** UTF-8 가드를 거쳐야
+    한다 — `main()` 안의 늦은 import에 기대면 그 앞 print가 cp949로 나간다.
+    """
+    import ast
+
+    # 전제 — 검사가 공허하지 않은지: 함수 안 늦은 import는 잡고, 함수 밖에서 거치면 놓아준다.
+    late = tmp_path / "late.py"
+    late.write_text('def main():\n    import project_config\nprint("갭 — 끝")\n', encoding="utf-8")
+    direct = tmp_path / "direct.py"
+    direct.write_text('import project_config\nprint("갭 — 끝")\n', encoding="utf-8")
+    via = tmp_path / "via.py"
+    via.write_text('import baseline_compare\nprint("갭 — 끝")\n', encoding="utf-8")
+    assert _cp949_밖_글자(ast.parse(late.read_text(encoding="utf-8"))) == {"—"}
+    assert not _가드가_먼저_도는가(late), "함수 안의 늦은 import를 가드로 셌다"
+    assert _가드가_먼저_도는가(direct) and _가드가_먼저_도는가(via), "가드를 거치는데 못 알아본다"
+
+    대상 = sorted(p for p in (PROJECT_ROOT / "experiments").rglob("*.py") if p.name != "__init__.py")
+    대상 += sorted(p for p in (PROJECT_ROOT / "tools").glob("*.py") if p.name != "__init__.py")
+    위반 = []
+    for path in 대상:
+        글자 = _cp949_밖_글자(ast.parse(path.read_text(encoding="utf-8")))
+        if 글자 and not _가드가_먼저_도는가(path):
+            위반.append(f"{path.relative_to(PROJECT_ROOT).as_posix()} {''.join(sorted(글자))[:6]}")
+    assert not 위반, (
+        "cp949로 못 쓰는 글자를 출력하는데 함수 밖에서 UTF-8 가드를 안 거친다 — 출력을 파일로 "
+        "넘기면 그 print에서 죽는다. 최상단에서 `import project_config`를 거치게 하라"
+        "(cluster_time_term.py 참고):\n  " + "\n  ".join(위반))

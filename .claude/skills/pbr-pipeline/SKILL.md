@@ -18,7 +18,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 838개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 839개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -142,6 +142,10 @@ pipeline/step4          : imbalance
    스크립트 상단의 `sys.path.insert`는 **`parents[2]`**(저장소 루트)를 가리켜야 한다.
    루트에 있던 `db_test.py`는 1.20.7에서 `tools/show_schema.py`로 옮겼다 —
    **여러 번 쓰는 도구는 `tools/`, 한 번 재고 마는 것은 `experiments/`다.**
+   🔴 **`—`·이모지를 찍는 스크립트는 최상단에서 `import project_config`를 거쳐라.** 출력을
+   파일로 넘기면 윈도우는 cp949로 쓰는데, `main()` 안의 늦은 import에 기대면 그 앞
+   print에서 죽는다 — `ortools_gap_seeds.py`는 씨앗 계산을 다 마친 뒤 죽었다(1.26.194,
+   같은 부류 다섯 번째). `tests/test_experiment_guards.py`가 구문 트리로 지킨다.
 8. **가상환경은 `.venv`** (검증 환경: Python 3.14.7). 명령은 `.\.venv\Scripts\python.exe ...`로
    실행하라 — 시스템 `python`에는 의존성이 없다.
 9. **K-Medoids는 `kmedoids` 패키지**(FasterPAM)다. `sklearn_extra`는 아카이브되어
@@ -327,7 +331,7 @@ python experiments/params/road_time_model.py  # 이동시간 모형 재추정 (E
 ## 테스트
 
 ```powershell
-python -m pytest                 # 838개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 839개, 약 100초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

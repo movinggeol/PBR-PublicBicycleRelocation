@@ -60,6 +60,12 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+# 출력 인코딩 가드를 깨운다 — 계획은 자식 프로세스(_limit_plan_worker.py)가 세우고
+# 이 프로세스는 요약 단계에서야 project_config를 거쳐, 그 앞의 진행 문구가 cp949로
+# 나갔다(2026-09-14 예행 로그 한 파일에 인코딩이 둘). 거기에 '—' 하나만 들어가도
+# 죽는다 — 출력 순서에 기대지 않고 처음부터 거친다.
+import project_config  # noqa: F401,E402
+
 WORKER = Path(__file__).with_name("_limit_plan_worker.py")
 
 # 셀 하나가 이 시간을 넘기면 버리고 다음으로 간다 (TODO 대기-12 ①).

@@ -39,6 +39,12 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+# 출력 인코딩 가드를 깨운다 — 이 스크립트는 계산을 자식 프로세스(ortools_gap.py)에
+# 맡기고 **자기는 project_config를 한 번도 거치지 않아**, 출력을 파일로 넘기면
+# 보고 첫 줄의 '—' 한 글자에 죽었다(2026-09-14 회사환경 예행: 씨앗 계산을 다 마친
+# 뒤 UnicodeEncodeError). project_config를 거치면 _force_utf8_output()이 돈다.
+import project_config  # noqa: F401,E402
+
 GAP_SCRIPT = Path(__file__).with_name("ortools_gap.py")
 
 

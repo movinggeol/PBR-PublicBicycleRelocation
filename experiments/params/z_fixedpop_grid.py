@@ -44,6 +44,11 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+# 출력 인코딩 가드를 깨운다 — 파이프라인 모듈은 main() 안의 load_baseline()에서야
+# 불러오므로 그 앞의 머리 문구가 cp949로 나갔다(2026-09-14 예행 로그 첫 줄만
+# 인코딩이 달랐다). 거기에 '—' 하나만 들어가도 죽는다 — 출력 순서에 기대지 않는다.
+import project_config  # noqa: F401,E402
+
 
 # 좁은 격자 — 11·18장이 쓴 값. 인자 없이 돌리면 이쪽이다(과거 결과 재현용).
 Z_GRID = [1.65, 1.80, 1.99, 2.10, 2.33]
