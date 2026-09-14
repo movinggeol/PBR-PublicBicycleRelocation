@@ -167,6 +167,7 @@ python experiments/structure/park2024_compare.py   # 선행연구 모형 대 μ+
 
 | 파일 | 내용 | 원래 위치 |
 | --- | --- | --- |
+| `tick_interval.py` | **재고를 10분마다 찍어야 하나** — 10분 자료를 솎아 성긴 수집을 흉내 낸다 | 결품은 둔감(60분 −1.3%) · 사건은 민감(55.6% 소실). **촘촘히 모으면 솎을 수 있지만 반대는 안 된다** ([EXPERIMENTS.md](../docs/분석/EXPERIMENTS.md) 35장) |
 | `step0_rebal_qty_check.py` | 재배치량 진단 — 작업 대상 수와 **Pick·Drop 수급 격차** (1.18.8에서 되살림) | `step0_collect/test.py` |
 | `step1_cluster_memo.py` | 클러스터링 실행 결과 메모 | `step1 (...)/test.py` |
 | `tour_length_estimate.py` | 순회거리 어림(대여소 수 비례·BHH 근사 등) 셋 중 무엇이 실제 경로에 가까운가 — **세 어림 모두 현행(대여소 수 비례)보다 못하다**(13장, 5-H의 BHH 보류를 확정) | — |
