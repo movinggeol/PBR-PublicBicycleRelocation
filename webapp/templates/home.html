@@ -17,8 +17,10 @@
 </section>
 
 {% if running %}
+{# 예상은 **그 작업이 고른 시간대 수**로 센다 — 예전에는 시간대와 무관한
+   한 숫자라, 네 개를 골라 돌리는 사람에게도 하나짜리 숫자를 보여 줬다(1.26.214). #}
 <div class="alert"><span><b>계획을 계산하고 있습니다</b> — {{ running.id }}
-  (보통 {% if typical_minutes is not none %}{{ typical_minutes }}분{% else %}2~4분{% endif %}).
+  (예상 {% if running_minutes is not none %}{{ running_minutes }}분{% else %}2~4분{% endif %}).
   <a href="/runs/{{ running.id }}">진행 상황 보기</a></span></div>
 {% endif %}
 
@@ -148,10 +150,11 @@
     <h3><span class="step-no">1</span> 실행</h3>
     <p class="muted">지금 재고와 과거 순수요로 계획을 계산합니다.
       순수요는 <b>{{ period }}</b> 자료를 기본으로 씁니다.
-      {# 예상 소요는 사람이 적지 않는다 — **지난 실행이 실제로 걸린 시간**이다.
-         옛 안내의 '보통 5~10분'은 실측과 어긋났다(수정안 4). #}
-      {% if typical_minutes is not none %}실행 한 번(고른 시간대 전체)에 보통
-      <b>{{ typical_minutes }}분</b> 걸립니다.{% endif %}</p>
+      {# 예상 소요는 사람이 적지 않는다 — **지난 실행의 단계별 기록**에서 뽑는다.
+         옛 안내의 '보통 5~10분'은 실측과 어긋났다(수정안 4). 시간대 하나 기준인
+         것을 밝힌다 — 고른 개수만큼 늘어나기 때문이다(1.26.214). #}
+      {% if estimate_one is not none %}시간대 하나면 <b>{{ estimate_one }}분</b>,
+      고른 개수만큼 늘어납니다.{% endif %}</p>
   </a>
   <a class="card link" href="/kpi">
     <h3><span class="step-no">2</span> 결과</h3>

@@ -39,15 +39,18 @@
         <span class="step-note">
           <b>대여소를 묶는 단계</b>가 전체 시간의 3분의 2 이상을 차지합니다.
           화면은 3초마다 저절로 새로고침됩니다.
-          {% if typical_minutes is not none %}
-            옆의 숫자는 이 서버에서 <b>지난 실행들이 실제로 걸린 시간</b>의 중앙값입니다.
+          대여소 수집·순수요 계산은 <b>한 번만</b> 하고, 군집·경로·지표는
+          <b>시간대마다 다시</b> 계산하기 때문에 고른 만큼 늘어납니다.
+          {% if estimate_one is not none %}
+            옆의 숫자는 이 서버의 <b>지난 실행 단계별 기록</b>에서 그 둘을 갈라
+            뽑은 것입니다(시간대 하나 기준). 실행 화면에서는 고른 개수에 맞춰
+            다시 셈해 보여 줍니다.
           {% else %}
-            시간대 하나면 <b>2분 남짓</b>, 세 개를 함께 고르면 <b>4분 안팎</b>입니다
-            (2026-08-24 실측). 대여소 수집·순수요 계산은 한 번만 하고, 군집·경로·지표는
-            시간대마다 다시 계산하기 때문에 고른 만큼 늘어납니다.
+            아직 이 서버에 실행 기록이 없어 숫자를 적지 않습니다 — 한 번 돌리고
+            나면 그 기록에서 뽑아 보여 줍니다.
           {% endif %}</span>
       </span>
-      <span class="step-state">{% if typical_minutes is not none %}보통 {{ typical_minutes }}분{% else %}보통 2~4분{% endif %}</span>
+      <span class="step-state">{% if estimate_one is not none %}시간대 1개 {{ estimate_one }}분{% else %}보통 2~4분{% endif %}</span>
     </li>
     <li class="step">
       <span class="step-mark" aria-hidden="true">3</span>

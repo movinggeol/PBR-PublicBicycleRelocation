@@ -197,6 +197,49 @@ def _minutes(seconds: Optional[float]) -> Optional[float]:
     return None if seconds is None else round(seconds / 60, 1)
 
 
+def _run_estimate() -> Optional[dict]:
+    """실행 폼이 쓸 예상 소요 계수. 기록이 없으면 None.
+
+    🔴 **점 하나가 아니라 계수 셋을 넘긴다.** 예전에는 지난 실행의 중앙값 하나
+    (`typical_minutes`)만 넘겼는데, 기록된 실행이 전부 시간대 **하나**짜리라
+    네 개를 고른 사람에게도 같은 숫자를 보여 주고 있었다 — 실제로는 그만큼
+    늘어난다(2026-09-14 실측: 하나 40초 → 둘 71초). 계수를 넘기면 화면이
+    체크박스를 누를 때마다 다시 셈할 수 있다.
+
+    초 단위 그대로 넘긴다 — 분으로 미리 반올림하면 화면에서 곱할 때 오차가
+    커진다(0.1분 = 6초).
+    """
+    model = jobs.estimate_model()
+    if not model:
+        return None
+    return {
+        "collect": round(model["수집"], 1),
+        "preprocess": round(model["전처리"], 1),
+        "per_duration": round(model["시간대당"], 1),
+        "samples": int(model["표본"]),
+    }
+
+
+def _estimate_minutes(durations: int = 1, skip_api: bool = False) -> Optional[float]:
+    """시간대 `durations`개를 골랐을 때의 예상 분. 기록이 없으면 None."""
+    return _minutes(jobs.estimate_seconds(jobs.estimate_model(), durations,
+                                          skip_api=skip_api))
+
+
+def _running_estimate_minutes(job) -> Optional[float]:
+    """**지금 돌고 있는 그 작업**의 예상 분. 그 작업이 고른 시간대 수로 센다.
+
+    화면 위쪽 띠에 "보통 N분"이라고 적는 자리인데, 예전에는 시간대 수와 상관
+    없는 한 숫자였다 — 네 개를 골라 돌리는 사람에게도 하나짜리 숫자를 보여
+    주고 있었다(1.26.214).
+    """
+    if job is None:
+        return None
+    durations = len(jobs.job_durations(job)) or 1
+    skip_api = "--skip-api" in (job.args or ())
+    return _estimate_minutes(durations, skip_api=skip_api)
+
+
 def _typical_vehicles() -> Optional[int]:
     """회차당 실제로 나간 차량 수의 중앙값. 기록이 없으면 None.
 
@@ -279,7 +322,8 @@ def _index_context(error: Optional[str] = None) -> dict:
               "label": f"자동 (오늘 = {DAY_TYPE_LABELS[resolve_day_type()]})"}]
             + [{"value": v, "label": DAY_TYPE_LABELS[v]} for v in DAY_TYPES]
         ),
-        "typical_minutes": _minutes(jobs.typical_elapsed()),
+        "run_estimate": _run_estimate(),
+        "estimate_one": _estimate_minutes(1),
         "typical_vehicles": _typical_vehicles(),
         "running": jobs.running_job(),
         "jobs": jobs.list_jobs()[:15],
@@ -353,12 +397,15 @@ def _home_context() -> dict:
                 last["cut_pct"] = round(
                     (1 - last["stockout_after"] / last["stockout_before"]) * 100, 1)
 
+    running = jobs.running_job()
     return {
         "last": last,
         "period": latest_period(),
         "runs_total": int(rows["run_label"].nunique()) if not rows.empty else 0,
-        "running": jobs.running_job(),
-        "typical_minutes": _minutes(jobs.typical_elapsed()),
+        "running": running,
+        "run_estimate": _run_estimate(),
+        "estimate_one": _estimate_minutes(1),
+        "running_minutes": _running_estimate_minutes(running),
         "typical_vehicles": _typical_vehicles(),
     }
 
@@ -590,6 +637,11 @@ def run_detail(request: Request, job_id: str):
         "job": job,
         "log": jobs.read_log_tail(job),
         "progress": pipeline_progress(jobs.read_log(job)),
+        # 예상과 **실제**를 나란히 둔다. 예상만 보여 주면 그것이 맞았는지
+        # 아무도 모르고, 틀린 채로 남는다 — 다음 예상이 여기서 나오므로
+        # 어긋남이 보여야 고칠 생각도 든다(1.26.214).
+        "estimate_minutes": _running_estimate_minutes(job),
+        "elapsed_minutes": _minutes(jobs.elapsed_seconds(job)),
     })
 
 
@@ -613,7 +665,8 @@ def guide_page(request: Request):
         "durations": [{"value": d, "label": DURATION_LABELS[d]} for d in DURATIONS],
         # 예상 소요는 **이 서버의 지난 실행에서 뽑는다.** 사람이 적어 두면
         # 조건이 바뀐 뒤에도 남아 거짓말이 된다(옛 안내의 '보통 5~10분'이 그랬다).
-        "typical_minutes": _minutes(jobs.typical_elapsed()),
+        "run_estimate": _run_estimate(),
+        "estimate_one": _estimate_minutes(1),
         # 회차당 대수는 작업량이 정한다 — 안내에는 지난 실행의 중앙값을 보여준다.
         "typical_vehicles": _typical_vehicles(),
         # 계획이 쓰는 기준을 안내에 밝힌다 — 코드에만 있으면 현장에서 물어볼 곳이 없다.

@@ -165,11 +165,33 @@
           <input type="checkbox" name="skip_eda" value="1" checked> EDA 생략</label>
       </div>
 
+      {# 예상 소요. 값을 글로 적지 않고 **계수를 데이터 속성으로 넘겨** 아래
+         스크립트가 체크박스를 볼 때마다 다시 셈한다 — 시간대 개수가 소요를
+         가장 크게 좌우하는데 예전에는 그것을 빼고 숫자 하나만 적었다(1.26.214). #}
       <div class="form-foot">
         <button class="btn" type="submit">계획 실행</button>
-        <p class="hint" style="margin:var(--sp-sm) 0 0">{% if typical_minutes is not none %}지난 실행 기준
-          <b>보통 {{ typical_minutes }}분</b>{% else %}시간대 하나면 <b>2분 남짓</b>{% endif %}
-          걸립니다. 대여소를 묶는 단계가 대부분이고, 시간대를 여러 개 고르면 그만큼 늘어납니다.
+        <p class="hint" style="margin:var(--sp-sm) 0 0"
+           data-run-estimate
+           {% if run_estimate %}
+           data-collect="{{ run_estimate.collect }}"
+           data-preprocess="{{ run_estimate.preprocess }}"
+           data-per-duration="{{ run_estimate.per_duration }}"
+           data-samples="{{ run_estimate.samples }}"
+           {% endif %}
+           data-default-durations="{{ defaults.duration.split(',') | length }}">
+          <span data-estimate-text>
+            {%- if run_estimate -%}
+            예상 <b>{{ ((run_estimate.collect + run_estimate.preprocess
+                        + run_estimate.per_duration
+                          * (defaults.duration.split(',') | length)) / 60) | round(1) }}분</b>
+            {%- else -%}
+            시간대 하나면 <b>2분 남짓</b>
+            {%- endif -%}
+          </span>
+          걸립니다. 대여소를 묶는 단계가 대부분이라, <b>시간대를 하나 더 고를 때마다</b>
+          그만큼 늘어납니다.
+          {% if run_estimate %}<span class="muted">(지난 실행 {{ run_estimate.samples }}번의
+          단계별 기록에서 뽑았습니다. 그날 처음 돌리면 더 걸릴 수 있습니다.)</span>{% endif %}
           누르면 진행 상황 화면으로 넘어갑니다.</p>
       </div>
     </form>
@@ -432,6 +454,52 @@
     }
 
     load("");
+  })();
+
+  /* 예상 소요를 **고른 시간대 수에 맞춰** 다시 셈한다 (1.26.214).
+     계수는 서버가 지난 실행의 단계별 기록에서 뽑아 data- 속성으로 넘긴다 —
+     화면에 숫자를 박아 두면 코드가 빨라져도 그대로 남아 거짓말이 된다.
+     기록이 없으면 속성이 비어 있고, 그때는 서버가 넣어 둔 글을 그대로 둔다. */
+  (function () {
+    var box = document.querySelector("[data-run-estimate]");
+    if (!box) return;
+    var out = box.querySelector("[data-estimate-text]");
+    var collect = parseFloat(box.dataset.collect);
+    var preprocess = parseFloat(box.dataset.preprocess);
+    var per = parseFloat(box.dataset.perDuration);
+    if (!out || isNaN(per) || isNaN(preprocess)) return;   /* 기록 없음 — 손대지 않는다 */
+    if (isNaN(collect)) collect = 0;
+
+    var fallback = parseInt(box.dataset.defaultDurations, 10) || 1;
+    var form = box.closest("form");
+    if (!form) return;
+
+    function 분(seconds) {
+      /* 1분 미만은 초로 말한다 — "0.7분"은 읽어서 바로 와닿지 않는다. */
+      if (seconds < 60) return Math.round(seconds / 5) * 5 + "초";
+      var m = seconds / 60;
+      return (m < 10 ? m.toFixed(1) : Math.round(m)) + "분";
+    }
+
+    function 다시셈() {
+      var 고른것 = form.querySelectorAll("input[name=duration]:checked").length;
+      /* 하나도 안 고르면 서버가 기본값으로 돈다 — 그 개수로 셈해야 맞다. */
+      var n = 고른것 || fallback;
+      var skipApi = form.querySelector("input[name=skip_api]");
+      var skipEda = form.querySelector("input[name=skip_eda]");
+      var seconds = preprocess + per * n + ((skipApi && skipApi.checked) ? 0 : collect);
+      var 글 = "예상 <b>" + 분(seconds) + "</b>";
+      if (고른것 === 0) 글 += " <span class=\"muted\">(기본 " + n + "개 기준)</span>";
+      /* EDA를 켠 실행은 기록이 없다 — 모르는 몫을 숫자로 지어내지 않고 그렇게 말한다. */
+      if (skipEda && !skipEda.checked) 글 += " <span class=\"muted\">+ EDA(기록 없음)</span>";
+      out.innerHTML = 글;
+    }
+
+    form.addEventListener("change", function (e) {
+      var name = e.target && e.target.name;
+      if (name === "duration" || name === "skip_api" || name === "skip_eda") 다시셈();
+    });
+    다시셈();
   })();
 </script>
 {% endblock %}

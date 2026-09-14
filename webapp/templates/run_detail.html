@@ -97,6 +97,14 @@
     <tbody>
       <tr><th scope="row" style="width:9rem">시작</th><td>{{ job.started_at }}</td></tr>
       <tr><th scope="row">종료</th><td>{{ job.finished_at or "—" }}</td></tr>
+      {# 예상과 실제를 **나란히** 둔다. 예상만 보여 주면 그게 맞았는지 아무도
+         모르고, 틀린 채로 남는다 — 다음 예상이 이 기록에서 나오기 때문에
+         어긋남이 눈에 보여야 한다(1.26.214). #}
+      <tr><th scope="row">걸린 시간</th><td>
+        {%- if elapsed_minutes is not none %}{{ elapsed_minutes }}분
+          {%- if estimate_minutes is not none %} <span class="muted">(예상 {{ estimate_minutes }}분)</span>{% endif %}
+        {%- elif estimate_minutes is not none %}<span class="muted">예상 {{ estimate_minutes }}분</span>
+        {%- else %}—{% endif %}</td></tr>
       <tr><th scope="row"><span class="tip" data-tip="0이면 정상 종료입니다. 그 밖의 값은 어딘가에서 오류가 났다는 뜻입니다.">종료 코드</span></th>
           <td>{{ job.returncode if job.returncode is not none else "—" }}</td></tr>
       <tr><th scope="row">인자</th><td class="muted wrap">{{ " ".join(job.args) or "(기본값)" }}</td></tr>

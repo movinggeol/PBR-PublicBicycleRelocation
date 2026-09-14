@@ -289,28 +289,93 @@ def test_pipeline_runs_unbuffered_so_progress_is_live(monkeypatch, tmp_path):
     assert env["PYTHONIOENCODING"] == "utf-8", "로그의 '—' 한 글자에 단계가 죽는다"
 
 
-def test_typical_elapsed_is_the_median_of_successful_runs(monkeypatch):
-    """예상 소요는 성공한 실행의 중앙값이다.
+def _가짜_로그(단계: dict) -> str:
+    """run_pipeline이 찍는 단계별 소요 표를 흉내 낸다."""
+    줄 = [f"       {초:.1f}초  pipeline\\{이름}" for 이름, 초 in 단계.items()]
+    return ("=== 단계별 소요 시간 ===\n" + "\n".join(줄)
+            + "\n         합계     1분 0초  (11단계, 시간대 _05_10)\n")
 
-    평균이 아닌 이유: 중간에 오래 멈췄던 한 건이 평균을 통째로 끌어올린다.
-    실패·중단된 실행과 시각이 없는 실행은 표본에서 뺀다.
+
+def test_예상_계수는_성공한_실행의_중앙값이다(monkeypatch, tmp_path):
+    """평균이 아닌 이유: 중간에 오래 멈췄던 한 건이 평균을 통째로 끌어올린다.
+
+    실패·중단된 실행과 **단계별 표가 없는 실행**은 표본에서 뺀다.
     """
-    def job(job_id, status, started, finished):
-        return jobs.Job(id=job_id, status=status,
-                        started_at=started, finished_at=finished)
+    def job(job_id, status, 군집초):
+        j = jobs.Job(id=job_id, status=status,
+                     args=["--duration", "_05_10"],
+                     started_at="2026-08-24 10:00:00",
+                     finished_at="2026-08-24 10:02:00")
+        (tmp_path / f"run_{job_id}.log").write_text(_가짜_로그({
+            "step0_collect\\tashu_api.py": 10.0,
+            "step0_collect\\raw_to_net.py": 5.0,
+            "step1_cluster\\top_st_clustering.py": 군집초,
+        }), encoding="utf-8")
+        return j
 
-    samples = [
-        job("3", "success", "2026-08-24 10:00:00", "2026-08-24 10:02:00"),   # 120초
-        job("2", "success", "2026-08-24 09:00:00", "2026-08-24 09:04:00"),   # 240초
-        job("1", "failed", "2026-08-24 08:00:00", "2026-08-24 08:30:00"),    # 제외
-        job("0", "success", "2026-08-24 07:00:00", ""),                      # 제외
-    ]
+    monkeypatch.setattr(jobs, "LOG_DIR", tmp_path)
+    samples = [job("3", "success", 20.0), job("2", "success", 60.0),
+               job("1", "success", 40.0), job("0", "failed", 999.0)]
     monkeypatch.setattr(jobs, "list_jobs", lambda: samples)
 
-    assert jobs.typical_elapsed() == 180.0
+    model = jobs.estimate_model()
+    assert model["시간대당"] == 40.0, "중앙값이 아니다(평균이면 40이 아니라 40… 이어도 실패한다)"
+    assert model["수집"] == 10.0 and model["전처리"] == 5.0
+    assert model["표본"] == 3, "실패한 실행이 표본에 들었다"
 
     monkeypatch.setattr(jobs, "list_jobs", lambda: [])
-    assert jobs.typical_elapsed() is None, "기록이 없으면 지어내지 않는다"
+    assert jobs.estimate_model() is None, "기록이 없으면 지어내지 않는다"
+    assert jobs.estimate_seconds(None, 2) is None
+
+
+def test_예상은_고른_시간대_수만큼_늘어난다(monkeypatch, tmp_path):
+    """🔴 **이것이 예전 안내가 통째로 빠뜨린 것이다**(1.26.214).
+
+    기록된 실행이 전부 시간대 하나짜리라, 네 개를 고른 사람에게도 하나짜리
+    숫자를 보여 주고 있었다. 실측(2026-09-14)으로 확인한 대로 늘어나는 것은
+    `duration_list()`를 도는 단계뿐이고 수집·전처리는 한 번만 든다 —
+    시간대 둘을 계수로 예측하면 69초였고 실제도 69초였다.
+    """
+    model = {"수집": 18.0, "전처리": 12.0, "시간대당": 86.0, "표본": 3}
+
+    하나 = jobs.estimate_seconds(model, 1)
+    넷 = jobs.estimate_seconds(model, 4)
+    assert 하나 == 116.0
+    assert 넷 == 116.0 + 86.0 * 3, "시간대를 더 골라도 예상이 그대로다"
+
+    # 'API 수집 생략'을 켜면 수집 몫만 빠진다 — 시간대당 몫은 그대로다.
+    assert jobs.estimate_seconds(model, 1, skip_api=True) == 98.0
+    assert jobs.estimate_seconds(model, 0) is None, "고른 것이 없으면 셈하지 않는다"
+
+
+def test_시간대마다_되풀이되는_단계_목록이_코드와_맞는다():
+    """🔴 예상은 이 목록이 맞다는 전제 위에 선다 — 틀리면 **조용히** 빗나간다.
+
+    시간대마다 되풀이되는 단계는 `duration_list()`를 부르는 단계다. 단계가
+    늘거나 루프가 사라져도 화면은 아무 말 없이 옛 비율로 계산한다. 여기서
+    실제 소스와 대조해 그 침묵을 막는다.
+    """
+    import run_pipeline
+
+    루프도는것 = set()
+    for scripts in run_pipeline.STAGES.values():
+        for path in scripts:
+            full = Path(__file__).resolve().parents[1] / path
+            if not full.is_file():
+                continue
+            key = f"{path.parent.name}/{path.name}"
+            if "duration_list" in full.read_text(encoding="utf-8"):
+                루프도는것.add(key)
+
+    assert 루프도는것 == set(jobs.DURATION_SCALED), (
+        f"예상 계수의 단계 목록이 코드와 다르다: "
+        f"코드에만 {루프도는것 - set(jobs.DURATION_SCALED)}, "
+        f"목록에만 {set(jobs.DURATION_SCALED) - 루프도는것}")
+
+    # 'API 수집 생략'이 걷어 내는 단계도 실행기와 같아야 한다.
+    걷히는것 = {f"{p.parent.name}/{p.name}"
+             for key in ("fetch", "api") for p in run_pipeline.STAGES[key]}
+    assert 걷히는것 == set(jobs.API_STAGE)
 
 
 def test_감시_스레드가_사용자의_실행_이력에_쓰지_않는다(monkeypatch):
@@ -320,7 +385,7 @@ def test_감시_스레드가_사용자의_실행_이력에_쓰지_않는다(monk
     산다** — monkeypatch가 `_save_registry`를 원복한 뒤 그 스레드가 깨어나
     *진짜* 함수를 부르고, 사용자의 `data/webapp/runs.json`에 인자도 로그도 없는
     0초짜리 가짜 작업이 박힌다. 실측으로 기록 15건 중 **11건이 가짜**였고,
-    그것이 `typical_elapsed()`를 0으로 만들어 화면 안내까지 망가뜨렸다.
+    그것이 예상 소요를 0으로 만들어 화면 안내까지 망가뜨렸다.
 
     여기서 지키는 것은 **격리가 실제로 걸려 있는가**다 — `conftest.py`의
     `isolate_job_registry`가 경로를 tmp로 돌려놨는지 본다.
@@ -351,17 +416,19 @@ def test_예상_소요는_0분이어도_숨지_않는다(client, monkeypatch):
     """0은 거짓이 아니다 — `{% if %}`로 거르면 조용히 하드코딩 문구로 돌아간다.
 
     🔴 이것이 위 누수의 **두 번째 증상**이었다. 가짜 11건이 전부 0초라
-    `typical_elapsed()`가 0.0을 냈고, 템플릿의 `{% if typical_minutes %}`에서
-    0이 거짓이라 화면은 말없이 *"보통 2~4분"* 으로 되돌아갔다 — `home.html`이
+    예상 소요가 0.0이 됐고, 템플릿의 `{% if %}`에서 0이 거짓이라 화면은
+    말없이 *"보통 2~4분"* 으로 되돌아갔다 — `home.html`이
     *"예상 소요는 사람이 적지 않는다"* 고 적어 둔 그 장치가 무력해진 것이다.
 
     이력을 고쳐도 이 자리는 따로 고쳐야 한다. 안 그러면 다음에 0이 나올 때
     같은 방식으로 또 숨는다.
     """
-    monkeypatch.setattr(jobs, "typical_elapsed", lambda limit=20: 0.0)
+    monkeypatch.setattr(jobs, "estimate_model",
+                        lambda limit=jobs.ESTIMATE_WINDOW: {
+                            "수집": 0.0, "전처리": 0.0, "시간대당": 0.0, "표본": 1})
 
     body = client.get("/guide").text
-    assert "보통 0.0분" in body, "0분이 하드코딩 문구에 가려졌다"
+    assert "시간대 1개 0.0분" in body, "0분이 하드코딩 문구에 가려졌다"
     assert "보통 2~4분" not in body, "기록이 있는데 하드코딩 문구가 나온다"
 
 

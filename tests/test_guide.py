@@ -44,13 +44,17 @@ def test_guide_shows_live_settings(client):
 
 
 def test_expected_runtime_comes_from_past_runs(client, monkeypatch):
-    """예상 소요는 사람이 적는 것이 아니라 **지난 실행이 실제로 걸린 시간**이다.
+    """예상 소요는 사람이 적는 것이 아니라 **지난 실행의 단계별 기록**에서 나온다.
 
     예전 안내에는 '보통 5~10분'이 박혀 있었는데, 실측은 시간대 하나에 2분 남짓이었다.
+    지금은 계수 셋(수집·전처리·시간대당)으로 넘어와, 고른 시간대 수에 맞춰
+    셈한다(1.26.214) — 여기서는 **시간대 하나** 기준 값이 화면에 오르는지 본다.
     """
     from webapp import jobs
 
-    monkeypatch.setattr(jobs, "typical_elapsed", lambda limit=20: 132.0)
+    monkeypatch.setattr(jobs, "estimate_model",
+                        lambda limit=jobs.ESTIMATE_WINDOW: {
+                            "수집": 18.0, "전처리": 12.0, "시간대당": 102.0, "표본": 3})
 
     for path in ("/guide", "/"):
         html = client.get(path).text

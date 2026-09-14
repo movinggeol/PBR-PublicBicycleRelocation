@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -145,29 +146,182 @@ def elapsed_seconds(job: "Job") -> Optional[float]:
     return finished - started if finished >= started else None
 
 
-def typical_elapsed(limit: int = 20) -> Optional[float]:
-    """최근 성공한 실행의 **중앙값** 소요 시간(초). 기록이 없으면 None.
+# ───────── 예상 소요 시간 (1.26.214) ─────────
+#
+# 🔴 **시간대를 몇 개 골랐느냐가 가장 크게 좌우한다.** 예전 안내는 지난 실행의
+# 중앙값 하나만 보여 줬는데, 기록된 실행이 전부 시간대 **하나**짜리라 네 개를
+# 고른 사람에게도 같은 숫자를 보여 주고 있었다 — 실제로는 그만큼 늘어난다.
+#
+# 어느 단계가 시간대마다 되풀이되는지는 **짐작이 아니라 코드가 말한다.**
+# `duration_list()`를 도는 단계가 되풀이되는 단계다(2026-09-14 전수 확인).
+# 여기 목록과 실제가 갈리면 예상이 조용히 틀리므로 시험이 대조한다.
+DURATION_SCALED = frozenset({
+    "step0_collect/calculate_target_qty.py",
+    "step1_cluster/top_st_clustering.py",
+    "step1_cluster/st_visualization.py",
+    "step2_optimize/ilp.py",
+    "step2_optimize/vrp.py",
+    "step3_map/main.py",
+    "step4_metrics/imbalance.py",
+})
 
-    안내 화면의 예상 소요를 여기서 뽑는다 — 사람이 숫자를 적어 두면 조건이
-    바뀐 뒤에도 그대로 남아 거짓말이 된다(예전 안내의 '보통 5~10분'이 그랬다).
-    평균이 아니라 중앙값인 이유는, 중간에 멈췄다 이어 돌린 한 건이 평균을
-    통째로 끌어올리기 때문이다.
+# 'API 수집 생략'(`--skip-api`)이 걷어 내는 단계. run_pipeline.STAGES의
+# fetch + api와 같아야 한다 — 시험이 대조한다.
+API_STAGE = frozenset({
+    "step0_collect/tashu_api.py",
+    "step0_collect/extract_parking_lot.py",
+    "step0_collect/api_to_info.py",
+})
+
+# 로그 끝의 단계별 소요 표를 읽는다. "1.5초" 와 "5분 58초" 두 꼴이 모두 나온다.
+_TIMING_RE = re.compile(r"^\s*(?:(\d+)분\s+)?([\d.]+)초\s\s+(\S+)\s*$")
+
+
+def _script_key(text: str) -> str:
+    r"""로그의 경로 표기를 `단계폴더/파일명`으로 줄인다.
+
+    같은 실행기라도 로그마다 `step3_map\main.py`와
+    `pipeline\step3_map\main.py` 두 꼴이 섞여 있다(8월분과 9월분). 그리고
+    `main.py`만으로는 step3를 집을 수 없다 — 폴더까지 있어야 한다.
     """
-    samples = []
+    parts = [p for p in re.split(r"[\\/]", text.strip()) if p]
+    return "/".join(parts[-2:])
+
+
+def step_timings(log_text: str) -> Dict[str, float]:
+    """로그 끝의 "=== 단계별 소요 시간 ===" 표를 {단계: 초}로 읽는다.
+
+    ⚠️ **'합계' 줄에서 멈춘다.** 그 줄도 "40.1초  (11단계, ..." 꼴이라
+    정규식에 걸려서, 안 끊으면 `(11단계,`라는 단계가 하나 생긴다.
+    """
+    found: Dict[str, float] = {}
+    started = False
+    for line in log_text.splitlines():
+        if "단계별 소요 시간" in line:
+            started = True
+            continue
+        if not started:
+            continue
+        if line.strip().startswith("합계"):
+            break
+        match = _TIMING_RE.match(line)
+        if not match:
+            if found and not line.strip():
+                break
+            continue
+        minutes, seconds, script = match.groups()
+        found[_script_key(script)] = int(minutes or 0) * 60 + float(seconds)
+    return found
+
+
+def run_shape(job: "Job") -> Optional[Dict[str, float]]:
+    """한 실행을 **고정 비용과 시간대당 비용으로** 가른다. 못 읽으면 None.
+
+    돌려주는 값은 초 단위 셋이다.
+      · `수집`     — 'API 수집 생략'으로 빠지는 부분
+      · `전처리`   — 늘 드는 나머지 고정 부분(순수요 계산 등)
+      · `시간대당` — 시간대 하나를 더 고를 때마다 늘어나는 몫
+    """
+    durations = job_durations(job)
+    if not durations:
+        return None
+    try:
+        text = job.log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    timings = step_timings(text)
+    if not timings:
+        return None
+
+    scaled = sum(v for k, v in timings.items() if k in DURATION_SCALED)
+    if not scaled:          # 되풀이 단계가 하나도 안 보이면 표를 잘못 읽은 것이다
+        return None
+    return {
+        "수집": sum(v for k, v in timings.items() if k in API_STAGE),
+        "전처리": sum(v for k, v in timings.items()
+                   if k not in API_STAGE and k not in DURATION_SCALED),
+        "시간대당": scaled / len(durations),
+    }
+
+
+def job_durations(job: "Job") -> List[str]:
+    """그 실행이 고른 시간대 목록. 인자에 없으면 빈 목록."""
+    args = list(job.args or ())
+    if "--duration" not in args:
+        return []
+    value = args[args.index("--duration") + 1] if len(args) > args.index("--duration") + 1 else ""
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _median(values: List[float]) -> float:
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2
+
+
+# 계수를 뽑을 때 볼 실행 수. **3은 작지만 일부러 작다** — 아래 docstring 참고.
+ESTIMATE_WINDOW = 3
+
+
+def estimate_model(limit: int = ESTIMATE_WINDOW) -> Optional[Dict[str, float]]:
+    """최근 성공한 실행에서 뽑은 예상 계수. 기록이 없으면 None.
+
+    🔴 **창이 좁은 데는 이유가 있다(기본 3건).** 예전 `typical_elapsed()`는 20건을
+    봤는데, 이 저장소에서 20건은 **코드가 달라진 시대까지 거슬러 올라간다.**
+    군집 단계 하나가 이렇게 움직였다(같은 시간대·같은 설정, 실측):
+
+        08-25  5분 58초  →  08-26  1분 33초  →  08-27  1분 10초
+             →  09-13  36.7초  →  09-14  43.1초
+
+    한 방향으로 줄곧 빨라진 것이라 **잡음이 아니라 치우침**이다. 옛것을 섞으면
+    중앙값이 늘 실제보다 크게 나온다 — 20건 중앙값이 *"보통 2.8분"* 이라고 적게
+    했는데 같은 날 실측은 1분 54초였다. 넓은 창은 표본을 늘리는 것이 아니라
+    **낡은 사실**을 섞는다.
+
+    ⚠️ 그렇다고 1건으로 줄이면 중간에 멈췄다 이어 돌린 한 건이 그대로 예상이
+    된다. 3은 **이상치 하나를 중앙값이 걸러 낼 수 있는 가장 좁은 창**이다.
+    평균이 아니라 중앙값인 이유도 같다.
+
+    ⚠️ '수집'은 **그 단계를 실제로 돈 실행만** 세어 중앙값을 낸다. `--skip-api`로
+    돌린 실행은 수집이 0이라, 섞으면 **'API 수집 생략'을 안 켠 사람의 예상까지
+    0으로 끌어내린다.**
+    """
+    shapes = []
     for job in list_jobs():
         if job.status != "success":
             continue
-        if (seconds := elapsed_seconds(job)) is not None:
-            samples.append(seconds)
-        if len(samples) >= limit:
+        if (shape := run_shape(job)) is not None:
+            shapes.append(shape)
+        if len(shapes) >= limit:
             break
-    if not samples:
+    if not shapes:
         return None
-    samples.sort()
-    middle = len(samples) // 2
-    if len(samples) % 2:
-        return samples[middle]
-    return (samples[middle - 1] + samples[middle]) / 2
+
+    수집표본 = [s["수집"] for s in shapes if s["수집"] > 0]
+    return {
+        "수집": _median(수집표본) if 수집표본 else 0.0,
+        "전처리": _median([s["전처리"] for s in shapes]),
+        "시간대당": _median([s["시간대당"] for s in shapes]),
+        "표본": len(shapes),
+    }
+
+
+def estimate_seconds(model: Optional[Dict[str, float]], durations: int,
+                     skip_api: bool = False) -> Optional[float]:
+    """고른 시간대 수로 예상 초를 낸다. 계수가 없으면 None.
+
+    `고정 + 시간대당 x 개수`다. 2026-09-14 실측으로 검증했다 — 계수(고정 13초 +
+    시간대당 28초)로 시간대 둘을 예측하면 69초인데 실제도 69초였다.
+
+    ⚠️ **EDA를 켠 실행은 기록이 없다.** 그래서 그 몫은 더하지 않는다 — 모르는
+    것을 숫자로 지어내는 대신 화면이 '더 걸린다'고 말한다.
+    """
+    if not model or durations <= 0:
+        return None
+    고정 = model["전처리"] + (0.0 if skip_api else model["수집"])
+    return 고정 + model["시간대당"] * durations
 
 
 def get_job(job_id: str) -> Optional[Job]:
