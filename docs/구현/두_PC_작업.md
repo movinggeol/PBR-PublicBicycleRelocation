@@ -113,8 +113,7 @@ powercfg /a                              # S0 저전원 유휴 기기인가
 > 🔴 **다만 남아 있는 것은 1.26.105 이전 등록(평일 03:30 한 번, `--if-needed` 없음)이라
 > `resume`으로 되살리면 안 됩니다** — 주말·공휴일 계수가 쌓이지 않습니다(2026-09-14 조회).
 > 이쪽으로 도로 수집을 옮길 때는 관리자 권한 PowerShell에서
-> `.\scripts
-oad_collector.ps1 install`로 **다시 등록**하십시오(COLLECTOR_ROAD.md 11-1장).
+> `.\scripts\road_collector.ps1 install`로 **다시 등록**하십시오(COLLECTOR_ROAD.md 11-1장).
 
 ### 이미 모은 것은 어디에 있나
 

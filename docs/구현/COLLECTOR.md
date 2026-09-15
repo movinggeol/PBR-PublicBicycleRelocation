@@ -911,7 +911,7 @@ B PC만 관측한 날짜 — 이 구성에서는 **휴일 전부** — 는 그�
 지도 등) 채우면 됩니다 — 같은 명령에 경로만 `.db`로 주면 됩니다.
 
 ```powershell
-python tools\merge_stock.py D:\B_PCike_system.db
+python tools\merge_stock.py D:\B_PC\bike_system.db
 ```
 
 `collect_log.csv`는 이름이 달라 `stock_*.csv` glob에서 자연히 빠집니다 — 형식이
