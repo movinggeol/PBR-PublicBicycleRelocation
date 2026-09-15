@@ -150,6 +150,9 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
   ```
 
   훅이 없으면 `python tools/commit_guard.py --install` 로 한 번만 놓으면 된다.
+  🔴 **저장소 폴더 이름을 바꿨으면 `--install`을 다시 돌려라** — 훅은 절대 경로를 박아서
+  옛 폴더를 가리킨 채 `can't open file`로 **모든 커밋을 막는다**(2026-09-15 회사환경).
+  1.26.221부터 `--install`이 옛 경로 훅을 알아보고 고쳐 쓴다. `--no-verify`로 건너뛰지 마라.
   **목록을 안 적으면 아무것도 막지 않으므로** 평소 커밋은 그대로 하면 된다.
 
   ⚠️ 그래도 **커밋 뒤에 `git show --stat HEAD`로 실제로 들어간 것을 확인하라.**

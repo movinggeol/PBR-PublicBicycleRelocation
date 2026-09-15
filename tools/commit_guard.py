@@ -179,14 +179,23 @@ def cmd_install() -> int:
         "--check || exit 1\n"
     )
     if hook.exists():
-        if "commit_guard" in hook.read_text(encoding="utf-8", errors="replace"):
+        current = hook.read_text(encoding="utf-8", errors="replace")
+        if current == body:
             print(f"이미 설치돼 있습니다: {hook}")
             return 0
-        print(f"pre-commit 훅이 이미 있습니다 — 덮어쓰지 않았습니다: {hook}",
-              file=sys.stderr)
-        print("다음 줄을 직접 넣으십시오:\n"
-              "  python tools/commit_guard.py --check || exit 1", file=sys.stderr)
-        return 1
+        if "commit_guard" not in current:
+            print(f"pre-commit 훅이 이미 있습니다 — 덮어쓰지 않았습니다: {hook}",
+                  file=sys.stderr)
+            print("다음 줄을 직접 넣으십시오:\n"
+                  "  python tools/commit_guard.py --check || exit 1", file=sys.stderr)
+            return 1
+        # 🔴 **우리가 놓은 훅인데 지금 것과 다르다** — 대개 저장소 폴더 이름이 바뀐
+        # 경우다. 훅은 절대 경로를 박으므로(위 주석) 옛 폴더(`C:/PBR-PublicBicycleRelocation-/…`)를
+        # 가리키게 되고, 파이썬이 `can't open file`로 죽어 **모든 커밋이 막힌다.** 예전에는
+        # 'commit_guard' 글자만 보고 "이미 설치돼 있습니다"라 답해 **고칠 길이 없었다**
+        # (2026-09-15 회사환경에서 겪음, 1.26.221). 우리 훅이므로 지금 경로로 고쳐 쓴다 —
+        # 남이 쓴 훅은 위에서 여전히 안 건드린다.
+        print(f"훅이 지금 저장소와 다른 내용(옛 경로 등)이라 고쳐 씁니다: {hook}")
     hook.parent.mkdir(parents=True, exist_ok=True)
     hook.write_text(body, encoding="utf-8", newline="\n")
     hook.chmod(0o755)

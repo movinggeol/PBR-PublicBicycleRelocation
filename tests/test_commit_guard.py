@@ -148,3 +148,34 @@ def test_경로를_직접_준_커밋도_판정한다(repo):
     done = _git(repo, "commit", "-m", "경로 지정", "남의것.md", check=False)
     assert done.returncode != 0, "경로를 직접 주면 가드를 지나쳤다"
     assert _head(repo) == before
+
+
+def test_옛_경로를_가리키는_훅은_install이_지금_경로로_고쳐_쓴다(tmp_path):
+    """🔴 저장소 폴더 이름이 바뀌면 훅이 **없는 경로**를 가리켜 모든 커밋이 막힌다.
+
+    훅은 절대 경로를 박는다(하위 폴더에서 커밋해도 돌게). 그래서 폴더가
+    `C:/PBR-PublicBicycleRelocation-/`에서 지금 이름으로 바뀐 회사환경에서
+    `can't open file`로 커밋이 막혔는데, `--install`은 'commit_guard' 글자만 보고
+    *"이미 설치돼 있습니다"* 라 답해 **고칠 길이 없었다**(2026-09-15, 1.26.221).
+    남이 쓴 훅을 덮지 않는 규칙은 그대로인지도 함께 본다.
+    """
+    _git(tmp_path, "init", "-q")
+    hook = tmp_path / ".git" / "hooks" / "pre-commit"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    옛_훅 = ('#!/bin/sh\n# PBR 커밋 가드 (tools/commit_guard.py)\n'
+            '"python" "C:/없는-폴더-/tools/commit_guard.py" --check || exit 1\n')
+    hook.write_text(옛_훅, encoding="utf-8", newline="\n")
+
+    assert _guard(tmp_path, "--install").returncode == 0
+    고친_훅 = hook.read_text(encoding="utf-8")
+    assert "없는-폴더-" not in 고친_훅, "옛 경로를 가리키는 훅을 그대로 뒀다"
+    assert "commit_guard.py" in 고친_훅 and "--check" in 고친_훅
+
+    # 다시 돌리면 그대로 둔다
+    assert _guard(tmp_path, "--install").returncode == 0
+    assert hook.read_text(encoding="utf-8") == 고친_훅
+
+    # 남이 쓴 훅은 여전히 덮지 않는다
+    hook.write_text("#!/bin/sh\necho 남의 훅\n", encoding="utf-8", newline="\n")
+    assert _guard(tmp_path, "--install").returncode == 1
+    assert "남의 훅" in hook.read_text(encoding="utf-8")
