@@ -586,3 +586,23 @@ def test_두_스케줄러_스크립트가_없는_경로를_status에서_말한�
         assert "Test-Path -LiteralPath $action.Execute" in status, (
             f"{name}의 status가 작업이 가리키는 경로를 확인하지 않는다")
         assert "2147942402" in text, f"{name}가 0x80070002를 사람 말로 옮기지 않는다"
+
+
+def test_status는_경로가_없는_작업에_resume을_권하지_않는다(collector):
+    """🔴 회사 PC의 `--status`가 일시정지된 도로 작업에 `resume`을 권했다(2026-09-15). 그 작업은 옛 폴더
+    경로를 가리켜 `resume`하면 `0x80070002`로 실패하고, 도로 수집 담당도 집 PC라 켜면 한도를 두 배로
+    쓴다. 경로가 없으면 `install`을, 일시정지면 담당인지 먼저 보라고 말해야 한다 (1.26.225)."""
+    옛경로 = "C:\\PBR-PublicBicycleRelocation-\\.venv\\Scripts\\pythonw.exe"
+
+    말 = "\n".join(collector.schedule_advice("Disabled", 옛경로, exists=False))
+    assert "resume" not in 말.replace("resume으로는", ""), 말
+    assert "install" in 말 and 옛경로 in 말, 말
+    assert "맡지 않는다면 그대로" in 말, 말
+
+    말 = "\n".join(collector.schedule_advice("Disabled", "C:\\ok\\pythonw.exe", exists=True))
+    assert "road_collector.ps1 resume" in 말 and "맡지 않는다면 그대로" in 말, 말
+    assert "[!]" not in 말, 말
+
+    assert collector.schedule_advice("Ready", "C:\\ok\\pythonw.exe", exists=True) == []
+    assert "없는 경로" in "\n".join(collector.schedule_advice("Ready", 옛경로, exists=False))
+    assert "install" in "\n".join(collector.schedule_advice("", "", exists=True))

@@ -437,19 +437,44 @@ def _warn_if_stalled(last_label: str) -> None:
     try:
         out = subprocess.run(
             ["powershell", "-NoProfile", "-Command",
-             "(Get-ScheduledTask -TaskName 'PBR도로시간수집' -ErrorAction Stop).State"],
+             "$t = Get-ScheduledTask -TaskName 'PBR도로시간수집' -ErrorAction Stop;"
+             " $a = $t.Actions | Select-Object -First 1;"
+             " \"$($t.State)|$($a.Execute)\""],
             capture_output=True, text=True, timeout=20, encoding="utf-8")
     except (OSError, subprocess.SubprocessError):
         return
-    state = (out.stdout or "").strip()
+    state, _, execute = (out.stdout or "").strip().partition("|")
+    exists = Path(execute).exists() if execute else True
+    for line in schedule_advice(state, execute, exists):
+        print(line)
+
+
+def schedule_advice(state: str, execute: str, exists: bool) -> list[str]:
+    """도로 수집 작업의 상태를 보고 **이 PC에서 할 일**을 말한다 (1.26.225).
+
+    ⚠️ 예전에는 일시정지면 무조건 `resume`을 권했다. 그런데 회사 PC의 작업은 저장소 폴더 이름이
+    바뀌어 옛 경로를 가리키고 있어(1.26.224) `resume`하면 `0x80070002`로 실패하고, 애초에 도로
+    수집 담당이 집 PC라 **켜면 안 되는** 작업이었다 — 두 PC가 같은 키로 돌면 한도를 두 배로 쓴다.
+    그래서 경로가 없으면 `install`을, 일시정지면 담당인지 먼저 보라고 말한다.
+    """
+    sep = chr(92)
+    script = f".{sep}scripts{sep}road_collector.ps1"
+    if not state:
+        return [f"    스케줄이 등록되어 있지 않습니다 — {script} install"]
+
+    lines = []
+    if not exists:
+        lines += [f"    [!] 작업이 없는 경로를 가리킵니다: {execute}",
+                  f"        resume으로는 켜지지 않습니다(실행하면 0x80070002) — 되살릴 때는 {script} install"]
     if state == "Disabled":
-        print("    스케줄이 **일시정지(Disabled)** 상태입니다 — 고장이 아니라 꺼져 있습니다.")
-        print("    다시 켜기: .{sep}scripts{sep}road_collector.ps1 resume".format(sep=chr(92)))
-    elif state and state != "Ready":
-        print(f"    스케줄 상태: {state}")
-    elif not state:
-        print("    스케줄이 등록되어 있지 않습니다 — "
-              ".{sep}scripts{sep}road_collector.ps1 install".format(sep=chr(92)))
+        lines.append("    스케줄이 **일시정지(Disabled)** 상태입니다 — 고장이 아니라 꺼져 있습니다.")
+        if exists:
+            lines.append(f"    다시 켜기: {script} resume")
+        lines.append("    ⚠️ 도로 수집을 이 PC가 맡지 않는다면 그대로 두십시오 — 두 PC가 같은 키로 돌면"
+                     " 한도를 두 배로 씁니다 (docs/구현/두_PC_작업.md 0장).")
+    elif state != "Ready":
+        lines.append(f"    스케줄 상태: {state}")
+    return lines
 
 
 def status() -> int:
