@@ -40,6 +40,9 @@ python tools/export_collected.py --road --out data/transfer/collected.db   # 내
 python tools/merge_stock.py data/transfer/collected.db                     # 받기(합치기)
 ```
 
+**두 PC를 통째로 맞출 때**(정본 + 실험 실행 + 수집 자료 전부)는 한 블록으로 묶은
+[3-C장](#3-c-공유할-것-전부-한-번에--두-pc를-맞출-때)을 그대로 쓰십시오 — 2026-09-15에 실제로 쓴 명령입니다.
+
 ---
 
 ## 1. 왜 이걸 해야 하나
@@ -274,6 +277,88 @@ python tools/merge_stock.py data/transfer/collected.db
 
 ---
 
+## 3-C. 공유할 것 전부 한 번에 — 두 PC를 맞출 때
+
+> 2026-09-15 회사환경(A) → 집환경(B)에서 **실제로 쓴 명령**입니다. 2장(실행)과
+> 3-B장(수집 자료)을 한 번에 묶었습니다.
+
+### 3-C-1. 보내는 PC — 한 블록을 통째로 붙여 넣는다
+
+```powershell
+$d = "data\transfer\A_20260915"
+New-Item -ItemType Directory -Force $d | Out-Null
+.\.venv\Scripts\python.exe tools\export_collected.py --road --out "$d\collected.db"
+.\.venv\Scripts\python.exe tools\transfer_run.py --export-all --period "25년 11월" --out "$d\runs_2511.db"
+.\.venv\Scripts\python.exe tools\transfer_run.py --export-all --period "26년 03월" --out "$d\runs_2603.db"
+.\.venv\Scripts\python.exe tools\transfer_run.py --export-all --period "25년 06월" --out "$d\runs_2506.db"
+Get-ChildItem $d | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
+```
+
+🔴 **나눠 붙이면 `$d`가 비어 실패합니다** — 실제로 겪었습니다. 첫 두 줄을 건너뛰고
+(또는 새 창에서) 세 번째 줄부터 넣으니 `"$d\collected.db"`가 `\collected.db`,
+곧 **`C:\collected.db`** 가 되어 `sqlite3.OperationalError: unable to open database file`로
+멈췄습니다. 드라이브 맨 위는 관리자 권한 없이 못 씁니다. 파이썬 경로 문제로 보여
+경로를 바꿔 보기 쉬운데, 트레이스백이 스크립트 안(`export()`)에서 났다면 **파이썬은
+이미 떴습니다.** 만들어진 파일은 없으니 블록을 통째로 다시 넣으면 됩니다.
+
+**그날(2026-09-15 16:40) 결과**
+
+| 파일 | 크기 | 담긴 것 |
+| --- | ---: | --- |
+| `collected.db` | 148MB | `stock_history` **1,195,697행**(2026-08-25 09:00 ~ 09-15 16:30, 871틱) · `stock_station_master` 20,591행 · `road_leg` 700행(`roadprobe-2026-09-01` 300 · `09-02` 400) |
+| `runs_2511.db` | 4.5MB | 9라벨 35,705행 — **`2026-08-11 real`(정본)** · `2026-08-12` 실험 6개 · `brokenmix-2511` · `brokenmix4-2511` |
+| `runs_2603.db` | 6.7MB | 10라벨 57,556행 — `2026-08-28 도로실측` · `도로실측2` · `sweep-10~21` 6개 · `brokenmix-2603` · `brokenmix4-2603` |
+| `runs_2506.db` | 1.5MB | 2라벨 11,244행 — `brokenmix-2506` · `brokenmix4-2506` |
+
+- **옮기기 직전에 돌립니다.** 재고는 10분마다 쌓이므로 늦게 뽑을수록 더 담깁니다.
+- `road_leg`가 700행뿐인 것은 정상입니다 — 회사 PC의 도로 수집은 09-03부터 일시정지이고
+  고정 패널은 집 PC가 쌓습니다([두_PC_작업.md](두_PC_작업.md) 0장).
+- `collected.db`는 크니 3장의 `Compress-Archive`로 묶어도 됩니다.
+
+### 3-C-2. 왜 실행을 한 파일(`--export-all`)이 아니라 기간별 셋으로 나누나
+
+**받는 쪽은 담긴 라벨 중 하나라도 이미 있으면 파일 전체를 넣지 않고 멈춥니다**(5-1).
+기간별로 나누면 그런 일이 생겨도 **그 묶음만** 멈추고 나머지는 들어갑니다.
+
+`--period`가 비어 있는 실행(`roadprobe-2026-09-01`·`09-02`)은 어느 묶음에도 안 들어갑니다.
+그 도로 자료는 `collected.db`에 담기므로 빠져도 잃는 것이 없습니다. 기간 셋으로 21라벨이
+전부 담기는지는 내보내기 전에 스크래치 경로로 한 번 내보내 확인했습니다.
+
+### 3-C-3. 받는 PC
+
+```powershell
+$d = "data\transfer\A_20260915"   # 옮겨 온 폴더
+
+# 수집 자료 — 합친다 (이미 있는 틱은 건드리지 않아 여러 번 넣어도 안전)
+.\.venv\Scripts\python.exe tools\merge_stock.py "$d\collected.db" --dry-run
+.\.venv\Scripts\python.exe tools\merge_stock.py "$d\collected.db"
+
+# 실행 — 셋 다 확인만 먼저
+.\.venv\Scripts\python.exe tools\transfer_run.py --import "$d\runs_2511.db" --dry-run
+.\.venv\Scripts\python.exe tools\transfer_run.py --import "$d\runs_2603.db" --dry-run
+.\.venv\Scripts\python.exe tools\transfer_run.py --import "$d\runs_2506.db" --dry-run
+# 이상 없으면 --dry-run을 뺀 같은 세 줄
+```
+
+⚠️ **정본은 `runs_2511.db`로 받습니다 — 09-01의 `run_20260811_real.db`를 따로 넣지
+마십시오.** 둘의 `2026-08-11 real`은 **내용이 같습니다**(2026-09-15 대조, 9,124행). 다른
+것은 09-01 뒤에 생긴 열뿐입니다 — `runs.kind`와 `kpi_summary`의 포화·수요 충족 4열이 새
+파일에만 있고, 이 라벨에서는 모두 비어 있습니다. 이미 따로 넣었다면 `runs_2511.db`가
+*"이미 있습니다"* 로 멈춥니다. **`--overwrite`로 밀지 말고** 나머지 8라벨만 다시
+내보내는 편이 안전합니다(5-1).
+
+### 3-C-4. 옮기지 않는 것
+
+| 표 | 회사 PC 행 수 | 왜 |
+| --- | ---: | --- |
+| `rental_history` · `net_demand` | 539만 · 43만 | 원천 대여이력 CSV에서 다시 만든다(`load_rentals.py` · `rebuild_net_demand.py`) |
+| `road_leg` 중 파이프라인 부산물 | 494 | 그 PC에서 지도를 그리며 받은 값이라 그 PC 실행 소속이다(3-B-3) |
+| `vehicle` | 21 | 차량 마스터 — 실행할 때 `sync_fleet()`이 다시 맞춘다 |
+| `stockout_calibration` | 1 | `experiments/structure/observed_stockout.py`의 결과. 재고를 합친 뒤 받는 PC에서 다시 돌린다 |
+| `demand_backtest` | 36 | 실험 결과표 — 다시 돌리면 나온다 |
+
+---
+
 ## 4. 받기 — 파이프라인 실행 (받는 PC에서)
 
 ### 4-1. 먼저 넣지 말고 확인한다
@@ -311,6 +396,7 @@ python tools/transfer_run.py --list
 | `period='○○'인 실행이 없습니다.` + 기간 목록 | 기간 표기가 틀렸다 | `--list`의 `period` 칸 표기를 그대로 쓰십시오 (`25년 11월`) |
 | `○○가 이미 있습니다. 지우거나 다른 이름을 주십시오.` | **내보낼 파일**이 이미 있다 | 지우거나 `--out`에 다른 이름을 주십시오 |
 | `적재된 실행이 없습니다.` | 그 DB가 비어 있다 (그 PC에서 파이프라인을 한 번도 안 돌렸다) | 받기만 할 거라면 그대로 `--import` 하면 됩니다 |
+| `sqlite3.OperationalError: unable to open database file` (`export()` 안에서) | **내보낼 경로에 쓸 수 없다** — 폴더가 없거나, `$d` 같은 변수가 비어 `C:\` 맨 위를 가리켰다 | 파이썬 경로 문제가 아닙니다. `--out` 경로를 확인하고 폴더를 만든 뒤 다시 하십시오(3-C-1, 2026-09-15에 겪음) |
 
 ### 5-1. "이미 있습니다"가 나오면
 

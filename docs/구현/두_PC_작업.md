@@ -262,19 +262,27 @@ powercfg /query SCHEME_CURRENT SUB_SLEEP HIBERNATEIDLE   # 최대절전까지 (A
 
 ### 6단계 — 이왕 회사 PC 앞이라면 **함께 들고 오십시오**
 
-두 가지가 집환경에서 막혀 있습니다. 한 번에 해결됩니다.
+두 가지가 집환경에서 막혀 있습니다 — ① 정본 스냅샷(게이트 A 채택이 이것 없이는
+④단계에서 멈춘다) ② 재고 수집분(지금 집환경의 "온전 0일"은 합치기 전의 반쪽짜리 값이다).
+**한 블록으로 둘 다 뽑습니다.**
+
+✅ **2026-09-15에 이 블록으로 뽑았습니다** — `data\transfer\A_20260915\`에 파일 넷(수집 자료
+148MB + 실행 21라벨을 기간별 세 묶음). 정본은 `runs_2511.db` 안에 있습니다. 명령·결과·받는
+쪽 명령은 [DB_이관.md 3-C장](DB_이관.md#3-c-공유할-것-전부-한-번에--두-pc를-맞출-때)이
+정본입니다(아래 4-3 기록).
 
 ```powershell
-# ① 정본 스냅샷 — 게이트 A 채택이 이것 없이는 ④단계에서 멈춘다
-python tools\transfer_run.py --list                     # 라벨이 있는지 먼저
-python tools\transfer_run.py --export "2026-08-11 real" --out data\transfer\run_20260811_real.db
-
-# ② 재고 수집분 — 지금 집환경의 "온전 0일"은 합치기 전의 반쪽짜리 값이다
-#    data\raw_data\재고이력\ 폴더를 통째로 복사해 온다
+$d = "data\transfer\A_20260915"      # 날짜를 바꿔 쓴다 — 출력 파일이 있으면 도구가 멈춘다
+New-Item -ItemType Directory -Force $d | Out-Null
+.\.venv\Scripts\python.exe tools\export_collected.py --road --out "$d\collected.db"
+.\.venv\Scripts\python.exe tools\transfer_run.py --export-all --period "25년 11월" --out "$d\runs_2511.db"
+.\.venv\Scripts\python.exe tools\transfer_run.py --export-all --period "26년 03월" --out "$d\runs_2603.db"
+.\.venv\Scripts\python.exe tools\transfer_run.py --export-all --period "25년 06월" --out "$d\runs_2506.db"
 ```
 
-집환경에서 받는 쪽 명령은 [4-2](#4-2-산출물--옮기지-않아도-된다-약-135gb)·
-[4-3](#4-3-재고이력은-성격이-다르다--합쳐야-한다)에 있습니다.
+⚠️ **통째로 붙여 넣으십시오.** 첫 줄을 빼면 `$d`가 비어 `C:\collected.db`에 쓰려다
+`unable to open database file`로 멈춥니다(09-15에 실제로 겪음). 재고이력 폴더(CSV)를 복사하는
+옛 방법보다 낫습니다 — CSV에는 대여소 마스터도 TMAP 실측도 없습니다.
 
 📌 **②를 합쳐야 진짜 공백이 보입니다.** 이동 중 구멍이 실제로 얼마인지,
 보조배터리 같은 추가 대책이 필요한지는 그때 판단합니다.
@@ -289,7 +297,7 @@ python tools\transfer_run.py --export "2026-08-11 real" --out data\transfer\run_
 | **손으로 1회** | `.env` | **키 값만 따로 나른다** | git에 넣으면 안 되는 비밀 (3장) |
 | **손으로 1회** | `data/raw_data/` | **한 번 복사** | 재생성 불가·1.5GB (4장) |
 | **재생성** | `data/bike_system.db` · `data/pp_data/` | **옮기지 않는다** | 파이프라인 산출물 (4장) |
-| **라벨 이관** | 정본 스냅샷 실행 1건 | `tools/transfer_run.py` — **절차서: [DB_이관.md](DB_이관.md)** | 라이브 재고라 **재생성 불가** (4-2장) |
+| **라벨 이관** | 정본 스냅샷 실행 1건 (두 PC를 맞출 때는 실행 전부 — 09-15에 21라벨) | `tools/transfer_run.py` — **절차서: [DB_이관.md](DB_이관.md)** (전부는 3-C장) | 라이브 재고라 **재생성 불가** (4-2장) |
 
 `docs/연구/references/`(106MB, 논문 PDF)는 5장에서 따로 다룹니다.
 
@@ -520,6 +528,20 @@ python tools\merge_stock.py D:\다른PC\재고이력\
 `INSERT OR IGNORE`가 무시했고, 설령 들어왔더라도 `road_time_model.py`가
 실행 첫 줄에서 *"지금 패널과 다른 구간이 93개 있습니다 → 제외하고 잽니다"*
 로 걸러냅니다. **판정용 10일은 09-02부터 셉니다.**
+
+**두 번째 내보내기 (2026-09-15 16:40, 회사환경 → 집환경) — 받기 대기.**
+09-09와 달리 **실행까지 한 번에** 뽑았습니다([DB_이관.md 3-C장](DB_이관.md#3-c-공유할-것-전부-한-번에--두-pc를-맞출-때)).
+
+| 파일 | 담긴 것 |
+| --- | --- |
+| `collected.db` (148MB) | 재고 **1,195,697행**(08-25 09:00 ~ 09-15 16:30) · 마스터 20,591행 · 도로 700구간(`roadprobe-2026-09-01`·`09-02`) |
+| `runs_2511.db` · `runs_2603.db` · `runs_2506.db` | 실행 **21라벨**(9 · 10 · 2) — 정본 `2026-08-11 real`은 `runs_2511.db` |
+
+- **재고는 대부분 "이미 있음"으로 나올 것입니다.** 09-09에 08-25~09-09 분량을 이미
+  합쳤기 때문입니다. 새로 들어오는 것은 09-09 이후 틱과, 09-09 파일에 없던 틱입니다. 여러 번
+  넣어도 행이 늘지 않으니 기간을 자르지 않았습니다.
+- **도로는 0구간이 정상입니다.** 두 날 모두 09-09에 이미 들어갔습니다.
+- 받은 뒤 결과(새로 채움 행 수·`quick_check`)를 이 자리에 적습니다.
 
 ---
 
