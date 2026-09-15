@@ -684,6 +684,39 @@ def test_자식이_찍은_TMAP_호출_수를_읽는다():
     assert 'print(f"\\nTMAP 호출 {call_count()}건' in src, "step3가 호출 수 줄의 모양을 바꿨다"
 
 
+def test_파이프라인도_경로_지도가_끼면_오늘_도로_수집과_TMAP_예산을_먼저_말한다(monkeypatch, capsys):
+    """🔴 `--skip-map` 없는 파이프라인에는 1.26.219의 안내가 없었다 — 웹 실행 폼은 지도를
+    늘 그리므로 계획 한 번이 최대 35건을 쓰는데, 로그에 그날 도로 수집 상태도 예산도 안
+    남았다(1.26.222). `--dry-run`에서도 보여야 부르기 전에 판단한다.
+
+    기본 예산은 step3 `module.MAX_CALLS`의 기본값과 같아야 한다 — 파이프라인은 그 모듈을
+    import하지 않고 숫자를 적는다."""
+    import importlib.util
+
+    import run_pipeline
+    import tools.redraw_maps as redraw_maps
+
+    monkeypatch.delenv("PBR_TMAP_MAX_CALLS", raising=False)
+    monkeypatch.setattr(redraw_maps, "road_collection_today",
+                        lambda day=None: {"label": "roadprobe-2026-09-15", "collected": 0,
+                                          "expected": 400, "reserve": 20})
+    monkeypatch.setattr(sys, "argv", ["run_pipeline.py", "--dry-run"])
+    assert run_pipeline.main() == 0
+    out = capsys.readouterr().out
+    assert "알 수 없습니다" in out, "오늘 도로 수집 상태를 말하지 않는다"
+    assert "최대 35건" in out and "PBR_TMAP_MAX_CALLS로 조정" in out, out
+
+    monkeypatch.setattr(sys, "argv", ["run_pipeline.py", "--dry-run", "--skip-map"])
+    assert run_pipeline.main() == 0
+    assert "TMAP" not in capsys.readouterr().out, "지도를 안 그리는데 TMAP 안내를 찍는다"
+
+    spec = importlib.util.spec_from_file_location(
+        "step3_module_기본값", run_pipeline.ROOT / "pipeline" / "step3_map" / "module.py")
+    step3 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(step3)
+    assert run_pipeline.STEP3_DEFAULT_MAX_CALLS == step3.MAX_CALLS
+
+
 # ───────── step 모듈을 패키지로 import할 수 있는가 (1.26.154) ─────────
 
 STEP_MODULES = [

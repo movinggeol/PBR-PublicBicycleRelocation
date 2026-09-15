@@ -267,6 +267,33 @@ def selected_scripts(args: argparse.Namespace) -> Iterable[Path]:
         yield from STAGES[group]
 
 
+# step3 `module.MAX_CALLS`의 기본값. 파이프라인은 step3를 **한 프로세스**로 띄우므로 이 값이
+# 곧 실행 전체의 TMAP 예산이다. 모듈을 import하지 않고 적는다 — step3 폴더를 sys.path에
+# 넣어야 해서다. 두 값이 갈리지 않게 시험이 대조한다.
+STEP3_DEFAULT_MAX_CALLS = 35
+
+
+def tmap_notice(env: dict) -> list[str]:
+    """경로 지도(step3)가 낄 때 먼저 찍는 안내 — 오늘 도로 수집 상태와 이번 TMAP 예산 (1.26.222).
+
+    `tools/redraw_maps.py`와 **같은 판단**을 쓴다(1.26.219). 예전에는 `--skip-map` 없는
+    파이프라인에 이 안내가 없어, 웹 실행 폼(지도를 늘 그린다)으로 계획 한 번이 최대 35건을
+    써도 로그에 그날 수집 상태가 안 남았다. 이 PC의 DB만 보므로 다른 PC가 같은 키로
+    수집하는지는 모른다고 말한다. **안내일 뿐이라 무엇이 실패해도 파이프라인을 막지 않는다.**
+    """
+    try:
+        from tools.redraw_maps import road_collection_today, road_status_lines
+
+        budget = int(env.get("PBR_TMAP_MAX_CALLS") or STEP3_DEFAULT_MAX_CALLS)
+        lines = road_status_lines(road_collection_today(), budget,
+                                  adjust="PBR_TMAP_MAX_CALLS로")
+    except Exception as err:                              # noqa: BLE001
+        return [f"[안내] TMAP 예산 안내를 만들지 못했습니다: {type(err).__name__}: {err}"]
+    return ["경로 지도(step3)가 TMAP을 부릅니다 — 군집 하나에 호출 하나이고,"
+            " 끝까지 못 부를 회차는 그리지 않고 건너뜁니다.",
+            *(f"  {line}" for line in lines)]
+
+
 # `API_SNAPSHOTS` 세 파일에 대응하는 DB 표. 순서는 뜻이 없고 **셋 다** 있어야 한다
 # (반쯤 있는 라벨을 물려받으면 다음 단계에서 멈춘다 — snapshot_labels()와 같은 규약).
 SNAPSHOT_TABLES = ("station_stock", "parking_lot", "station_info")
@@ -441,6 +468,12 @@ def main() -> int:
         print(f"보유 차량 {fleet}대 · 회차당 투입 상한 {per_round}대로 실행합니다.")
     for index, script in enumerate(scripts, start=1):
         print(f"[{index}/{len(scripts)}] {script}")
+
+    # 경로 지도가 끼면 TMAP 한도를 쓴다 — dry-run에서도 보여야 부르기 전에 판단한다.
+    if not args.skip_map:
+        print()
+        for line in tmap_notice(env):
+            print(line)
 
     # dry-run은 파일 존재 여부와 실행 순서만 확인할 때 사용합니다.
     if args.dry_run:

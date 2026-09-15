@@ -617,6 +617,7 @@ if __name__ == "__main__":
 
     ensure_output_dirs()
 
+    예산_건너뜀 = []     # 끝까지 부를 수 없어 그리지 않은 회차 (1.26.222)
     for duration in duration_list(config):
         # 앞 단계(step1·step2)가 '대상 없음'으로 건너뛴 시간대는 여기서도
         # 건너뛴다 (1.26.129). 예전에는 확인 없이 바로 읽어 FileNotFoundError로
@@ -639,8 +640,22 @@ if __name__ == "__main__":
             print(f"\n[건너뜀] {duration}: 입력이 없습니다 ({', '.join(빈_것)})")
             continue
 
+        # 🔴 끝까지 부를 수 없으면 **그리지 않는다** (1.26.222). 반쯤 부르면 남은 군집이
+        # 직선으로 그려진 채 새 지문을 받아 '최신'으로 보인다(module.route_skip_reason).
+        # 군집 하나에 호출 하나다.
+        군집_수 = int(vrp_plan["cluster"].nunique()) if "cluster" in vrp_plan.columns else 0
+        까닭 = module.route_skip_reason(군집_수)
+        if 까닭:
+            print(f"\n[건너뜀] {duration}: 경로 지도를 그리지 않습니다 — {까닭}")
+            예산_건너뜀.append(duration)
+            continue
+
         make_vrp_map(depot, pick_drop, vrp_plan, duration, HEADERS, TMAP_URL)
 
     print(f"\nTMAP 호출 {call_count()}건 (예산 {module.MAX_CALLS}건)")
     남은_엔드포인트 = [e.name for e in module.available_endpoints()]
     print(f"  사용 가능한 엔드포인트: {', '.join(남은_엔드포인트) or '없음(모두 한도 소진)'}")
+    if 예산_건너뜀:
+        print(f"⚠️ 경로 지도 {len(예산_건너뜀)}장을 그리지 않았습니다: {', '.join(예산_건너뜀)}"
+              " — 한도가 남은 때 `python tools/redraw_maps.py --run-label"
+              f' "{now}" --with-route`로 그리십시오.')

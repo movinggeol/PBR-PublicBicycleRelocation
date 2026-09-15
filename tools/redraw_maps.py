@@ -173,8 +173,11 @@ def road_collection_today(day: date | None = None) -> dict:
     }
 
 
-def road_status_lines(state: dict, budget: int) -> list:
+def road_status_lines(state: dict, budget: int, adjust: str = "--tmap-budget으로") -> list:
     """오늘 도로 수집 상태와 이번 예산을 사람이 읽을 말로.
+
+    `adjust`는 예산을 바꾸는 길이다 — 파이프라인은 이 도구의 `--tmap-budget`이 없어
+    `PBR_TMAP_MAX_CALLS로`를 넘긴다(`run_pipeline.tmap_notice`, 1.26.222).
 
     🔴 **이 PC에 기록이 없다고 "수집이 안 됐다"로 말하지 않는다.** 회사환경은 도로 수집이
     꺼져 있어 늘 0구간이다 — 같은 키로 집 PC가 받고 있을 수 있다.
@@ -196,7 +199,7 @@ def road_status_lines(state: dict, budget: int) -> list:
                 " 그날(한도가 안 풀렸다면 이튿날 아침) 수집이 막힐 수 있습니다.")
     else:
         tail = (f"한도가 풀리는 시각을 몰라 도로 수집기 몫 {reserve}건을 남기고,"
-                f" 이번 실행은 최대 {budget}건만 부릅니다 (--tmap-budget으로 조정).")
+                f" 이번 실행은 최대 {budget}건만 부릅니다 ({adjust} 조정).")
     return [head, tail]
 
 
@@ -341,8 +344,11 @@ def redraw_route(run_label: str, duration: str, candidates: Path,
 
     # 호출 수를 그대로 올려 보여 준다 — 일일 한도는 돈이 아니라 **횟수**라,
     # 얼마나 썼는지가 다음 판단의 유일한 근거다.
+    # `[건너뜀]` 줄도 올린다 — step3가 예산이 모자라 그리지 않았으면(1.26.222) 아래
+    # *"저장되지 않았습니다"* 만으로는 왜인지 안 보인다.
     for line in (proc.stdout or "").splitlines():
-        if line.startswith("TMAP 호출") or "엔드포인트" in line:
+        if (line.startswith(("TMAP 호출", "[건너뜀]", "⚠️ 경로 지도"))
+                or "엔드포인트" in line):
             print(f"    {line.strip()}")
 
     path = Path(ROUTE_MAP.format(duration=duration, now=run_label))

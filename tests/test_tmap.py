@@ -170,6 +170,45 @@ def test_budget_stops_calls_before_quota_is_spent(monkeypatch):
     assert sent == [], "예산 초과 시 요청을 보내면 안 된다"
 
 
+def test_끝까지_못_부를_경로_지도는_그리기_전에_건너뛴다(monkeypatch):
+    """🔴 반쯤 그리지 않는다 (1.26.222).
+
+    예산이 군집 중간에 끊기면 남은 군집이 직선으로 그려진 채 저장되고, 새 지문을 받아
+    `/maps`에서 *최신*으로 보인다. 파이프라인은 회차 여럿을 한 프로세스로 돌려 기본 35건에서
+    마지막 회차가 그렇게 섞였다. 딱 맞으면 그리고, 한 건이라도 모자라거나 두 엔드포인트가
+    모두 소진이면 **부르기 전에** 까닭을 돌려준다."""
+    monkeypatch.setenv("PBR_TMAP_MAX_CALLS", "30")
+    monkeypatch.delenv("PBR_TMAP_URL", raising=False)
+    module = load_module()
+    module._call_count = 20
+
+    assert module.route_skip_reason(10) is None, "딱 맞는데 안 그린다"
+    까닭 = module.route_skip_reason(11)
+    assert 까닭 and "11건" in 까닭 and "10건" in 까닭, 까닭
+    assert module.route_skip_reason(0) is None, "부를 것이 없는데 막는다"
+
+    module._exhausted.update(e.name for e in module.ENDPOINTS)
+    assert "한도 소진" in module.route_skip_reason(1)
+
+
+def test_step3는_회차마다_그리기_전에_끝까지_부를_수_있는지_본다():
+    """판정 함수만 시험하면 **배선이 끊겨도 통과한다.** step3 회차 루프에서
+    `route_skip_reason`이 `make_vrp_map`보다 먼저 불리고, 그 사이에 `continue`가 있어야
+    실제로 안 그린다."""
+    import ast
+
+    tree = ast.parse((MODULE_PATH.parent / "main.py").read_text(encoding="utf-8"))
+    loop = next(n for n in ast.walk(tree)
+                if isinstance(n, ast.For) and "duration_list" in ast.unparse(n.iter)
+                and "make_vrp_map" in ast.unparse(n))
+    calls = {ast.unparse(n.func): n.lineno for n in ast.walk(loop) if isinstance(n, ast.Call)}
+    assert "module.route_skip_reason" in calls, "회차 루프가 그리기 전 확인을 안 부른다"
+    확인, 그리기 = calls["module.route_skip_reason"], calls["make_vrp_map"]
+    assert 확인 < 그리기, "그린 뒤에 확인한다"
+    assert any(isinstance(n, ast.Continue) and 확인 < n.lineno < 그리기
+               for n in ast.walk(loop)), "확인만 하고 건너뛰지 않는다"
+
+
 # ---------------- 경로 지도의 팝업 (수정안 15) ----------------
 #
 # 지도에서 지점을 누르면 뜨는 창이다. 사람이 현장에서 읽는 글이므로 파이썬 자료구조가

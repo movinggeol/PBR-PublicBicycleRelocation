@@ -16,6 +16,9 @@ QUOTA_EXCEEDED) 그 엔드포인트를 이번 실행에서 접고 100으로 자�
     넘으면 TmapBudgetExceeded를 올리고, 호출한 쪽이 직선 경로로 대체한다.
   · **한도 초과 재시도 안 함** — QUOTA_EXCEEDED는 하루가 지나야 풀리므로
     같은 엔드포인트로 다시 시도하지 않는다(순간적인 429는 재시도한다).
+  · **그리기 전 확인** (1.26.222) — 회차의 군집 수가 남은 예산보다 많으면 그 회차
+    지도를 아예 그리지 않는다(`route_skip_reason`). 반쯤 그리면 직선이 섞인 지도가
+    '최신' 지문을 받는다.
 
 전부 지도 품질만 떨어뜨릴 뿐 파이프라인을 멈추지 않는다.
 """
@@ -29,9 +32,10 @@ import requests
 # 35는 **회차당 군집 상한이 10이던 1.12.0 기준**(10 × 3회차 = 30건)이다.
 # 1.19.1부터 군집 수를 작업량이 정해 회차당 12~16개라(docs/구현/FLEET.md),
 # 한 회차는 넉넉하지만 **세 회차를 한 프로세스로 돌리면 36~48건이라 마지막
-# 회차가 직선으로 그려진다.** 그때는 PBR_TMAP_MAX_CALLS를 올리거나 회차를 나눠 돈다.
+# 회차가 직선으로 그려졌다.** 1.26.222부터는 끝까지 못 부를 회차를 **그리지 않고
+# 건너뛴다**(`route_skip_reason`). 그리려면 PBR_TMAP_MAX_CALLS를 올리거나 회차를 나눠 돈다.
 # (클러스터 하나가 호출 한 번으로 끝난다 — 현실 최대 경유지가 26곳이라 분할이 없다.)
-# 예산을 넘기면 남은 경로는 직선으로 그리고 실행은 계속한다.
+# 그래도 예산이 도중에 끊기면(폴백의 429 한 건 등) 남은 경로는 직선으로 그리고 실행은 계속한다.
 MAX_CALLS = int(os.getenv("PBR_TMAP_MAX_CALLS", "35"))
 
 BASE_URL = "https://apis.openapi.sk.com/tmap/routes/"
@@ -176,6 +180,33 @@ def pick_endpoint(via_count: int) -> TmapEndpoint:
         if via_count <= _max_via(endpoint):
             return endpoint
     return usable[-1]
+
+
+def route_skip_reason(need: int) -> str | None:
+    """경로 지도 한 장을 **그리기 전에** 끝까지 부를 수 있는지 본다 (1.26.222).
+
+    반환: 못 부르면 그 까닭, 부를 수 있으면 None. `need`는 그 지도가 부를 호출 수다 —
+    군집 하나에 하나다(현실 최대 경유지 26곳이라 분할이 없다, 2026-09-14 실측).
+
+    🔴 **반쯤 그리지 않기 위해서다.** 예산이 군집 중간에 끊기면 남은 군집은 직선으로
+    그려진 채 저장되고, 파일은 새 지문을 받아 `/maps`에서 *최신*으로 보인다. 안 그린
+    지도는 *낡음*으로 남아 다시 그려야 한다는 사실이 보이지만, 반쯤 그린 지도는 그
+    사실을 숨긴다. `tools/redraw_maps.py`는 회차마다 프로세스를 띄워 이 확인을 바깥에서
+    했는데(1.26.219), 파이프라인은 회차 여럿을 **한 프로세스**로 돌려 기본 예산 35건에서
+    마지막 회차가 직선으로 섞였다(위 `MAX_CALLS` 주석).
+
+    ⚠️ `need`는 **하한**이다 — 30이 도중에 소진돼 100으로 넘어가면 429 한 건이 더
+    붙는다. 그 한 건 때문에 마지막 군집이 직선이 되는 일은 여기서 못 막는다.
+    """
+    if need <= 0:
+        return None
+    if not available_endpoints():
+        return "쓸 수 있는 TMAP 엔드포인트가 없습니다 (모두 일일 한도 소진)"
+    remaining = MAX_CALLS - _call_count
+    if need > remaining:
+        return (f"호출이 {need}건 필요한데 남은 예산이 {remaining}건입니다"
+                " (PBR_TMAP_MAX_CALLS로 조정)")
+    return None
 
 
 def seconds_to_hms(sec):
