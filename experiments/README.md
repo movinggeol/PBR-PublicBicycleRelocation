@@ -170,6 +170,7 @@ python experiments/structure/park2024_compare.py   # 선행연구 모형 대 μ+
 | `tick_interval.py` | **재고를 10분마다 찍어야 하나** — 10분 자료를 솎아 성긴 수집을 흉내 낸다 | 결품은 둔감(60분 −1.3%) · 사건은 민감(55.6% 소실). **촘촘히 모으면 솎을 수 있지만 반대는 안 된다** ([EXPERIMENTS.md](../docs/분석/EXPERIMENTS.md) 35장) |
 | `step0_rebal_qty_check.py` | 재배치량 진단 — 작업 대상 수와 **Pick·Drop 수급 격차** (1.18.8에서 되살림) | `step0_collect/test.py` |
 | `step1_cluster_memo.py` | 클러스터링 실행 결과 메모 | `step1 (...)/test.py` |
+| `survey_crosscheck.py` | **공식 통계와 본 연구 자료가 같은 것을 세나** — 「2025 교통현황조사」 조사 주간(2025-10-20~26)을 `rental_history`와 맞대 요일 모양·수준·최다 지점·규모를 본다 | 요일변동계수 차 최대 0.03 · 수준은 날마다 82~87%로 **일정하게 낮다** · 관제센터 1위 일치. 격차 원인은 미확인이라 문의로 넘겼다 ([THESIS.md](../docs/연구/THESIS.md) 10-D절) |
 | `tour_length_estimate.py` | 순회거리 어림(대여소 수 비례·BHH 근사 등) 셋 중 무엇이 실제 경로에 가까운가 — **세 어림 모두 현행(대여소 수 비례)보다 못하다**(13장, 5-H의 BHH 보류를 확정) | — |
 
 ### 지도 범례 시안은 채택돼 `mapviz.py`로 나갔습니다 (1.26.79 조사 → 1.26.80 채택)
