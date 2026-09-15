@@ -427,7 +427,7 @@ def test_step3도_앞_단계의_건너뜀을_견딘다():
 
 def test_실측_표에_가짜_출발점이_들어가지_않는다():
     """TMAP 요청의 출발점은 차고지가 아니라 남쪽으로 약 555m 민 자리다
-    (출발지와 도착지가 같으면 경유지 최적화가 성립하지 않는다). 그 어긋남이
+    (출발지와 도착지가 같으면 다중 경유지 안내가 성립하지 않는다). 그 어긋남이
     이동시간 모형의 정답표(`road_leg`)에 새고 있었다 — 1,705구간 중 29건."""
     code = (PROJECT_ROOT / "pipeline" / "step3_map" / "main.py").read_text(encoding="utf-8")
     body = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("#"))

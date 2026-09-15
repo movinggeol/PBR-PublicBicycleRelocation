@@ -1,4 +1,8 @@
-"""step3 지도 생성 보조 모듈: 시간 표기, TMAP 경유지 최적화 API 호출.
+"""step3 지도 생성 보조 모듈: 시간 표기, TMAP 다중 경유지 안내 API 호출.
+
+⚠️ 공식 이름은 **다중 경유지 안내**(`routeSequential`)다. 오래 *"경유지 최적화"* 라 불렀는데, 그것은
+경유지 순서를 다시 짜 주는 **별개 API**(`routeOptimization`, 별도 계약)다. 이 API는 넘긴 순서대로
+경로를 잇는다 — 순서는 VRP가 정한다(2026-09-15 공식 가이드 확인).
 
 **엔드포인트는 `routeSequential30`을 먼저 쓰고, 안 되면 `routeSequential100`으로
 넘어간다.** 두 엔드포인트는 **일일 한도가 따로 잡히므로**, 작은 쪽을 먼저 쓰면
@@ -102,13 +106,15 @@ def _duration_first_hour(duration):
 
 @dataclass(frozen=True)
 class TmapEndpoint:
-    """TMAP 경유지 최적화 엔드포인트. 이름 끝 숫자가 곧 경유지 상한이다."""
+    """TMAP 다중 경유지 안내 엔드포인트. 이름 끝 숫자가 곧 경유지 상한이다."""
     name: str
     url: str
     max_via: int
 
 
 # **경유지 상한 오름차순으로 둘 것** — 앞에서부터 고르는 로직이 이 순서에 기댄다.
+# 일일 한도(무료 요금제): 30 → **100건**, 100 → **50건** (2026-09-15 사용자 확인, 유료 요금제 없음).
+# 200(20건)은 이 프로젝트에 지정한 API가 아니라 두지 않는다.
 ENDPOINTS = (
     TmapEndpoint("routeSequential30", BASE_URL + "routeSequential30", 30),
     TmapEndpoint("routeSequential100", BASE_URL + "routeSequential100", 100),
@@ -225,7 +231,7 @@ def seconds_to_hms(sec):
 
 def call_tmap_sequential(start, end, via_points, start_time=None, headers=None, url=None,
                          retries=2, timeout=30, search_option=None, car_type=None):
-    """TMAP 경유지 최적화 API 1회 호출 (엔드포인트 폴백 포함).
+    """TMAP 다중 경유지 안내 API 1회 호출 (엔드포인트 폴백 포함).
 
     `url`을 주지 않으면 `pick_endpoint()`가 고른다. 고른 엔드포인트가 일일 한도를
     소진하면 그 엔드포인트를 접고 **남은 엔드포인트로 같은 요청을 다시 보낸다**

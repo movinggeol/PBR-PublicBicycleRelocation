@@ -103,7 +103,9 @@ ROUTE_MAP = str(DATA_ROOT
 STEP3_MAIN = PROJECT_ROOT / "pipeline" / "step3_map" / "main.py"
 
 # ── TMAP 호출 총량 (1.26.219) ─────────────────────────────────────────
-# `routeSequential30`의 일일 한도가 하루 약 100건이다(docs/구현/steps/step3_visualization.md).
+# `routeSequential30`(다중 경유지 안내 30)의 일일 한도가 **100건**이다 — `routeSequential100`은 50건
+# (무료 요금제, 2026-09-15 사용자 확인 · docs/구현/steps/step3_visualization.md). 100 쪽 50건은 폴백
+# 여유로 두고 예산은 30 기준으로 센다.
 # 기본 예산은 여기서 **도로 수집기 몫**(`road_collection_today()["reserve"]`)을 뺀다.
 TMAP_DAILY_LIMIT = 100
 # step3 `__main__`이 끝에 찍는 줄: "TMAP 호출 14건 (예산 35건)"
