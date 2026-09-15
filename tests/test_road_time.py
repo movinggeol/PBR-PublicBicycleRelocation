@@ -498,3 +498,77 @@ def test_day_type_기록이_없는_옛_수집분도_평일로_읽는다(collecto
     assert set(weekday_only["run_label"]) == {"roadprobe-2026-09-04"}, (
         "day_type 기록이 없는 옛 평일 수집분이 빠졌다")
     assert set(holiday_only["run_label"]) == {"roadprobe-holiday-2026-09-05"}
+
+
+# ---------------------------------------------------------------- 실행 기록 (1.26.223)
+
+def test_스케줄러로_돌아도_출력과_종료_코드가_실행_기록에_남는다(collector, tmp_path, monkeypatch):
+    """🔴 09-15 아침 도로 수집이 0구간으로 끝났는데 작업 스케줄러에는 `0x1`만 남았다 —
+    `pythonw`로 돌아 출력이 어디에도 없어, 원인(두 엔드포인트 한도 소진)을 이벤트 로그와
+    직접 호출로 되짚어야 했다(1.26.215). **콘솔이 없어도**(`sys.stdout is None`) 출력과
+    종료 코드가 파일에 남아야 한다. `--status`는 기록하지 않는다 — 보기만 하는 명령이
+    기록을 채우면 실패가 묻힌다."""
+    monkeypatch.setattr(collector, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+
+    def 한도_소진(argv):
+        print("  ⚠ 일일 한도 소진 — 여기서 멈춥니다. (429 QUOTA_EXCEEDED)")
+        return 1
+
+    monkeypatch.setattr(collector, "run", 한도_소진)
+    assert collector.main(["--if-needed"]) == 1
+    assert sys.stdout is None and sys.stderr is None, "콘솔 자리를 되돌려 놓지 않았다"
+
+    [log] = list(tmp_path.glob("collect_road_*.log"))
+    text = log.read_text(encoding="utf-8")
+    assert "콘솔 없음" in text and "--if-needed" in text
+    assert "일일 한도 소진" in text, "출력이 기록에 안 남았다"
+    assert "종료 코드 1" in text, "종료 코드가 기록에 안 남았다"
+
+    monkeypatch.setattr(collector, "run", lambda argv: 0)
+    collector.main(["--status"])
+    assert log.read_text(encoding="utf-8") == text, "--status가 실행 기록을 늘렸다"
+
+
+def test_수집기가_죽어도_트레이스백과_종료_코드가_남는다(collector, tmp_path, monkeypatch):
+    """예외로 죽으면 스케줄러에는 역시 `0x1`뿐이다. 까닭(트레이스백)이 기록에 남아야 한다."""
+    monkeypatch.setattr(collector, "LOG_DIR", tmp_path)
+
+    def 죽음(argv):
+        raise RuntimeError("망이 끊겼다")
+
+    monkeypatch.setattr(collector, "run", 죽음)
+    assert collector.main([]) == 1
+
+    text = next(tmp_path.glob("collect_road_*.log")).read_text(encoding="utf-8")
+    assert "Traceback" in text and "RuntimeError: 망이 끊겼다" in text
+    assert "종료 코드 1" in text
+
+
+def test_status가_최근_실행과_실패_까닭을_말한다(collector, tmp_path, monkeypatch):
+    """스케줄러의 '마지막 결과'만으로는 왜 실패했는지 모른다. 게다가 그날 뒤 실행이
+    `[건너뜀]`으로 0을 내면 **앞선 실패가 가려진다** — 그래서 최근 몇 번을 나란히 보이고
+    실패한 실행은 까닭을 함께 적는다. 끝 줄이 없는 실행(PC 종료로 끊김)은 끝나지 않았다고
+    말한다. 기록이 아예 없으면 없다고 말한다."""
+    monkeypatch.setattr(collector, "LOG_DIR", tmp_path)
+    assert "아직 없습니다" in "\n".join(collector.run_log_lines())
+
+    head, tail = collector.RUN_HEAD, collector.RUN_TAIL
+    (tmp_path / "collect_road_2026-09.log").write_text(
+        f"\n{head}2026-09-15 07:14:44 · pythonw · 인자 --if-needed\n"
+        "[안내] routeSequential30 일일 한도 소진 → routeSequential100로 전환합니다.\n"
+        "  ⚠ 일일 한도 소진 — 여기서 멈춥니다.\n"
+        f"{tail}2026-09-15 07:15:02 · 종료 코드 1 · TMAP 호출 2건\n"
+        f"\n{head}2026-09-15 18:03:00 · pythonw · 인자 --if-needed\n"
+        "[건너뜀] roadprobe-2026-09-15은 이미 회차 4개가 각 100구간씩 차 있습니다.\n"
+        f"{tail}2026-09-15 18:03:05 · 종료 코드 0 · TMAP 호출 0건\n"
+        f"\n{head}2026-09-15 21:00:00 · pythonw · 인자 --if-needed\n"
+        "[이어받기] 이미 채운 회차 ['_05_10'] 는 건너뜁니다.\n",
+        encoding="utf-8")
+
+    lines = collector.run_log_lines()
+    아침 = next(line for line in lines if "07:14" in line)
+    assert "종료 1" in 아침 and "일일 한도 소진" in 아침, 아침
+    assert any("18:03" in line and "종료 0" in line for line in lines)
+    assert any("21:00" in line and "끝나지 않음" in line for line in lines)
