@@ -4,18 +4,18 @@
 경유지 순서를 다시 짜 주는 **별개 API**(`routeOptimization`, 별도 계약)다. 이 API는 넘긴 순서대로
 경로를 잇는다 — 순서는 VRP가 정한다(2026-09-15 공식 가이드 확인).
 
-**엔드포인트는 `routeSequential30`을 먼저 쓰고, 안 되면 `routeSequential100`으로
-넘어간다.** 두 엔드포인트는 **일일 한도가 따로 잡히므로**, 작은 쪽을 먼저 쓰면
-하루에 쓸 수 있는 호출이 그만큼 늘어난다. 30이 한도를 소진하면(429
-QUOTA_EXCEEDED) 그 엔드포인트를 이번 실행에서 접고 100으로 자동 전환한다.
-경유지가 30개를 넘는 요청도 처음부터 100으로 보낸다 — 30으로 쪼개 두 번 부르는
-것보다 100으로 한 번 부르는 편이 쿼터를 덜 쓴다.
+**엔드포인트는 `routeSequential30`을 먼저 쓰고, 안 되면 `routeSequential100`,
+그다음 `routeSequential200`으로 넘어간다.** 세 엔드포인트는 **일일 한도가 따로 잡히므로**,
+작은 쪽을 먼저 쓰면 하루에 쓸 수 있는 호출이 그만큼 늘어난다. 한 엔드포인트가 한도를
+소진하면(429 QUOTA_EXCEEDED) 이번 실행에서 접고 다음 것으로 자동 전환한다.
+경유지가 30개를 넘는 요청도 처음부터 100으로(100을 넘으면 200으로) 보낸다 — 작은 것으로
+쪼개 여러 번 부르는 것보다 큰 것으로 한 번 부르는 편이 쿼터를 덜 쓴다.
 
 **무료 요금제이지만 일일 호출 한도가 있으므로** 세 가지 안전장치를 둔다.
 (1.26.210 정정 — 여기 '유료 API'라고 적혀 있었으나 요금은 청구되지 않는다.
 막으려는 것은 지출이 아니라 **그날 남은 호출을 한 번에 태워 버리는 것**이다.)
 
-  · **엔드포인트 폴백** — 30 소진 시 100으로. 둘 다 소진되면 TmapQuotaExceeded.
+  · **엔드포인트 폴백** — 30 소진 시 100, 100 소진 시 200으로. 모두 소진되면 TmapQuotaExceeded.
   · **호출 예산** — 한 프로세스에서 MAX_CALLS(기본 35)회를 넘기지 않는다.
     넘으면 TmapBudgetExceeded를 올리고, 호출한 쪽이 직선 경로로 대체한다.
   · **한도 초과 재시도 안 함** — QUOTA_EXCEEDED는 하루가 지나야 풀리므로
@@ -113,11 +113,12 @@ class TmapEndpoint:
 
 
 # **경유지 상한 오름차순으로 둘 것** — 앞에서부터 고르는 로직이 이 순서에 기댄다.
-# 일일 한도(무료 요금제): 30 → **100건**, 100 → **50건** (2026-09-15 사용자 확인, 유료 요금제 없음).
-# 200(20건)은 이 프로젝트에 지정한 API가 아니라 두지 않는다.
+# 일일 한도(무료 요금제): 30 → **100건**, 100 → **50건**, 200 → **20건** (2026-09-15 사용자 확인, 유료 요금제 없음).
+# 200은 1.26.226에 더했다 — 30·100이 모두 소진된 뒤의 마지막 여유다.
 ENDPOINTS = (
     TmapEndpoint("routeSequential30", BASE_URL + "routeSequential30", 30),
     TmapEndpoint("routeSequential100", BASE_URL + "routeSequential100", 100),
+    TmapEndpoint("routeSequential200", BASE_URL + "routeSequential200", 200),
 )
 
 # PBR_TMAP_URL을 주면 그 엔드포인트만 쓰고 폴백하지 않는다(수동 검증용 탈출구).
@@ -235,7 +236,7 @@ def call_tmap_sequential(start, end, via_points, start_time=None, headers=None, 
 
     `url`을 주지 않으면 `pick_endpoint()`가 고른다. 고른 엔드포인트가 일일 한도를
     소진하면 그 엔드포인트를 접고 **남은 엔드포인트로 같은 요청을 다시 보낸다**
-    (routeSequential30 → routeSequential100). `url`을 직접 주면 폴백하지 않는다.
+    (routeSequential30 → routeSequential100 → routeSequential200). `url`을 직접 주면 폴백하지 않는다.
     """
     while True:
         if url is not None:
@@ -308,7 +309,7 @@ def call_tmap_chunked(start, end, via_points, headers=None, url=None, max_via=No
     다음 구간의 출발지로 이어 붙인다. 반환: GeoJSON 응답 리스트(순서대로).
 
     max_via를 주지 않으면 **이 요청에 쓸 엔드포인트의 상한**을 따른다.
-    경유지가 30을 넘으면 routeSequential100(상한 100)이 선택되므로, 현실적인
+    경유지가 30을 넘으면 routeSequential100(상한 100), 100을 넘으면 routeSequential200(상한 200)이 선택되므로, 현실적인
     클러스터 크기(최대 26곳)에서는 분할이 일어나지 않는다.
     """
     if max_via is None:

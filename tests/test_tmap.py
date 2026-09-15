@@ -8,9 +8,9 @@
 
 지키려는 규칙:
   1. 경유지가 30 이하면 routeSequential30을 먼저 쓴다(한도가 따로 잡혀 아낄 수 있다)
-  2. 30을 넘으면 처음부터 routeSequential100 — 쪼개서 두 번 부르면 쿼터를 더 쓴다
-  3. 30이 일일 한도를 소진하면 100으로 자동 전환하고, 그 뒤로는 30을 다시 부르지 않는다
-  4. 둘 다 소진되면 TmapQuotaExceeded (호출한 쪽이 직선 경로로 대체한다)
+  2. 30을 넘으면 처음부터 routeSequential100, 100을 넘으면 routeSequential200 — 쪼개서 여러 번 부르면 쿼터를 더 쓴다
+  3. 30이 일일 한도를 소진하면 100으로, 100도 소진하면 200으로 자동 전환하고, 소진된 것은 다시 부르지 않는다
+  4. 모두 소진되면 TmapQuotaExceeded (호출한 쪽이 직선 경로로 대체한다)
 """
 import importlib.util
 from pathlib import Path
@@ -71,6 +71,8 @@ def _args(via_count):
     (30, "routeSequential30"),
     (31, "routeSequential100"),
     (100, "routeSequential100"),
+    (101, "routeSequential200"),
+    (200, "routeSequential200"),
 ])
 def test_smallest_endpoint_that_fits_is_chosen(via_count, expected):
     """한 번에 담기는 가장 작은 엔드포인트를 고른다."""
@@ -90,6 +92,21 @@ def test_falls_back_to_100_when_30_is_exhausted():
     assert sent[0].endswith("routeSequential30")
     assert sent[1].endswith("routeSequential100")
     assert result["features"][0]["ok"].endswith("routeSequential100")
+
+
+def test_falls_back_to_200_when_30_and_100_are_exhausted():
+    """30·100이 모두 한도를 소진하면 200이 마지막 여유로 받는다 (1.26.226)."""
+    module = load_module()
+    sent = []
+    module.requests.post = fake_post(
+        sent, quota_exceeded=("routeSequential30", "routeSequential100"))
+
+    result = module.call_tmap_sequential(*_args(5), headers={})
+
+    assert [url.rsplit("/", 1)[1] for url in sent] == [
+        "routeSequential30", "routeSequential100", "routeSequential200"]
+    assert result["features"][0]["ok"].endswith("routeSequential200")
+    assert module.pick_endpoint(5).name == "routeSequential200"
 
 
 def test_exhausted_endpoint_is_not_retried():

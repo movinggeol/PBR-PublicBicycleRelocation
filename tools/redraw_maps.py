@@ -103,9 +103,9 @@ ROUTE_MAP = str(DATA_ROOT
 STEP3_MAIN = PROJECT_ROOT / "pipeline" / "step3_map" / "main.py"
 
 # ── TMAP 호출 총량 (1.26.219) ─────────────────────────────────────────
-# `routeSequential30`(다중 경유지 안내 30)의 일일 한도가 **100건**이다 — `routeSequential100`은 50건
-# (무료 요금제, 2026-09-15 사용자 확인 · docs/구현/steps/step3_visualization.md). 100 쪽 50건은 폴백
-# 여유로 두고 예산은 30 기준으로 센다.
+# `routeSequential30`(다중 경유지 안내 30)의 일일 한도가 **100건**이다 — `routeSequential100`은 50건,
+# `routeSequential200`은 20건(무료 요금제, 2026-09-15 사용자 확인 · docs/구현/steps/step3_visualization.md).
+# 100·200 쪽은 폴백 여유로 두고 예산은 30 기준으로 센다.
 # 기본 예산은 여기서 **도로 수집기 몫**(`road_collection_today()["reserve"]`)을 뺀다.
 TMAP_DAILY_LIMIT = 100
 # step3 `__main__`이 끝에 찍는 줄: "TMAP 호출 14건 (예산 35건)"
@@ -326,7 +326,7 @@ def redraw_route(run_label: str, duration: str, candidates: Path,
 
     위의 `redraw()`와 달리 step 모듈을 직접 부르지 않고 `step3_map/main.py`를
     스크립트로 띄운다 — 그쪽 `__main__`이 `.env`에서 `API_KEY`를 읽고 엔드포인트
-    폴백(`routeSequential30` → `100`)까지 세워 두기 때문이다. 그 준비를 여기서
+    폴백(`routeSequential30` → `100` → `200`)까지 세워 두기 때문이다. 그 준비를 여기서
     베껴 쓰면 두 벌이 갈린다.
 
     ⚠️ **DB에 쓴다.** step3는 TMAP 실측을 `road_leg`에 남긴다(같은 (실행, 회차)
