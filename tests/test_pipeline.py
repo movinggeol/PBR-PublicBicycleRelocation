@@ -515,13 +515,24 @@ def test_지도_다시_그리기_dry_run은_성공이다(monkeypatch):
     assert redraw_maps.main() == 0
 
 
+def _가짜_예산_환경(monkeypatch, redraw_maps, 필요=0):
+    """예산 장치(1.26.219)가 실제 DB·패널을 읽지 않게, 회차당 필요 호출 수와 오늘
+    도로 수집 상태를 고정한다. 바깥 `PBR_TMAP_MAX_CALLS`도 치운다."""
+    monkeypatch.delenv("PBR_TMAP_MAX_CALLS", raising=False)
+    monkeypatch.setattr(redraw_maps, "route_calls_needed", lambda label, dur: 필요)
+    monkeypatch.setattr(redraw_maps, "road_collection_today",
+                        lambda day=None: {"label": "roadprobe-2026-09-15", "collected": 0,
+                                          "expected": 400, "reserve": 20})
+
+
 def _가짜_다시그리기(monkeypatch, redraw_maps, 부른것):
     """군집·불균형은 성공한 척, 경로는 부른 사실만 적는다 (TMAP을 안 부른다)."""
     monkeypatch.setattr(redraw_maps, "redraw",
                         lambda label, dur, cand: [f"{label}{dur}.html"])
     monkeypatch.setattr(redraw_maps, "redraw_route",
-                        lambda label, dur, cand: 부른것.append((label, dur))
-                        or [f"vrp_{label}{dur}.html"])
+                        lambda label, dur, cand, max_calls=None: 부른것.append((label, dur))
+                        or ([f"vrp_{label}{dur}.html"], 0))
+    _가짜_예산_환경(monkeypatch, redraw_maps)
 
 
 def test_경로_지도는_with_route를_줘야_TMAP을_부른다(monkeypatch, capsys):
@@ -564,14 +575,113 @@ def test_경로_지도가_안_나와도_나머지는_실패가_아니다(monkeyp
     monkeypatch.setattr(redraw_maps, "redraw",
                         lambda label, dur, cand: [f"{label}{dur}.html"])
 
-    def 계획_없음(label, dur, cand):
+    def 계획_없음(label, dur, cand, max_calls=None):
         raise RuntimeError("입력이 없습니다 (VRP 계획)")
 
     monkeypatch.setattr(redraw_maps, "redraw_route", 계획_없음)
+    _가짜_예산_환경(monkeypatch, redraw_maps)
     monkeypatch.setattr(sys, "argv", ["redraw_maps.py", "--all", "--with-route"])
 
     assert redraw_maps.main() == 0, "경로 지도만 없는데 전체를 실패로 센다"
     assert "경로 지도는 건너뜁니다" in capsys.readouterr().out
+
+
+def _가짜_대상(monkeypatch, redraw_maps, 개수):
+    """실제 산출물 없이 (실행, 회차) 대상을 만든다 — 이 PC의 `data/`에 기대지 않는다."""
+    대상 = [(f"실행{i}", "_05_10", Path(f"top_05_10 (실행{i}).csv")) for i in range(개수)]
+    monkeypatch.setattr(redraw_maps, "available", lambda: 대상)
+    monkeypatch.setattr(redraw_maps, "redraw", lambda label, dur, cand: [f"{label}{dur}.html"])
+
+
+def test_경로_지도는_하루_호출_예산을_넘겨_부르지_않는다(monkeypatch, capsys):
+    """🔴 2026-09-14에 이 도구가 하루 138건을 부르자 이튿날 07:14 도로 수집이 두
+    엔드포인트 모두 429로 **0구간**이 됐다 — 게이트 A 10일째 날이었다(1.26.215).
+
+    문서는 *"20건을 남기고 불러라"* 라고 적었지만 이 도구는 회차마다 프로세스를 따로
+    띄워 `PBR_TMAP_MAX_CALLS`가 프로세스마다 새로 걸렸다. 그래서 **실행 전체**를 본다:
+    기본 예산 80건(100 − 수집기 20)에 16건짜리 회차 여섯이면 다섯만 부르고, 자식에게는
+    **남은 예산보다 큰 상한을 주지 않는다.** 모자란 회차는 아예 안 그린다(반쯤 부르면
+    직선이 섞인 지도가 '최신' 지문을 받는다) — 실패가 아니라 건너뜀이라 종료 코드는 0이다.
+    """
+    import tools.redraw_maps as redraw_maps
+
+    _가짜_대상(monkeypatch, redraw_maps, 6)
+    _가짜_예산_환경(monkeypatch, redraw_maps, 필요=16)
+    상한 = []
+    monkeypatch.setattr(redraw_maps, "redraw_route",
+                        lambda label, dur, cand, max_calls=None:
+                        상한.append(max_calls) or ([f"vrp_{label}.html"], 16))
+    monkeypatch.setattr(sys, "argv", ["redraw_maps.py", "--all", "--with-route"])
+
+    assert redraw_maps.main() == 0
+    out = capsys.readouterr().out
+    assert 상한 == [80, 64, 48, 32, 16], f"자식에게 준 상한이 남은 예산과 다르다: {상한}"
+    assert "예산이 모자라 경로 지도 1장을 안 그렸습니다" in out
+    assert "20건을 남기고" in out, "도로 수집기 몫을 남긴다는 말을 안 한다"
+
+
+def test_경로_지도_예산은_쓴_만큼_깎고_모르면_필요량으로_센다(monkeypatch):
+    """실제로 쓴 호출(자식이 찍은 `TMAP 호출 N건`)로 깎아야 한도를 헛되이 남기지
+    않는다. 반대로 **몇 건 썼는지 모르는 실패**는 필요량을 다 쓴 것으로 센다 — 적게
+    세는 쪽이 한도를 태운다. 바깥 `PBR_TMAP_MAX_CALLS`는 실행 전체의 예산으로 읽는다
+    (TESTING.md 4장 3단계가 *"이번 작업의 호출 수"* 로 그 변수를 쓰라고 적었다)."""
+    import tools.redraw_maps as redraw_maps
+
+    _가짜_대상(monkeypatch, redraw_maps, 4)
+    _가짜_예산_환경(monkeypatch, redraw_maps, 필요=10)
+    monkeypatch.setenv("PBR_TMAP_MAX_CALLS", "30")
+    상한 = []
+
+    def 경로(label, dur, cand, max_calls=None):
+        상한.append(max_calls)
+        if len(상한) == 1:
+            raise redraw_maps.RouteRedrawError("자식이 먼저 죽었다", calls=None)
+        return [f"vrp_{label}.html"], 4
+
+    monkeypatch.setattr(redraw_maps, "redraw_route", 경로)
+    monkeypatch.setattr(sys, "argv", ["redraw_maps.py", "--all", "--with-route"])
+
+    assert redraw_maps.main() == 0
+    # 30 → (실패, 필요량 10으로 셈) 20 → (4) 16 → (4) 12
+    assert 상한 == [30, 20, 16, 12]
+
+
+def test_오늘_도로_수집이_어디까지_찼는지_이_PC의_DB로_말한다(monkeypatch):
+    """예산을 정하기 전에 **오늘 수집 상태**를 말한다. 휴일이면 라벨이 갈리고
+    (`roadprobe-holiday-…`), 이 PC에 기록이 없으면 *"다른 PC가 수집하는지 알 수 없다"*
+    고 말해야 한다 — 회사환경은 도로 수집이 꺼져 있어 늘 0구간이라, *"수집이 안 됐다"*
+    로 읽으면 틀린다. 예산이 수집기 몫을 안 남기면 그렇다고 경고한다."""
+    from datetime import date
+
+    import tools.collect_road_time as road
+    import tools.redraw_maps as redraw_maps
+
+    monkeypatch.setattr(road, "collected_legs", lambda label: {"_05_10": 100, "_10_15": 100})
+    state = redraw_maps.road_collection_today(date(2026, 9, 26))      # 토요일
+    assert state["label"] == "roadprobe-holiday-2026-09-26"
+    assert state["collected"] == 200
+    assert (state["expected"], state["reserve"]) == (400, 20)         # 사슬 5 × 20구간 × 회차 4
+
+    def 말(collected, budget=80):
+        return " ".join(redraw_maps.road_status_lines(dict(state, collected=collected), budget))
+
+    assert "끝났습니다" in 말(400)
+    assert "--if-needed" in 말(200)
+    assert "알 수 없습니다" in 말(0)
+    assert "남기지 않습니다" in 말(400, budget=95)
+
+
+def test_자식이_찍은_TMAP_호출_수를_읽는다():
+    """예산은 자식 출력의 한 줄로 깎는다 — step3가 그 줄 모양을 바꾸면 예산이 조용히
+    '모름'(= 필요량으로 셈)이 되므로 실제 문구(`pipeline/step3_map/main.py` 끝)와 함께
+    못박는다."""
+    import tools.redraw_maps as redraw_maps
+
+    out = "...\nTMAP 호출 14건 (예산 35건)\n  사용 가능한 엔드포인트: routeSequential100\n"
+    assert redraw_maps.calls_in(out) == 14
+    assert redraw_maps.calls_in("[건너뜀] _05_10: 입력이 없습니다") is None
+    src = Path(redraw_maps.STEP3_MAIN).read_text(encoding="utf-8")
+    assert 'print(f"\\nTMAP 호출 {call_count()}건' in src, "step3가 호출 수 줄의 모양을 바꿨다"
 
 
 # ───────── step 모듈을 패키지로 import할 수 있는가 (1.26.154) ─────────
