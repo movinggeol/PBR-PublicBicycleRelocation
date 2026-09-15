@@ -157,7 +157,7 @@ def _road_legs(cluster: int, route_pts: list, elapsed_sec: list,
     rows = []
     # ⚠️ **leg 0은 버린다** (1.26.129). TMAP 요청의 출발점은 차고지가 아니라
     # 차고지에서 남쪽으로 0.005도(약 555m) 민 자리다 — 출발지와 도착지가
-    # 같으면 경유지 최적화가 성립하지 않아서 벌려 둔 것이다(아래 `start` 참고).
+    # 같으면 다중 경유지 안내가 성립하지 않아서 벌려 둔 것이다(아래 `start` 참고).
     # 그래서 첫 구간은 직선거리도 도로 소요도 **있지도 않은 지점**을 기준으로
     # 잰 값이다. 이 표는 이동시간 모형을 적합하는 정답표이므로 섞이면 안 된다.
     # (실측: 1,705구간 중 29건이 그랬고, 빼고 다시 적합하면 고정비 332.9→332.3초,
@@ -285,7 +285,7 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
 
         # --------- Tmap 요청 ----------
         # ⚠️ 출발점만 남쪽으로 조금 민다. 차량은 차고지에서 나와 차고지로 돌아오는데
-        # TMAP 경유지 최적화는 출발지와 도착지가 **같은 좌표면 성립하지 않는다**.
+        # TMAP 다중 경유지 안내는 출발지와 도착지가 **같은 좌표면 성립하지 않는다**.
         # 이 어긋남이 실측 표(road_leg)에 새지 않도록 `_road_legs()`가 leg 0을
         # 버린다 — 지도에 그리는 경로(route_pts)에는 진짜 차고지가 들어간다.
         TMAP_START_OFFSET_DEG = 0.005          # 약 555m
@@ -605,8 +605,8 @@ if __name__ == "__main__":
         raise RuntimeError("API_KEY 환경변수 설정 필요")
 
     # 엔드포인트는 module이 요청마다 고른다 — routeSequential30을 먼저 쓰고,
-    # 일일 한도를 소진하면(429 QUOTA_EXCEEDED) routeSequential100으로 자동 전환한다.
-    # 두 엔드포인트의 한도가 따로 잡히므로 이렇게 쓰면 하루치 호출이 늘어난다.
+    # 일일 한도를 소진하면(429 QUOTA_EXCEEDED) routeSequential100, 그다음 routeSequential200으로
+    # 자동 전환한다. 세 엔드포인트의 한도가 따로 잡히므로 이렇게 쓰면 하루치 호출이 늘어난다.
     # PBR_TMAP_URL을 주면 그 엔드포인트만 쓰고 폴백하지 않는다(수동 검증용).
     TMAP_URL = os.getenv("PBR_TMAP_URL")     # None이면 자동 선택
     HEADERS  = {
@@ -617,6 +617,7 @@ if __name__ == "__main__":
 
     ensure_output_dirs()
 
+    예산_건너뜀 = []     # 끝까지 부를 수 없어 그리지 않은 회차 (1.26.222)
     for duration in duration_list(config):
         # 앞 단계(step1·step2)가 '대상 없음'으로 건너뛴 시간대는 여기서도
         # 건너뛴다 (1.26.129). 예전에는 확인 없이 바로 읽어 FileNotFoundError로
@@ -639,8 +640,22 @@ if __name__ == "__main__":
             print(f"\n[건너뜀] {duration}: 입력이 없습니다 ({', '.join(빈_것)})")
             continue
 
+        # 🔴 끝까지 부를 수 없으면 **그리지 않는다** (1.26.222). 반쯤 부르면 남은 군집이
+        # 직선으로 그려진 채 새 지문을 받아 '최신'으로 보인다(module.route_skip_reason).
+        # 군집 하나에 호출 하나다.
+        군집_수 = int(vrp_plan["cluster"].nunique()) if "cluster" in vrp_plan.columns else 0
+        까닭 = module.route_skip_reason(군집_수)
+        if 까닭:
+            print(f"\n[건너뜀] {duration}: 경로 지도를 그리지 않습니다 — {까닭}")
+            예산_건너뜀.append(duration)
+            continue
+
         make_vrp_map(depot, pick_drop, vrp_plan, duration, HEADERS, TMAP_URL)
 
     print(f"\nTMAP 호출 {call_count()}건 (예산 {module.MAX_CALLS}건)")
     남은_엔드포인트 = [e.name for e in module.available_endpoints()]
     print(f"  사용 가능한 엔드포인트: {', '.join(남은_엔드포인트) or '없음(모두 한도 소진)'}")
+    if 예산_건너뜀:
+        print(f"⚠️ 경로 지도 {len(예산_건너뜀)}장을 그리지 않았습니다: {', '.join(예산_건너뜀)}"
+              " — 한도가 남은 때 `python tools/redraw_maps.py --run-label"
+              f' "{now}" --with-route`로 그리십시오.')

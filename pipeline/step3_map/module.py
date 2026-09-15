@@ -1,21 +1,28 @@
-"""step3 지도 생성 보조 모듈: 시간 표기, TMAP 경유지 최적화 API 호출.
+"""step3 지도 생성 보조 모듈: 시간 표기, TMAP 다중 경유지 안내 API 호출.
 
-**엔드포인트는 `routeSequential30`을 먼저 쓰고, 안 되면 `routeSequential100`으로
-넘어간다.** 두 엔드포인트는 **일일 한도가 따로 잡히므로**, 작은 쪽을 먼저 쓰면
-하루에 쓸 수 있는 호출이 그만큼 늘어난다. 30이 한도를 소진하면(429
-QUOTA_EXCEEDED) 그 엔드포인트를 이번 실행에서 접고 100으로 자동 전환한다.
-경유지가 30개를 넘는 요청도 처음부터 100으로 보낸다 — 30으로 쪼개 두 번 부르는
-것보다 100으로 한 번 부르는 편이 쿼터를 덜 쓴다.
+⚠️ 공식 이름은 **다중 경유지 안내**(`routeSequential`)다. 오래 *"경유지 최적화"* 라 불렀는데, 그것은
+경유지 순서를 다시 짜 주는 **별개 API**(`routeOptimization`, 별도 계약)다. 이 API는 넘긴 순서대로
+경로를 잇는다 — 순서는 VRP가 정한다(2026-09-15 공식 가이드 확인).
+
+**엔드포인트는 `routeSequential30`을 먼저 쓰고, 안 되면 `routeSequential100`,
+그다음 `routeSequential200`으로 넘어간다.** 세 엔드포인트는 **일일 한도가 따로 잡히므로**,
+작은 쪽을 먼저 쓰면 하루에 쓸 수 있는 호출이 그만큼 늘어난다. 한 엔드포인트가 한도를
+소진하면(429 QUOTA_EXCEEDED) 이번 실행에서 접고 다음 것으로 자동 전환한다.
+경유지가 30개를 넘는 요청도 처음부터 100으로(100을 넘으면 200으로) 보낸다 — 작은 것으로
+쪼개 여러 번 부르는 것보다 큰 것으로 한 번 부르는 편이 쿼터를 덜 쓴다.
 
 **무료 요금제이지만 일일 호출 한도가 있으므로** 세 가지 안전장치를 둔다.
 (1.26.210 정정 — 여기 '유료 API'라고 적혀 있었으나 요금은 청구되지 않는다.
 막으려는 것은 지출이 아니라 **그날 남은 호출을 한 번에 태워 버리는 것**이다.)
 
-  · **엔드포인트 폴백** — 30 소진 시 100으로. 둘 다 소진되면 TmapQuotaExceeded.
+  · **엔드포인트 폴백** — 30 소진 시 100, 100 소진 시 200으로. 모두 소진되면 TmapQuotaExceeded.
   · **호출 예산** — 한 프로세스에서 MAX_CALLS(기본 35)회를 넘기지 않는다.
     넘으면 TmapBudgetExceeded를 올리고, 호출한 쪽이 직선 경로로 대체한다.
   · **한도 초과 재시도 안 함** — QUOTA_EXCEEDED는 하루가 지나야 풀리므로
     같은 엔드포인트로 다시 시도하지 않는다(순간적인 429는 재시도한다).
+  · **그리기 전 확인** (1.26.222) — 회차의 군집 수가 남은 예산보다 많으면 그 회차
+    지도를 아예 그리지 않는다(`route_skip_reason`). 반쯤 그리면 직선이 섞인 지도가
+    '최신' 지문을 받는다.
 
 전부 지도 품질만 떨어뜨릴 뿐 파이프라인을 멈추지 않는다.
 """
@@ -29,9 +36,10 @@ import requests
 # 35는 **회차당 군집 상한이 10이던 1.12.0 기준**(10 × 3회차 = 30건)이다.
 # 1.19.1부터 군집 수를 작업량이 정해 회차당 12~16개라(docs/구현/FLEET.md),
 # 한 회차는 넉넉하지만 **세 회차를 한 프로세스로 돌리면 36~48건이라 마지막
-# 회차가 직선으로 그려진다.** 그때는 PBR_TMAP_MAX_CALLS를 올리거나 회차를 나눠 돈다.
+# 회차가 직선으로 그려졌다.** 1.26.222부터는 끝까지 못 부를 회차를 **그리지 않고
+# 건너뛴다**(`route_skip_reason`). 그리려면 PBR_TMAP_MAX_CALLS를 올리거나 회차를 나눠 돈다.
 # (클러스터 하나가 호출 한 번으로 끝난다 — 현실 최대 경유지가 26곳이라 분할이 없다.)
-# 예산을 넘기면 남은 경로는 직선으로 그리고 실행은 계속한다.
+# 그래도 예산이 도중에 끊기면(폴백의 429 한 건 등) 남은 경로는 직선으로 그리고 실행은 계속한다.
 MAX_CALLS = int(os.getenv("PBR_TMAP_MAX_CALLS", "35"))
 
 BASE_URL = "https://apis.openapi.sk.com/tmap/routes/"
@@ -98,16 +106,19 @@ def _duration_first_hour(duration):
 
 @dataclass(frozen=True)
 class TmapEndpoint:
-    """TMAP 경유지 최적화 엔드포인트. 이름 끝 숫자가 곧 경유지 상한이다."""
+    """TMAP 다중 경유지 안내 엔드포인트. 이름 끝 숫자가 곧 경유지 상한이다."""
     name: str
     url: str
     max_via: int
 
 
 # **경유지 상한 오름차순으로 둘 것** — 앞에서부터 고르는 로직이 이 순서에 기댄다.
+# 일일 한도(무료 요금제): 30 → **100건**, 100 → **50건**, 200 → **20건** (2026-09-15 사용자 확인, 유료 요금제 없음).
+# 200은 1.26.226에 더했다 — 30·100이 모두 소진된 뒤의 마지막 여유다.
 ENDPOINTS = (
     TmapEndpoint("routeSequential30", BASE_URL + "routeSequential30", 30),
     TmapEndpoint("routeSequential100", BASE_URL + "routeSequential100", 100),
+    TmapEndpoint("routeSequential200", BASE_URL + "routeSequential200", 200),
 )
 
 # PBR_TMAP_URL을 주면 그 엔드포인트만 쓰고 폴백하지 않는다(수동 검증용 탈출구).
@@ -178,6 +189,33 @@ def pick_endpoint(via_count: int) -> TmapEndpoint:
     return usable[-1]
 
 
+def route_skip_reason(need: int) -> str | None:
+    """경로 지도 한 장을 **그리기 전에** 끝까지 부를 수 있는지 본다 (1.26.222).
+
+    반환: 못 부르면 그 까닭, 부를 수 있으면 None. `need`는 그 지도가 부를 호출 수다 —
+    군집 하나에 하나다(현실 최대 경유지 26곳이라 분할이 없다, 2026-09-14 실측).
+
+    🔴 **반쯤 그리지 않기 위해서다.** 예산이 군집 중간에 끊기면 남은 군집은 직선으로
+    그려진 채 저장되고, 파일은 새 지문을 받아 `/maps`에서 *최신*으로 보인다. 안 그린
+    지도는 *낡음*으로 남아 다시 그려야 한다는 사실이 보이지만, 반쯤 그린 지도는 그
+    사실을 숨긴다. `tools/redraw_maps.py`는 회차마다 프로세스를 띄워 이 확인을 바깥에서
+    했는데(1.26.219), 파이프라인은 회차 여럿을 **한 프로세스**로 돌려 기본 예산 35건에서
+    마지막 회차가 직선으로 섞였다(위 `MAX_CALLS` 주석).
+
+    ⚠️ `need`는 **하한**이다 — 30이 도중에 소진돼 100으로 넘어가면 429 한 건이 더
+    붙는다. 그 한 건 때문에 마지막 군집이 직선이 되는 일은 여기서 못 막는다.
+    """
+    if need <= 0:
+        return None
+    if not available_endpoints():
+        return "쓸 수 있는 TMAP 엔드포인트가 없습니다 (모두 일일 한도 소진)"
+    remaining = MAX_CALLS - _call_count
+    if need > remaining:
+        return (f"호출이 {need}건 필요한데 남은 예산이 {remaining}건입니다"
+                " (PBR_TMAP_MAX_CALLS로 조정)")
+    return None
+
+
 def seconds_to_hms(sec):
     """초 → 'HH:MM:SS'. 값이 없으면 None."""
     try:
@@ -194,11 +232,11 @@ def seconds_to_hms(sec):
 
 def call_tmap_sequential(start, end, via_points, start_time=None, headers=None, url=None,
                          retries=2, timeout=30, search_option=None, car_type=None):
-    """TMAP 경유지 최적화 API 1회 호출 (엔드포인트 폴백 포함).
+    """TMAP 다중 경유지 안내 API 1회 호출 (엔드포인트 폴백 포함).
 
     `url`을 주지 않으면 `pick_endpoint()`가 고른다. 고른 엔드포인트가 일일 한도를
     소진하면 그 엔드포인트를 접고 **남은 엔드포인트로 같은 요청을 다시 보낸다**
-    (routeSequential30 → routeSequential100). `url`을 직접 주면 폴백하지 않는다.
+    (routeSequential30 → routeSequential100 → routeSequential200). `url`을 직접 주면 폴백하지 않는다.
     """
     while True:
         if url is not None:
@@ -271,7 +309,7 @@ def call_tmap_chunked(start, end, via_points, headers=None, url=None, max_via=No
     다음 구간의 출발지로 이어 붙인다. 반환: GeoJSON 응답 리스트(순서대로).
 
     max_via를 주지 않으면 **이 요청에 쓸 엔드포인트의 상한**을 따른다.
-    경유지가 30을 넘으면 routeSequential100(상한 100)이 선택되므로, 현실적인
+    경유지가 30을 넘으면 routeSequential100(상한 100), 100을 넘으면 routeSequential200(상한 200)이 선택되므로, 현실적인
     클러스터 크기(최대 26곳)에서는 분할이 일어나지 않는다.
     """
     if max_via is None:

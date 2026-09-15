@@ -89,7 +89,9 @@ DB도 별도 파일(`data/재현.db`)을 쓴다.
 - `--skip-api`는 수집 단계를 전부 건너뛰고 **직전 실행의 재고 스냅샷(주차대수·
   st_info)을 물려받는다**(`run_pipeline.inherit_snapshot`). 합성 검증에 쓰지 마라 —
   물려받을 스냅샷이 없는 PC에서는 아예 멈춘다. 라이브 API 호출만 뺄 때는
-  `--skip-fetch`다.
+  `--skip-fetch`다. 고르는 규칙(1.26.218): 시험·합성 라벨(`smoketest-`·`daytype-`·
+  `rentaltest-`·`재현`·`데모`)은 늘 빼고, `--run-kind plan`이면 계획 실행을 먼저,
+  그 밖에는 가장 최근 순서다(격자 실험 사슬이 그 순서에 기댄다).
 
 ### 끝나면 정리 (`--keep`을 줬을 때만)
 
@@ -309,20 +311,34 @@ AXE_JS = open("axe.min.js", encoding="utf-8").read()
 
 with sync_playwright() as p:
     b = p.chromium.launch()
-    for vp in [{"width": 1400, "height": 1000}, {"width": 375, "height": 812}]:
-        page = b.new_page(viewport=vp)
-        page.add_init_script(AXE_JS)     # 페이지 로드마다 axe가 함께 실린다
-        for path in PAGES:
-            page.goto(BASE + path, wait_until="load")
-            page.wait_for_timeout(400)
-            res = page.evaluate("""async () => axe.run(document, {
-                runOnly: {type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa']}
-            })""")
-            for v in res["violations"]:
-                print(path, v["id"], len(v["nodes"]), v["help"])
-        page.close()
+    # ⚠️ 다크도 본다 (1.26.220) — 링크 명암은 다크에서만 3:1 밑으로 떨어졌고,
+    #    이 골격이 라이트만 돌아 1.26.126 스캔이 경고문·카드 바닥 링크를 놓쳤다.
+    for scheme in ("light", "dark"):
+        for vp in [{"width": 1400, "height": 1000}, {"width": 375, "height": 812}]:
+            page = b.new_page(viewport=vp, color_scheme=scheme)
+            page.add_init_script(AXE_JS)     # 페이지 로드마다 axe가 함께 실린다
+            for path in PAGES:
+                page.goto(BASE + path, wait_until="load")
+                page.wait_for_timeout(400)
+                res = page.evaluate("""async () => axe.run(document, {
+                    runOnly: {type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa']}
+                })""")
+                for v in res["violations"]:
+                    print(scheme, vp["width"], path, v["id"], len(v["nodes"]), v["help"])
+            page.close()
     b.close()
 ```
+
+📌 **지금 남는 것 — 새로 생긴 것인지만 본다 (1.26.220 기준선)**
+
+| 뜨는 것 | 왜 안 고치나 / 언제 사라지나 |
+| --- | --- |
+| `/api/docs` `color-contrast`·`nested-interactive`·`html-has-lang` | FastAPI 기본 Swagger 화면이다 — 우리 템플릿이 아니다 |
+| `/maps` `aria-command-name` (경로 지도 핀) | 코드는 1.26.126에 고쳤다. **그 전에 그린 경로 지도**라 뜬다 — TMAP으로 다시 그려야 사라진다(`redraw_maps.py --with-route`) |
+
+⚠️ **화면 상태에 따라 뜨고 안 뜨는 것이 있다.** 홈 경고문은 계획이 24시간을 넘을 때만,
+`/vehicles`의 "전체 N건" 문장은 예산 초과가 여러 쪽일 때만 나온다 — 0건이 나와도 그 요소가
+화면에 있었는지부터 확인한다.
 
 ⚠️ **`document-title`·`html-has-lang`·`meta-viewport`는 지도 HTML을 file://로
 단독 열었을 때만 뜬다** — folium 산출물 자체엔 `<html lang>`이 없지만, `/maps`
@@ -364,7 +380,8 @@ with sync_playwright() as p:
 ## 6. 경로 지도(step3) — 불러도 된다
 
 🔴 **TMAP은 무료 요금제다.** 아무리 불러도 **요금이 청구되지 않고**, 일일 호출
-한도만 있다(사용자 확인, 1.26.210). 예전에 이 저장소 곳곳이 *"유료 API"* ·
+한도만 있다(사용자 확인, 1.26.210). **유료 요금제는 신청하지 않아 유료 호출은 불가능하다** —
+한도를 넘으면 429 `QUOTA_EXCEEDED`로 거절될 뿐이다(2026-09-15 사용자 확인). 예전에 이 저장소 곳곳이 *"유료 API"* ·
 *"호출마다 비용"* 이라고 적어 두어서, 세션마다 경로 지도를 **낡은 채로 두고
 지나갔다** — 한 번도 필요한 만큼 부르지 않았다.
 
@@ -398,7 +415,9 @@ with sync_playwright() as p:
 | --- | --- |
 | 군집 하나 | **1건** (경유지 최대 26곳이라 분할이 없다) |
 | 회차 하나 | 14~16건 |
-| 한 프로세스 예산 | 35건 (`PBR_TMAP_MAX_CALLS`) — 회차를 나눠 띄우면 걸리지 않는다 |
+| 한 프로세스 예산 | 35건 (`PBR_TMAP_MAX_CALLS`) — step3를 직접 띄울 때 · **파이프라인**(회차 여럿을 한 프로세스로 그린다). 끝까지 못 부를 회차는 안 그리고 건너뛴다(1.26.222) |
+| 일일 한도 (무료 요금제) | `routeSequential30` **100건** · `routeSequential100` **50건** · `routeSequential200` **20건**(2026-09-15 사용자 확인, 200은 1.26.226부터 마지막 폴백). 공식 이름은 *다중 경유지 안내* — *경유지 최적화*는 별개 API다 |
+| `redraw_maps.py` 실행 전체 | **기본 80건**(100 − 도로 수집기 20, 1.26.219) — `--tmap-budget`으로 조정. 모자란 회차는 안 그리고 끝에 목록을 찍는다 |
 
 이날 세션 하나가 **138건**(5회차 × 2번)을 불렀다. 80건쯤에서
 `routeSequential30`이 일일 한도를 소진했고 `routeSequential100`으로 **자동

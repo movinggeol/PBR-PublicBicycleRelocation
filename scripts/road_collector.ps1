@@ -23,6 +23,11 @@
     같은 요일로 밀어야 다른 날로 셀 수 있다. 결과는 `runs.day_type`에 남고
     `road_time_model.py --day-type`이 그걸로 갈라 회귀한다.
 
+    **실행마다 기록을 남긴다 (1.26.223).** pythonw로 돌아 콘솔이 없으므로, 수집기가
+    출력·종료 코드·트레이스백을 `data\raw_data\도로이력\collect_road_YYYY-MM.log`에 쓴다.
+    `status`가 최근 실행과 실패 까닭을 보여 준다 — 09-15에는 `0x1`만 남아 원인을
+    이벤트 로그로 되짚어야 했다. 작업 인자는 그대로라 **다시 install할 필요가 없다.**
+
 .EXAMPLE
     .\scripts\road_collector.ps1 install                      # 매일(휴일 포함) 09/12/15/18/21시 + 로그온
     .\scripts\road_collector.ps1 install -Slots 10:00,16:00   # 시각을 직접 정한다
@@ -72,7 +77,7 @@ function Format-Result {
     param([long]$Code)
     switch ($Code) {
         0          { '성공 (받았거나, 이미 받아서 건너뜀)' }
-        1          { '수집 실패 (한도 초과 등 — now로 손수 돌려 확인)' }
+        1          { '수집 실패 (한도 초과 등 — 까닭은 아래 실행 기록에)' }
         267011     { '아직 실행 전' }
         267009     { '실행 중' }
         267014     { '중지됨' }
@@ -80,6 +85,8 @@ function Format-Result {
         # 2026-09-03 08:29에 실제로 이 코드로 끝나 그날치가 통째로 비었다 —
         # 여러 시각을 걸게 된 계기다.
         1073807364 { '중도 종료 (0x40010004 — 종료·로그오프 등으로 끊김)' }
+        # 0x80070002. 작업이 없는 경로를 가리킨다 — 저장소 폴더 이름을 바꾸면 이렇게 된다(1.26.224).
+        2147942402 { '파일 없음 (0x80070002 — 작업이 없는 경로를 가리킴. 폴더를 옮기거나 이름을 바꿨다면 install 다시)' }
         default    { "코드 $Code" }
     }
 }
@@ -177,6 +184,16 @@ function Invoke-Status {
         $info = Get-ScheduledTaskInfo -TaskName $TaskName
         $state = if ($task.State -eq 'Disabled') { '일시정지' } else { '활성' }
         Write-Host "  스케줄   : $state · 다음 실행 $(Format-Stamp $info.NextRunTime)"
+        # [!] 작업이 없는 경로를 가리키면 깨울 때마다 0x80070002로 조용히 실패한다 — 저장소 폴더 이름을
+        # 바꾸면 그렇게 된다(2026-09-15 회사환경, 재고 작업이 실제로 멈췄다 · 1.26.224).
+        # ⚠️ 이 PC가 도로 수집 담당이 아니면 되살릴 때까지 두라고 말한다 — install은 **켜진 채** 등록하고
+        # StartWhenAvailable이라 놓친 시각을 곧바로 따라잡을 수 있다(담당 PC와 한도를 겹쳐 쓴다).
+        $action = $task.Actions | Select-Object -First 1
+        if ($action -and $action.Execute -and -not (Test-Path -LiteralPath $action.Execute)) {
+            Write-Host "  [!] 작업이 없는 경로를 가리킵니다: $($action.Execute)" -ForegroundColor Red
+            Write-Host "      이 PC가 도로 수집 담당이면 install을 다시 하십시오 (지금 폴더: $Root)." -ForegroundColor Red
+            Write-Host "      담당이 아니면 되살릴 때까지 두십시오 — install은 켜진 채 등록합니다." -ForegroundColor Red
+        }
         $last = Format-Stamp $info.LastRunTime
         if ($null -eq $last) {
             Write-Host "  마지막   : 아직 실행 전"

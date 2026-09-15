@@ -253,11 +253,11 @@ python "pipeline/step4_metrics/imbalance.py"
 
 파이프라인이 쓰는 초기 재고는 **실행하는 순간의 스냅샷 한 장**입니다. 실측 재고가
 시간에 따라 어떻게 움직이는지 남겨 두면, 결품을 시뮬레이션이 아니라 **실측으로**
-잴 수 있습니다. 그래서 매일(휴일 포함) 07~23시 재고를 10분마다 모읍니다
+잴 수 있습니다. 그래서 매일(휴일 포함) 24시간 재고를 10분마다 모읍니다
 ([docs/구현/COLLECTOR.md](docs/구현/COLLECTOR.md)).
 
 ```powershell
-.\scripts\collector.ps1 install -Window 07:00-23:00 -IncludeHolidays   # 수집 시작 (최초 1회 등록)
+.\scripts\collector.ps1 install -Window 00:00-23:50 -IncludeHolidays   # 수집 시작 (최초 1회 등록)
 .\scripts\collector.ps1 pause       # 일시정지 — 작업은 남기고 안 깨움
 .\scripts\collector.ps1 resume      # 재개
 .\scripts\collector.ps1 uninstall   # 완전 중지 — 작업 삭제
@@ -298,7 +298,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 
-python -m pytest              # 893개 통과 확인 (약 100초)
+python -m pytest              # 914개 통과 확인 (약 100초)
 python tools/reproduce.py     # 합성 데이터 생성 → step0~step4 → 결과 표 (약 20초)
 ```
 
@@ -331,14 +331,14 @@ $env:PBR_DB_PATH = "data/재현.db"; python -m webapp   # http://127.0.0.1:8000
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest                 # 893개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 914개, 약 100초 (tests/ 만 수집)
 ```
 
-- `tests/test_pipeline.py` (53) — 합성 데이터로 step0→step1→step2→step4를
+- `tests/test_pipeline.py` (62) — 합성 데이터로 step0→step1→step2→step4를
   **subprocess로 실제 실행**한 뒤 산출물 존재·스키마·ILP 공급 제약·개선량을 검증.
   실행마다 고유 라벨(`smoketest-{PID}`)을 써서 실데이터를 건드리지 않고,
   끝나면 그 라벨 파일만 정리합니다.
-- `tests/test_webapp.py` (180) — 라우트·경로 탈출 차단·실행 폼 입력 검증,
+- `tests/test_webapp.py` (181) — 라우트·경로 탈출 차단·실행 폼 입력 검증,
   그리고 **화면이 실제로 무엇을 보여 주는가** — 명암비·400% 확대·인쇄·빈 상태,
   화면이 말하는 범위와 실제로 센 범위가 같은지
 - `tests/test_calculations.py` (80) — **계산 단위 테스트**: 목표재고 공식(`μ + zσ`,
@@ -445,7 +445,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/연구/RELATED_WORK.md](docs/연구/RELATED_WORK.md) | **관련 연구** — 문제의 갈래와 본 연구의 위치 |
 | [docs/연구/LITERATURE.md](docs/연구/LITERATURE.md) | **문헌 분석** — 논문 24편 한 편씩 분석·비교표·인용 지도 |
 | [docs/분석/EXPERIMENTS.md](docs/분석/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
-| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 893개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
+| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 914개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/구현/PROJECT_PIPELINE.md](docs/구현/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/구현/WEBAPP.md](docs/구현/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/구현/DESIGN.md](docs/구현/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |

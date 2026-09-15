@@ -267,6 +267,33 @@ def selected_scripts(args: argparse.Namespace) -> Iterable[Path]:
         yield from STAGES[group]
 
 
+# step3 `module.MAX_CALLS`의 기본값. 파이프라인은 step3를 **한 프로세스**로 띄우므로 이 값이
+# 곧 실행 전체의 TMAP 예산이다. 모듈을 import하지 않고 적는다 — step3 폴더를 sys.path에
+# 넣어야 해서다. 두 값이 갈리지 않게 시험이 대조한다.
+STEP3_DEFAULT_MAX_CALLS = 35
+
+
+def tmap_notice(env: dict) -> list[str]:
+    """경로 지도(step3)가 낄 때 먼저 찍는 안내 — 오늘 도로 수집 상태와 이번 TMAP 예산 (1.26.222).
+
+    `tools/redraw_maps.py`와 **같은 판단**을 쓴다(1.26.219). 예전에는 `--skip-map` 없는
+    파이프라인에 이 안내가 없어, 웹 실행 폼(지도를 늘 그린다)으로 계획 한 번이 최대 35건을
+    써도 로그에 그날 수집 상태가 안 남았다. 이 PC의 DB만 보므로 다른 PC가 같은 키로
+    수집하는지는 모른다고 말한다. **안내일 뿐이라 무엇이 실패해도 파이프라인을 막지 않는다.**
+    """
+    try:
+        from tools.redraw_maps import road_collection_today, road_status_lines
+
+        budget = int(env.get("PBR_TMAP_MAX_CALLS") or STEP3_DEFAULT_MAX_CALLS)
+        lines = road_status_lines(road_collection_today(), budget,
+                                  adjust="PBR_TMAP_MAX_CALLS로")
+    except Exception as err:                              # noqa: BLE001
+        return [f"[안내] TMAP 예산 안내를 만들지 못했습니다: {type(err).__name__}: {err}"]
+    return ["경로 지도(step3)가 TMAP을 부릅니다 — 군집 하나에 호출 하나이고,"
+            " 끝까지 못 부를 회차는 그리지 않고 건너뜁니다.",
+            *(f"  {line}" for line in lines)]
+
+
 # `API_SNAPSHOTS` 세 파일에 대응하는 DB 표. 순서는 뜻이 없고 **셋 다** 있어야 한다
 # (반쯤 있는 라벨을 물려받으면 다음 단계에서 멈춘다 — snapshot_labels()와 같은 규약).
 SNAPSHOT_TABLES = ("station_stock", "parking_lot", "station_info")
@@ -289,7 +316,60 @@ def _snapshot_in_db(label: str) -> bool:
         return False
 
 
-def inherit_snapshot(label: str) -> int:
+# 합성 자료를 만드는 시험·도구가 쓰는 라벨 앞머리. 그 재고는 **가짜 대여소**
+# (`대여소1` …)라, 물려받으면 실제 계획이 합성 재고로 선다 — 회사환경에서
+# `snapshot_labels()`의 1순위가 `smoketest-20236`(대여소 70곳)이던 적이 있다
+# (2026-09-14, 1.26.188 전 시험이 진짜 `data/`에 쓰던 시절의 잔여물).
+# ⚠️ 라벨 짐작(`db.classify_run_label`)으로는 못 가른다 — `smoketest-*`도
+# `sweep-21`(실자료 1,376곳)도 똑같이 '실험'으로 짐작된다.
+#   smoketest-  tests/test_pipeline.py      daytype-  tests/test_day_type.py
+#   rentaltest- tests/test_rentals.py       재현       tools/reproduce.py
+#   데모        tools/make_sample_data.py 사용 예시
+SYNTHETIC_LABEL_PREFIXES = ("smoketest-", "daytype-", "rentaltest-", "재현", "데모")
+
+
+def _run_kinds(labels) -> dict:
+    """라벨별 실행 종류. `runs.kind`가 있으면 그것, 없으면 라벨로 짐작한다.
+
+    DB를 못 열면 짐작만 쓴다 — 종류는 **순서**를 정할 뿐 후보를 버리지 않으므로,
+    모른다고 멈출 이유가 없다.
+    """
+    import db
+
+    stored = {}
+    try:
+        with db.session() as conn:
+            stored = dict(conn.execute("SELECT run_label, kind FROM runs").fetchall())
+    except Exception:
+        pass
+    return {label: stored.get(label) or db.classify_run_label(label) for label in labels}
+
+
+def donor_labels(label: str, kind: str | None = None) -> list:
+    """`--skip-api`가 재고를 물려받을 후보를 **고를 순서대로** 돌려준다 (1.26.218).
+
+    ① **합성 자료 라벨은 언제나 뺀다**(`SYNTHETIC_LABEL_PREFIXES`).
+    ② **계획으로 선언된 실행(`kind="plan"`)이면 계획 실행을 앞에 둔다.** 웹 실행
+       폼의 *API 수집 생략*이 그렇다 — 파일 시각만 보면 가장 최근의 격자 스윕이
+       운영 계획을 밀어내고 기증자가 된다. 실험은 버리지 않고 **뒤로 보낸다**(계획이
+       하나도 없는 PC에서 멈추면 안 된다). 같은 무리 안에서는 최근 순서를 지킨다.
+
+    🔴 **선언이 없거나 실험이면 예전처럼 가장 최근 순서다.** 격자 실험이 그 순서에
+    기대고 있다 — `sweep-10`을 수집한 뒤 12·14·16·18·21을 `--skip-api`로 돌려
+    *"같은 재고를 물려받는다"*(EXPERIMENTS.md, 1.19.5 차량 상한 스윕의 재현 명령 —
+    `--run-kind` 없음). 계획을 늘 앞에 두면 그 사슬이 **조용히 운영 계획의 재고**를
+    받는다. 처음에 그렇게 짰다가 그 재현 명령을 읽고 좁혔다.
+    """
+    candidates = [other for other in snapshot_labels()
+                  if other != label and not other.startswith(SYNTHETIC_LABEL_PREFIXES)]
+    if kind != "plan":
+        return candidates
+    kinds = _run_kinds(candidates)
+    return ([c for c in candidates if kinds[c] == "plan"]
+            + [c for c in candidates if kinds[c] != "plan"])
+
+
+def inherit_snapshot(label: str, kind: str | None = None) -> int:
     """`--skip-api`로 건너뛴 재고 스냅샷을 **가장 최근 실행에서 물려받는다.**
 
     API 수집 단계가 만드는 세 파일은 실행 라벨마다 따로다. 그래서 `--skip-api`를
@@ -304,6 +384,11 @@ def inherit_snapshot(label: str) -> int:
     ⚠️ **파일과 DB를 함께 본다 (1.26.167).** 예전에는 파일만 봐서, DB에 스냅샷이
     있어도 CSV가 없으면 *"물려받을 스냅샷이 없습니다"* 로 **단계가 시작되기도 전에**
     멈췄다. 배선이 DB로 옮겨진 뒤로는(1.26.164·166) 그 판정이 사실과 어긋난다.
+
+    🔴 **'가장 최근'이 곧 '물려받을 것'은 아니다 (1.26.218).** 파일 수정 시각
+    1순위를 그대로 받았더니 회사환경에서는 시험이 남긴 **합성 재고**(70곳)가
+    기증자였다 — 로그에 라벨 한 줄이 찍힐 뿐 결과 표로는 모른다. 고르는 규칙은
+    `donor_labels()`에 있고, `kind`(이 실행의 `--run-kind`)가 순서를 바꾼다.
     """
     missing = [p for p in snapshot_paths(label) if not p.exists()]
     if not missing:
@@ -315,16 +400,24 @@ def inherit_snapshot(label: str) -> int:
         print(f"[안내] --skip-api: '{label}'의 재고 스냅샷을 DB에서 씁니다 (CSV 없음).")
         return 0
 
-    donors = [other for other in snapshot_labels() if other != label]
+    donors = donor_labels(label, kind)
     if not donors:
         print(f"설정 오류: --skip-api를 켰지만 물려받을 재고 스냅샷이 없습니다.")
         print(f"  '{label}' 라벨의 파일이 없고, 다른 실행의 스냅샷도 없습니다.")
+        synthetic = [other for other in snapshot_labels()
+                     if other.startswith(SYNTHETIC_LABEL_PREFIXES)]
+        if synthetic:
+            print(f"  (시험·합성 자료 라벨 {len(synthetic)}개는 가짜 재고라 후보에서 뺐습니다:"
+                  f" {', '.join(synthetic[:3])}{' …' if len(synthetic) > 3 else ''})")
         print(f"  --skip-api를 빼고 한 번 수집하세요.")
         return -1
 
     donor = donors[0]
+    donor_kind = _run_kinds([donor])[donor]
     print(f"[안내] --skip-api: '{donor}'의 재고 스냅샷을 물려받습니다"
-          f" (요청 라벨 '{label}'에 파일이 없음).")
+          f" (요청 라벨 '{label}'에 파일이 없음 · 기증자 종류 {donor_kind}).")
+    if kind == "plan" and donor_kind != "plan":
+        print(f"  ⚠ 계획 실행 중에는 물려받을 스냅샷이 없어 실험 실행의 재고를 씁니다.")
     print(f"  ⚠ 그 시점 재고로 계획을 세웁니다. 지금 재고로 세우려면 --skip-api를 빼세요.")
 
     copied = 0
@@ -376,6 +469,12 @@ def main() -> int:
     for index, script in enumerate(scripts, start=1):
         print(f"[{index}/{len(scripts)}] {script}")
 
+    # 경로 지도가 끼면 TMAP 한도를 쓴다 — dry-run에서도 보여야 부르기 전에 판단한다.
+    if not args.skip_map:
+        print()
+        for line in tmap_notice(env):
+            print(line)
+
     # dry-run은 파일 존재 여부와 실행 순서만 확인할 때 사용합니다.
     if args.dry_run:
         return 0
@@ -384,7 +483,9 @@ def main() -> int:
     ensure_output_dirs()
 
     # API 수집을 건너뛰면 재고 스냅샷을 물려받습니다(없으면 여기서 멈춥니다).
-    if args.skip_api and inherit_snapshot(args.now or resolved.now) < 0:
+    # 실행 종류를 함께 넘긴다 — 계획으로 선언된 실행만 계획의 재고를 먼저 고른다(1.26.218).
+    if args.skip_api and inherit_snapshot(args.now or resolved.now,
+                                          getattr(args, "run_kind", None)) < 0:
         return 2
 
     failures: list[tuple[Path, int]] = []

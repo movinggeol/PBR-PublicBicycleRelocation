@@ -375,6 +375,108 @@ def test_snapshot_labels_skips_half_finished_runs(tmp_path, monkeypatch):
     assert project_config.snapshot_labels() == ("온전한",)
 
 
+def _스냅샷_세_파일(root, label, content, mtime):
+    """그 라벨의 재고 스냅샷 세 파일을 **내용과 수정 시각을 정해** 만든다."""
+    import project_config
+
+    for subdir, name in project_config.API_SNAPSHOTS:
+        path = root / subdir / name.format(now=label)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        os.utime(path, (mtime, mtime))
+
+
+def test_skip_api는_시험이_남긴_합성_재고를_물려받지_않는다(tmp_path, monkeypatch):
+    """🔴 가장 최근 스냅샷이라도 **시험이 남긴 합성 재고**면 물려받지 않는다 (1.26.218).
+
+    회사환경에서 `snapshot_labels()` 1순위가 `smoketest-20236`(대여소 70곳 —
+    `대여소1` …)이었다. 고장수거 로드맵 D-1 명령을 그대로 돌렸다면 합성 재고로
+    계획했을 것이고, 로그에 물려받은 라벨이 한 줄 찍힐 뿐 결과 표로는 모른다.
+    """
+    import project_config
+    import run_pipeline
+
+    monkeypatch.setattr(project_config, "PP_ROOT", tmp_path)
+    _스냅샷_세_파일(tmp_path, "2026-09-01 18", "진짜", 1_000_000)
+    _스냅샷_세_파일(tmp_path, "smoketest-20236", "합성", 2_000_000)
+
+    # 전제: 파일 시각으로만 고르면 합성 쪽이 1순위다 — 이게 깨지면 시험이 공허하다.
+    assert project_config.snapshot_labels()[0] == "smoketest-20236"
+
+    assert run_pipeline.inherit_snapshot("오늘") == 3
+    for path in project_config.snapshot_paths("오늘"):
+        assert path.read_text(encoding="utf-8") == "진짜", f"{path.name}: 합성 재고를 물려받았다"
+
+
+def test_skip_api는_계획_실행일_때만_계획을_최근_실험보다_먼저_고른다(tmp_path, monkeypatch):
+    """**계획으로 선언된 실행**(웹 실행 폼의 *API 수집 생략*)이면 더 최근의 실험을
+    제치고 계획을 고른다 (1.26.218).
+
+    🔴 반대쪽도 같이 지킨다 — **선언이 없거나 실험이면 예전처럼 최근 순서다.**
+    격자 실험이 `sweep-10`을 받은 뒤 12·14·…를 `--skip-api`로 돌려 *"같은 재고를
+    물려받는다"* 에 기대고 있어서, 계획을 늘 앞에 두면 그 사슬이 조용히 운영
+    계획의 재고를 받는다.
+
+    기증자 종류는 선언(`runs.kind`)이 먼저고, 없을 때만 라벨로 짐작한다 — 라벨은
+    계획처럼 보여도(`0914 격자`) 실험으로 선언됐으면 실험이다.
+    """
+    import db
+    import project_config
+    import run_pipeline
+
+    monkeypatch.setattr(project_config, "PP_ROOT", tmp_path)
+    _스냅샷_세_파일(tmp_path, "0901 계획", "계획", 1_000_000)
+    _스냅샷_세_파일(tmp_path, "sweep-21", "실험", 2_000_000)       # 라벨로 '실험'이라 짐작된다
+    _스냅샷_세_파일(tmp_path, "0914 격자", "선언된 실험", 3_000_000)
+    with db.session() as conn:
+        conn.execute("INSERT INTO runs (run_label, kind, created_at) VALUES (?, ?, ?)",
+                     ("0914 격자", "experiment", "2026-09-14 10:00:00"))
+        conn.commit()
+
+    # 선언이 없거나 실험이면 예전처럼 최근 순서다 — 격자 실험 사슬이 여기에 기댄다.
+    최근순 = ["0914 격자", "sweep-21", "0901 계획"]
+    assert run_pipeline.donor_labels("오늘") == 최근순
+    assert run_pipeline.donor_labels("오늘", kind="experiment") == 최근순
+
+    # 계획으로 선언된 실행이면 계획이 앞에 온다(실험은 최근 순서 그대로 뒤에).
+    assert run_pipeline.donor_labels("오늘", kind="plan") == ["0901 계획", "0914 격자", "sweep-21"]
+    assert run_pipeline.inherit_snapshot("오늘", kind="plan") == 3
+    for path in project_config.snapshot_paths("오늘"):
+        assert path.read_text(encoding="utf-8") == "계획"
+
+
+def test_skip_api는_계획이_없으면_실험이라도_물려받고_그렇다고_말한다(
+        tmp_path, monkeypatch, capsys):
+    """실험을 **버리지는 않는다** — 뒤로 보낼 뿐이다. 계획이 하나도 없는 PC에서
+    `--skip-api`가 아예 멈추면 1.26.167 전의 막힘으로 되돌아간다. 대신 실험의
+    재고라는 사실을 로그에 남긴다."""
+    import project_config
+    import run_pipeline
+
+    monkeypatch.setattr(project_config, "PP_ROOT", tmp_path)
+    _스냅샷_세_파일(tmp_path, "sweep-21", "실험", 1_000_000)
+
+    assert run_pipeline.inherit_snapshot("오늘", kind="plan") == 3
+    assert "실험 실행의 재고" in capsys.readouterr().out
+
+
+def test_skip_api_물려받기에_이_실행의_종류가_실제로_넘어간다():
+    """`donor_labels()`가 종류에 따라 순서를 바꿔도, `main()`이 `--run-kind`를
+    넘기지 않으면 **웹 실행 폼(언제나 `plan`)에서 한 번도 안 쓰인다.** 판정 함수만
+    시험하면 배선이 끊겨도 통과하므로 호출부를 따로 본다."""
+    import ast
+    import inspect
+
+    import run_pipeline
+
+    calls = [node for node in ast.walk(ast.parse(inspect.getsource(run_pipeline.main)))
+             if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "inherit_snapshot"]
+    assert calls, "main()이 inherit_snapshot을 부르지 않는다"
+    for call in calls:
+        assert len(call.args) + len(call.keywords) >= 2, "실행 종류를 넘기지 않는다"
+        assert "run_kind" in ast.unparse(call), "넘기는 값이 --run-kind가 아니다"
+
+
 def test_지도_다시_그리기가_실패를_종료_코드로_말한다(monkeypatch, capsys):
     """도구가 **실패했는데 0으로 끝나면** 부르는 쪽이 성공으로 읽는다.
 
@@ -413,13 +515,24 @@ def test_지도_다시_그리기_dry_run은_성공이다(monkeypatch):
     assert redraw_maps.main() == 0
 
 
+def _가짜_예산_환경(monkeypatch, redraw_maps, 필요=0):
+    """예산 장치(1.26.219)가 실제 DB·패널을 읽지 않게, 회차당 필요 호출 수와 오늘
+    도로 수집 상태를 고정한다. 바깥 `PBR_TMAP_MAX_CALLS`도 치운다."""
+    monkeypatch.delenv("PBR_TMAP_MAX_CALLS", raising=False)
+    monkeypatch.setattr(redraw_maps, "route_calls_needed", lambda label, dur: 필요)
+    monkeypatch.setattr(redraw_maps, "road_collection_today",
+                        lambda day=None: {"label": "roadprobe-2026-09-15", "collected": 0,
+                                          "expected": 400, "reserve": 20})
+
+
 def _가짜_다시그리기(monkeypatch, redraw_maps, 부른것):
     """군집·불균형은 성공한 척, 경로는 부른 사실만 적는다 (TMAP을 안 부른다)."""
     monkeypatch.setattr(redraw_maps, "redraw",
                         lambda label, dur, cand: [f"{label}{dur}.html"])
     monkeypatch.setattr(redraw_maps, "redraw_route",
-                        lambda label, dur, cand: 부른것.append((label, dur))
-                        or [f"vrp_{label}{dur}.html"])
+                        lambda label, dur, cand, max_calls=None: 부른것.append((label, dur))
+                        or ([f"vrp_{label}{dur}.html"], 0))
+    _가짜_예산_환경(monkeypatch, redraw_maps)
 
 
 def test_경로_지도는_with_route를_줘야_TMAP을_부른다(monkeypatch, capsys):
@@ -462,14 +575,146 @@ def test_경로_지도가_안_나와도_나머지는_실패가_아니다(monkeyp
     monkeypatch.setattr(redraw_maps, "redraw",
                         lambda label, dur, cand: [f"{label}{dur}.html"])
 
-    def 계획_없음(label, dur, cand):
+    def 계획_없음(label, dur, cand, max_calls=None):
         raise RuntimeError("입력이 없습니다 (VRP 계획)")
 
     monkeypatch.setattr(redraw_maps, "redraw_route", 계획_없음)
+    _가짜_예산_환경(monkeypatch, redraw_maps)
     monkeypatch.setattr(sys, "argv", ["redraw_maps.py", "--all", "--with-route"])
 
     assert redraw_maps.main() == 0, "경로 지도만 없는데 전체를 실패로 센다"
     assert "경로 지도는 건너뜁니다" in capsys.readouterr().out
+
+
+def _가짜_대상(monkeypatch, redraw_maps, 개수):
+    """실제 산출물 없이 (실행, 회차) 대상을 만든다 — 이 PC의 `data/`에 기대지 않는다."""
+    대상 = [(f"실행{i}", "_05_10", Path(f"top_05_10 (실행{i}).csv")) for i in range(개수)]
+    monkeypatch.setattr(redraw_maps, "available", lambda: 대상)
+    monkeypatch.setattr(redraw_maps, "redraw", lambda label, dur, cand: [f"{label}{dur}.html"])
+
+
+def test_경로_지도는_하루_호출_예산을_넘겨_부르지_않는다(monkeypatch, capsys):
+    """🔴 2026-09-14에 이 도구가 하루 138건을 부르자 이튿날 07:14 도로 수집이 두
+    엔드포인트 모두 429로 **0구간**이 됐다 — 게이트 A 10일째 날이었다(1.26.215).
+
+    문서는 *"20건을 남기고 불러라"* 라고 적었지만 이 도구는 회차마다 프로세스를 따로
+    띄워 `PBR_TMAP_MAX_CALLS`가 프로세스마다 새로 걸렸다. 그래서 **실행 전체**를 본다:
+    기본 예산 80건(100 − 수집기 20)에 16건짜리 회차 여섯이면 다섯만 부르고, 자식에게는
+    **남은 예산보다 큰 상한을 주지 않는다.** 모자란 회차는 아예 안 그린다(반쯤 부르면
+    직선이 섞인 지도가 '최신' 지문을 받는다) — 실패가 아니라 건너뜀이라 종료 코드는 0이다.
+    """
+    import tools.redraw_maps as redraw_maps
+
+    _가짜_대상(monkeypatch, redraw_maps, 6)
+    _가짜_예산_환경(monkeypatch, redraw_maps, 필요=16)
+    상한 = []
+    monkeypatch.setattr(redraw_maps, "redraw_route",
+                        lambda label, dur, cand, max_calls=None:
+                        상한.append(max_calls) or ([f"vrp_{label}.html"], 16))
+    monkeypatch.setattr(sys, "argv", ["redraw_maps.py", "--all", "--with-route"])
+
+    assert redraw_maps.main() == 0
+    out = capsys.readouterr().out
+    assert 상한 == [80, 64, 48, 32, 16], f"자식에게 준 상한이 남은 예산과 다르다: {상한}"
+    assert "예산이 모자라 경로 지도 1장을 안 그렸습니다" in out
+    assert "20건을 남기고" in out, "도로 수집기 몫을 남긴다는 말을 안 한다"
+
+
+def test_경로_지도_예산은_쓴_만큼_깎고_모르면_필요량으로_센다(monkeypatch):
+    """실제로 쓴 호출(자식이 찍은 `TMAP 호출 N건`)로 깎아야 한도를 헛되이 남기지
+    않는다. 반대로 **몇 건 썼는지 모르는 실패**는 필요량을 다 쓴 것으로 센다 — 적게
+    세는 쪽이 한도를 태운다. 바깥 `PBR_TMAP_MAX_CALLS`는 실행 전체의 예산으로 읽는다
+    (TESTING.md 4장 3단계가 *"이번 작업의 호출 수"* 로 그 변수를 쓰라고 적었다)."""
+    import tools.redraw_maps as redraw_maps
+
+    _가짜_대상(monkeypatch, redraw_maps, 4)
+    _가짜_예산_환경(monkeypatch, redraw_maps, 필요=10)
+    monkeypatch.setenv("PBR_TMAP_MAX_CALLS", "30")
+    상한 = []
+
+    def 경로(label, dur, cand, max_calls=None):
+        상한.append(max_calls)
+        if len(상한) == 1:
+            raise redraw_maps.RouteRedrawError("자식이 먼저 죽었다", calls=None)
+        return [f"vrp_{label}.html"], 4
+
+    monkeypatch.setattr(redraw_maps, "redraw_route", 경로)
+    monkeypatch.setattr(sys, "argv", ["redraw_maps.py", "--all", "--with-route"])
+
+    assert redraw_maps.main() == 0
+    # 30 → (실패, 필요량 10으로 셈) 20 → (4) 16 → (4) 12
+    assert 상한 == [30, 20, 16, 12]
+
+
+def test_오늘_도로_수집이_어디까지_찼는지_이_PC의_DB로_말한다(monkeypatch):
+    """예산을 정하기 전에 **오늘 수집 상태**를 말한다. 휴일이면 라벨이 갈리고
+    (`roadprobe-holiday-…`), 이 PC에 기록이 없으면 *"다른 PC가 수집하는지 알 수 없다"*
+    고 말해야 한다 — 회사환경은 도로 수집이 꺼져 있어 늘 0구간이라, *"수집이 안 됐다"*
+    로 읽으면 틀린다. 예산이 수집기 몫을 안 남기면 그렇다고 경고한다."""
+    from datetime import date
+
+    import tools.collect_road_time as road
+    import tools.redraw_maps as redraw_maps
+
+    monkeypatch.setattr(road, "collected_legs", lambda label: {"_05_10": 100, "_10_15": 100})
+    state = redraw_maps.road_collection_today(date(2026, 9, 26))      # 토요일
+    assert state["label"] == "roadprobe-holiday-2026-09-26"
+    assert state["collected"] == 200
+    assert (state["expected"], state["reserve"]) == (400, 20)         # 사슬 5 × 20구간 × 회차 4
+
+    def 말(collected, budget=80):
+        return " ".join(redraw_maps.road_status_lines(dict(state, collected=collected), budget))
+
+    assert "끝났습니다" in 말(400)
+    assert "--if-needed" in 말(200)
+    assert "알 수 없습니다" in 말(0)
+    assert "남기지 않습니다" in 말(400, budget=95)
+
+
+def test_자식이_찍은_TMAP_호출_수를_읽는다():
+    """예산은 자식 출력의 한 줄로 깎는다 — step3가 그 줄 모양을 바꾸면 예산이 조용히
+    '모름'(= 필요량으로 셈)이 되므로 실제 문구(`pipeline/step3_map/main.py` 끝)와 함께
+    못박는다."""
+    import tools.redraw_maps as redraw_maps
+
+    out = "...\nTMAP 호출 14건 (예산 35건)\n  사용 가능한 엔드포인트: routeSequential100\n"
+    assert redraw_maps.calls_in(out) == 14
+    assert redraw_maps.calls_in("[건너뜀] _05_10: 입력이 없습니다") is None
+    src = Path(redraw_maps.STEP3_MAIN).read_text(encoding="utf-8")
+    assert 'print(f"\\nTMAP 호출 {call_count()}건' in src, "step3가 호출 수 줄의 모양을 바꿨다"
+
+
+def test_파이프라인도_경로_지도가_끼면_오늘_도로_수집과_TMAP_예산을_먼저_말한다(monkeypatch, capsys):
+    """🔴 `--skip-map` 없는 파이프라인에는 1.26.219의 안내가 없었다 — 웹 실행 폼은 지도를
+    늘 그리므로 계획 한 번이 최대 35건을 쓰는데, 로그에 그날 도로 수집 상태도 예산도 안
+    남았다(1.26.222). `--dry-run`에서도 보여야 부르기 전에 판단한다.
+
+    기본 예산은 step3 `module.MAX_CALLS`의 기본값과 같아야 한다 — 파이프라인은 그 모듈을
+    import하지 않고 숫자를 적는다."""
+    import importlib.util
+
+    import run_pipeline
+    import tools.redraw_maps as redraw_maps
+
+    monkeypatch.delenv("PBR_TMAP_MAX_CALLS", raising=False)
+    monkeypatch.setattr(redraw_maps, "road_collection_today",
+                        lambda day=None: {"label": "roadprobe-2026-09-15", "collected": 0,
+                                          "expected": 400, "reserve": 20})
+    monkeypatch.setattr(sys, "argv", ["run_pipeline.py", "--dry-run"])
+    assert run_pipeline.main() == 0
+    out = capsys.readouterr().out
+    assert "알 수 없습니다" in out, "오늘 도로 수집 상태를 말하지 않는다"
+    assert "최대 35건" in out and "PBR_TMAP_MAX_CALLS로 조정" in out, out
+
+    monkeypatch.setattr(sys, "argv", ["run_pipeline.py", "--dry-run", "--skip-map"])
+    assert run_pipeline.main() == 0
+    assert "TMAP" not in capsys.readouterr().out, "지도를 안 그리는데 TMAP 안내를 찍는다"
+
+    spec = importlib.util.spec_from_file_location(
+        "step3_module_기본값", run_pipeline.ROOT / "pipeline" / "step3_map" / "module.py")
+    step3 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(step3)
+    assert run_pipeline.STEP3_DEFAULT_MAX_CALLS == step3.MAX_CALLS
 
 
 # ───────── step 모듈을 패키지로 import할 수 있는가 (1.26.154) ─────────

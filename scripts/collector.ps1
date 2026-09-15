@@ -7,11 +7,11 @@
     Register-ScheduledTask를 쓰는 이유는 아래 설정 절반이 schtasks 플래그로
     표현되지 않기 때문이다(동시 실행 억제, 실행 시간 제한, 놓친 작업 따라잡기 끄기).
 
-    실행 파일로 pythonw.exe를 쓴다 — python.exe로 걸면 10분마다(07~23시 창이면
-    하루 97번) 콘솔 창이 깜빡인다.
+    실행 파일로 pythonw.exe를 쓴다 — python.exe로 걸면 10분마다(24시간 창이면
+    하루 144번) 콘솔 창이 깜빡인다.
 
 .EXAMPLE
-    .\scripts\collector.ps1 install -Window 07:00-23:00 -IncludeHolidays
+    .\scripts\collector.ps1 install -Window 00:00-23:50 -IncludeHolidays
                                         # 운영 설정으로 등록 (docs/구현/두_PC_작업.md 0장)
                                         # 인자를 빼면 파라미터 기본값(평일 09:00-17:00)으로
                                         # 기존 작업까지 덮어쓴다
@@ -100,6 +100,9 @@ function Format-Result {
         # 거부 바로 앞 정각 틱(09:30·11:10·14:00)이 모두 성공이었다. 어느 쪽인지는
         # Invoke-Status가 **직전 정각 틱**을 함께 찍어 보여 준다.
         2147946720 { '요청 거부됨 (0x800710E0 — 로그온 세션·전원, 또는 앞 실행이 아직 도는 중)' }
+        # 0x80070002. **작업이 없는 경로를 가리킨다.** 저장소 폴더 이름을 바꾸면 이렇게 된다 —
+        # 2026-09-15 회사환경에서 10:40 뒤 틱이 끊긴 채 이 코드가 숫자로만 찍혔다(1.26.224).
+        2147942402 { '파일 없음 (0x80070002 — 작업이 없는 경로를 가리킴. 폴더를 옮기거나 이름을 바꿨다면 install 다시)' }
         default { "코드 $Code (0x{0:X8})" -f $Code }
     }
 }
@@ -331,6 +334,14 @@ function Invoke-Status {
         $info = Get-ScheduledTaskInfo -TaskName $TaskName
         $state = if ($task.State -eq 'Disabled') { '일시정지' } else { '활성' }
         Write-Host "  스케줄   : $state · 다음 실행 $(Format-Stamp $info.NextRunTime)"
+        # [!] 작업이 **없는 경로**를 가리키면 실행마다 0x80070002로 조용히 실패한다. 저장소 폴더
+        # 이름을 바꾸면 그렇게 된다 — 2026-09-15 회사환경에서 10:40 뒤 틱이 끊겼는데 '마지막' 줄은
+        # 코드 숫자만 찍었다(같은 날 pre-commit 훅도 같은 이유로 막혔다, 1.26.221). 답은 install 다시다.
+        $action = $task.Actions | Select-Object -First 1
+        if ($action -and $action.Execute -and -not (Test-Path -LiteralPath $action.Execute)) {
+            Write-Host "  [!] 작업이 없는 경로를 가리킵니다: $($action.Execute)" -ForegroundColor Red
+            Write-Host "      폴더를 옮기거나 이름을 바꿨다면 같은 인자로 install을 다시 하십시오 (지금 폴더: $Root)" -ForegroundColor Red
+        }
         $last = Format-Stamp $info.LastRunTime
         if ($null -eq $last) {
             Write-Host "  마지막   : 아직 실행 전 — 첫 수집은 다음 실행 시각입니다"

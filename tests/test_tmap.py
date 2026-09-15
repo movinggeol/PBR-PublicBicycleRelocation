@@ -8,9 +8,9 @@
 
 지키려는 규칙:
   1. 경유지가 30 이하면 routeSequential30을 먼저 쓴다(한도가 따로 잡혀 아낄 수 있다)
-  2. 30을 넘으면 처음부터 routeSequential100 — 쪼개서 두 번 부르면 쿼터를 더 쓴다
-  3. 30이 일일 한도를 소진하면 100으로 자동 전환하고, 그 뒤로는 30을 다시 부르지 않는다
-  4. 둘 다 소진되면 TmapQuotaExceeded (호출한 쪽이 직선 경로로 대체한다)
+  2. 30을 넘으면 처음부터 routeSequential100, 100을 넘으면 routeSequential200 — 쪼개서 여러 번 부르면 쿼터를 더 쓴다
+  3. 30이 일일 한도를 소진하면 100으로, 100도 소진하면 200으로 자동 전환하고, 소진된 것은 다시 부르지 않는다
+  4. 모두 소진되면 TmapQuotaExceeded (호출한 쪽이 직선 경로로 대체한다)
 """
 import importlib.util
 from pathlib import Path
@@ -71,6 +71,8 @@ def _args(via_count):
     (30, "routeSequential30"),
     (31, "routeSequential100"),
     (100, "routeSequential100"),
+    (101, "routeSequential200"),
+    (200, "routeSequential200"),
 ])
 def test_smallest_endpoint_that_fits_is_chosen(via_count, expected):
     """한 번에 담기는 가장 작은 엔드포인트를 고른다."""
@@ -90,6 +92,21 @@ def test_falls_back_to_100_when_30_is_exhausted():
     assert sent[0].endswith("routeSequential30")
     assert sent[1].endswith("routeSequential100")
     assert result["features"][0]["ok"].endswith("routeSequential100")
+
+
+def test_falls_back_to_200_when_30_and_100_are_exhausted():
+    """30·100이 모두 한도를 소진하면 200이 마지막 여유로 받는다 (1.26.226)."""
+    module = load_module()
+    sent = []
+    module.requests.post = fake_post(
+        sent, quota_exceeded=("routeSequential30", "routeSequential100"))
+
+    result = module.call_tmap_sequential(*_args(5), headers={})
+
+    assert [url.rsplit("/", 1)[1] for url in sent] == [
+        "routeSequential30", "routeSequential100", "routeSequential200"]
+    assert result["features"][0]["ok"].endswith("routeSequential200")
+    assert module.pick_endpoint(5).name == "routeSequential200"
 
 
 def test_exhausted_endpoint_is_not_retried():
@@ -168,6 +185,45 @@ def test_budget_stops_calls_before_quota_is_spent(monkeypatch):
         module.call_tmap_sequential(*_args(5), headers={})
 
     assert sent == [], "예산 초과 시 요청을 보내면 안 된다"
+
+
+def test_끝까지_못_부를_경로_지도는_그리기_전에_건너뛴다(monkeypatch):
+    """🔴 반쯤 그리지 않는다 (1.26.222).
+
+    예산이 군집 중간에 끊기면 남은 군집이 직선으로 그려진 채 저장되고, 새 지문을 받아
+    `/maps`에서 *최신*으로 보인다. 파이프라인은 회차 여럿을 한 프로세스로 돌려 기본 35건에서
+    마지막 회차가 그렇게 섞였다. 딱 맞으면 그리고, 한 건이라도 모자라거나 두 엔드포인트가
+    모두 소진이면 **부르기 전에** 까닭을 돌려준다."""
+    monkeypatch.setenv("PBR_TMAP_MAX_CALLS", "30")
+    monkeypatch.delenv("PBR_TMAP_URL", raising=False)
+    module = load_module()
+    module._call_count = 20
+
+    assert module.route_skip_reason(10) is None, "딱 맞는데 안 그린다"
+    까닭 = module.route_skip_reason(11)
+    assert 까닭 and "11건" in 까닭 and "10건" in 까닭, 까닭
+    assert module.route_skip_reason(0) is None, "부를 것이 없는데 막는다"
+
+    module._exhausted.update(e.name for e in module.ENDPOINTS)
+    assert "한도 소진" in module.route_skip_reason(1)
+
+
+def test_step3는_회차마다_그리기_전에_끝까지_부를_수_있는지_본다():
+    """판정 함수만 시험하면 **배선이 끊겨도 통과한다.** step3 회차 루프에서
+    `route_skip_reason`이 `make_vrp_map`보다 먼저 불리고, 그 사이에 `continue`가 있어야
+    실제로 안 그린다."""
+    import ast
+
+    tree = ast.parse((MODULE_PATH.parent / "main.py").read_text(encoding="utf-8"))
+    loop = next(n for n in ast.walk(tree)
+                if isinstance(n, ast.For) and "duration_list" in ast.unparse(n.iter)
+                and "make_vrp_map" in ast.unparse(n))
+    calls = {ast.unparse(n.func): n.lineno for n in ast.walk(loop) if isinstance(n, ast.Call)}
+    assert "module.route_skip_reason" in calls, "회차 루프가 그리기 전 확인을 안 부른다"
+    확인, 그리기 = calls["module.route_skip_reason"], calls["make_vrp_map"]
+    assert 확인 < 그리기, "그린 뒤에 확인한다"
+    assert any(isinstance(n, ast.Continue) and 확인 < n.lineno < 그리기
+               for n in ast.walk(loop)), "확인만 하고 건너뛰지 않는다"
 
 
 # ---------------- 경로 지도의 팝업 (수정안 15) ----------------
@@ -288,7 +344,7 @@ def test_누적_소요를_구간별로_풀어_낸다():
 
 def test_첫_구간은_버린다_출발점이_차고지가_아니기_때문이다():
     """TMAP 요청의 출발점은 차고지에서 남쪽으로 약 555m 민 자리다 —
-    출발지와 도착지가 같으면 경유지 최적화가 성립하지 않아 벌려 둔 것이다.
+    출발지와 도착지가 같으면 다중 경유지 안내가 성립하지 않아 벌려 둔 것이다.
 
     그래서 첫 구간의 직선거리도 도로 소요도 **있지도 않은 지점**을 기준으로
     잰 값이다. 이 표는 이동시간 모형을 적합하는 정답표이므로 섞이면 안 된다

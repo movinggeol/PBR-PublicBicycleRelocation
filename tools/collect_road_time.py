@@ -78,8 +78,10 @@ import hashlib
 import json
 import math
 import random
+import re
 import sys
 import time
+import traceback
 from datetime import date as date_module
 from datetime import datetime
 from pathlib import Path
@@ -128,6 +130,12 @@ CHAIN_COUNT = 5
 TARGET_KM_CYCLE = (0.3, 0.75, 1.5, 3.5, 7.5, 15.0)
 
 PANEL_SEED = 42
+
+# 실행 기록을 남기는 자리 (1.26.223). 달마다 파일 하나 — 하루 여섯 번 깨워도 한 달에 수백 KB다.
+# 재고 수집기의 `collect_log.csv`와 같은 층(`data/raw_data/…이력`)에 둔다.
+LOG_DIR = DATA_ROOT / "raw_data" / "도로이력"
+RUN_HEAD = "===== 시작 "
+RUN_TAIL = "===== 끝 "
 
 
 def haversine_km(lat1, lon1, lat2, lon2) -> float:
@@ -429,19 +437,44 @@ def _warn_if_stalled(last_label: str) -> None:
     try:
         out = subprocess.run(
             ["powershell", "-NoProfile", "-Command",
-             "(Get-ScheduledTask -TaskName 'PBR도로시간수집' -ErrorAction Stop).State"],
+             "$t = Get-ScheduledTask -TaskName 'PBR도로시간수집' -ErrorAction Stop;"
+             " $a = $t.Actions | Select-Object -First 1;"
+             " \"$($t.State)|$($a.Execute)\""],
             capture_output=True, text=True, timeout=20, encoding="utf-8")
     except (OSError, subprocess.SubprocessError):
         return
-    state = (out.stdout or "").strip()
+    state, _, execute = (out.stdout or "").strip().partition("|")
+    exists = Path(execute).exists() if execute else True
+    for line in schedule_advice(state, execute, exists):
+        print(line)
+
+
+def schedule_advice(state: str, execute: str, exists: bool) -> list[str]:
+    """도로 수집 작업의 상태를 보고 **이 PC에서 할 일**을 말한다 (1.26.225).
+
+    ⚠️ 예전에는 일시정지면 무조건 `resume`을 권했다. 그런데 회사 PC의 작업은 저장소 폴더 이름이
+    바뀌어 옛 경로를 가리키고 있어(1.26.224) `resume`하면 `0x80070002`로 실패하고, 애초에 도로
+    수집 담당이 집 PC라 **켜면 안 되는** 작업이었다 — 두 PC가 같은 키로 돌면 한도를 두 배로 쓴다.
+    그래서 경로가 없으면 `install`을, 일시정지면 담당인지 먼저 보라고 말한다.
+    """
+    sep = chr(92)
+    script = f".{sep}scripts{sep}road_collector.ps1"
+    if not state:
+        return [f"    스케줄이 등록되어 있지 않습니다 — {script} install"]
+
+    lines = []
+    if not exists:
+        lines += [f"    [!] 작업이 없는 경로를 가리킵니다: {execute}",
+                  f"        resume으로는 켜지지 않습니다(실행하면 0x80070002) — 되살릴 때는 {script} install"]
     if state == "Disabled":
-        print("    스케줄이 **일시정지(Disabled)** 상태입니다 — 고장이 아니라 꺼져 있습니다.")
-        print("    다시 켜기: .{sep}scripts{sep}road_collector.ps1 resume".format(sep=chr(92)))
-    elif state and state != "Ready":
-        print(f"    스케줄 상태: {state}")
-    elif not state:
-        print("    스케줄이 등록되어 있지 않습니다 — "
-              ".{sep}scripts{sep}road_collector.ps1 install".format(sep=chr(92)))
+        lines.append("    스케줄이 **일시정지(Disabled)** 상태입니다 — 고장이 아니라 꺼져 있습니다.")
+        if exists:
+            lines.append(f"    다시 켜기: {script} resume")
+        lines.append("    ⚠️ 도로 수집을 이 PC가 맡지 않는다면 그대로 두십시오 — 두 PC가 같은 키로 돌면"
+                     " 한도를 두 배로 씁니다 (docs/구현/두_PC_작업.md 0장).")
+    elif state != "Ready":
+        lines.append(f"    스케줄 상태: {state}")
+    return lines
 
 
 def status() -> int:
@@ -474,6 +507,10 @@ def status() -> int:
         latest = max(frame["run_label"],
                     key=lambda label: label[len(PROBE_PREFIX):].removeprefix("holiday-"))
         _warn_if_stalled(latest)
+
+    # 수집을 **왜** 못 했는지는 위 표에 안 보인다 — 실행 기록을 함께 보인다 (1.26.223).
+    for line in run_log_lines():
+        print(line)
 
     print(f"\n파이프라인 실행분(패널 아님): {int(other['n'][0])}구간"
           f" / 실행 {int(other['runs'][0])}건")
@@ -538,7 +575,152 @@ def warn_if_panel_drifted(chains: list) -> bool:
     return True
 
 
-def main() -> int:
+# ---------------------------------------------------------------- 실행 기록 (1.26.223)
+
+# 실행 기록에서 사람에게 보일 줄. 실패의 까닭이 되는 줄은 `_BAD_MARKERS`로 따로 고른다.
+_NOTE_MARKERS = ("⚠", "[중단]", "[안내]", "[건너뜀]", "[이어받기]", "[REQ]", "[HTTP", "실제 호출")
+_BAD_MARKERS = ("⚠", "[중단]", "[REQ]", "[HTTP")
+_EXC_LINE = re.compile(r"^[A-Za-z_.]*(Error|Exception|Exceeded)\b")
+
+
+def log_path(when: datetime | None = None) -> Path:
+    """그 달의 실행 기록 파일."""
+    return LOG_DIR / f"collect_road_{(when or datetime.now()):%Y-%m}.log"
+
+
+class _Tee:
+    """콘솔(있으면)과 실행 기록 파일에 함께 쓴다. **`pythonw`에서는 콘솔이 `None`이다.**"""
+
+    encoding = "utf-8"
+
+    def __init__(self, stream, file):
+        self._stream = stream
+        self._file = file
+
+    def write(self, text):
+        if self._stream is not None:
+            try:
+                self._stream.write(text)
+            except (OSError, ValueError):
+                pass
+        self._file.write(text)
+        return len(text)
+
+    def flush(self):
+        for stream in (self._stream, self._file):
+            if stream is not None:
+                try:
+                    stream.flush()
+                except (OSError, ValueError):
+                    pass
+
+    def isatty(self):
+        return False
+
+
+def _parse_run(chunk: str) -> dict:
+    """`RUN_HEAD` 뒤 한 실행 덩어리를 읽는다. 끝 줄이 없으면 끝나지 않은 실행이다."""
+    lines = chunk.splitlines()
+    started = lines[0].split(" · ")[0].strip() if lines else "?"
+    tail = next((line for line in lines if line.startswith(RUN_TAIL)), None)
+    code = calls = None
+    if tail:
+        found = re.search(r"종료 코드 (-?\d+)", tail)
+        code = int(found.group(1)) if found else None
+        found = re.search(r"TMAP 호출 (\d+)건", tail)
+        calls = int(found.group(1)) if found else None
+    notes = [line.strip() for line in lines[1:]
+             if line.strip().startswith(_NOTE_MARKERS) or _EXC_LINE.match(line.strip())]
+    return {"started": started, "finished": tail is not None, "code": code,
+            "calls": calls, "notes": notes}
+
+
+def run_log_lines(limit: int = 6) -> list:
+    """최근 실행을 한 줄씩 — 실패한 실행은 까닭을 함께 (1.26.223).
+
+    🔴 **마지막 한 번만 보이면 앞선 실패가 가려진다.** 아침 실행이 한도 소진으로 1을 내도
+    저녁 실행이 `[건너뜀]`으로 0을 내면 스케줄러의 '마지막 결과'는 성공이다. 그래서 최근
+    몇 번을 나란히 보인다. 끝 줄이 없는 실행은 도는 중이거나 PC 종료·로그오프로 끊긴 것이다
+    (스케줄러 코드 0x40010004).
+    """
+    files = sorted(LOG_DIR.glob("collect_road_*.log")) if LOG_DIR.is_dir() else []
+    if not files:
+        return ["", f"실행 기록: 아직 없습니다 (1.26.223부터 수집 실행마다 {LOG_DIR}에 남습니다)."]
+    runs = []
+    for path in files[-2:]:               # 달이 막 바뀐 날에도 앞 실행이 보이게
+        text = path.read_text(encoding="utf-8", errors="replace")
+        runs.extend(_parse_run(chunk) for chunk in text.split(RUN_HEAD)[1:])
+    lines = ["", f"실행 기록 — 최근 {min(limit, len(runs))}번 ({files[-1]})"]
+    for item in runs[-limit:]:
+        when = item["started"][5:16]
+        bad = [note for note in item["notes"]
+               if note.startswith(_BAD_MARKERS) or _EXC_LINE.match(note)]
+        if not item["finished"]:
+            head = f"  {when} → 끝나지 않음 (도는 중이거나 PC 종료·로그오프로 끊김)"
+        else:
+            head = f"  {when} → 종료 {item['code']} · 호출 {item['calls']}건"
+        shown = (bad or item["notes"])[:1]
+        lines.append(head + (f" · {shown[0][:110]}" if shown else ""))
+        if (not item["finished"] or item["code"]) and len(bad) > 1:
+            lines.extend(f"      {note[:110]}" for note in bad[1:4])
+    return lines
+
+
+def main(argv=None) -> int:
+    """수집을 돌리고 **출력·종료 코드·예외를 실행 기록에 남긴다** (1.26.223).
+
+    🔴 2026-09-15 아침 도로 수집이 0구간으로 끝났는데 작업 스케줄러에는 `0x1`만 남았다.
+    `pythonw`로 돌아 **출력이 어디에도 없어**, 원인(두 엔드포인트 한도 소진)을 이벤트 로그와
+    직접 호출로 되짚어야 했다(1.26.215). 그래서 수집 실행마다 콘솔과 함께 `log_path()`에
+    쓴다. 예외로 죽어도 트레이스백과 종료 코드가 남는다.
+
+    `--status`·`--help`는 기록하지 않는다 — 보기만 하는 명령이 기록을 채우면 실패가 묻힌다.
+    기록 파일을 못 열어도 **수집은 한다** — 기록은 진단용이지 수집의 조건이 아니다.
+    """
+    args = list(sys.argv[1:] if argv is None else argv)
+    if {"--status", "-h", "--help"} & set(args):
+        return run(args)
+    path = log_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        log = path.open("a", encoding="utf-8")
+    except OSError as err:
+        if sys.stderr is not None:
+            print(f"[경고] 실행 기록을 열지 못해 기록 없이 돕니다: {err}", file=sys.stderr)
+        return run(args)
+
+    console_out, console_err = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = _Tee(console_out, log), _Tee(console_err, log)
+    code = 1
+    try:
+        # 실행 파일 이름은 `sys.executable`에서 읽는다 — 콘솔 유무로 짐작하면 틀린다. 셸에서
+        # 띄운 pythonw는 출력이 파이프로 이어져 `sys.stdout`이 None이 아니었다(실측).
+        print(f"\n{RUN_HEAD}{datetime.now():%Y-%m-%d %H:%M:%S}"
+              f" · {Path(sys.executable).stem}"
+              f"{' · 콘솔 없음' if console_out is None else ''}"
+              f" · 인자 {' '.join(args) or '(없음)'}")
+        try:
+            code = run(args)
+        except SystemExit as exc:          # load_panel 등이 까닭을 담아 멈춘다
+            if isinstance(exc.code, int):
+                code = exc.code
+            elif exc.code is None:
+                code = 0
+            else:
+                print(exc.code)
+                code = 1
+        except Exception:                  # noqa: BLE001 — 까닭을 남기는 것이 이 함수의 일이다
+            traceback.print_exc()
+            code = 1
+        print(f"{RUN_TAIL}{datetime.now():%Y-%m-%d %H:%M:%S} · 종료 코드 {code}"
+              f" · TMAP 호출 {tmap_mod.call_count()}건")
+    finally:
+        sys.stdout, sys.stderr = console_out, console_err
+        log.close()
+    return code
+
+
+def run(argv=None) -> int:
     parser = argparse.ArgumentParser(description="TMAP 실도로 소요시간 반복 수집")
     parser.add_argument("--status", action="store_true", help="쌓인 현황만 보여준다")
     parser.add_argument("--dry-run", action="store_true", help="호출 계획만 확인")
@@ -560,7 +742,7 @@ def main() -> int:
                              " 판정한다(평일 날짜 → weekday, 주말·공휴일 → holiday)."
                              " 평일·휴일은 절대 섞지 않는다 — 회귀에 넣기 전에"
                              " runs.day_type으로 갈라라 (1.26.158)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.status:
         return status()
