@@ -7,11 +7,11 @@
     Register-ScheduledTask를 쓰는 이유는 아래 설정 절반이 schtasks 플래그로
     표현되지 않기 때문이다(동시 실행 억제, 실행 시간 제한, 놓친 작업 따라잡기 끄기).
 
-    실행 파일로 pythonw.exe를 쓴다 — python.exe로 걸면 10분마다(07~23시 창이면
-    하루 97번) 콘솔 창이 깜빡인다.
+    실행 파일로 pythonw.exe를 쓴다 — python.exe로 걸면 10분마다(24시간 창이면
+    하루 144번) 콘솔 창이 깜빡인다.
 
 .EXAMPLE
-    .\scripts\collector.ps1 install -Window 07:00-23:00 -IncludeHolidays
+    .\scripts\collector.ps1 install -Window 00:00-23:50 -IncludeHolidays
                                         # 운영 설정으로 등록 (docs/구현/두_PC_작업.md 0장)
                                         # 인자를 빼면 파라미터 기본값(평일 09:00-17:00)으로
                                         # 기존 작업까지 덮어쓴다

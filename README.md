@@ -253,11 +253,11 @@ python "pipeline/step4_metrics/imbalance.py"
 
 파이프라인이 쓰는 초기 재고는 **실행하는 순간의 스냅샷 한 장**입니다. 실측 재고가
 시간에 따라 어떻게 움직이는지 남겨 두면, 결품을 시뮬레이션이 아니라 **실측으로**
-잴 수 있습니다. 그래서 매일(휴일 포함) 07~23시 재고를 10분마다 모읍니다
+잴 수 있습니다. 그래서 매일(휴일 포함) 24시간 재고를 10분마다 모읍니다
 ([docs/구현/COLLECTOR.md](docs/구현/COLLECTOR.md)).
 
 ```powershell
-.\scripts\collector.ps1 install -Window 07:00-23:00 -IncludeHolidays   # 수집 시작 (최초 1회 등록)
+.\scripts\collector.ps1 install -Window 00:00-23:50 -IncludeHolidays   # 수집 시작 (최초 1회 등록)
 .\scripts\collector.ps1 pause       # 일시정지 — 작업은 남기고 안 깨움
 .\scripts\collector.ps1 resume      # 재개
 .\scripts\collector.ps1 uninstall   # 완전 중지 — 작업 삭제
