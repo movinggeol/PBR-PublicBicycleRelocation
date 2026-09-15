@@ -572,3 +572,17 @@ def test_status가_최근_실행과_실패_까닭을_말한다(collector, tmp_pa
     assert "종료 1" in 아침 and "일일 한도 소진" in 아침, 아침
     assert any("18:03" in line and "종료 0" in line for line in lines)
     assert any("21:00" in line and "끝나지 않음" in line for line in lines)
+
+
+def test_두_스케줄러_스크립트가_없는_경로를_status에서_말한다():
+    """🔴 저장소 폴더 이름을 바꾸자 두 작업이 옛 경로(`C:\\PBR-PublicBicycleRelocation-\\…`)를 가리켜
+    회사환경 재고 수집이 10:40 뒤로 끊겼다 — 스케줄러는 `0x80070002`를 숫자로만 남겼다
+    (2026-09-15, 1.26.224). `status`가 등록된 실행 파일의 경로를 확인해 말하는지, 그 코드를 사람
+    말로 옮기는지 본다. 작업 스케줄러는 시험 환경에 없으므로 스크립트 본문을 읽는다."""
+    for name in ("collector.ps1", "road_collector.ps1"):
+        text = (PROJECT_ROOT / "scripts" / name).read_text(encoding="utf-8-sig")
+        status = text[text.index("function Invoke-Status"):]
+        status = status[:status.index("\nfunction ", 1)]
+        assert "Test-Path -LiteralPath $action.Execute" in status, (
+            f"{name}의 status가 작업이 가리키는 경로를 확인하지 않는다")
+        assert "2147942402" in text, f"{name}가 0x80070002를 사람 말로 옮기지 않는다"

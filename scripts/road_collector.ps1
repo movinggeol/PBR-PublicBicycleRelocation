@@ -85,6 +85,8 @@ function Format-Result {
         # 2026-09-03 08:29에 실제로 이 코드로 끝나 그날치가 통째로 비었다 —
         # 여러 시각을 걸게 된 계기다.
         1073807364 { '중도 종료 (0x40010004 — 종료·로그오프 등으로 끊김)' }
+        # 0x80070002. 작업이 없는 경로를 가리킨다 — 저장소 폴더 이름을 바꾸면 이렇게 된다(1.26.224).
+        2147942402 { '파일 없음 (0x80070002 — 작업이 없는 경로를 가리킴. 폴더를 옮기거나 이름을 바꿨다면 install 다시)' }
         default    { "코드 $Code" }
     }
 }
@@ -182,6 +184,16 @@ function Invoke-Status {
         $info = Get-ScheduledTaskInfo -TaskName $TaskName
         $state = if ($task.State -eq 'Disabled') { '일시정지' } else { '활성' }
         Write-Host "  스케줄   : $state · 다음 실행 $(Format-Stamp $info.NextRunTime)"
+        # [!] 작업이 없는 경로를 가리키면 깨울 때마다 0x80070002로 조용히 실패한다 — 저장소 폴더 이름을
+        # 바꾸면 그렇게 된다(2026-09-15 회사환경, 재고 작업이 실제로 멈췄다 · 1.26.224).
+        # ⚠️ 이 PC가 도로 수집 담당이 아니면 되살릴 때까지 두라고 말한다 — install은 **켜진 채** 등록하고
+        # StartWhenAvailable이라 놓친 시각을 곧바로 따라잡을 수 있다(담당 PC와 한도를 겹쳐 쓴다).
+        $action = $task.Actions | Select-Object -First 1
+        if ($action -and $action.Execute -and -not (Test-Path -LiteralPath $action.Execute)) {
+            Write-Host "  [!] 작업이 없는 경로를 가리킵니다: $($action.Execute)" -ForegroundColor Red
+            Write-Host "      이 PC가 도로 수집 담당이면 install을 다시 하십시오 (지금 폴더: $Root)." -ForegroundColor Red
+            Write-Host "      담당이 아니면 되살릴 때까지 두십시오 — install은 켜진 채 등록합니다." -ForegroundColor Red
+        }
         $last = Format-Stamp $info.LastRunTime
         if ($null -eq $last) {
             Write-Host "  마지막   : 아직 실행 전"
