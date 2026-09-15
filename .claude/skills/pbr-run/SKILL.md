@@ -311,20 +311,34 @@ AXE_JS = open("axe.min.js", encoding="utf-8").read()
 
 with sync_playwright() as p:
     b = p.chromium.launch()
-    for vp in [{"width": 1400, "height": 1000}, {"width": 375, "height": 812}]:
-        page = b.new_page(viewport=vp)
-        page.add_init_script(AXE_JS)     # 페이지 로드마다 axe가 함께 실린다
-        for path in PAGES:
-            page.goto(BASE + path, wait_until="load")
-            page.wait_for_timeout(400)
-            res = page.evaluate("""async () => axe.run(document, {
-                runOnly: {type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa']}
-            })""")
-            for v in res["violations"]:
-                print(path, v["id"], len(v["nodes"]), v["help"])
-        page.close()
+    # ⚠️ 다크도 본다 (1.26.220) — 링크 명암은 다크에서만 3:1 밑으로 떨어졌고,
+    #    이 골격이 라이트만 돌아 1.26.126 스캔이 경고문·카드 바닥 링크를 놓쳤다.
+    for scheme in ("light", "dark"):
+        for vp in [{"width": 1400, "height": 1000}, {"width": 375, "height": 812}]:
+            page = b.new_page(viewport=vp, color_scheme=scheme)
+            page.add_init_script(AXE_JS)     # 페이지 로드마다 axe가 함께 실린다
+            for path in PAGES:
+                page.goto(BASE + path, wait_until="load")
+                page.wait_for_timeout(400)
+                res = page.evaluate("""async () => axe.run(document, {
+                    runOnly: {type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa']}
+                })""")
+                for v in res["violations"]:
+                    print(scheme, vp["width"], path, v["id"], len(v["nodes"]), v["help"])
+            page.close()
     b.close()
 ```
+
+📌 **지금 남는 것 — 새로 생긴 것인지만 본다 (1.26.220 기준선)**
+
+| 뜨는 것 | 왜 안 고치나 / 언제 사라지나 |
+| --- | --- |
+| `/api/docs` `color-contrast`·`nested-interactive`·`html-has-lang` | FastAPI 기본 Swagger 화면이다 — 우리 템플릿이 아니다 |
+| `/maps` `aria-command-name` (경로 지도 핀) | 코드는 1.26.126에 고쳤다. **그 전에 그린 경로 지도**라 뜬다 — TMAP으로 다시 그려야 사라진다(`redraw_maps.py --with-route`) |
+
+⚠️ **화면 상태에 따라 뜨고 안 뜨는 것이 있다.** 홈 경고문은 계획이 24시간을 넘을 때만,
+`/vehicles`의 "전체 N건" 문장은 예산 초과가 여러 쪽일 때만 나온다 — 0건이 나와도 그 요소가
+화면에 있었는지부터 확인한다.
 
 ⚠️ **`document-title`·`html-has-lang`·`meta-viewport`는 지도 HTML을 file://로
 단독 열었을 때만 뜬다** — folium 산출물 자체엔 `<html lang>`이 없지만, `/maps`

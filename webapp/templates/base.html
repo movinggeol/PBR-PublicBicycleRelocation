@@ -438,10 +438,21 @@
     .hint { color: var(--ink-4); font-size: var(--fs-fine); line-height: 1.5; }
     /* 문장 속에 섞인 링크는 평범한 글과 색만 다르다 — 밑줄은 :hover에서만
        붙는다(위의 기본 a 규칙). 표 안 단독 링크("보기" 등)는 옆에 비교할 글이
-       없어 문제가 안 되지만, 이 세 곳(.muted·.hint·.empty)은 설명문 한가운데
-       링크가 박혀 있어 색맹이면 hover 전까지 못 알아본다(axe link-in-text-block).
-       평소에도 밑줄을 둔다. */
-    .muted a, .hint a, .empty a { text-decoration: underline; text-underline-offset: 2px; }
+       없어 문제가 안 되지만, 설명문 한가운데 링크가 박힌 곳은 색맹이면 hover
+       전까지 못 알아본다(axe link-in-text-block). 평소에도 밑줄을 둔다.
+       처음 세 곳(.muted·.hint·.empty, 1.26.126)에 **셋을 더했다 (1.26.220)** —
+       .alert(홈의 '오래된 계획' 경고 속 작업지시서·새 계획 링크), .card-foot(홈
+       '마지막 계획' 카드 바닥의 성과 지표·작업지시서·지도), .section-lead(/guide
+       재고 수집 절). 앞의 둘은 **다크에서만** 걸렸다 — --blue #2997ff와 --ink
+       #f5f5f7이 2.76:1로 3:1에 못 미친다(라이트는 3.02:1로 간신히 넘는다).
+       1.26.126 스캔이 라이트만 봐서 못 잡았다. --blue를 바꾸지 않는 이유는 다크
+       토큰의 주석(채움색·글자색 역할이 부딪친다)에 있다.
+       단추 모양 링크(.btn)는 뺀다 — 지금 세 구역 안에 단추는 없지만(2026-09-15 재스캔),
+       구역 단위 규칙이라 넣는 순간 단추에도 밑줄이 붙는다. */
+    .muted a, .hint a, .empty a,
+    .alert a:not(.btn), .card-foot a:not(.btn), .section-lead a:not(.btn) {
+      text-decoration: underline; text-underline-offset: 2px;
+    }
 
     /* ════════ 카드 — 1px 헤어라인만. 그림자 없음 ════════ */
     .card {
@@ -544,6 +555,11 @@
     .alert.bad::before { content: "⚠"; color: var(--critical-ink); }
     .alert.ok { background: var(--good-soft); }
     .alert.ok::before { content: "✓"; color: var(--good-ink); }
+    /* 경고문 속 흐린 글자 — 붉은 바탕 위 --ink-3은 4.42:1로 미달이다(axe
+       color-contrast, /vehicles 예산 초과 경고의 "전체 N건 · N쪽" 문장, 1.26.146부터).
+       아래 tr.over-budget과 같은 이유·같은 처방이다: 경고문은 읽으라고 띄운 것이라
+       흐리게 둘 까닭이 없다. .hint(--ink-4)는 붉은 바탕 4.30:1로 더 낮아 함께 건다 (1.26.220). */
+    .alert .muted, .alert .hint { color: var(--ink-2); }
     .note {
       border-left: 3px solid var(--hairline); padding: 2px 0 2px var(--sp-sm);
       color: var(--ink-3); font-size: var(--fs-ui); line-height: 1.55; margin: var(--sp-sm) 0;

@@ -1545,6 +1545,38 @@ def test_예산_초과_행의_글자는_흐리지_않다():
     assert "--ink-2" in rule, "초과 행 글자를 --ink-2로 진하게 하지 않았다"
 
 
+def test_경고문_속_흐린_글자와_링크가_두_테마에서_읽힌다():
+    """🔴 axe가 둘을 물었다 — 둘 다 1.26.195 전부터 있었다 (1.26.220).
+
+    ① `/vehicles` 예산 초과 경고(`.alert.bad`) 속 `.muted`가 `--ink-3`이라 붉은 바탕 위
+    4.42:1로 미달이었다. 위 `tr.over-budget`과 같은 처방 — 경고문 안에서는 `--ink-2`다.
+    세 경고 바탕(주의·위험·완료) × 두 테마에서 4.5:1을 넘는지 토큰 값으로 잰다.
+
+    ② **다크에서만** 경고문·카드 바닥·절 머리말 속 링크가 주변 글자와 2.76:1이었다
+    (`link-in-text-block`, 기준 3:1). 밑줄 목록에 세 곳이 빠져 있었고 1.26.126 스캔은
+    라이트만 봤다. 단추 모양 링크(`.btn`)는 밑줄에서 빼야 한다.
+    """
+    css = _css()
+    i = css.index(".alert .muted")
+    assert "--ink-2" in css[i:css.index("}", i)], "경고문 속 흐린 글자를 진하게 하지 않았다"
+
+    light = css[css.index(":root"):css.index("@media (prefers-color-scheme: dark)")]
+    dark = css[css.index('[data-theme="dark"]'):]
+    dark = dark[:dark.index("}")]
+    for label, block in (("라이트", light), ("다크", dark)):
+        tok = _tokens(block)
+        for bg in ("warning-soft", "critical-soft", "good-soft"):
+            ratio = _contrast(tok["ink-2"], tok[bg])
+            assert ratio >= 4.5, (
+                f"{label}: --ink-2({tok['ink-2']})가 --{bg}({tok[bg]}) 위에서 "
+                f"{ratio:.2f}:1 — 4.5:1이 필요하다")
+
+    i = css.index(".muted a, .hint a, .empty a")
+    selectors = css[i:css.index("{", i)]
+    for where in (".alert a:not(.btn)", ".card-foot a:not(.btn)", ".section-lead a:not(.btn)"):
+        assert where in selectors, f"{where}: 문장 속 링크가 색만으로 말한다"
+
+
 # ── 인쇄 ────────────────────────────────────────────────────────────
 
 def test_인쇄하면_접어_둔_것이_전부_펴진다():

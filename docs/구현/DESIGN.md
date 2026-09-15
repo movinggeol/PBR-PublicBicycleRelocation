@@ -94,7 +94,7 @@ python -m fontTools.subset PretendardVariable.woff2 \
 | 예산 초과 행 | 붉은 배경 + `⚠` + 왼쪽 굵은 선 |
 | 증감 | `▲` / `▼` 기호 |
 | 진행 단계 | `✓` `●` `✕` 표시 + 오른쪽에 "완료/진행 중/실패" |
-| 문장 속 링크(`.muted`·`.hint`·`.empty`) | 평소에도 밑줄(다른 `a`는 `:hover`에서만) — hover 전에는 색맹이면 옆 글자와 안 갈렸다(axe `link-in-text-block`, 1.26.126) |
+| 문장 속 링크(`.muted`·`.hint`·`.empty` · `.alert`·`.card-foot`·`.section-lead`) | 평소에도 밑줄(다른 `a`는 `:hover`에서만) — hover 전에는 색맹이면 옆 글자와 안 갈렸다(axe `link-in-text-block`, 1.26.126). 뒤의 셋은 1.26.220에 더했다 — **다크에서만** `--blue`와 `--ink`가 2.76:1이라 걸렸고, 첫 스캔이 라이트만 봤다. 단추 모양 링크(`.btn`)는 빼 둔다 |
 
 > 클래스 이름은 **방향이 아니라 뜻**을 담습니다. 증감은 `.delta.good` / `.delta.bad`이지
 > `.up` / `.down`이 아닙니다 — 결품 시간은 내려가는 것이 좋은 값이라 `▼`가 초록입니다.
@@ -872,7 +872,7 @@ iframe**에 같은 화면을 띄웁니다.
 | 규칙 | 무엇이었나 | 고친 곳 |
 | --- | --- | --- |
 | `aria-tooltip-name` | `#tipbox`가 비어 있을 때도 이름 없는 툴팁으로 늘 노출 | [도움말 풍선](#도움말-풍선) — `aria-hidden` 토글 |
-| `link-in-text-block` | 문장 속 링크가 색만으로 표시(hover 전엔 색맹이면 못 알아봄) | 위 [상태색은 예약돼 있습니다](#상태색은-예약돼-있습니다) 표 — 세 클래스만 평소에도 밑줄 |
+| `link-in-text-block` | 문장 속 링크가 색만으로 표시(hover 전엔 색맹이면 못 알아봄) | 위 [상태색은 예약돼 있습니다](#상태색은-예약돼-있습니다) 표 — 여섯 구역이 평소에도 밑줄(1.26.220에 셋 추가, **다크에서 다시 재야** 보인다) |
 | `aria-command-name` | step3 지도 출발·도착 핀(28개 노드)에 이름 없음 — AwesomeMarkers 아이콘이 `<div>`라 Leaflet의 `alt`가 안 먹음 | [step3_visualization.md](steps/step3_visualization.md) — 이미 붙은 tooltip 글을 `aria-label`로 옮기는 스크립트 |
 
 **이 스캔은 스크린리더 실주행의 대체가 아닙니다.** axe는 속성(`aria-label` 등)의
