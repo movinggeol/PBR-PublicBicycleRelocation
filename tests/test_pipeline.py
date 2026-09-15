@@ -375,6 +375,108 @@ def test_snapshot_labels_skips_half_finished_runs(tmp_path, monkeypatch):
     assert project_config.snapshot_labels() == ("온전한",)
 
 
+def _스냅샷_세_파일(root, label, content, mtime):
+    """그 라벨의 재고 스냅샷 세 파일을 **내용과 수정 시각을 정해** 만든다."""
+    import project_config
+
+    for subdir, name in project_config.API_SNAPSHOTS:
+        path = root / subdir / name.format(now=label)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        os.utime(path, (mtime, mtime))
+
+
+def test_skip_api는_시험이_남긴_합성_재고를_물려받지_않는다(tmp_path, monkeypatch):
+    """🔴 가장 최근 스냅샷이라도 **시험이 남긴 합성 재고**면 물려받지 않는다 (1.26.218).
+
+    회사환경에서 `snapshot_labels()` 1순위가 `smoketest-20236`(대여소 70곳 —
+    `대여소1` …)이었다. 고장수거 로드맵 D-1 명령을 그대로 돌렸다면 합성 재고로
+    계획했을 것이고, 로그에 물려받은 라벨이 한 줄 찍힐 뿐 결과 표로는 모른다.
+    """
+    import project_config
+    import run_pipeline
+
+    monkeypatch.setattr(project_config, "PP_ROOT", tmp_path)
+    _스냅샷_세_파일(tmp_path, "2026-09-01 18", "진짜", 1_000_000)
+    _스냅샷_세_파일(tmp_path, "smoketest-20236", "합성", 2_000_000)
+
+    # 전제: 파일 시각으로만 고르면 합성 쪽이 1순위다 — 이게 깨지면 시험이 공허하다.
+    assert project_config.snapshot_labels()[0] == "smoketest-20236"
+
+    assert run_pipeline.inherit_snapshot("오늘") == 3
+    for path in project_config.snapshot_paths("오늘"):
+        assert path.read_text(encoding="utf-8") == "진짜", f"{path.name}: 합성 재고를 물려받았다"
+
+
+def test_skip_api는_계획_실행일_때만_계획을_최근_실험보다_먼저_고른다(tmp_path, monkeypatch):
+    """**계획으로 선언된 실행**(웹 실행 폼의 *API 수집 생략*)이면 더 최근의 실험을
+    제치고 계획을 고른다 (1.26.218).
+
+    🔴 반대쪽도 같이 지킨다 — **선언이 없거나 실험이면 예전처럼 최근 순서다.**
+    격자 실험이 `sweep-10`을 받은 뒤 12·14·…를 `--skip-api`로 돌려 *"같은 재고를
+    물려받는다"* 에 기대고 있어서, 계획을 늘 앞에 두면 그 사슬이 조용히 운영
+    계획의 재고를 받는다.
+
+    기증자 종류는 선언(`runs.kind`)이 먼저고, 없을 때만 라벨로 짐작한다 — 라벨은
+    계획처럼 보여도(`0914 격자`) 실험으로 선언됐으면 실험이다.
+    """
+    import db
+    import project_config
+    import run_pipeline
+
+    monkeypatch.setattr(project_config, "PP_ROOT", tmp_path)
+    _스냅샷_세_파일(tmp_path, "0901 계획", "계획", 1_000_000)
+    _스냅샷_세_파일(tmp_path, "sweep-21", "실험", 2_000_000)       # 라벨로 '실험'이라 짐작된다
+    _스냅샷_세_파일(tmp_path, "0914 격자", "선언된 실험", 3_000_000)
+    with db.session() as conn:
+        conn.execute("INSERT INTO runs (run_label, kind, created_at) VALUES (?, ?, ?)",
+                     ("0914 격자", "experiment", "2026-09-14 10:00:00"))
+        conn.commit()
+
+    # 선언이 없거나 실험이면 예전처럼 최근 순서다 — 격자 실험 사슬이 여기에 기댄다.
+    최근순 = ["0914 격자", "sweep-21", "0901 계획"]
+    assert run_pipeline.donor_labels("오늘") == 최근순
+    assert run_pipeline.donor_labels("오늘", kind="experiment") == 최근순
+
+    # 계획으로 선언된 실행이면 계획이 앞에 온다(실험은 최근 순서 그대로 뒤에).
+    assert run_pipeline.donor_labels("오늘", kind="plan") == ["0901 계획", "0914 격자", "sweep-21"]
+    assert run_pipeline.inherit_snapshot("오늘", kind="plan") == 3
+    for path in project_config.snapshot_paths("오늘"):
+        assert path.read_text(encoding="utf-8") == "계획"
+
+
+def test_skip_api는_계획이_없으면_실험이라도_물려받고_그렇다고_말한다(
+        tmp_path, monkeypatch, capsys):
+    """실험을 **버리지는 않는다** — 뒤로 보낼 뿐이다. 계획이 하나도 없는 PC에서
+    `--skip-api`가 아예 멈추면 1.26.167 전의 막힘으로 되돌아간다. 대신 실험의
+    재고라는 사실을 로그에 남긴다."""
+    import project_config
+    import run_pipeline
+
+    monkeypatch.setattr(project_config, "PP_ROOT", tmp_path)
+    _스냅샷_세_파일(tmp_path, "sweep-21", "실험", 1_000_000)
+
+    assert run_pipeline.inherit_snapshot("오늘", kind="plan") == 3
+    assert "실험 실행의 재고" in capsys.readouterr().out
+
+
+def test_skip_api_물려받기에_이_실행의_종류가_실제로_넘어간다():
+    """`donor_labels()`가 종류에 따라 순서를 바꿔도, `main()`이 `--run-kind`를
+    넘기지 않으면 **웹 실행 폼(언제나 `plan`)에서 한 번도 안 쓰인다.** 판정 함수만
+    시험하면 배선이 끊겨도 통과하므로 호출부를 따로 본다."""
+    import ast
+    import inspect
+
+    import run_pipeline
+
+    calls = [node for node in ast.walk(ast.parse(inspect.getsource(run_pipeline.main)))
+             if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "inherit_snapshot"]
+    assert calls, "main()이 inherit_snapshot을 부르지 않는다"
+    for call in calls:
+        assert len(call.args) + len(call.keywords) >= 2, "실행 종류를 넘기지 않는다"
+        assert "run_kind" in ast.unparse(call), "넘기는 값이 --run-kind가 아니다"
+
+
 def test_지도_다시_그리기가_실패를_종료_코드로_말한다(monkeypatch, capsys):
     """도구가 **실패했는데 0으로 끝나면** 부르는 쪽이 성공으로 읽는다.
 

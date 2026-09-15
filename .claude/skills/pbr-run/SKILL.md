@@ -89,7 +89,9 @@ DB도 별도 파일(`data/재현.db`)을 쓴다.
 - `--skip-api`는 수집 단계를 전부 건너뛰고 **직전 실행의 재고 스냅샷(주차대수·
   st_info)을 물려받는다**(`run_pipeline.inherit_snapshot`). 합성 검증에 쓰지 마라 —
   물려받을 스냅샷이 없는 PC에서는 아예 멈춘다. 라이브 API 호출만 뺄 때는
-  `--skip-fetch`다.
+  `--skip-fetch`다. 고르는 규칙(1.26.218): 시험·합성 라벨(`smoketest-`·`daytype-`·
+  `rentaltest-`·`재현`·`데모`)은 늘 빼고, `--run-kind plan`이면 계획 실행을 먼저,
+  그 밖에는 가장 최근 순서다(격자 실험 사슬이 그 순서에 기댄다).
 
 ### 끝나면 정리 (`--keep`을 줬을 때만)
 
