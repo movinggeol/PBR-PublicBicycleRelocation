@@ -22,6 +22,8 @@
 
     결과는 `data\gate_a_rerun\<mode>_<시각>\` 에 작업마다 .csv(있으면)·.log·.err와
     `_요약.csv`로 남는다. 폴더를 시각으로 나누므로 이전 결과를 덮지 않는다.
+    끈/켠 두 폴더는 `python tools/gate_a_compare.py <off 폴더> <on 폴더>`로 맞댄다
+    (-Only로 다시 돌린 폴더는 --on-also/--off-also로 함께 준다).
 
 .EXAMPLE
     .\scripts\gate_a_rerun.ps1 -Mode off -DryRun      # 명령과 점검 결과만 찍는다
