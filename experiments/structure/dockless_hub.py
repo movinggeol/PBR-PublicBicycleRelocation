@@ -164,6 +164,21 @@ def main(argv=None) -> int:
             print(f"  {before} → {after}: {value:.3f}")
         worst = min(pairs) if pairs else 0.0
 
+        # ── 사후 탐색 (2026-09-16에 결과를 본 뒤 덧붙였다 — 사전 등록이 아니다) ──
+        # ②가 미달이라 "그럼 거점을 몇 개 둬야 후보를 덮나"가 바로 따라온다.
+        # 이 값은 가설 검정이 아니라 설계용 숫자이므로 판정에 넣지 않는다.
+        print("\n[Q4·사후] 이용량 순위로 거점을 늘려 후보를 덮으려면 (사전 등록 아님)")
+        rank_of = {site: i for i, site in enumerate(frame["site"], start=1)}
+        for duration, cand in sorted(candidates(conn).items()):
+            if not cand:
+                continue
+            ranks = sorted(rank_of.get(s, sites) for s in cand)
+            need90 = ranks[int(len(ranks) * 0.90) - 1]
+            median = ranks[len(ranks) // 2]
+            print(f"  {duration}: 후보의 90%를 덮는 K = {need90:,}곳"
+                  f" (전 지점의 {need90 / sites:.1%}) · 후보 이용량 순위 중앙값 {median:,}위"
+                  f" / {sites:,}곳")
+
         print("\n판정 (사전 등록)")
         ok1 = (k80 / sites <= CRIT_SHARE_OF_SITES)
         print(f"  ① 상위 K ≤ 전 지점의 {CRIT_SHARE_OF_SITES:.0%}로 {CRIT_COVERAGE:.0%} 커버:"
