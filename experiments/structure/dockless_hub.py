@@ -281,6 +281,24 @@ def main(argv=None) -> int:
             print(f"  {before} → {after}: {value:.3f}")
         worst = min(pairs) if pairs else 0.0
 
+        # ── 사후 탐색 (③의 뜻을 가른다 — 사전 등록이 아니다) ──
+        # 달마다 흔들린다면 "기준이 나쁘다"일 수도 있고 "한 달 표본이 얇다"일 수도 있다.
+        # 전반기·후반기로 묶어 같은 계산을 하면 둘을 가를 수 있다.
+        half = len(periods) // 2
+        if half >= 2:
+            groups = (periods[:half], periods[half:])
+            sets = []
+            for group in groups:
+                if args.criterion == "demand":
+                    order_g = list(rank_sites(endpoint_counts(conn, group),
+                                              demand_scores(conn, group)).index)
+                else:
+                    order_g = list(endpoint_counts(conn, group).index)
+                sets.append(set(order_g[:k80]))
+            print(f"\n[Q5·사후] 묶어서 뽑으면 안정되나 (사전 등록 아님)")
+            print(f"  전반기 {len(groups[0])}개월 대 후반기 {len(groups[1])}개월"
+                  f" 자카드: {jaccard(*sets):.3f}")
+
         print("\n판정 (사전 등록)")
         if args.criterion == "usage":
             ok1 = (k80 / sites <= CRIT_SHARE_OF_SITES)
