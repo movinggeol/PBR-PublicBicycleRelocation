@@ -13,6 +13,7 @@
   4. 모두 소진되면 TmapQuotaExceeded (호출한 쪽이 직선 경로로 대체한다)
 """
 import importlib.util
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -541,8 +542,10 @@ def test_출발_도착_핀에_이름을_붙이는_스크립트가_심긴다(tmp_
     지어내지 않으면서 이름이 생긴다.
     """
     main = load_main()
-    main.call_tmap_chunked = lambda *a, **k: (_ for _ in ()).throw(
-        RuntimeError("테스트에는 TMAP이 없다"))
+    # 도로 경로를 받은 척한다 — 직선이 섞이면 지도를 저장하지 않으므로(1.26.232)
+    # 예전처럼 호출을 실패시키면 읽을 파일이 없다.
+    main.call_tmap_chunked = lambda *a, **k: []
+    main.merge_tmap_results = lambda geo: {"features": [], "elapsed_sec": [0, 60, 120]}
     main.now = "pytest-map-test"
     main.result_path = str(tmp_path / "map{duration} ({now}).html")
 
@@ -569,3 +572,122 @@ def test_출발_도착_핀에_이름을_붙이는_스크립트가_심긴다(tmp_
     assert "getTooltip" in html, "화면에 없는 말을 짓지 않고 이미 붙은 풍선 글을 그대로 쓴다"
     assert "el.textContent.trim()" in html, \
         "방문 순서 원(DivIcon)은 이미 숫자가 보여 이름이 있다 — 덮어쓰면 안 된다"
+
+
+# ── 호출 도중 한도가 끊긴 회차 (1.26.232) ────────────────────────────────
+#
+# 1.26.222는 그리기 **전에** 예산·한도를 본다. 그런데 호출 도중 실제 429로 끊기면
+# 남은 군집이 직선으로 그려진 채 새 지문을 받아 저장됐고, road_leg는 받은 군집만으로
+# 범위째 갈아끼워졌다 — 2026-09-16 경로 지도를 되살리다 한 회차가 80행에서 41행으로
+# 줄었다(백업으로 되돌림).
+
+def _두_군집_계획():
+    pick_drop = pd.DataFrame([
+        {"station_id": f"ST000{i}", "lat": 36.30 + i / 100, "lon": 127.30 + i / 100,
+         "station_name": f"대여소{i}"} for i in range(1, 5)])
+    rows = []
+    for cluster, ids in ((1, (1, 2)), (2, (3, 4))):
+        for i, action in zip(ids, ("pick", "drop")):
+            rows.append({"cluster": cluster, "to_id": f"ST000{i}",
+                         "to_lat": 36.30 + i / 100, "to_lon": 127.30 + i / 100,
+                         "action": action, "qty": 3})
+    depot = {"id": "DEPOT", "name": "테스트 차고지", "lat": 36.30, "lon": 127.30}
+    return depot, pick_drop, pd.DataFrame(rows)
+
+
+def _군집2에서_한도가_끊긴다(main):
+    def _chunked(start, end, via, **kwargs):
+        if any(v["viaPointId"] == "ST0003" for v in via):
+            raise main.TmapQuotaExceeded("쓸 수 있는 TMAP 엔드포인트가 없습니다")
+        return []
+    main.call_tmap_chunked = _chunked
+    main.merge_tmap_results = lambda geo: {"features": [], "elapsed_sec": [0, 100, 250, 400]}
+
+
+def _road_leg(label, duration):
+    import db
+    with db.session() as conn:
+        return pd.read_sql(
+            "SELECT cluster, leg, road_sec FROM road_leg WHERE run_label=? AND duration=?"
+            " ORDER BY cluster, leg", conn, params=[label, duration])
+
+
+def test_도중에_한도가_끊기면_지도를_저장하지_않고_옛_파일을_둔다(tmp_path):
+    """직선이 섞인 지도가 새 지문을 받으면 `/maps`가 *최신*이라고 거짓말한다."""
+    main = load_main()
+    _군집2에서_한도가_끊긴다(main)
+    main.now = f"pytest-partial-{os.getpid()}"
+    main.result_path = str(tmp_path / "map{duration} ({now}).html")
+    saved = Path(main.result_path.format(duration="_test", now=main.now))
+    saved.write_text("옛 지도", encoding="utf-8")
+
+    depot, pick_drop, vrp_plan = _두_군집_계획()
+    straight = main.make_vrp_map(depot, pick_drop, vrp_plan, "_test", {}, None)
+
+    assert straight == [2], "직선으로 낮춘 군집을 알리지 않는다"
+    assert saved.read_text(encoding="utf-8") == "옛 지도", "직선이 섞인 지도로 덮어썼다"
+
+
+def test_도중에_한도가_끊기면_받은_군집의_실측만_갈아끼운다(tmp_path):
+    """🔴 못 받은 군집의 옛 실측이 사라지면 안 된다 — 같은 교통량으로 다시 잴 수 없다."""
+    import db
+
+    main = load_main()
+    _군집2에서_한도가_끊긴다(main)
+    main.now = f"pytest-partial-legs-{os.getpid()}"
+    main.result_path = str(tmp_path / "map{duration} ({now}).html")
+    old = pd.DataFrame([
+        {"cluster": 1, "leg": 1, "road_sec": 999.0},
+        {"cluster": 1, "leg": 5, "road_sec": 999.0},     # 이번에 없는 leg — 지워져야 한다
+        {"cluster": 2, "leg": 1, "road_sec": 777.0},
+        {"cluster": 2, "leg": 2, "road_sec": 777.0},
+    ])
+    db.save_output("road_leg", old, run_label=main.now, duration="_test")
+
+    depot, pick_drop, vrp_plan = _두_군집_계획()
+    main.make_vrp_map(depot, pick_drop, vrp_plan, "_test", {}, None)
+
+    got = _road_leg(main.now, "_test")
+    군집1 = got[got["cluster"] == 1]
+    군집2 = got[got["cluster"] == 2]
+    assert list(군집1["leg"]) == [1, 2] and set(군집1["road_sec"]) == {150.0}, \
+        f"받은 군집을 새 실측으로 갈지 않았다:\n{군집1}"
+    assert list(군집2["road_sec"]) == [777.0, 777.0], \
+        f"못 받은 군집의 옛 실측을 지웠다:\n{군집2}"
+
+
+def test_모든_군집을_받으면_지도를_저장하고_범위째_갈아끼운다(tmp_path):
+    """반대쪽 — 다 받았으면 예전처럼 저장하고, 계획에서 빠진 군집의 옛 행도 치운다."""
+    import db
+
+    main = load_main()
+    main.call_tmap_chunked = lambda *a, **k: []
+    main.merge_tmap_results = lambda geo: {"features": [], "elapsed_sec": [0, 100, 250, 400]}
+    main.now = f"pytest-full-legs-{os.getpid()}"
+    main.result_path = str(tmp_path / "map{duration} ({now}).html")
+    db.save_output("road_leg", pd.DataFrame([{"cluster": 9, "leg": 1, "road_sec": 1.0}]),
+                   run_label=main.now, duration="_test")
+
+    depot, pick_drop, vrp_plan = _두_군집_계획()
+    assert main.make_vrp_map(depot, pick_drop, vrp_plan, "_test", {}, None) == []
+
+    assert Path(main.result_path.format(duration="_test", now=main.now)).is_file()
+    assert sorted(set(_road_leg(main.now, "_test")["cluster"])) == [1, 2]
+
+
+def test_다시그리기는_step3가_저장하지_않았으면_옛_파일이_있어도_실패로_센다(monkeypatch, tmp_path):
+    """예전에는 파일 존재만 봐서 옛 낡은 지도를 ✓로 세고 mtime까지 맞춰 줬다."""
+    import subprocess
+    import tools.redraw_maps as redraw_maps
+
+    old = tmp_path / "vrp_map_test (라벨).html"
+    old.write_text("옛 지도", encoding="utf-8")
+    monkeypatch.setattr(redraw_maps, "ROUTE_MAP", str(tmp_path / "vrp_map{duration} ({now}).html"))
+    out = ("[저장 안 함] _test: 군집 2개 중 1개(2)를 도로 경로로 받지 못해 ...\n"
+           "TMAP 호출 3건 (예산 35건)\n")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
+        a, 0, stdout=out, stderr=""))
+
+    with pytest.raises(redraw_maps.RouteRedrawError) as err:
+        redraw_maps.redraw_route("라벨", "_test", tmp_path / "없는후보.csv")
+    assert err.value.calls == 3, "쓴 호출 수를 잃으면 예산 계산이 틀린다"

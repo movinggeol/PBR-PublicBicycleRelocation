@@ -190,8 +190,12 @@ def _road_legs(cluster: int, route_pts: list, elapsed_sec: list,
 
 
 def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
-                 duration: str, headers: dict, tmap_url: str):
-    
+                 duration: str, headers: dict, tmap_url: str) -> list:
+    """경로 지도 한 장을 그리고 TMAP 실측을 `road_leg`에 남긴다.
+
+    반환: 도로 경로를 못 받아 **직선으로 낮춘 군집 번호** 목록. 비어 있지 않으면
+    지도를 저장하지 않았다는 뜻이다(1.26.232 — 아래 저장부 주석).
+    """
     center_lat = pick_drop['lat'].mean()
     center_lon = pick_drop['lon'].mean()
 
@@ -204,6 +208,8 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
     
 
     road_rows = []                  # TMAP 실측 구간 (정답표). 아래에서 DB에 남긴다
+    measured = []                   # 도로 경로를 실제로 받은 군집
+    straight = []                   # 못 받아 직선으로 낮춘 군집
     unique_clusters = sorted(vrp_plan['cluster'].unique())
     # 이 회차의 교통량 기준 시각. 클러스터마다 다시 구하면 자정을 넘길 때
     # 앞뒤 클러스터가 다른 날을 보게 된다 — 한 번만 정하고 돌려 쓴다.
@@ -331,6 +337,7 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
         except RuntimeError as exc:
             print(f"  ⚠ 클러스터 {c}: TMAP 호출 실패 ({exc}) → 직선으로 그립니다")
 
+        (measured if merged else straight).append(int(c))
         elapsed_list = merged["elapsed_sec"] if merged else []
 
         # --------- TMAP 실측을 정답표로 남긴다 (1.23.2) ---------
@@ -578,11 +585,28 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
         }});
     """))
 
-    m.save(result_path.format(duration=duration, now=now))
+    # 🔴 **직선이 한 군집이라도 섞이면 저장하지 않는다** (1.26.232). 1.26.222는 그리기
+    # **전에** 예산·한도를 보고 건너뛰지만, 호출 도중 실제 429로 끊기는 것은 못 막는다
+    # (`module.route_skip_reason`의 ⚠️). 그대로 저장하면 남은 군집이 직선인 채 새 지문을
+    # 받아 `/maps`에서 *최신*으로 보인다 — 2026-09-16 되살리기에서 실제로 났다.
+    # 저장하지 않으면 옛 파일이 *낡음*으로 남아 다시 그려야 한다는 사실이 보인다.
+    # 받은 실측은 아래에서 따로 남기므로 쓴 호출이 버려지지는 않는다.
+    if straight:
+        print(f"[저장 안 함] {duration}: 군집 {len(unique_clusters)}개 중 {len(straight)}개"
+              f"({', '.join(map(str, straight))})를 도로 경로로 받지 못해 경로 지도를"
+              " 저장하지 않습니다 (기존 파일은 그대로 둡니다).")
+    else:
+        m.save(result_path.format(duration=duration, now=now))
 
     # TMAP 실측을 DB에 남긴다. CSV는 만들지 않는다 — 산출물이 아니라 **측정치**이고,
     # 쌓여야 값어치가 생긴다(docs/분석/ML_OPPORTUNITIES.md ①).
-    if road_rows:
+    # 🔴 일부 군집만 받았으면 **받은 군집만** 갈아끼운다 (1.26.232) — 범위를 통째로
+    # 갈면 못 받은 군집의 옛 실측이 사라진다(되살리기에서 80행이 41행이 됐다).
+    if straight and measured:
+        db.replace_road_legs(pd.DataFrame(road_rows), now, duration, measured)
+        print(f"TMAP 실측 {len(road_rows)}구간을 road_leg에 남겼습니다"
+              f" (받은 군집 {len(measured)}개만 갈아끼움 — 나머지 군집의 옛 실측은 유지).")
+    elif road_rows:
         db.save_output("road_leg", pd.DataFrame(road_rows),
                        run_label=now, duration=duration)
         print(f"TMAP 실측 {len(road_rows)}구간을 road_leg에 남겼습니다.")
@@ -590,8 +614,10 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
         print("[안내] TMAP 실측이 없어 road_leg에 남기지 않았습니다"
               " (한도 초과 등으로 직선으로 그린 경우).")
 
-    print("지도 생성 완료")
-    print("result_path 파일이 저장되었습니다.", (result_path.format(duration=duration, now=now)))
+    if not straight:
+        print("지도 생성 완료")
+        print("result_path 파일이 저장되었습니다.", (result_path.format(duration=duration, now=now)))
+    return straight
 
 
 # ---------------- 메인 ----------------
@@ -618,6 +644,7 @@ if __name__ == "__main__":
     ensure_output_dirs()
 
     예산_건너뜀 = []     # 끝까지 부를 수 없어 그리지 않은 회차 (1.26.222)
+    직선_섞임 = []       # 도중에 끊겨 저장하지 않은 회차 (1.26.232)
     for duration in duration_list(config):
         # 앞 단계(step1·step2)가 '대상 없음'으로 건너뛴 시간대는 여기서도
         # 건너뛴다 (1.26.129). 예전에는 확인 없이 바로 읽어 FileNotFoundError로
@@ -650,11 +677,16 @@ if __name__ == "__main__":
             예산_건너뜀.append(duration)
             continue
 
-        make_vrp_map(depot, pick_drop, vrp_plan, duration, HEADERS, TMAP_URL)
+        if make_vrp_map(depot, pick_drop, vrp_plan, duration, HEADERS, TMAP_URL):
+            직선_섞임.append(duration)
 
     print(f"\nTMAP 호출 {call_count()}건 (예산 {module.MAX_CALLS}건)")
     남은_엔드포인트 = [e.name for e in module.available_endpoints()]
     print(f"  사용 가능한 엔드포인트: {', '.join(남은_엔드포인트) or '없음(모두 한도 소진)'}")
+    if 직선_섞임:
+        print(f"⚠️ 경로 지도 {len(직선_섞임)}장을 저장하지 않았습니다(호출 도중 한도 소진):"
+              f" {', '.join(직선_섞임)} — 한도가 풀린 뒤 `python tools/redraw_maps.py"
+              f' --run-label "{now}" --with-route`로 그리십시오.')
     if 예산_건너뜀:
         print(f"⚠️ 경로 지도 {len(예산_건너뜀)}장을 그리지 않았습니다: {', '.join(예산_건너뜀)}"
               " — 한도가 남은 때 `python tools/redraw_maps.py --run-label"

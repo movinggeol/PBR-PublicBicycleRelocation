@@ -858,6 +858,43 @@ def save_output(table: str, df: pd.DataFrame, run_label: Optional[str] = None,
         return 0
 
 
+def replace_road_legs(df: pd.DataFrame, run_label: str, duration: str,
+                      clusters: Sequence[int], db_path: Optional[Path] = None) -> int:
+    """`road_leg`에서 **이번에 실제로 잰 군집만** 갈아끼운다 (1.26.232).
+
+    `save_output`은 (실행, 회차) 범위를 통째로 지우고 쓴다. 회차의 모든 군집을 TMAP으로
+    받았을 때는 그게 맞지만, 일일 한도가 **도중에** 바닥나 몇 군집만 받았을 때 그렇게 쓰면
+    못 받은 군집의 옛 실측이 사라진다 — 2026-09-16 경로 지도를 되살리다 한 회차가
+    80행에서 41행으로 줄었다(되돌려 복구). 실측은 이동시간 모형의 정답표라 한 번 잃으면
+    같은 시각의 교통량으로 다시 잴 수 없다.
+
+    ⚠️ 못 받은 군집의 옛 행은 **그 전 실행의 계획**일 수 있다(같은 라벨로 다시 돌린 경우).
+    그래도 남긴다 — 행마다 출발·도착 대여소와 `observed_at`이 있어 그 자체로 참인 측정이다.
+
+    반환값은 새로 넣은 행 수, 실패 시 0 (save_output과 같이 파이프라인을 막지 않는다).
+    """
+    measured = sorted({int(c) for c in clusters})
+    if not measured:
+        return 0
+    try:
+        with session(db_path) as conn:
+            ensure_run(conn, run_label, duration=duration)
+            marks = ",".join("?" for _ in measured)
+            conn.execute(
+                f"DELETE FROM road_leg WHERE run_label = ? AND duration = ?"
+                f" AND cluster IN ({marks})", (run_label, duration, *measured))
+            if len(df):
+                frame = df.copy()
+                frame.insert(0, "duration", duration)
+                frame.insert(0, "run_label", run_label)
+                frame.to_sql("road_leg", conn, if_exists="append", index=False)
+            conn.commit()
+        return len(df)
+    except Exception as err:   # noqa: BLE001 — save_output과 같은 전환기 규칙
+        print(f"[경고] DB 기록 실패 (road_leg): {type(err).__name__}: {err}")
+        return 0
+
+
 # ---------------- 실행의 종류 (1.26.107) ----------------
 #
 # 한 DB에 세 가지가 섞여 쌓인다. 이것을 가르지 않아서 화면이 여러 번 거짓말했다:

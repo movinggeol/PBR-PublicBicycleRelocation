@@ -349,11 +349,17 @@ def redraw_route(run_label: str, duration: str, candidates: Path,
     # `[건너뜀]` 줄도 올린다 — step3가 예산이 모자라 그리지 않았으면(1.26.222) 아래
     # *"저장되지 않았습니다"* 만으로는 왜인지 안 보인다.
     for line in (proc.stdout or "").splitlines():
-        if (line.startswith(("TMAP 호출", "[건너뜀]", "⚠️ 경로 지도"))
+        if (line.startswith(("TMAP 호출", "[건너뜀]", "[저장 안 함]", "⚠️ 경로 지도"))
                 or "엔드포인트" in line):
             print(f"    {line.strip()}")
 
     path = Path(ROUTE_MAP.format(duration=duration, now=run_label))
+    # 🔴 **파일이 있다고 그린 것이 아니다** (1.26.232). step3는 예산이 모자라거나(1.26.222)
+    # 호출 도중 한도가 끊기면(1.26.232) 저장하지 않고 **옛 파일을 그대로 둔다**. 예전에는
+    # 파일 존재만 봐서 옛 낡은 지도를 ✓로 세고 mtime까지 맞춰 줬다.
+    for mark in ("[저장 안 함]", "[건너뜀]"):
+        if mark in (proc.stdout or ""):
+            raise RouteRedrawError(f"step3가 {mark} — 지도를 새로 저장하지 않았습니다", used)
     if not path.is_file():
         raise RouteRedrawError(f"저장되지 않았습니다: {path.name}", used)
     if candidates.is_file():
