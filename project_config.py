@@ -350,24 +350,36 @@ VEHICLE_SPEED_KMPH = env_float("PBR_VEHICLE_SPEED_KMPH", 25)
 # 실측(구간 239개, 5겹 교차검증): 표본 밖 MAE 237.9초 → **138.7초(-42%)**.
 # 계수는 겹마다 272~282초·27.0~28.1 km/h로 **매우 안정적**이다.
 #
-# ⚠️ **기본은 꺼져 있다(USE_ROAD_MODEL=False).** 켜면 문서의 모든 수치
-# (대조군 비교·z·γ 실험)가 그 위에서 나온 값과 달라진다. 재현성을 잃는 대가가
-# 크고, 현행 계수(275초·27.3km/h)는 **하루치 한 번**(1.26.7)에서 나왔다. 여러 날
-# 수집은 진행 중이고 채택 기준(표본 밖 MAE −20% · 날짜별 계수 변동계수 15% 미만 ·
-# 10일 이상)은 사전 등록돼 있다(docs/구현/COLLECTOR_ROAD.md 9장). 그 조건이 차고
-# 같은 기준으로 다시 재기 전에는 기본값을 바꾸지 않는다.
-# 켜려면 `PBR_USE_ROAD_MODEL=1`.
-USE_ROAD_MODEL = os.getenv("PBR_USE_ROAD_MODEL", "").strip().lower() in (
-    "1", "true", "yes", "on")
+# ✅ **기본은 켜져 있다(USE_ROAD_MODEL=True) — 게이트 A 채택 (2026-09-15 판정 통과 ·
+# 09-16 사용자 승인).** 사전 등록 기준(표본 밖 MAE −20% · 날짜별 계수 변동계수 15% 미만 ·
+# 판정용 10일)을 세 개 모두 넘었다: MAE +25.5% · 변동계수 고정비 2.0%·속도 0.9% · 10일
+# (docs/분석/EXPERIMENTS.md 9장, 수집완료_계획 0장). 끈 채/켠 채 재실행으로 문서 수치를
+# 새 식 위에서 다시 쓴 **뒤에** 기본값을 바꿨다 — 먼저 바꾸면 안전장치 없이 작업하게 된다.
+#
+# 🔴 **끄는 길은 남긴다** — `PBR_USE_ROAD_MODEL=0`. 채택 전에 쓴 기록(버전관리·옛 CSV)을
+# 같은 식으로 재현하거나, `scripts/gate_a_rerun.ps1 -Mode off` 같은 기준값을 다시 낼 때 쓴다.
+# 모르는 값(오타)은 **조용히 켜지 않고** 멈춘다 — 켜진 줄 알고 옛 식으로 돌면 결과에 흔적이
+# 남지 않는다(1.26.206 이전 `.env`가 import 순서 때문에 무시되던 것과 같은 부류다).
+_ROAD_ON = ("", "1", "true", "yes", "on")
+_ROAD_OFF = ("0", "false", "no", "off")
+_road_flag = os.getenv("PBR_USE_ROAD_MODEL", "").strip().lower()
+if _road_flag not in _ROAD_ON + _ROAD_OFF:
+    raise ValueError(
+        f"PBR_USE_ROAD_MODEL은 켜기(1·true·yes·on) 또는 끄기(0·false·no·off)여야 합니다"
+        f" (받은 값: {_road_flag!r})")
+USE_ROAD_MODEL = _road_flag in _ROAD_ON
 
 # 평일 계수 — 이 둘이 지금까지 판정해 온(EXPERIMENTS 9장) 값이다.
 # `PBR_ROAD_FIXED_SEC`·`PBR_ROAD_SPEED_KMPH`(접미사 없는 옛 이름)도 그대로
 # 읽는다 — 1.26.7~1.26.159까지 이 이름으로만 썼으므로, `_WEEKDAY`가 없으면
 # 옛 이름으로 폴백해 기존 `.env`가 조용히 무시되지 않게 한다.
+#
+# 기본값은 게이트 A 판정값(2026-09-15, 판정용 10일 · `road_time_model.py --day-type weekday`)이다.
+# 그 전 기본값 275초·27.3 km/h는 **하루치 한 번**(1.26.7)에서 나온 값이었다.
 ROAD_FIXED_SEC_WEEKDAY = env_float(
-    "PBR_ROAD_FIXED_SEC_WEEKDAY", env_float("PBR_ROAD_FIXED_SEC", 275))
+    "PBR_ROAD_FIXED_SEC_WEEKDAY", env_float("PBR_ROAD_FIXED_SEC", 320.4))
 ROAD_SPEED_KMPH_WEEKDAY = env_float(
-    "PBR_ROAD_SPEED_KMPH_WEEKDAY", env_float("PBR_ROAD_SPEED_KMPH", 27.3))
+    "PBR_ROAD_SPEED_KMPH_WEEKDAY", env_float("PBR_ROAD_SPEED_KMPH", 32.11))
 
 # 휴일 계수 — 1.26.159부터 휴일 패널을 따로 수집하지만(COLLECTOR_ROAD.md 4장),
 # 2026-09-08 기준 판정용 표본이 없다. 값이 없으면 **평일 계수로 폴백**한다 —
