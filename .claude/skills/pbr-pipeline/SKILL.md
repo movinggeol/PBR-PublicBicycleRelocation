@@ -175,6 +175,12 @@ pipeline/step4_metrics  : imbalance
 14. **적재 용량 10대는 상한이지 통상값이 아니다.** 관제센터 유선 문의(2026-05-15)에서
    *"통상 7대, 많이 실어야 10대"* 라고 답했다([ORIGINS.md](../../../docs/기록/ORIGINS.md) 4장).
    문서·논문에 쓸 때 **상한임을 밝혀라** — 평균처럼 읽으면 계획이 낙관적으로 보인다.
+15. **이동시간은 `project_config.travel_seconds()` 하나로만 계산한다** — 실도로 모형(고정비 + 거리비례)을
+   쓸지는 `USE_ROAD_MODEL` 스위치 하나가 가른다. 게이트 A가 **판정 통과(2026-09-15, 320.4초 + 32.11 km/h)·
+   채택 승인(09-16)** 됐지만 🔴 **기본값은 아직 꺼져 있다**(2026-09-17). 09-19 끈 채·09-20 켠 채 재실행
+   (`scripts/gate_a_rerun.ps1`)과 문서 재작성이 끝난 뒤 브랜치 `gate-a-default-on`을 합쳐 켠다. **그 전에
+   기본값·계수 상수를 손으로 바꾸지 마라** — 문서의 소요시간 수치가 옛 식과 새 식으로 섞인다. 휴일 계수는
+   게이트 B(추석 포함, 10/4 무렵)까지 평일 계수로 폴백한다. 절차: `docs/기록/수집완료_계획.md` 2-4~2-6.
 
 ## 실행·확인은 `pbr-run` 스킬에 있다
 
@@ -202,6 +208,8 @@ python tools/merge_stock.py <경로> --dry-run  # 다른 PC 수집분 합치기 
 .\scripts\road_collector.ps1 install      # TMAP 실도로 소요시간 수집 (매일 09/12/15/18/21시 + 로그온, 모자란 회차만)
 python tools/collect_road_time.py --status    # 고정 패널 수집 현황
 python experiments/params/road_time_model.py  # 이동시간 모형 재추정 (EXPERIMENTS.md 9장)
+.\scripts\gate_a_rerun.ps1 -Mode off -DryRun  # 게이트 A 재실행 24작업 (정본 라벨 고정 · 작업마다 240분 제한)
+python tools/gate_a_compare.py <off 폴더> <on 폴더>  # 끈/켠 결과 장별 비교 + 원고에서 고칠 자리
 ```
 
 ## 웹 대시보드 (webapp/)
