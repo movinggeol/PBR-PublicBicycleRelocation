@@ -17,6 +17,9 @@
   `wanted_vehicles_geo_sweep` · `fleet_outage_stress` · `budget_split`) — 숫자를 가린
   **줄 뼈대**가 같은 줄끼리 짝지어 숫자만 바뀐 곳을 `끈 → 켠`으로 보여 준다. 뼈대가 다른 줄은
   더해지거나 빠진 줄로 센다.
+- **원고 표시** (1.26.237) — 원고(`docs/연구/논문/`)가 게이트 A로 바뀔 수치 뒤에 단 `<!--A:EXP 장-->`를
+  작업의 장(요약의 chapter 칸)과 맞대, 작업마다 **고칠 자리(파일:줄)** 를 붙인다. 어느 작업에도 안 걸린
+  표시는 끝에 따로 모은다(2026-09-17 기준 33곳 중 게이트 B 표시 하나). README의 예시는 세지 않는다.
 
 ## 읽을 때 주의
 
@@ -58,6 +61,9 @@ import project_config  # noqa: E402,F401 — 콘솔 인코딩(—·이모지)을
 
 SUMMARY = "_요약.csv"
 REPORT = "_비교.md"
+MANUSCRIPT = PROJECT_ROOT / "docs" / "연구" / "논문"
+# 원고의 교체 표시 — `<!--A:EXP 15·33-->` · `<!--A:EXP 18 그림 다시 그리기-->` (논문/README 2장)
+_MARK = re.compile(r"<!--A:(.*?)-->")
 # 시간 제한 탐색이라 같은 입력에서도 결과가 흔들리는 작업 (이름 접두)
 NOISY_PREFIXES = ("ortools_gap",)
 _NUM = re.compile(r"[-+]?\d[\d,]*\.?\d*%?")
@@ -240,6 +246,55 @@ def failed_jobs(jobs: list) -> list:
             if any(str(row.get("exit", "0")) not in ("0", "") for row in (j["off_row"], j["on_row"]))]
 
 
+# ── 원고 표시 ─────────────────────────────────────────────────────────────
+#
+# 원고(`docs/연구/논문/`)는 게이트 A 재실행으로 바뀔 수치 뒤에 `<!--A:EXP 장-->`를 달아 둔다. 4단계에서
+# 작업 하나의 결과를 보고 **그 장을 인용한 자리를 전부** 고쳐야 하는데, 표시가 30곳이 넘어 grep 결과를
+# 눈으로 장 번호와 맞추면 빠뜨린다. 작업의 장(요약의 chapter 칸, 예 `15·33`)과 표시의 장을 맞대 붙인다.
+def marker_chapters(text: str) -> set:
+    """`EXP 15·33` → {"15", "33"}. EXP로 시작하지 않는 표시(게이트 B 등)는 빈 집합."""
+    found = re.match(r"\s*EXP\s+(\S+)", text)
+    return {c for c in found.group(1).split("·") if c} if found else set()
+
+
+def job_chapters(row: dict) -> set:
+    return {c.strip() for c in str(row.get("chapter") or "").split("·") if c.strip()}
+
+
+def manuscript_marks(folder: Path = MANUSCRIPT) -> list:
+    """원고의 교체 표시 목록. README는 표기 규칙의 **예시**를 담고 있어 뺀다."""
+    marks = []
+    if not Path(folder).is_dir():
+        return marks
+    for path in sorted(Path(folder).glob("*.md")):
+        if path.name == "README.md":
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for found in _MARK.finditer(line):
+                marks.append({"file": path.name, "line": number, "text": found.group(1).strip(),
+                              "chapters": marker_chapters(found.group(1))})
+    return marks
+
+
+def attach_marks(jobs: list, marks: list) -> list:
+    """작업마다 `job["marks"]`를 채우고, **어느 작업에도 안 걸린 표시**를 돌려준다."""
+    used = set()
+    for job in jobs:
+        chapters = job_chapters(job["off_row"]) | job_chapters(job["on_row"])
+        job["marks"] = [m for m in marks if m["chapters"] & chapters]
+        used.update(id(m) for m in job["marks"])
+    return [m for m in marks if id(m) not in used]
+
+
+def _marks_brief(marks: list) -> str:
+    """`2장 2 · 7장 1` — 파일 이름 앞의 장 번호로 센다."""
+    counts = {}
+    for m in marks:
+        key = m["file"].split("_")[0]
+        counts[key] = counts.get(key, 0) + 1
+    return " · ".join(f"{k} {v}" for k, v in counts.items()) or "—"
+
+
 # ── 보고 ──────────────────────────────────────────────────────────────────
 def _fmt(v: float) -> str:
     if v != v:          # NaN
@@ -247,12 +302,15 @@ def _fmt(v: float) -> str:
     return f"{v:,.4g}"
 
 
-def render(off, on, jobs: list, max_lines: int = 30) -> str:
+def render(off, on, jobs: list, max_lines: int = 30, unmatched: list = None) -> str:
+    """보고서 마크다운. 작업에 `marks`(attach_marks)가 붙어 있으면 원고 표시 칸과 자리 목록을 더한다."""
+    with_marks = any("marks" in j for j in jobs)
     lines = ["# 게이트 A 끈/켠 비교", ""]
     lines += [f"- 끈 채: `{p}`" for p in _folders(off)]
     lines += [f"- 켠 채: `{p}`" for p in _folders(on)]
-    lines += ["", "| 작업 | 장 | 끈 종료·분 | 켠 종료·분 | 바뀐 값·줄 | 최대 상대 변화 | 비고 |",
-              "| --- | --- | --- | --- | --- | --- | --- |"]
+    mark_head, mark_rule = (" 원고 표시 |", " --- |") if with_marks else ("", "")
+    lines += ["", "| 작업 | 장 | 끈 종료·분 | 켠 종료·분 | 바뀐 값·줄 | 최대 상대 변화 |" + mark_head + " 비고 |",
+              "| --- | --- | --- | --- | --- | --- |" + mark_rule + " --- |"]
     multi = len(_folders(off)) > 1 or len(_folders(on)) > 1
     for job in jobs:
         name, ro, rn = job["name"], job["off_row"], job["on_row"]
@@ -274,10 +332,16 @@ def render(off, on, jobs: list, max_lines: int = 30) -> str:
         lines.append(
             f"| {name} | {ro.get('chapter') or rn.get('chapter') or ''} "
             f"| {ro.get('exit', '—')}·{ro.get('minutes', '—')} | {rn.get('exit', '—')}·{rn.get('minutes', '—')} "
-            f"| {changed_count(job)} | {(f'{max(rels):.1%}' if rels else '—')} | {' · '.join(notes)} |")
+            f"| {changed_count(job)} | {(f'{max(rels):.1%}' if rels else '—')} |"
+            + (f" {_marks_brief(job.get('marks', []))} |" if with_marks else "")
+            + f" {' · '.join(notes)} |")
 
     for job in jobs:
         lines += ["", f"## {job['name']}", ""]
+        if job.get("marks"):
+            lines.append("**원고에서 고칠 자리** — " + " · ".join(
+                f"`{m['file']}:{m['line']}` ({m['text']})" for m in job["marks"]))
+            lines.append("")
         for item in job["missing"]:
             lines.append(f"- ⚠️ {item}")
         for f in job["csv"]:
@@ -313,6 +377,11 @@ def render(off, on, jobs: list, max_lines: int = 30) -> str:
                 if total > shown:
                     lines.append(f"  … {total - shown}줄 더 (--max-lines로 늘린다)")
                 lines.append("```")
+    if unmatched:
+        lines += ["", "## 어느 작업에도 안 걸린 원고 표시", "",
+                  "이번 비교로는 고칠 값이 나오지 않는 자리다 — 다른 게이트의 표시이거나, 장 번호가 재실행 목록과"
+                  " 어긋났다(그러면 표시나 목록 중 하나가 틀렸다).", ""]
+        lines += [f"- `{m['file']}:{m['line']}` — {m['text']}" for m in unmatched]
     return "\n".join(lines) + "\n"
 
 
@@ -327,6 +396,8 @@ def main(argv=None) -> int:
     parser.add_argument("--only", help="이 작업만 (쉼표로 여럿)")
     parser.add_argument("--max-lines", type=int, default=30, help="작업당 로그 줄 상한 (기본 30)")
     parser.add_argument("--out", type=Path, help=f"보고서 경로 (기본 <on 폴더>/{REPORT})")
+    parser.add_argument("--manuscript", type=Path, default=MANUSCRIPT,
+                        help="원고 폴더 — `<!--A:EXP 장-->` 표시를 작업에 붙인다 (기본 docs/연구/논문)")
     args = parser.parse_args(argv)
 
     off = [args.off, *args.off_also]
@@ -344,7 +415,10 @@ def main(argv=None) -> int:
             return 2
         names = wanted
     jobs = [compare_job(off, on, n) for n in names]
-    report = render(off, on, jobs, args.max_lines)
+    unmatched = attach_marks(jobs, manuscript_marks(args.manuscript))
+    if args.only:
+        unmatched = []      # 일부만 보면 나머지 작업의 표시가 전부 '안 걸림'으로 몰린다
+    report = render(off, on, jobs, args.max_lines, unmatched)
     out = args.out or (args.on / REPORT)
     out.write_text(report, encoding="utf-8")
     print(report)

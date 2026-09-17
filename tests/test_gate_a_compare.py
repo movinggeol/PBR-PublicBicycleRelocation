@@ -124,3 +124,64 @@ def test_실패한_작업이_있으면_종료_코드로_알린다(tmp_path):
     on = _folder(tmp_path, "on", ["a,1,1,0.1"], {"a.log": "x 2\n"})
     assert gc.main([str(off), str(on)]) == 1
     assert (on / gc.REPORT).is_file()
+
+
+# ── 원고 표시 (`<!--A:EXP 장-->`) ─────────────────────────────────────────
+
+def test_표시의_장_번호를_가운뎃점으로_가르고_EXP가_아닌_표시는_장이_없다():
+    assert gc.marker_chapters("EXP 15·33") == {"15", "33"}
+    assert gc.marker_chapters("EXP 18 그림 다시 그리기") == {"18"}
+    assert gc.marker_chapters("EXP 5-G") == {"5-G"}
+    assert gc.marker_chapters("게이트 B 휴일 계수 반영 여부") == set()
+
+
+def test_작업의_장과_겹치는_표시를_붙이고_안_걸린_표시를_따로_낸다(tmp_path):
+    """요약의 chapter 칸(`18·22`)과 표시(`EXP 22`)가 한 장이라도 겹치면 그 작업의 자리다.
+
+    README는 표기 규칙의 **예시**를 담고 있어 세지 않는다 — 세면 실제로 없는 자리를 고치러 간다.
+    """
+    manuscript = tmp_path / "논문"
+    manuscript.mkdir()
+    (manuscript / "3장_모형.md").write_text(
+        "값 12<!--A:EXP 18·22-->\n둘째 줄\n값 7<!--A:EXP 6--> 또 5<!--A:게이트 B 휴일-->\n", encoding="utf-8")
+    (manuscript / "5장_파라미터.md").write_text("z<!--A:EXP 22-->\n", encoding="utf-8")
+    (manuscript / "README.md").write_text("<!--A:EXP 24-->  예시\n", encoding="utf-8")
+
+    marks = gc.manuscript_marks(manuscript)
+    assert len(marks) == 4, "README의 예시를 셌거나 한 줄의 표시 둘을 놓쳤다"
+    assert [(m["file"], m["line"]) for m in marks][:3] == [
+        ("3장_모형.md", 1), ("3장_모형.md", 3), ("3장_모형.md", 3)]
+
+    off = _folder(tmp_path, "off", ["z_fixedpop_wide,18·22,0,1.0", "gamma_recheck,4 후속-2,0,1.0"],
+                  {"z_fixedpop_wide.log": "a 1\n", "gamma_recheck.log": "b 1\n"})
+    on = _folder(tmp_path, "on", ["z_fixedpop_wide,18·22,0,1.0", "gamma_recheck,4 후속-2,0,1.0"],
+                 {"z_fixedpop_wide.log": "a 2\n", "gamma_recheck.log": "b 1\n"})
+    jobs = [gc.compare_job(off, on, n) for n in gc.job_names(off, on)]
+    unmatched = gc.attach_marks(jobs, marks)
+
+    by = {j["name"]: j for j in jobs}
+    assert [(m["file"], m["text"]) for m in by["z_fixedpop_wide"]["marks"]] == [
+        ("3장_모형.md", "EXP 18·22"), ("5장_파라미터.md", "EXP 22")]
+    assert by["gamma_recheck"]["marks"] == []
+    assert sorted(m["text"] for m in unmatched) == ["EXP 6", "게이트 B 휴일"], \
+        "어느 작업에도 안 걸린 표시를 드러내지 않으면 4단계에서 빠진다"
+
+    report = gc.render(off, on, jobs, unmatched=unmatched)
+    assert "| 원고 표시 |" in report
+    assert "3장 1 · 5장 1" in report
+    assert "`3장_모형.md:1` (EXP 18·22)" in report
+    assert "## 어느 작업에도 안 걸린 원고 표시" in report and "`3장_모형.md:3` — EXP 6" in report
+
+
+def test_일부_작업만_보면_안_걸린_표시를_내지_않는다(tmp_path):
+    """`--only`로 하나만 보면 나머지 작업의 표시가 전부 '안 걸림'으로 몰려 거짓 경보가 된다."""
+    manuscript = tmp_path / "논문"
+    manuscript.mkdir()
+    (manuscript / "2장.md").write_text("<!--A:EXP 6--> <!--A:EXP 24-->\n", encoding="utf-8")
+    off = _folder(tmp_path, "off", ["a,6,0,1.0", "b,24,0,1.0"], {"a.log": "x 1\n", "b.log": "y 1\n"})
+    on = _folder(tmp_path, "on", ["a,6,0,1.0", "b,24,0,1.0"], {"a.log": "x 2\n", "b.log": "y 1\n"})
+
+    assert gc.main([str(off), str(on), "--manuscript", str(manuscript), "--only", "a"]) == 0
+    report = (on / gc.REPORT).read_text(encoding="utf-8")
+    assert "`2장.md:1` (EXP 6)" in report
+    assert "안 걸린 원고 표시" not in report
