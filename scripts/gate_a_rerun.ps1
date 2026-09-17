@@ -44,7 +44,11 @@ param(
     [switch]$DryRun,
 
     # 작업 이름(아래 목록의 Name)으로 일부만 돌린다.
-    [string[]]$Only = @()
+    [string[]]$Only = @(),
+
+    # 작업 하나가 이 시간(분)을 넘기면 프로세스 트리(CBC 포함)를 끊고 다음 작업으로 간다.
+    # 요약의 exit 칸에 'timeout'이 남는다. 가장 긴 작업(gamma_sweep 약 90분)의 두 배 넘게 잡았다.
+    [double]$JobTimeoutMin = 240
 )
 
 $ErrorActionPreference = 'Stop'
@@ -116,7 +120,7 @@ $Jobs = @(
 if ($Only.Count -gt 0) {
     $unknown = $Only | Where-Object { $n = $_; -not ($Jobs | Where-Object { $_.Name -eq $n }) }
     if ($unknown) { throw "목록에 없는 작업: $($unknown -join ', ')" }
-    $Jobs = $Jobs | Where-Object { $Only -contains $_.Name }
+    $Jobs = @($Jobs | Where-Object { $Only -contains $_.Name })   # @(): 하나만 남으면 해시표가 되어 .Count가 키 개수(4)를 셌다
 }
 
 function Quote-Arg([string]$a) {
@@ -168,6 +172,19 @@ if ($problems.Count -gt 0) {
 }
 if ($DryRun) { Write-Host '[DryRun] 실행하지 않았습니다.'; exit 0 }
 
+function Stop-ProcessTree([int]$ProcId) {
+    # 자식(CBC 솔버)까지 끊는다. taskkill을 이름만으로 부르면 PATH에 System32가 없는 셸에서
+    # 'taskkill.exe를 찾을 수 없다'로 스크립트가 통째로 멈췄다(2026-09-17 실측) — 전체 경로로 부르고,
+    # 그마저 없으면 부모-자식 관계를 따라 하나씩 끊는다.
+    $tk = Join-Path $env:SystemRoot 'System32\taskkill.exe'
+    try {
+        if (Test-Path $tk) { & $tk /PID $ProcId /T /F | Out-Null; return }
+    } catch { }
+    Get-CimInstance Win32_Process -Filter "ParentProcessId=$ProcId" -ErrorAction SilentlyContinue |
+        ForEach-Object { Stop-ProcessTree $_.ProcessId }
+    Stop-Process -Id $ProcId -Force -ErrorAction SilentlyContinue
+}
+
 # --- 실행 ---
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 # ortools_gap_seeds만 --out-dir을 받는다 — 그 작업을 돌릴 때만 만든다
@@ -184,13 +201,25 @@ foreach ($j in $Jobs) {
     $argLine = (@("experiments\$($j.Script)") + ($j.Args | ForEach-Object { Quote-Arg $_ })) -join ' '
     $t0 = Get-Date
     Write-Host ("[{0}/{1}] {2} ({3}장) 시작 {4:HH:mm}" -f $i, $Jobs.Count, $j.Name, $j.Ch, $t0)
-    $p = Start-Process -FilePath $Py -ArgumentList $argLine -WorkingDirectory $Root -NoNewWindow -Wait -PassThru `
+    # 🔴 -Wait로 기다리지 않는다 (1.26.235). CBC가 멈추면 프로세스가 끝나지 않는다 — WinError 8로
+    # 로그 6번째 줄에서 죽은 cluster_count_sweep이 50분간 살아 있었다(수집완료_계획 2-5). 사람이 없는
+    # 긴 실행에서 한 작업이 멈추면 뒤 작업 전부가 그날 돌지 못한다.
+    $p = Start-Process -FilePath $Py -ArgumentList $argLine -WorkingDirectory $Root -NoNewWindow -PassThru `
         -RedirectStandardOutput (Join-Path $OutDir "$($j.Name).log") `
         -RedirectStandardError (Join-Path $OutDir "$($j.Name).err")
+    $null = $p.Handle   # PowerShell 5.1: 핸들을 먼저 잡지 않으면 -Wait 없이 끝난 프로세스의 ExitCode가 비어 나온다
+    if ($p.WaitForExit([int]($JobTimeoutMin * 60 * 1000))) {
+        $p.WaitForExit()   # 리디렉션된 출력이 다 닫힐 때까지
+        $code = $p.ExitCode
+    } else {
+        Stop-ProcessTree $p.Id
+        $p.WaitForExit()
+        $code = 'timeout'
+    }
     $min = [math]::Round(((Get-Date) - $t0).TotalMinutes, 1)
-    $mark = if ($p.ExitCode -eq 0) { 'OK  ' } else { 'FAIL' }
-    Write-Host ("        {0} exit {1} · {2}분" -f $mark, $p.ExitCode, $min)
-    "$($j.Name),$($j.Ch),$($p.ExitCode),$min" | Out-File -Encoding utf8 -Append $summary
+    $mark = if ($code -eq 0) { 'OK  ' } elseif ($code -eq 'timeout') { 'TIME' } else { 'FAIL' }
+    Write-Host ("        {0} exit {1} · {2}분" -f $mark, $code, $min)
+    "$($j.Name),$($j.Ch),$code,$min" | Out-File -Encoding utf8 -Append $summary
 }
 
 Write-Host "[끝] $summary"
