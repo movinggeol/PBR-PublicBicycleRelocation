@@ -408,8 +408,12 @@ def test_감시_스레드가_사용자의_실행_이력에_쓰지_않는다(monk
         time.sleep(0.02)
 
     assert jobs.REGISTRY_FILE.exists(), "임시 경로에는 써야 한다(격리는 벙어리가 아니다)"
-    assert not (real / "runs.json").read_text(encoding="utf-8").count(job.id), \
-        "사용자의 실행 이력에 테스트 작업이 들어갔다"
+    # 새로 받은 저장소(CI·git worktree)에는 사용자 실행 이력 파일이 없다 — 없으면 샐 곳도 없다.
+    # 예전에는 무조건 읽어 **자료가 없는 곳에서만** FileNotFoundError로 깨졌다(2026-09-17, worktree에서 발견).
+    user_registry = real / "runs.json"
+    if user_registry.exists():
+        assert not user_registry.read_text(encoding="utf-8").count(job.id), \
+            "사용자의 실행 이력에 테스트 작업이 들어갔다"
 
 
 def test_예상_소요는_0분이어도_숨지_않는다(client, monkeypatch):
