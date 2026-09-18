@@ -16,6 +16,15 @@
   · 그림 1-1  평일·휴일 순수요 **부호 반전** (33~37%가 반대다)
   · 그림 4-1  파이프라인 구조
 
+**원고 자료 자리를 채우는 그림 (2026-09-18~, 1.26.235).** 원고(docs/연구/논문/)의
+`(자리 [그림 n-m] …)` 문단을 채운다. 캡션은 원고가 그림 아래에 따로 달므로 그림
+안에 '그림 n-m' 제목을 넣지 않는다.
+
+  · 그림 3-2  재배치량의 tanh 완화 — **운영 함수 `compute_rebal_qty()`로** 그린다
+  · 그림 4-3  대여이력 월별 건수 (빠진 달 · 겨울 달)
+  · 그림 5-2  |mu| 분포 — <표 5-4>와 **같은 대여소 집합**(학습·검증 달 모두)
+  · 그림 5-3  26년 2~3월 일별 대여와 배율 산정 구간
+
 **재현성**: 그림의 원천은 전부 `experiments/`의 CSV와 DB다. 원천이 없으면
 그 그림만 건너뛰고 무엇이 없어서인지 말한다 — **조용히 빈 그림을 만들지
 않는다.**
@@ -36,7 +45,9 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import matplotlib
 matplotlib.use("Agg")
+import matplotlib.dates  # noqa: E402  (그림 5-3의 날짜 축)
 import matplotlib.pyplot as plt
+import matplotlib.ticker  # noqa: E402  (그림 4-3의 만 건 축)
 import numpy as np
 import pandas as pd
 
@@ -327,8 +338,206 @@ def fig_4_1():
     save(fig, "그림4-1_파이프라인", "4.1의 구조도")
 
 
+# ──────────────────────────────────────────── 원고 자료 자리 (2026-09-18~)
+# 아래 그림은 원고(docs/연구/논문/)의 '(자리 [그림 n-m] …)' 문단을 채운다.
+# ⚠️ **그림 안에 '그림 n-m' 제목을 넣지 않는다.** 원고는 캡션을 그림 아래에 따로
+#    달므로(학과 양식), 그림 안에도 쓰면 제목이 두 번 나온다. 위의 옛 그림들은
+#    초안용이라 제목을 품고 있다.
+
+def _period_key(label: str) -> int:
+    """'25년 11월' -> 2511."""
+    year, month = label.split("년")
+    return int(year.strip()) * 100 + int(month.replace("월", "").strip())
+
+
+# ────────────────────────────────────────────────────────────── 3-2
+def fig_3_2():
+    """재배치량의 tanh 완화 — 식 (3.5)를 **운영 함수로** 그린다.
+
+    식을 여기서 다시 쓰면 운영 코드가 바뀌어도 그림이 옛 식을 그린다. 그래서
+    격차만 다른 가짜 대여소를 `compute_rebal_qty()`에 넣어 나온 값을 그린다.
+    """
+    from pipeline.step0_collect.calculate_target_qty import MAX_CAPACITY, compute_rebal_qty
+    Q = MAX_CAPACITY
+    gap = np.round(np.arange(-30, 30.001, 0.05), 2)
+    # 순유출(mu ≥ 0): target = mu + z·0 = gap, stock 0 → 격차 = gap
+    # 순유입(mu < 0): target = stock + mu = 100 + gap, stock 100 → 격차 = gap
+    stats = pd.DataFrame({"mu": gap, "sigma": 0.0,
+                          "stock": np.where(gap >= 0, 0.0, 100.0), "parking_lot": 1000.0})
+    rebal = compute_rebal_qty(stats.copy())["rebal_qty"].to_numpy()
+    clipped = np.clip(np.trunc(gap), -Q, Q)
+
+    fig, ax = plt.subplots(figsize=(7.2, 4.2))
+    ax.plot(gap, clipped, color="#999", ls="--", lw=1.3, label=f"단순 절단  $[-Q, Q]$")
+    ax.step(gap, rebal, where="post", color="#3182bd", lw=1.8,
+            label=r"$\tanh$ 완화 (식 3.5, 정수화 뒤)")
+    for g in (5, 8):
+        r = int(rebal[np.argmin(abs(gap - g))])
+        ax.scatter([g], [r], color="#b03a2e", zorder=5, s=28)
+        ax.annotate(f"격차 {g}대 → {r}대", (g, r), xytext=(g + 1.5, r - 2.6), fontsize=9,
+                    arrowprops=dict(arrowstyle="-", color="#b03a2e", lw=0.8))
+    top = int(rebal.max())
+    ax.axhline(top, color="#b03a2e", ls=":", lw=1)
+    ax.axhline(-top, color="#b03a2e", ls=":", lw=1)
+    ax.text(-29.5, top + 0.4, f"실효 상한 {top}대 (적재 용량 $Q$={Q}대에 닿지 않는다)",
+            fontsize=8.5, color="#b03a2e")
+    ax.set_xlabel("목표 재고와 현재 재고의 격차  $t_i - q_i$ (대)")
+    ax.set_ylabel("재배치량  $r_i$ (대)")
+    ax.set_ylim(-Q - 2, Q + 2)
+    ax.legend(fontsize=8.5, loc="lower right")
+    save(fig, "그림3-2_재배치량_완화", "tanh 완화와 단순 절단 (3.3.3)")
+
+
+# ────────────────────────────────────────────────────────────── 4-3
+def fig_4_3():
+    """사용한 대여이력의 월별 건수 — 빠진 달과 겨울 달을 한눈에 (4.2)."""
+    try:
+        import db
+    except Exception as exc:                       # pragma: no cover - 환경 의존
+        print(f"  건너뜀 - 모듈을 못 불러왔습니다: {exc}")
+        return
+    with db.session() as conn:
+        counts = dict(conn.execute(
+            "SELECT period, COUNT(*) FROM rental_history GROUP BY period").fetchall())
+    if not counts:
+        print("  건너뜀 - DB에 rental_history가 없습니다.")
+        return
+    keys = sorted(_period_key(p) for p in counts)
+    months, cursor = [], keys[0]
+    while cursor <= keys[-1]:                      # 빠진 달도 자리를 둔다
+        months.append(cursor)
+        cursor = cursor + 1 if cursor % 100 < 12 else (cursor // 100 + 1) * 100 + 1
+    label = {_period_key(p): p for p in counts}
+    winter = {1, 2, 12}
+
+    fig, ax = plt.subplots(figsize=(9.6, 3.8))
+    for i, key in enumerate(months):
+        tick = f"{key // 100:02d}.{key % 100:02d}"
+        if key not in label:
+            ax.text(i, 12_000, "공개\n자료\n없음", ha="center", va="bottom", fontsize=8, color="#888")
+            continue
+        n = counts[label[key]]
+        is_winter = key % 100 in winter
+        ax.bar(i, n, color="#c6dbef" if is_winter else "#3182bd",
+               hatch="//" if is_winter else "", edgecolor="black", lw=0.5)
+        ax.text(i, n + 8_000, f"{n / 10_000:.1f}", ha="center", fontsize=8)
+    ax.set_xticks(range(len(months)))
+    ax.set_xticklabels([f"{k // 100:02d}.{k % 100:02d}" for k in months], fontsize=8.5)
+    ax.set_xlabel("연.월")
+    ax.set_ylabel("월 대여 건수")
+    ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v / 10_000:.0f}만"))
+    ax.set_ylim(0, max(counts.values()) * 1.15)
+    handles = [plt.Rectangle((0, 0), 1, 1, color="#3182bd"),
+               plt.Rectangle((0, 0), 1, 1, facecolor="#c6dbef", hatch="//", edgecolor="black", lw=0.5)]
+    ax.legend(handles, ["평월", "겨울 달(1·2월)"], fontsize=8.5, loc="upper left")
+    total = sum(counts.values())
+    ax.set_title(f"{len(counts)}개월 · 합계 {total:,}건 (막대 위 숫자는 만 건)", fontsize=10)
+    save(fig, "그림4-3_월별_대여건수", f"대여이력 {len(counts)}개월 {total:,}건")
+
+
+# ────────────────────────────────────────────────────────────── 5-3
+def fig_5_3():
+    """계절 전환 달의 일별 대여 — 배율 s를 구하는 첫 14일이 어디인지 (5.4).
+
+    ⚠️ 배율 자체는 **대여 건수가 아니라 |mu|>2 대여소의 순수요**로 구한다(식 3.3).
+    이 그림은 '왜 보정이 필요한가'를 보이는 것이지 배율의 계산을 보이는 것이 아니다.
+    """
+    try:
+        import db
+        from project_config import is_holiday
+    except Exception as exc:                       # pragma: no cover - 환경 의존
+        print(f"  건너뜀 - 모듈을 못 불러왔습니다: {exc}")
+        return
+    with db.session() as conn:
+        rows = conn.execute(
+            "SELECT substr(rent_at, 1, 10) AS d, COUNT(*) FROM rental_history "
+            "WHERE period IN ('26년 02월', '26년 03월') GROUP BY d").fetchall()
+    if not rows:
+        print("  건너뜀 - 26년 02~03월 대여이력이 없습니다.")
+        return
+    daily = pd.Series(dict(rows))
+    daily.index = pd.to_datetime(daily.index)
+    daily = daily.sort_index()
+    daily = daily[(daily.index >= "2026-02-01") & (daily.index <= "2026-03-31")]
+    hol = pd.Series([is_holiday(d) for d in daily.index], index=daily.index)
+
+    fig, ax = plt.subplots(figsize=(9.6, 3.8))
+    ax.axvspan(pd.Timestamp("2026-03-01"), pd.Timestamp("2026-03-14 23:59"),
+               color="#fdd0a2", alpha=0.5, label="배율 산정 구간 (3월 첫 14일)")
+    ax.plot(daily.index, daily.to_numpy(), color="#888", lw=0.8, zorder=1)
+    ax.scatter(daily.index[~hol], daily[~hol], s=16, color="#3182bd", label="평일", zorder=3)
+    ax.scatter(daily.index[hol], daily[hol], s=22, marker="^", color="#b03a2e", label="휴일", zorder=3)
+    feb_weekday = daily[(daily.index.month == 2) & ~hol].mean()
+    ax.hlines(feb_weekday, pd.Timestamp("2026-02-01"), pd.Timestamp("2026-03-31"),
+              color="#3182bd", ls="--", lw=1)
+    # 글자가 점·선과 겹치지 않게 배율 구간 오른쪽 아래에 흰 바탕으로 둔다
+    ax.text(pd.Timestamp("2026-03-16"), feb_weekday * 0.9,
+            f"2월 평일 평균 {feb_weekday:,.0f}건 (계획 통계의 달)", fontsize=8.5, color="#3182bd",
+            va="top", bbox=dict(facecolor="white", edgecolor="none", alpha=0.85, pad=1.5))
+    ax.set_ylabel("일별 대여 건수")
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%m-%d"))
+    ax.legend(fontsize=8.5, loc="upper left")
+    ax.set_ylim(0, daily.max() * 1.2)
+    save(fig, "그림5-3_계절전환_일별대여", "26년 2~3월 일별 대여와 배율 산정 구간")
+
+
+# ────────────────────────────────────────────────────────────── 5-2
+def fig_5_2():
+    """10~15시에는 대여소 대부분이 |mu| < 0.5다 — 전체 평균이 희석되는 이유 (5.3).
+
+    <표 5-4>와 **같은 계산**이다 — 월쌍 9개의 학습 달, 평일, 대여소별 시간대 순수요
+    평균(backtest_demand.daily_window_demand). 비율은 월쌍마다 구해 평균 낸다.
+
+    ⚠️ **대여소는 학습 달과 검증 달에 모두 있는 곳만 센다.** 백테스트(`evaluate`)가
+    두 달을 inner merge하기 때문이다. 학습 달에만 있는 곳까지 세면 05~10시가
+    50.3%로 표(50.2%)와 어긋난다 — 2026-09-18 그림을 처음 만들 때 실제로 그랬다.
+    """
+    try:
+        import db
+        from project_config import select_day_type
+        from backtest_demand import consecutive_pairs, daily_window_demand
+    except Exception as exc:                       # pragma: no cover - 환경 의존
+        print(f"  건너뜀 - 모듈을 못 불러왔습니다: {exc}")
+        return
+    with db.session() as conn:
+        periods = [r[0] for r in conn.execute("SELECT DISTINCT period FROM net_demand").fetchall()]
+        pairs = consecutive_pairs(periods)
+        if not pairs:
+            print("  건너뜀 - 이어지는 달이 없습니다.")
+            return
+        load = {p: select_day_type(db.load_frame(conn, "net_demand", period=p), "date", "weekday")
+                for pair in pairs for p in pair}
+
+    fig, axes = plt.subplots(1, 2, figsize=(10.4, 3.9), sharey=False)
+    bins = np.arange(0, 10.25, 0.25)
+    for ax, duration in zip(axes, ("_10_15", "_05_10")):
+        pooled, near, targets = [], [], []
+        for train, test in pairs:
+            mu = daily_window_demand(load[train], duration).groupby("station_id")["demand"].mean().abs()
+            mu = mu[mu.index.isin(set(load[test]["station_id"]))]
+            pooled.append(mu)
+            near.append(float((mu < 0.5).mean()))
+            targets.append(int((mu > 2).sum()))
+        values = pd.concat(pooled).clip(upper=10)
+        counts, edges = np.histogram(values, bins=bins)
+        colors = ["#b03a2e" if e < 0.5 else ("#3182bd" if e >= 2 else "#bbb") for e in edges[:-1]]
+        ax.bar(edges[:-1], counts / len(pairs), width=0.25, align="edge", color=colors,
+               edgecolor="white", lw=0.3)
+        ax.set_title(f"{duration}   |μ|<0.5 {np.mean(near) * 100:.1f}% · "
+                     f"|μ|>2 평균 {np.mean(targets):.0f}곳", fontsize=10)
+        ax.set_xlabel("|μ| (대/일, 10 이상은 10에 모음)")
+        print(f"    {duration}: |mu|<0.5 {np.mean(near) * 100:.1f}% · |mu|>2 평균 "
+              f"{np.mean(targets):.0f}곳 (월쌍 {len(pairs)}개)")
+    axes[0].set_ylabel("대여소 수 (월쌍 평균)")
+    handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in ("#b03a2e", "#bbb", "#3182bd")]
+    axes[1].legend(handles, ["|μ| < 0.5 — μ를 쓰든 0을 쓰든 같다", "0.5 ≤ |μ| ≤ 2",
+                             "|μ| > 2 — 작업 대상 근사"], fontsize=8, loc="upper right")
+    save(fig, "그림5-2_평균순수요_분포", "10~15시는 대여소 대부분이 0 근처 (5.3)")
+
+
 FIGURES = {"6-1": fig_6_1, "6-2": fig_6_2, "6-3": fig_6_3,
-           "5-1": fig_5_1, "1-1": fig_1_1, "4-1": fig_4_1}
+           "5-1": fig_5_1, "1-1": fig_1_1, "4-1": fig_4_1,
+           "3-2": fig_3_2, "4-3": fig_4_3, "5-2": fig_5_2, "5-3": fig_5_3}
 
 
 def main() -> int:

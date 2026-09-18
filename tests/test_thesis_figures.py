@@ -11,7 +11,7 @@
   2. **모르는 이름을 주면 아무것도 만들지 않고** 1로 끝난다. 오타 하나에
      그림이 반만 생기면 어느 것이 낡았는지 알 수 없다.
   3. **구조도(4-1)는 원천 없이도 그려진다** — 심사자가 가장 먼저 찾는
-     그림이라 자료에 기대면 안 된다.
+     그림이라 자료에 기대면 안 된다. 식만 그리는 3-2도 같다(2026-09-18).
   4. `FIGURES` 등록표와 실제 함수가 **어긋나지 않는다**. 함수만 만들고
      등록을 잊으면 그 그림은 조용히 안 나온다.
 
@@ -86,6 +86,36 @@ def test_구조도는_원천_없이도_그려진다(tool, 격리, monkeypatch, c
     만든것 = [p.name for p in 격리.iterdir()]
     assert 만든것 == ["그림4-1_파이프라인.png"]
     assert (격리 / "그림4-1_파이프라인.png").stat().st_size > 0
+
+
+def test_재배치량_완화는_원천_없이_운영_함수로_그려진다(tool, 격리, monkeypatch, capsys):
+    """3-2는 식만 그린다 — 자료가 없어도 나와야 하고, 식을 옮겨 쓰지 않는다.
+
+    그림이 `compute_rebal_qty()`를 부르지 않고 식을 따로 쓰면 운영 코드가 바뀌어도
+    옛 식을 그린다. 원고의 '격차 5대→4대, 8대→6대, 실효 상한 9대'가 운영 함수에서
+    그대로 나오는지 함께 본다.
+    """
+    import inspect
+
+    import pandas as pd
+    from pipeline.step0_collect.calculate_target_qty import compute_rebal_qty
+
+    assert "compute_rebal_qty" in inspect.getsource(tool.fig_3_2)
+    stats = pd.DataFrame({"mu": [5.0, 8.0, 55.6], "sigma": 0.0, "stock": 0.0,
+                          "parking_lot": 1000.0})
+    assert compute_rebal_qty(stats)["rebal_qty"].tolist() == [4, 6, 9]
+
+    assert run_cli(tool, monkeypatch, "--only", "3-2") == 0
+    capsys.readouterr()
+    assert [p.name for p in 격리.iterdir()] == ["그림3-2_재배치량_완화.png"]
+
+
+def test_DB가_비면_자료_그림은_건너뛰고_무엇이_없는지_말한다(tool, 격리, monkeypatch, capsys):
+    """4-3·5-2·5-3은 DB의 대여이력·순수요를 읽는다. 시험 DB는 비어 있다."""
+    assert run_cli(tool, monkeypatch, "--only", "4-3,5-2,5-3") == 0
+    out = capsys.readouterr().out
+    assert out.count("건너뜀") == 3
+    assert list(격리.iterdir()) == []
 
 
 def test_전부_돌려도_완주한다(tool, 격리, monkeypatch, capsys):
