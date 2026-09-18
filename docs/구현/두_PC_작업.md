@@ -26,6 +26,7 @@
 | **도로 수집** | ⏸ **일시정지** (2026-09-03) | ✅ **활성** — 매일(휴일 포함) 09/12/15/18/21시 슬롯 + 로그온 (휴일분은 2026-09-08부터 · [COLLECTOR_ROAD.md](COLLECTOR_ROAD.md) 5장) |
 | 실제 켜져 있는 때 | **24시간** — 퇴근 뒤에도 덮개 닫고 전원 연결 (2026-09-14 결정 · 첫 밤샘 89/89틱, 09-15 확인) | 대략 **18:00–23:00** |
 | 작업 이름 | `PBR재고수집` · `PBR도로시간수집` | 같음 |
+| **사양** (논문 <표 4-4>) | Lenovo 82YU · Ryzen 5 7520U(4코어 8스레드) · 16GB · SSD 256GB · Windows 11 Pro · Python 3.14.7 (2026-09-18) | 🟡 **아직 적지 않았다** — [0-B장](#0-b-사양--논문-표-4-4에-싣는다-2026-09-18) 명령을 집에서 돌린다 |
 
 📌 **추석 연휴(9/24~27 · 10/3~5 · 10/9~11)에도 도로 수집은 B만 맡습니다** (2026-09-15 사용자 결정) —
 A의 `PBR도로시간수집`은 일시정지 그대로입니다. 연휴 도로 표본은 **B가 깨어 있는 날만** 모이므로
@@ -173,6 +174,33 @@ PC만 돌립니다.**
    `python tools/collect_road_time.py --status`의 `지문` 줄.
 
 ---
+
+## 0-B. 사양 — 논문 <표 4-4>에 싣는다 (2026-09-18)
+
+학과 가이드라인이 *"성능평가가 들어가 있는 경우 본인의 HW 환경을 명시"* 하라고 요구한다. 원고 4.7절
+<표 4-4>는 **회사환경(A)** 값으로 채웠다(2026-09-18). 🟡 **집환경(B)의 사양과, 5·6장 실험을 어느 PC에서
+돌렸는지는 아직 적지 않았다** — 두 PC에서 나누어 돌린 실험이 있으면 표를 두 열로 나누고, 계산 시간
+(군집화 약 42초 등)은 그 시간을 잰 PC를 밝혀야 한다.
+
+집환경에서 아래 두 명령의 출력을 그대로 위 표와 원고 README 7-3에 옮기면 된다.
+
+```powershell
+$cpu = Get-CimInstance Win32_Processor | Select-Object -First 1 Name, NumberOfCores, NumberOfLogicalProcessors, MaxClockSpeed
+$cs = Get-CimInstance Win32_ComputerSystem
+$os = Get-CimInstance Win32_OperatingSystem
+"CPU: $($cpu.Name) | cores $($cpu.NumberOfCores) | logical $($cpu.NumberOfLogicalProcessors) | $($cpu.MaxClockSpeed) MHz"
+"PC: $($cs.Manufacturer) $($cs.Model) | OS: $($os.Caption) build $($os.BuildNumber)"
+Get-CimInstance Win32_PhysicalMemory | ForEach-Object { "DIMM: $([math]::Round($_.Capacity/1GB)) GB @ $($_.Speed) MT/s type $($_.SMBIOSMemoryType)" }
+Get-PhysicalDisk | ForEach-Object { "DISK: $($_.FriendlyName) $($_.MediaType) $([math]::Round($_.Size/1GB)) GB" }
+```
+
+```powershell
+.\.venv\Scripts\python.exe -c "import sys, sqlite3, importlib.metadata as m; print('Python', sys.version.split()[0], '| SQLite', sqlite3.sqlite_version); [print(p, m.version(p)) for p in ['pandas','numpy','kmedoids','PuLP','ortools','scikit-learn','folium','matplotlib','fastapi']]"
+```
+
+`SMBIOSMemoryType` 35는 LPDDR5, 34는 DDR5, 26은 DDR4다. 라이브러리는 `requirements.txt`가 하한만 걸어
+두 PC가 다를 수 있으므로 **실제로 설치된 버전**을 적는다. CBC 버전은 PuLP에 딸린 실행 파일에 묻는다:
+`echo quit | .venv\Lib\site-packages\pulp\solverdir\cbc\win\i64\cbc.exe` (회사환경 2.10.3).
 
 ## 0-A. 회사환경 주말 가동 — **회사에서 이 순서대로** (2026-09-13)
 
