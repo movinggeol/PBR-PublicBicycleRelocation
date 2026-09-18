@@ -24,6 +24,10 @@
   · 그림 4-3  대여이력 월별 건수 (빠진 달 · 겨울 달)
   · 그림 5-2  |mu| 분포 — <표 5-4>와 **같은 대여소 집합**(학습·검증 달 모두)
   · 그림 5-3  26년 2~3월 일별 대여와 배율 산정 구간
+  · 그림 2-1  정적·동적 재배치와 본 연구의 회차 구조 (개념도, 1.26.236)
+  · 그림 4-2  대여소 1,368곳과 차고지 — `station_info` 스냅샷 (행정 경계는 그리지 않는다)
+  · 그림 8-1  조사 주간의 공식 통계 대조 — `survey_crosscheck.py`의 **상수·함수를 그대로**
+  · 그림 8-2  거점 기준 둘과 05~10시 작업 대상 — `dockless_hub.py`의 **함수를 그대로**
 
 **재현성**: 그림의 원천은 전부 `experiments/`의 CSV와 DB다. 원천이 없으면
 그 그림만 건너뛰고 무엇이 없어서인지 말한다 — **조용히 빈 그림을 만들지
@@ -535,9 +539,215 @@ def fig_5_2():
     save(fig, "그림5-2_평균순수요_분포", "10~15시는 대여소 대부분이 0 근처 (5.3)")
 
 
+# ────────────────────────────────────────────────────────────── 8-1
+def fig_8_1():
+    """조사 주간의 공식 통계와 공개 대여이력 — 모양은 같고 크기만 다르다 (8.4.2).
+
+    보고서 값을 여기 다시 옮겨 적지 않는다 — `survey_crosscheck.py`가 쪽 번호와 함께
+    옮겨 두었고 옮겨 적기 검산까지 한다. 그 모듈의 상수와 집계 함수를 그대로 쓴다.
+    그림은 **다른 자료의 값을 옮겨 그린 것**이므로 원고 캡션에 출처를 단다(학과 가이드라인).
+    """
+    import importlib.util
+    try:
+        import db
+        spec = importlib.util.spec_from_file_location(
+            "survey_crosscheck", ROOT / "experiments/diagnostic/survey_crosscheck.py")
+        survey = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(survey)
+    except Exception as exc:                       # pragma: no cover - 환경 의존
+        print(f"  건너뜀 - 모듈을 못 불러왔습니다: {exc}")
+        return
+    with db.session() as conn:
+        ours = survey.daily_rentals(conn)
+    days = list(survey.REPORT_DAILY)
+    if any(d not in ours for d in days):
+        print(f"  건너뜀 - 조사 주간({days[0]}~{days[-1]}) 대여이력이 DB에 다 없습니다.")
+        return
+    report = np.array([survey.REPORT_DAILY[d] for d in days], dtype=float)
+    mine = np.array([ours[d] for d in days], dtype=float)
+    ticks = [f"{d[5:]}\n({'월화수목금토일'[i]})" for i, d in enumerate(days)]
+
+    fig, axes = plt.subplots(1, 2, figsize=(10.8, 3.9), gridspec_kw={"width_ratios": [1.5, 1]})
+    x = np.arange(len(days))
+    ax = axes[0]
+    ax.bar(x - 0.2, report, 0.4, color="#c6dbef", edgecolor="black", lw=0.5, hatch="//",
+           label="공식 통계 (교통현황조사)")
+    ax.bar(x + 0.2, mine, 0.4, color="#3182bd", edgecolor="black", lw=0.5, label="공개 대여이력")
+    for xi, r, m in zip(x, report, mine):
+        ax.text(xi, max(r, m) + 400, f"{m / r:.1%}", ha="center", fontsize=8)
+    ax.set_xticks(x)
+    ax.set_xticklabels(ticks, fontsize=8.5)
+    ax.set_ylabel("일별 대여 건수")
+    ax.set_ylim(0, report.max() * 1.32)            # 범례가 막대·비율 글자를 가리지 않게
+    ax.set_title("건수 — 막대 위는 공개 대여이력 / 공식 통계", fontsize=10)
+    ax.legend(fontsize=8, loc="upper center", ncol=2)
+
+    ax = axes[1]
+    ax.plot(x, survey.REPORT_COEF, marker="s", color="#6baed6", lw=1.4, ls="--", label="공식 통계")
+    ax.plot(x, mine / mine.mean(), marker="o", color="#3182bd", lw=1.6, label="공개 대여이력")
+    gap = float(np.max(np.abs(mine / mine.mean() - np.array(survey.REPORT_COEF))))
+    ax.set_xticks(x)
+    ax.set_xticklabels(ticks, fontsize=8.5)
+    ax.set_ylabel("요일변동계수 (일 대여 / 주 일평균)")
+    ax.set_title(f"모양 — 요일변동계수 차 최대 {gap:.2f}", fontsize=10)
+    ax.legend(fontsize=8)
+    print(f"    비율 {min(mine / report):.1%}~{max(mine / report):.1%} · "
+          f"주 평균 {mine.sum() / report.sum():.1%} · 계수 차 최대 {gap:.3f}")
+    save(fig, "그림8-1_공식통계_대조", "조사 주간 공식 통계와 공개 대여이력 (8.4.2)")
+
+
+# ────────────────────────────────────────────────────────────── 4-2
+def fig_4_2():
+    """대여소 분포와 차고지 — 실험 스냅샷 `2026-08-11 real`의 `station_info` 1,368곳 (4.2).
+
+    ⚠️ **행정 경계는 그리지 않는다.** 저장소에 경계 자료가 없고, 밖에서 받아 오면 출처와
+    사용 조건이 따라붙는다. 대여소 분포가 시가지 모양을 그대로 보여 준다.
+    거치대 수가 빈 대여소(19곳)는 크기를 줄 수 없어 속이 빈 점으로 찍는다 — 빼면 1,368곳이
+    아니게 된다.
+    """
+    try:
+        import db
+        from project_config import DEPOT_LAT, DEPOT_LON, DEPOT_NAME
+    except Exception as exc:                       # pragma: no cover - 환경 의존
+        print(f"  건너뜀 - 모듈을 못 불러왔습니다: {exc}")
+        return
+    label = "2026-08-11 real"
+    with db.session() as conn:
+        frame = pd.read_sql("SELECT lat, lon, parking_lot, stock FROM station_info "
+                            "WHERE run_label = ?", conn, params=(label,))
+    if frame.empty:
+        print(f"  건너뜀 - station_info에 '{label}' 스냅샷이 없습니다.")
+        return
+    known = frame["parking_lot"].notna()
+    fig, ax = plt.subplots(figsize=(7.4, 7.0))
+    sc = ax.scatter(frame.loc[known, "lon"], frame.loc[known, "lat"],
+                    s=4 + frame.loc[known, "parking_lot"].clip(upper=30) * 1.2,
+                    c=frame.loc[known, "stock"].clip(upper=15), cmap="viridis_r",
+                    alpha=0.85, edgecolor="none")
+    ax.scatter(frame.loc[~known, "lon"], frame.loc[~known, "lat"], s=14, facecolors="none",
+               edgecolors="#666", lw=0.7, label=f"거치대 수 없음 ({int((~known).sum())}곳)")
+    ax.scatter([DEPOT_LON], [DEPOT_LAT], marker="*", s=320, color="#b03a2e",
+               edgecolor="white", lw=1.0, zorder=5, label=f"차고지 ({DEPOT_NAME})")
+    # 위도에서 경도 1도의 길이가 짧아지므로 가로세로 비를 맞춘다
+    ax.set_aspect(1 / np.cos(np.deg2rad(frame["lat"].mean())))
+    lon0, lat0 = frame["lon"].min(), frame["lat"].min()
+    km_per_deg_lon = 111.32 * np.cos(np.deg2rad(frame["lat"].mean()))
+    ax.plot([lon0, lon0 + 5 / km_per_deg_lon], [lat0, lat0], color="black", lw=2.2)
+    ax.text(lon0 + 2.5 / km_per_deg_lon, lat0 + 0.004, "5km", ha="center", fontsize=9)
+    cbar = fig.colorbar(sc, ax=ax, shrink=0.6, pad=0.02)
+    cbar.set_label("재고 (대, 15 이상은 15)")
+    ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.05))   # 눈금 글자가 겹치지 않게
+    ax.xaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%.2f"))
+    ax.set_xlabel("경도")
+    ax.set_ylabel("위도")
+    ax.legend(fontsize=8.5, loc="upper right")
+    ax.set_title(f"대여소 {len(frame):,}곳 · 스냅샷 {label[:10]} · 점 크기 = 거치대 수", fontsize=10)
+    save(fig, "그림4-2_대여소_분포", f"대여소 {len(frame):,}곳과 차고지")
+
+
+# ────────────────────────────────────────────────────────────── 2-1
+def fig_2_1():
+    """정적·동적 재배치와 본 연구의 회차 구조 — 개념도라 자료가 필요 없다 (2.2.1)."""
+    rounds = [(5, 10), (10, 15), (15, 20), (20, 29)]        # 20~05시는 다음 날 5시(29시)까지
+    fig, ax = plt.subplots(figsize=(10.4, 3.6))
+    ax.set_xlim(4, 29.5)
+    ax.set_ylim(-0.3, 3.3)
+    ax.grid(False)
+    rows = [(2.6, "정적 재배치", "이용이 거의 없는 시간에 한 번"),
+            (1.6, "동적 재배치", "운영 중에 계속"),
+            (0.6, "본 연구", "하루 네 회차, 회차 안에서는 정적")]
+    for y, name, note in rows:
+        ax.text(3.8, y, name, ha="right", va="center", fontsize=10, fontweight="bold")
+        ax.text(3.8, y - 0.3, note, ha="right", va="center", fontsize=8, color="#555")
+    # 정적: 새벽 한 번
+    ax.add_patch(plt.Rectangle((26, 2.4), 2.5, 0.4, color="#9ecae1"))
+    ax.annotate("", xy=(26, 2.6), xytext=(26, 3.05),
+                arrowprops=dict(arrowstyle="-|>", color="#3182bd"))
+    # 동적: 연속
+    ax.add_patch(plt.Rectangle((5, 1.4), 24, 0.4, color="#9ecae1", hatch="//", ec="#3182bd", lw=0.5))
+    # 본 연구: 네 회차
+    for i, (a, b) in enumerate(rounds):
+        ax.add_patch(plt.Rectangle((a + 0.1, 0.4), b - a - 0.2, 0.4, color="#3182bd"))
+        ax.annotate("", xy=(a + 0.1, 0.6), xytext=(a + 0.1, 1.05),
+                    arrowprops=dict(arrowstyle="-|>", color="#b03a2e"))
+        if i:
+            ax.text(a, 0.2, "×", ha="center", va="center", color="#b03a2e", fontsize=11)
+    ax.text(5.2, 1.1, "▼ 계획 시점: 재고 스냅샷 + 직전 달 순수요 통계", fontsize=8, color="#b03a2e",
+            va="center")
+    ax.text(16.5, -0.15, "× 앞 회차의 결과는 뒤 회차의 초기 재고로 넘어가지 않는다", fontsize=8,
+            color="#b03a2e", ha="center")
+    ax.set_xticks([5, 10, 15, 20, 24, 29])
+    ax.set_xticklabels(["05시", "10시", "15시", "20시", "24시", "05시"])
+    ax.set_yticks([])
+    for side in ("left", "right", "top"):
+        ax.spines[side].set_visible(False)
+    save(fig, "그림2-1_회차구조", "정적·동적 재배치와 본 연구의 회차 구조 (2.2.1)")
+
+
+# ────────────────────────────────────────────────────────────── 8-2
+def fig_8_2():
+    """거점 선정 기준 둘과 05~10시 작업 대상의 위치 — 포함률의 차이가 어디서 나는가 (8.6).
+
+    거점 선정은 `experiments/structure/dockless_hub.py`의 함수를 **그대로** 부른다 — 여기서
+    다시 구현하면 <표 8-3>과 어긋난다. 예산 K도 같은 규칙(이용량 기준 끝점 80% 지점)으로 구한다.
+    작업 대상은 정본 실행 `2026-08-11 real`(25년 11월 통계)의 05~10시 후보다.
+    좌표는 그 스냅샷의 `station_info`에서 오므로, 좌표가 없는 거점은 수를 밝히고 뺀다.
+    """
+    import importlib.util
+    try:
+        import db
+        spec = importlib.util.spec_from_file_location(
+            "dockless_hub", ROOT / "experiments/structure/dockless_hub.py")
+        hub = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(hub)
+    except Exception as exc:                       # pragma: no cover - 환경 의존
+        print(f"  건너뜀 - 모듈을 못 불러왔습니다: {exc}")
+        return
+    with db.session() as conn:
+        periods = [r[0] for r in conn.execute(
+            "SELECT DISTINCT period FROM rental_history ORDER BY period")]
+        cand = hub.candidates(conn).get("_05_10", set())
+        if not periods or not cand:
+            print("  건너뜀 - 대여이력이나 정본 실행의 작업 대상이 DB에 없습니다.")
+            return
+        counts = hub.endpoint_counts(conn, periods)
+        k = hub.k_for(hub.coverage_curve(counts), 0.80)
+        orders = {"이용량 기준": list(hub.rank_sites(counts, None).index),
+                  "순수요 편향 기준": list(hub.rank_sites(counts, hub.demand_scores(conn, periods)).index)}
+        xy = pd.read_sql("SELECT station_id, lat, lon FROM station_info WHERE run_label = ?",
+                         conn, params=(hub.CANON_LABEL,)).set_index("station_id")
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.6, 6.0), sharex=True, sharey=True)
+    for ax, (name, order) in zip(axes, orders.items()):
+        hubs = set(order[:k])
+        inside, outside = cand & hubs, cand - hubs
+        on_map = xy.reindex(sorted(hubs)).dropna()
+        ax.scatter(xy["lon"], xy["lat"], s=3, color="#e0e0e0", label="그 밖의 대여소")
+        ax.scatter(on_map["lon"], on_map["lat"], s=10, color="#9ecae1", label=f"거점 {k}곳")
+        pts_in, pts_out = xy.reindex(sorted(inside)).dropna(), xy.reindex(sorted(outside)).dropna()
+        ax.scatter(pts_in["lon"], pts_in["lat"], s=16, marker="o", facecolors="none",
+                   edgecolors="#08519c", lw=0.9, label=f"거점 안 작업 대상 {len(inside)}곳")
+        ax.scatter(pts_out["lon"], pts_out["lat"], s=22, marker="x", color="#b03a2e", lw=1.1,
+                   label=f"거점 밖 작업 대상 {len(outside)}곳")
+        ax.set_aspect(1 / np.cos(np.deg2rad(xy["lat"].mean())))
+        ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.05))
+        ax.xaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%.2f"))
+        missing = len(hubs) - len(on_map)
+        ax.set_title(f"{name} — 포함률 {len(inside) / len(cand):.1%}"
+                     + (f"\n(좌표 없는 거점 {missing}곳은 빠짐)" if missing else ""), fontsize=10)
+        ax.set_xlabel("경도")
+        ax.legend(fontsize=7.5, loc="upper right")
+        print(f"    {name}: 거점 {k}곳 · 작업 대상 {len(cand)}곳 중 {len(inside)}곳 "
+              f"({len(inside) / len(cand):.1%}) · 좌표 없는 거점 {missing}곳")
+    axes[0].set_ylabel("위도")
+    save(fig, "그림8-2_거점_기준_비교", "거점 선정 기준별 거점과 05~10시 작업 대상 (8.6)")
+
+
 FIGURES = {"6-1": fig_6_1, "6-2": fig_6_2, "6-3": fig_6_3,
            "5-1": fig_5_1, "1-1": fig_1_1, "4-1": fig_4_1,
-           "3-2": fig_3_2, "4-3": fig_4_3, "5-2": fig_5_2, "5-3": fig_5_3}
+           "3-2": fig_3_2, "4-3": fig_4_3, "5-2": fig_5_2, "5-3": fig_5_3,
+           "8-1": fig_8_1, "4-2": fig_4_2, "2-1": fig_2_1,
+           "8-2": fig_8_2}
 
 
 def main() -> int:

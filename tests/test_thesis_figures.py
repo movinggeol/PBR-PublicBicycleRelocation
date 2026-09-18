@@ -111,11 +111,32 @@ def test_재배치량_완화는_원천_없이_운영_함수로_그려진다(tool
 
 
 def test_DB가_비면_자료_그림은_건너뛰고_무엇이_없는지_말한다(tool, 격리, monkeypatch, capsys):
-    """4-3·5-2·5-3은 DB의 대여이력·순수요를 읽는다. 시험 DB는 비어 있다."""
-    assert run_cli(tool, monkeypatch, "--only", "4-3,5-2,5-3") == 0
+    """4-2·4-3·5-2·5-3·8-1·8-2는 DB의 대여이력·순수요·스냅샷을 읽는다. 시험 DB는 비어 있다."""
+    assert run_cli(tool, monkeypatch, "--only", "4-2,4-3,5-2,5-3,8-1,8-2") == 0
     out = capsys.readouterr().out
-    assert out.count("건너뜀") == 3
+    assert out.count("건너뜀") == 6
     assert list(격리.iterdir()) == []
+
+
+def test_회차_구조_개념도는_원천_없이_그려진다(tool, 격리, monkeypatch, capsys):
+    """2-1은 개념도다 — 자료가 없어도 나와야 한다."""
+    assert run_cli(tool, monkeypatch, "--only", "2-1") == 0
+    capsys.readouterr()
+    assert [p.name for p in 격리.iterdir()] == ["그림2-1_회차구조.png"]
+
+
+def test_남의_계산을_다시_구현하지_않는다(tool):
+    """8-1·8-2는 원고 표와 같은 수를 말해야 한다 — 원천 스크립트의 상수·함수를 불러 쓴다.
+
+    보고서 값을 그림 쪽에 다시 옮겨 적거나 거점 선정을 다시 구현하면 <표 8-3>·8.4.2와
+    어긋나도 아무도 모른다.
+    """
+    import inspect
+    src_81, src_82 = inspect.getsource(tool.fig_8_1), inspect.getsource(tool.fig_8_2)
+    assert "survey_crosscheck.py" in src_81 and "REPORT_DAILY" in src_81
+    assert "21632" not in src_81, "보고서 일별 값을 그림 쪽에 다시 적었다"
+    for name in ("endpoint_counts", "demand_scores", "rank_sites", "candidates"):
+        assert f"hub.{name}" in src_82, f"거점 선정의 {name}을 다시 구현했다"
 
 
 def test_전부_돌려도_완주한다(tool, 격리, monkeypatch, capsys):
