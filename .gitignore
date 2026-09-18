@@ -72,6 +72,8 @@ Thumbs.db
 # 무엇이 있는지는 docs/연구/references/자료.md가 목록으로 나른다.
 # 그 밖에 막는 것: 출처를 모르는 웹 이미지(.jfif)와 사용자 메모(아이디어/).
 docs/연구/references/**/*.pdf
+# 학과 양식 한글 파일 — 샘플 학생·교수 이름이 들어 있다 (2026-09-18).
+docs/연구/references/**/*.hwp
 docs/연구/references/**/*.jfif
 docs/연구/references/아이디어/
 
