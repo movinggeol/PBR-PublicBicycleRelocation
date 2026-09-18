@@ -35,7 +35,13 @@
 
 사용법:
     python experiments/structure/fleet_outage_stress.py
-    python experiments/structure/fleet_outage_stress.py --outages "0,1,3,5,7" --seeds "42,7,13"
+    python experiments/structure/fleet_outage_stress.py --outages "0,1,3,5,6,7,9" --rounds 30
+
+씨앗 기본값은 EXPERIMENTS 25장이 쓴 **다섯 개**(42·7·13·21·99)다. 1.26.72부터
+2026-09-18까지 기본값은 세 개(42·7·13)였고, 25장의 "씨앗 5개"가 어느 씨앗인지
+문서에 없어 기본값으로는 표가 재현되지 않았다(복구 후 54.0 대 53.4분). 게이트 A
+재실행 목록(`scripts/gate_a_rerun.ps1`)에 적힌 다섯 개로 돌리자 표와 소수 첫째
+자리까지 같아, 그것을 기본값으로 올렸다.
 """
 from __future__ import annotations
 
@@ -133,6 +139,22 @@ def run_rounds(conn, rounds: int, outage: int, rng: random.Random,
     return {"실패": 실패, "기록": 기록}
 
 
+def converge_at(during: list, after: list) -> int | None:
+    """결원이 끝난 뒤 표준편차가 **결원 중 최댓값 아래로** 내려온 첫 회차(1부터).
+
+    창 안에서 내려오지 않으면 **None**이다 — 값을 지어내지 않는다.
+
+    🔴 **예전에는 미수렴을 `len(after) + 1`로 셌다** (2026-09-18 발견). 12회차·6회차
+    복구면 복구 뒤 창이 6회차라 미수렴이 **7**로 찍혔고, 결원 5대의 "수렴 7.0회차"는
+    **씨앗 5개 모두 미수렴**이었다. 30회차로 늘려 다시 재니 다섯 씨앗 모두 실제로
+    7회차째에 수렴해 **값은 우연히 맞았지만**, 12회차 실험은 그것을 관측하지 못했다.
+    검열된 값을 관측값처럼 평균 내지 않도록 `summarize()`가 미수렴 수를 따로 밝힌다.
+    """
+    기준 = max(during) if during else 0.0
+    이후 = [i for i, v in enumerate(after) if v <= 기준]
+    return 이후[0] + 1 if 이후 else None
+
+
 def summarize(results: dict, rounds: int, recover_at: int) -> None:
     print("\n" + "=" * 84)
     print(f"차량 정비 결원 스트레스 — 보유 {FLEET_SIZE}대 · {rounds}회차"
@@ -148,9 +170,11 @@ def summarize(results: dict, rounds: int, recover_at: int) -> None:
         print(f"{outage:>5} {가용:>5} {실패:>9.1f} {판정:>6}")
 
     print(f"\n② 형평성 — 누적 소요시간 표준편차(분)")
-    print(f"{'결원':>5} {'결원중':>9} {'복구후':>9} {'수렴회차':>9}")
+    print(f"{'결원':>5} {'결원중':>9} {'복구후':>9} {'수렴회차':>9}  미수렴")
+    창 = rounds - recover_at
+    검열 = 0
     for outage, per_seed in results.items():
-        during, after, 수렴 = [], [], []
+        during, after, 수렴, 미수렴 = [], [], [], 0
         for r in per_seed:
             rows = [x for x in r["기록"] if not x["실패"]]
             d = [x["표준편차"] for x in rows if x["결원중"]]
@@ -159,20 +183,29 @@ def summarize(results: dict, rounds: int, recover_at: int) -> None:
                 during.append(statistics.mean(d))
             if a:
                 after.append(a[-1])
-                # 결원 끝난 표준편차가 결원 전 최댓값 아래로 내려오기까지
-                기준 = max(d) if d else 0.0
-                이후 = [i for i, v in enumerate(a) if v <= 기준]
-                수렴.append(이후[0] + 1 if 이후 else len(a) + 1)
+                at = converge_at(d, a)
+                if at is None:
+                    미수렴 += 1
+                else:
+                    수렴.append(at)
         if during and after:
+            평균 = f"{statistics.mean(수렴):>9.1f}" if 수렴 else f"{'—':>9}"
             print(f"{outage:>5} {statistics.mean(during):>9.1f}"
-                  f" {statistics.mean(after):>9.1f}"
-                  f" {statistics.mean(수렴):>9.1f}")
+                  f" {statistics.mean(after):>9.1f} {평균}  "
+                  f"{미수렴}/{len(per_seed)}")
+            검열 += 미수렴
+
+    if 검열:
+        print(f"\n  ⚠️ 복구 뒤 {창}회차 안에 수렴하지 않은 씨앗이 {검열}개 있습니다 — "
+              f"그 씨앗은 수렴회차 평균에서 뺐습니다.\n"
+              f"     수렴까지 보려면 --rounds를 늘리십시오 (결원 5대는 30회차에서 "
+              f"복구 뒤 7회차째 수렴, 2026-09-18).")
 
     print("\n읽는 법")
     print("  · 실패회차 = assign_vehicles가 '차량이 부족합니다'로 멈춘 회차 수.")
     print("  · 표준편차가 클수록 특정 차에 일이 몰린 것이다(0이면 완전 균등).")
     print("  · 수렴회차 = 결원이 끝난 뒤 표준편차가 결원 중 최댓값 아래로"
-          " 내려오기까지 걸린 회차 수.")
+          " 내려오기까지 걸린 회차 수. 미수렴 = 창 안에서 내려오지 않은 씨앗 수.")
     print("=" * 84)
 
 
@@ -181,7 +214,7 @@ def main() -> int:
         description="차량 정비 결원 스트레스 테스트 (TODO 대기-8)")
     parser.add_argument("--outages", default="0,1,3,5,7",
                         help="동시에 빠지는 차량 수")
-    parser.add_argument("--seeds", default="42,7,13")
+    parser.add_argument("--seeds", default="42,7,13,21,99")
     parser.add_argument("--rounds", type=int, default=12)
     parser.add_argument("--recover-at", type=int, default=6,
                         help="이 회차부터 결원을 복구한다")

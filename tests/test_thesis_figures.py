@@ -111,10 +111,19 @@ def test_재배치량_완화는_원천_없이_운영_함수로_그려진다(tool
 
 
 def test_DB가_비면_자료_그림은_건너뛰고_무엇이_없는지_말한다(tool, 격리, monkeypatch, capsys):
-    """4-2·4-3·5-2·5-3·8-1·8-2는 DB의 대여이력·순수요·스냅샷을 읽는다. 시험 DB는 비어 있다."""
-    assert run_cli(tool, monkeypatch, "--only", "4-2,4-3,5-2,5-3,8-1,8-2") == 0
+    """4-2·4-3·5-2·5-3·8-1·8-2는 DB의 대여이력·순수요·스냅샷을 읽는다. 시험 DB는 비어 있다.
+
+    3장 넷(3-1·3-3·3-4·3-6)은 정본 회차 계산 하나를 **캐시해** 함께 쓴다. 처음에는 첫 그림만
+    '건너뜀'을 말하고 나머지 셋은 캐시된 None을 받아 **조용히** 넘어갔다(2026-09-18) — 그림마다
+    까닭을 다시 말해야 네 장이 다 빠진 것을 안다.
+    """
+    keys = "4-2,4-3,5-2,5-3,8-1,8-2,3-1,3-3,3-4,3-6"
+    assert run_cli(tool, monkeypatch, "--only", keys) == 0
     out = capsys.readouterr().out
-    assert out.count("건너뜀") == 6
+    assert out.count("건너뜀") == 10
+    # 격리가 ROOT를 옮겨 실험 스크립트를 못 찾거나(여기), 순수요가 없거나 — 어느 까닭이든 넷이 같은 말을 한다
+    lines = [ln for ln in out.splitlines() if "정본 회차" in ln or "baseline_compare" in ln]
+    assert len(lines) == 4 and len(set(lines)) == 1, lines
     assert list(격리.iterdir()) == []
 
 
@@ -137,6 +146,53 @@ def test_남의_계산을_다시_구현하지_않는다(tool):
     assert "21632" not in src_81, "보고서 일별 값을 그림 쪽에 다시 적었다"
     for name in ("endpoint_counts", "demand_scores", "rank_sites", "candidates"):
         assert f"hub.{name}" in src_82, f"거점 선정의 {name}을 다시 구현했다"
+
+
+def test_3장_그림은_대조군_실험과_같은_계획을_그린다(tool):
+    """3장 그림이 제6장 P와 **같은 계획**을 보이려면 대조군 실험의 함수를 그대로 불러야 한다.
+
+    DB에 저장된 정본 실행의 계획은 평일/휴일 분리 전에 짠 것이라, 그것을 읽어 그리면 3장
+    본문(평일)과 조건이 달라진다. 궤적은 한 줄로 다시 쓰지만 운영 함수와 맞대어야 한다.
+    """
+    import inspect
+    src = inspect.getsource(tool._canon_round)
+    for name in ("bc.load_inputs", "bc.build_candidates", "bc.plan_with_clusters",
+                 "step1.make_clustering", "ilp_mod.solve_cluster_moves"):
+        assert name in src, f"정본 회차 계산이 {name}을 부르지 않는다"
+    assert '"weekday"' in src, "평일로 다시 계산하지 않는다"
+    assert "vrp_plan" not in src, "DB에 저장된 (평일·휴일을 섞은) 계획을 읽는다"
+    src_36 = inspect.getsource(tool.fig_3_6)
+    assert "_simulate_stock" in src_36 and "RuntimeError" in src_36, \
+        "궤적을 운영 함수와 맞대지 않는다"
+
+
+def test_예시_군집은_이동시간_식과_무관하게_고른다(tool):
+    """3-1·3-4의 예시 군집을 소요시간으로 고르면 게이트 A 뒤 다른 군집이 뽑힌다.
+
+    방문 순서는 거리로 정해지므로 방문 수로 고르면 식이 바뀌어도 같은 군집이다.
+    """
+    import inspect
+    src = inspect.getsource(tool._canon_round)
+    block = src[src.index("# 군집 하나를 고른다"):src.index("frame = adjusted")]
+    assert "cum_sec" not in block and "travel" not in block
+
+
+def test_결원_그림은_실험_스크립트를_그대로_부르고_같은_씨앗을_쓴다(tool):
+    """4-5는 EXPERIMENTS 25장과 같은 수를 보여야 한다 — 스크립트의 배정 함수와 **같은 씨앗 다섯**.
+
+    25장의 '씨앗 5개'가 어느 것인지 문서에 없어, 스크립트 기본값(세 개)으로는 표가 재현되지
+    않았다(복구 후 54.0 대 53.4분, 2026-09-18). 게이트 A 재실행 목록에 적힌 다섯 개가 표를
+    그대로 냈다 — 셋이 어긋나면 그림·표·재실행이 서로 다른 수를 말한다.
+    """
+    import inspect
+    import re
+    assert "fo.run_rounds" in inspect.getsource(tool.fig_4_5)
+    ps1 = (PROJECT_ROOT / "scripts" / "gate_a_rerun.ps1").read_text(encoding="utf-8-sig")
+    seeds = re.search(r"fleet_outage_stress.*?'--seeds',\s*'([\d,]+)'", ps1, re.S).group(1)
+    assert tuple(int(x) for x in seeds.split(",")) == tool.OUTAGE_SEEDS
+    script = (PROJECT_ROOT / "experiments" / "structure" / "fleet_outage_stress.py").read_text(
+        encoding="utf-8")
+    assert f'default="{seeds}"' in script, "스크립트 기본 씨앗이 25장·재실행 목록과 다르다"
 
 
 def test_전부_돌려도_완주한다(tool, 격리, monkeypatch, capsys):
