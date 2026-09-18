@@ -74,3 +74,9 @@ Thumbs.db
 docs/연구/references/**/*.pdf
 docs/연구/references/**/*.jfif
 docs/연구/references/아이디어/
+
+# 졸업논문 한글·워드 파일 — 이름·학번·지도교수가 들어가므로 공개 저장소에 올리지 않는다 (2026-09-18).
+# 원고는 docs/연구/논문/*.md가 나르고, 옮기는 절차는 docs/연구/논문/한글_옮기기.md에 있다.
+docs/연구/논문/**/*.hwp
+docs/연구/논문/**/*.hwpx
+docs/연구/논문/**/*.docx
