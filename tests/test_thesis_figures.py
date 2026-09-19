@@ -116,11 +116,13 @@ def test_DB가_비면_자료_그림은_건너뛰고_무엇이_없는지_말한�
     3장 넷(3-1·3-3·3-4·3-6)은 정본 회차 계산 하나를 **캐시해** 함께 쓴다. 처음에는 첫 그림만
     '건너뜀'을 말하고 나머지 셋은 캐시된 None을 받아 **조용히** 넘어갔다(2026-09-18) — 그림마다
     까닭을 다시 말해야 네 장이 다 빠진 것을 안다.
+
+    3-5는 도로 패널을 읽는다 — 도로 수집을 맡지 않는 회사 PC에서는 늘 이 경로다.
     """
-    keys = "4-2,4-3,5-2,5-3,8-1,8-2,3-1,3-3,3-4,3-6"
+    keys = "4-2,4-3,5-2,5-3,8-1,8-2,3-1,3-3,3-4,3-6,3-5"
     assert run_cli(tool, monkeypatch, "--only", keys) == 0
     out = capsys.readouterr().out
-    assert out.count("건너뜀") == 10
+    assert out.count("건너뜀") == 11
     # 격리가 ROOT를 옮겨 실험 스크립트를 못 찾거나(여기), 순수요가 없거나 — 어느 까닭이든 넷이 같은 말을 한다
     lines = [ln for ln in out.splitlines() if "정본 회차" in ln or "baseline_compare" in ln]
     assert len(lines) == 4 and len(set(lines)) == 1, lines
@@ -146,6 +148,24 @@ def test_남의_계산을_다시_구현하지_않는다(tool):
     assert "21632" not in src_81, "보고서 일별 값을 그림 쪽에 다시 적었다"
     for name in ("endpoint_counts", "demand_scores", "rank_sites", "candidates"):
         assert f"hub.{name}" in src_82, f"거점 선정의 {name}을 다시 구현했다"
+
+
+def test_이동시간_그림은_채택_계수를_낸_표본과_적합을_그대로_쓴다(tool):
+    """3-5는 3.8절의 계수(320.4초 · 32.11km/h)를 그려야 한다.
+
+    적합을 여기서 다시 구현하면 스크립트와 어긋나도 모른다. 표본도 문제다 — 도로 수집은
+    판정 뒤에도 매일 쌓이므로, 날짜를 자르지 않으면 그림의 계수가 날마다 원고와 멀어진다.
+    '10일(09-02~)'로 자르면 319.5초가 나와 역시 원고와 다르다(2026-09-19 실측): 채택 계수는
+    패널이 일치하는 08-31 · 09-01 구간까지 쓴 12일 적합이다. 그래서 끝만 판정일로 자른다.
+    """
+    import inspect
+    src = inspect.getsource(tool.fig_3_5)
+    for name in ("rtm.load_legs", "rtm.fit_linear", "rtm.predict", "rtm.EDGES"):
+        assert name in src, f"이동시간 적합의 {name}을 다시 구현했다"
+    assert "np.linalg" not in src and "polyfit" not in src, "적합을 그림 쪽에서 다시 한다"
+    assert '"weekday"' in src, "평일 패널만 써야 한다 — 평일·휴일 계수는 섞지 않는다"
+    assert 'legs["날짜"] <= ROAD_FIT_TO' in src, "판정일 뒤의 날이 섞인다"
+    assert tool.ROAD_FIT_TO == "2026-09-15", "게이트 A 판정일(채택 계수를 낸 표본의 끝)이 아니다"
 
 
 def test_3장_그림은_대조군_실험과_같은_계획을_그린다(tool):

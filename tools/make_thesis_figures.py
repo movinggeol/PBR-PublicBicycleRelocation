@@ -39,6 +39,11 @@
   · 그림 3-6  재고 궤적과 결품 — 궤적을 운영 함수 `_simulate_stock()`의 결품·포화와 **맞대어** 그린다
   · 그림 4-5  결원 규모별 형평성·배정 실패 — `fleet_outage_stress.py`를 그대로, 14회차까지
 
+**이동시간 식 그림 (2026-09-19, 1.26.242).** 도로 패널은 집 PC DB에만 있어 회사 PC에서는 건너뛴다.
+
+  · 그림 3-5  직선거리와 도로 이동시간 — `road_time_model.py`의 표본 읽기·적합을 그대로,
+             판정일(`ROAD_FIT_TO`)까지 잘라 채택 계수와 같은 표본으로
+
 **재현성**: 그림의 원천은 전부 `experiments/`의 CSV와 DB다. 원천이 없으면
 그 그림만 건너뛰고 무엇이 없어서인지 말한다 — **조용히 빈 그림을 만들지
 않는다.**
@@ -76,6 +81,8 @@ STYLE = {
     "P": dict(색="#3182bd", 해치="", 마커="D", 이름="P 제안"),
 }
 DURATIONS = ["_05_10", "_10_15", "_15_20"]
+# 그림 3-5의 표본 끝 — 게이트 A 판정일. 채택 계수(320.4초 · 32.11km/h)가 이날까지의 패널에서 나왔다.
+ROAD_FIT_TO = "2026-09-15"
 
 
 def setup():
@@ -1303,12 +1310,92 @@ def fig_4_5():
     save(fig, "그림4-5_결원_형평성", "결원 규모별 누적 작업시간 편차와 배정 실패 (4.5)")
 
 
+# ────────────────────────────────────────────────────────────── 3-5
+def fig_3_5():
+    """직선거리와 도로 이동시간 — 고정비 식과 상수 속도 가정 (3.8).
+
+    표본 읽기와 적합은 `road_time_model.py`의 함수를 **그대로** 부른다 — 여기서 다시
+    구현하면 3.8절의 계수와 어긋난다. 표본은 게이트 A 판정일(`ROAD_FIT_TO`)까지의 평일
+    고정 패널 전부다. 채택 계수(320.4초 · 32.11km/h)를 낸 것과 같은 표본이며, 08-31과
+    09-01의 패널 일치 구간도 들어간다(채택 조건의 '10일'은 09-02부터 센 일수다). 판정일
+    뒤에 쌓인 날을 넣으면 계수가 원고와 달라진다. 도로 패널은 집 PC DB에만 있다.
+    """
+    import importlib.util
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "road_time_model", ROOT / "experiments/params/road_time_model.py")
+        rtm = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rtm)
+        legs = rtm.load_legs(False, panel_only=True, day_type="weekday")
+    except Exception as exc:                       # pragma: no cover - 환경 의존
+        print(f"  건너뜀 - 모듈을 못 불러왔거나 도로 패널을 못 읽었습니다: {exc}")
+        return
+    legs = legs[legs["날짜"] <= ROAD_FIT_TO]
+    if legs.empty:
+        print(f"  건너뜀 - {ROAD_FIT_TO}까지의 평일 도로 패널이 DB에 없습니다 (도로 수집은 집 PC).")
+        return
+    km, sec = legs["straight_km"].to_numpy(), legs["road_sec"].to_numpy()
+    fixed, speed = rtm.fit_linear(km, sec)
+    const = rtm.VEHICLE_SPEED_KMPH
+    bins = legs.assign(구간=pd.cut(legs["straight_km"], rtm.EDGES, labels=rtm.LABELS),
+                       상수=km * 3600.0 / const, 식=rtm.predict(km, fixed, speed))
+    bins = bins.groupby("구간", observed=False).agg(
+        km=("straight_km", "mean"), 실측=("road_sec", "mean"), 상수=("상수", "mean"), 식=("식", "mean"))
+
+    def signed(v):
+        return f"{v:+.0f}"            # 맑은 고딕에는 U+2212가 없다 — 하이픈 그대로 (setup()과 같은 까닭)
+
+    box = dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.85)
+    fig, axes = plt.subplots(1, 2, figsize=(11.2, 4.4), gridspec_kw={"width_ratios": [1.25, 1]})
+    for ax, xmax in zip(axes, (km.max() * 1.03, 2.1)):
+        near = km <= xmax
+        ax.scatter(km[near], sec[near], s=5, color="#9ecae1", alpha=0.35, lw=0,
+                   label=f"실측 {len(km):,}구간" if ax is axes[0] else None)
+        x = np.linspace(0, xmax, 200)
+        ax.plot(x, rtm.predict(x, fixed, speed), color="#08519c", lw=2.0,
+                label=f"식 (3.12)  F={fixed:.1f}초, v={speed:.2f}km/h")
+        ax.plot(x, x * 3600.0 / const, color="#b03a2e", lw=1.8, ls="--",
+                label=f"상수 속도  F=0, v={const:g}km/h")
+        ax.set_xlim(0, xmax)
+        ax.set_xlabel("직선거리 (km)")
+    axes[0].set_ylabel("경로 안내 API 이동시간 (초)")
+    axes[0].set_ylim(0, sec.max() * 1.04)
+    axes[0].set_title("전체 거리", fontsize=10)
+    axes[0].legend(fontsize=8, loc="upper left")
+
+    ax = axes[1]
+    ax.set_ylim(0, 900)
+    shown = ["0~0.5", "0.5~1", "1~2"]
+    ax.scatter(bins.loc[shown, "km"], bins.loc[shown, "실측"], marker="D", s=36, color="black",
+               zorder=7, label="거리 구간별 실측 평균")          # 글상자(6)가 점을 가리지 않게
+    for lab in ("0~0.5", "1~2"):
+        row = bins.loc[lab]
+        ax.annotate("", xy=(row["km"], row["실측"]), xytext=(row["km"], row["상수"]),
+                    arrowprops=dict(arrowstyle="<->", color="#b03a2e", lw=1.2))
+        ax.annotate("", xy=(row["km"], row["실측"]), xytext=(row["km"], row["식"]),
+                    arrowprops=dict(arrowstyle="<->", color="#08519c", lw=1.2))
+        ax.text(row["km"] + 0.05, (row["실측"] + row["상수"]) / 2,
+                f"상수 속도 {signed(row['상수'] - row['실측'])}초", color="#b03a2e", fontsize=8.5,
+                va="center", bbox=box, zorder=6)
+        # 0.5km 이하는 글상자가 옆 구간(0.5~1km)의 점에 닿는다 — 선 위로 올린다
+        y = row["식"] + 40 if lab == "0~0.5" else (row["실측"] + row["식"]) / 2
+        ax.text(row["km"] + 0.05, y, f"식 (3.12) {signed(row['식'] - row['실측'])}초", color="#08519c",
+                fontsize=8.5, va="center", bbox=box, zorder=6)
+    ax.set_title("2km 이하 확대 — 구간 평균과 두 식의 차이", fontsize=10)
+    ax.legend(fontsize=8, loc="upper left")
+    days = sorted(legs["날짜"].unique())
+    print(f"    {days[0]}~{days[-1]} {len(days)}일 · {len(km):,}구간 · F={fixed:.1f}초 v={speed:.2f}km/h · "
+          + " · ".join(f"{lab} 상수 {bins.loc[lab, '상수'] - bins.loc[lab, '실측']:+.0f}초 식 "
+                       f"{bins.loc[lab, '식'] - bins.loc[lab, '실측']:+.0f}초" for lab in rtm.LABELS))
+    save(fig, "그림3-5_이동시간_모형", "직선거리와 도로 이동시간 — 고정비 식과 상수 속도 (3.8)")
+
+
 FIGURES = {"6-1": fig_6_1, "6-2": fig_6_2, "6-3": fig_6_3,
            "5-1": fig_5_1, "1-1": fig_1_1, "4-1": fig_4_1,
            "3-2": fig_3_2, "4-3": fig_4_3, "5-2": fig_5_2, "5-3": fig_5_3,
            "8-1": fig_8_1, "4-2": fig_4_2, "2-1": fig_2_1,
            "8-2": fig_8_2, "3-1": fig_3_1, "3-3": fig_3_3, "3-4": fig_3_4,
-           "3-6": fig_3_6, "4-5": fig_4_5}
+           "3-6": fig_3_6, "4-5": fig_4_5, "3-5": fig_3_5}
 
 
 def main() -> int:
