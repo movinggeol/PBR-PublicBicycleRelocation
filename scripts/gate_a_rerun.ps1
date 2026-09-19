@@ -143,14 +143,15 @@ if ($Mode -eq 'on') {
 }
 
 $today = Get-Date -Format 'yyyy-MM-dd'
+# 주말·공휴일 수집은 roadprobe-holiday-날짜로 저장된다 — 평일 라벨만 세면 주말에 0구간이라는 거짓 경고가 난다
 # 컨텍스트 관리자 객체를 변수에 붙들어 둔다 — 임시 객체로 두면 바로 수거되어 연결이 닫힌다
-$check = & $Py -c "import db; cm=db.session(); c=cm.__enter__(); print(c.execute('SELECT COUNT(*) FROM station_info WHERE run_label=?', ['$Label']).fetchone()[0], c.execute('SELECT COUNT(*) FROM road_leg WHERE run_label=?', ['roadprobe-$today']).fetchone()[0])"
+$check = & $Py -c "import db; cm=db.session(); c=cm.__enter__(); print(c.execute('SELECT COUNT(*) FROM station_info WHERE run_label=?', ['$Label']).fetchone()[0], c.execute('SELECT COUNT(*) FROM road_leg WHERE run_label IN (?, ?)', ['roadprobe-$today', 'roadprobe-holiday-$today']).fetchone()[0])"
 if ($LASTEXITCODE -ne 0) { throw "DB 점검이 실패했습니다 (위 오류 참고)" }
 $stations, $legs = ($check -split '\s+')
 Write-Host ("[스냅샷] '{0}' 대여소 {1}곳" -f $Label, $stations)
 if ([int]$stations -eq 0) { $problems += "정본 스냅샷 '$Label'이 이 PC의 DB에 없습니다 (두_PC_작업.md 4-3)" }
 
-Write-Host ("[도로 수집] 오늘(roadprobe-{0}) {1}구간" -f $today, $legs)
+Write-Host ("[도로 수집] 오늘(roadprobe-[holiday-]{0}) {1}구간" -f $today, $legs)
 if ([int]$legs -lt 400) {
     Write-Warning "오늘 도로 수집이 아직 400구간이 아닙니다. 실험이 메모리를 조이면 수집이 같이 실패할 수 있으니 .\scripts\road_collector.ps1 now 로 먼저 끝내십시오."
 }
