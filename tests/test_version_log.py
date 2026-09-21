@@ -531,3 +531,80 @@ def test_부분_문자열로_통과시키지_않는다(checker, tmp_path):
         "그리디는 회차당 251대를 옮긴다.",
         {"5장_파라미터결정.md": "| 2.33 | 84.0 | 251.4 | 429.3 |"})
     assert len(문제) == 1 and "251" in 문제[0], 문제
+
+
+# ────────────────────────── 인용과 참고문헌이 서로를 가리키는가 (1.26.260)
+#
+# 🔴 실제로 났다. 참고문헌은 도로 이동시간의 출처로 *티맵모빌리티 TMAP API*를
+#    싣는데 원고는 <표 4-1>에서도 *"상용 경로 안내 API"* 라고만 적어, 그 항목만
+#    본문 어디에도 닿지 않았다. 같은 표의 다른 행은 출처를 이름으로 적는다.
+
+def _인용_문제(checker, tmp_path, 참고문헌, 본문들):
+    """참고문헌과 본문 몇 쪽만 있는 작은 원고를 만들어 검사를 돌린다."""
+    원고 = tmp_path / "docs" / "연구" / "논문"
+    원고.mkdir(parents=True)
+    (원고 / "참고문헌.md").write_text(참고문헌, encoding="utf-8")
+    for 이름, 내용 in 본문들.items():
+        (원고 / 이름).write_text(내용, encoding="utf-8")
+    원래 = checker.ROOT
+    checker.ROOT = tmp_path
+    try:
+        return checker.check_citations()
+    finally:
+        checker.ROOT = 원래
+
+
+_참고문헌 = """# 참고문헌
+
+김영일 (2022, 12월 13일). [동행취재] 타슈2 수거 담당자의 바람. *중도일보*.
+
+Raviv, T., Tzur, M., & Forma, I. A. (2013). Static repositioning in a
+bike-sharing system. *EURO Journal on Transportation and Logistics*, 2, 187-229.
+
+티맵모빌리티. *TMAP API*. https://tmapapi.tmapmobility.com/
+"""
+
+
+def test_서술형과_괄호형_인용을_모두_짝짓는다(checker, tmp_path):
+    문제 = _인용_문제(checker, tmp_path, _참고문헌, {
+        "2장_관련연구.md": "Raviv 외(2013)는 두 가지 정식화를 제시하였다.",
+        "8장_한계와_향후과제.md": "7인 1개 조로 운영된다고 전한다(김영일, 2022).",
+        "4장_시스템설계.md": "| 도로 이동시간 | 티맵모빌리티 TMAP API | 100구간 |",
+    })
+    assert 문제 == [], 문제
+
+
+def test_참고문헌에_없는_인용을_잡는다(checker, tmp_path):
+    문제 = _인용_문제(checker, tmp_path, _참고문헌, {
+        "2장_관련연구.md": ("Raviv 외(2013)와 Schuijbroek 외(2017)를 보라."
+                            " 7인 1개 조이다(김영일, 2022)."),
+        "4장_시스템설계.md": "티맵모빌리티 TMAP API로 수집하였다.",
+    })
+    assert len(문제) == 1 and "Schuijbroek(2017)" in 문제[0], 문제
+
+
+def test_아무도_인용하지_않는_참고문헌을_잡는다(checker, tmp_path):
+    문제 = _인용_문제(checker, tmp_path, _참고문헌, {
+        "2장_관련연구.md": "Raviv 외(2013)는 두 가지 정식화를 제시하였다.",
+        "4장_시스템설계.md": "티맵모빌리티 TMAP API로 수집하였다.",
+    })
+    assert len(문제) == 1 and "김영일 2022" in 문제[0], 문제
+
+
+def test_이름을_적지_않은_자료_출처를_잡는다(checker, tmp_path):
+    """🔴 회귀 — 본문이 '상용 경로 안내 API'라고만 적으면 참고문헌이 떠 있게 된다."""
+    문제 = _인용_문제(checker, tmp_path, _참고문헌, {
+        "2장_관련연구.md": "Raviv 외(2013)를 보라. 7인 1개 조이다(김영일, 2022).",
+        "4장_시스템설계.md": "| 도로 이동시간 | 상용 경로 안내 API | 100구간 |",
+    })
+    assert len(문제) == 1 and "티맵모빌리티" in 문제[0], 문제
+
+
+def test_저자와_연도가_줄바꿈으로_갈려도_통과한다(checker, tmp_path):
+    """🔴 오탐 회귀 — 줄 단위로 읽으면 멀쩡한 인용 스무 건을 짝이 없다고 물었다."""
+    문제 = _인용_문제(checker, tmp_path, _참고문헌, {
+        "2장_관련연구.md": "두 가지 정식화를 제시한 것은 Raviv\n외(2013)이다.",
+        "8장_한계와_향후과제.md": "7인 1개 조로 운영된다(김영일,\n2022).",
+        "4장_시스템설계.md": "티맵모빌리티 TMAP API로 수집하였다.",
+    })
+    assert 문제 == [], 문제

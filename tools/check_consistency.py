@@ -912,6 +912,113 @@ def check_figures() -> list[str]:
     return problems
 
 
+# 참고문헌과 본문 인용을 맞춰 보는 검사가 쓰는 것.
+REFERENCES = "docs/연구/논문/참고문헌.md"
+# 본문이 인용하지 않아도 되는 참고문헌 항목("성 연도" 또는 기관 이름).
+# **비어 있는 것이 정상이고**, 넣을 때는 값에 그 까닭을 적는다.
+CITATION_EXEMPT: dict[str, str] = {}
+
+_NAME = r"[가-힣A-Za-z'’]+"
+_JOIN = r"\s*(?:외|과|와|·|,)\s*"
+
+
+def _ref_entries(text: str) -> list[tuple[str, str, str]]:
+    """참고문헌 문단을 (저자 앞머리, 연도, 전문)으로 가른다.
+
+    연도가 없는 문단은 URL만 적은 **자료 출처**다(기상청·공공데이터포털 등).
+    그쪽은 저자-연도로 인용되지 않으므로 기관 이름이 본문에 나오는지만 본다.
+    """
+    out: list[tuple[str, str, str]] = []
+    for para in re.split(r"\n\s*\n", text):
+        one = " ".join(para.split())
+        if not one or one.startswith("#"):
+            continue
+        m = re.search(r"\((\d{4})", one)
+        if m:
+            out.append((one[:m.start()].strip(), m.group(1), one))
+        else:
+            out.append((one.split(".")[0].strip(), "", one))
+    return out
+
+
+def _surnames(authors: str) -> list[str]:
+    """앞머리에서 성만 뽑는다. 영문 이니셜(`C.`·`L.-M.`)은 성이 아니므로 버린다."""
+    out = []
+    for a in re.split(r"\s*[,·&]\s*|\s+외\s*|\s+and\s+", authors):
+        a = a.strip()
+        if a and not re.fullmatch(r"[A-Z]\.(?:\s*[A-Z-]+\.)*", a):
+            out.append(a)
+    return out
+
+
+def check_citations() -> list[str]:
+    """본문 인용과 참고문헌이 **서로를 가리키는지** 본다 (1.26.260).
+
+    🔴 실제로 났다. 참고문헌은 도로 이동시간의 출처로 *티맵모빌리티 TMAP API*를
+    싣고 있었는데, 원고 본문은 <표 4-1>을 포함해 어디서도 그 이름을 적지 않고
+    *"상용 경로 안내 API"* 라고만 했다. 같은 표의 다른 행은 출처를 이름으로
+    적으므로 **그 항목만 아무 데도 닿지 않는 참고문헌**이었다.
+
+    ⚠️ **줄 단위로 읽으면 안 된다.** `Ghosh\n외(2017)`처럼 저자와 연도가 줄바꿈으로
+    갈리므로, 이 검사를 처음 돌렸을 때 멀쩡한 인용 스무 건을 짝이 없다고 물었다.
+    문서를 한 줄로 이어 붙인 뒤에 본다.
+    """
+    problems: list[str] = []
+    man, ref_path = ROOT / MANUSCRIPT_DIR, ROOT / REFERENCES
+    if not man.exists() or not ref_path.exists():
+        return problems
+
+    entries = _ref_entries(ref_path.read_text(encoding="utf-8"))
+    index: dict[tuple[str, str], str] = {}
+    for authors, year, full in entries:
+        for s in _surnames(authors) if year else []:
+            index.setdefault((s, year), full)
+
+    skip = _NOT_BODY | {Path(REFERENCES).name}
+    body = {f.name: " ".join(f.read_text(encoding="utf-8").split())
+            for f in sorted(man.glob("*.md")) if f.name not in skip}
+
+    # 서술형 `저자 외(2017)`와 괄호형 `(김영일, 2022)` 두 갈래를 다 본다.
+    narrative = re.compile(rf"({_NAME}(?:{_JOIN}{_NAME})*)(?:\s*외)?\s*\((\d{{4}})\)")
+    parens = re.compile(rf"\(({_NAME}(?:{_JOIN}{_NAME})*)(?:\s*외)?,\s*(\d{{4}})\)")
+
+    cited: set[str] = set()
+    unknown: set[tuple[str, str]] = set()
+    for name, s in body.items():
+        for pat in (narrative, parens):
+            for m in pat.finditer(s):
+                year = m.group(2)
+                toks = [x for x in re.split(_JOIN, m.group(1)) if x]
+                hit = next((x for x in toks if (x, year) in index), None)
+                if hit:
+                    cited.add(index[(hit, year)])
+                elif toks:
+                    unknown.add((name, f"{toks[-1]}({year})"))
+
+    for name, txt in sorted(unknown):
+        problems.append(f"[인용] {MANUSCRIPT_DIR}/{name} — 본문이 {txt}을 인용하는데 "
+                        f"**참고문헌에 그 항목이 없습니다**")
+
+    for authors, year, full in entries:
+        label = f"{(_surnames(authors) or [authors])[0]} {year}".strip()
+        if full in cited or label in CITATION_EXEMPT or authors in CITATION_EXEMPT:
+            continue
+        if not year:
+            if authors and any(authors in s for s in body.values()):
+                continue
+            problems.append(
+                f"[인용] 자료 출처 '{authors}'를 참고문헌이 싣는데 **원고 본문이 "
+                f"한 번도 이름을 적지 않습니다** — 쓰지 않으면 참고문헌에서 빼십시오")
+            continue
+        if not any((s, year) in index and index[(s, year)] is full
+                   for s in _surnames(authors)):
+            continue
+        problems.append(
+            f"[인용] 참고문헌 '{label}'을 **본문이 한 번도 인용하지 않습니다** — "
+            f"인용하지 않을 것이면 CITATION_EXEMPT에 까닭과 함께 적으십시오")
+    return problems
+
+
 CHECKS = {
     "값": check_values,
     "링크": check_links,
@@ -922,6 +1029,7 @@ CHECKS = {
     "파생": check_derived,
     "규약": check_stale_claims,
     "그림": check_figures,
+    "인용": check_citations,
 }
 
 
