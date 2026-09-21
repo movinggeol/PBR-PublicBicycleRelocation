@@ -586,6 +586,12 @@ def check_thesis() -> list[str]:
 DERIVED_DOCS = {
     "docs/연구/초안/9장_결론.md": "docs/연구/초안/6장_실험_성능평가.md",
     "docs/연구/초안/초록.md": "docs/연구/초안/6장_실험_성능평가.md",
+    # 🔴 1.26.259까지 **초안만** 보고 있었다. 정작 심사에 내는 정본(논문 폴더)은
+    #    검사 밖이라, 9장이 6장에 없는 12개월 평균 대수를 인용해도 통과했다.
+    #    정본의 결론·초록은 6장만이 아니라 **본문 전체**를 압축하므로 원본도
+    #    장 파일 전부로 둔다("CHAPTERS").
+    "docs/연구/논문/9장_결론.md": "CHAPTERS",
+    "docs/연구/논문/초록.md": "CHAPTERS",
 }
 # 장 번호(6.3)·연도(2026)·표본 크기처럼 **압축한 글이 당연히 새로 쓰는** 수는 뺀다.
 _DERIVED_SKIP = re.compile(r"^(?:\d{1,2}|\d{4}|\d\.\d|\d\.\d\.\d)$")
@@ -596,19 +602,32 @@ def check_derived() -> list[str]:
     problems: list[str] = []
     num = re.compile(r"\d+(?:\.\d+)?")
     for doc, src in DERIVED_DOCS.items():
-        dp, sp = ROOT / doc, ROOT / src
-        if not (dp.exists() and sp.exists()):
+        dp = ROOT / doc
+        if not dp.exists():
             continue
-        source = sp.read_text(encoding="utf-8")
+        if src == "CHAPTERS":      # 정본의 결론·초록은 본문 전체를 압축한다
+            sources = [f for f in sorted((ROOT / MANUSCRIPT_DIR).glob("*장_*.md"))
+                       if f != dp]
+        else:
+            sources = [ROOT / src]
+        sources = [f for f in sources if f.exists()]
+        if not sources:
+            continue
+        source = chr(10).join(f.read_text(encoding="utf-8") for f in sources)
         for lineno, line in enumerate(dp.read_text(encoding="utf-8").splitlines(), 1):
             if line.lstrip().startswith((">", "|")) or "](" in line:
                 continue          # 머리말·표·링크는 원본을 가리키는 글이다
             for m in num.finditer(line):
                 v = m.group(0)
-                if _DERIVED_SKIP.match(v) or v in source:
+                # 🔴 **부분 문자열로 찾으면 못 잡는다** (1.26.259). 9장의
+                #    *"251대"* 가 <표 5-7>의 **251.4** 안에서 발견돼 통과했다.
+                #    숫자의 앞뒤 경계를 함께 본다.
+                if _DERIVED_SKIP.match(v) or re.search(
+                        r"(?<![\d.])" + re.escape(v) + r"(?![\d.])", source):
                     continue
+                where = "본문 장" if src == "CHAPTERS" else Path(src).name
                 problems.append(
-                    f"[파생 문서] {doc}:{lineno} — '{v}'이(가) 원본({Path(src).name})에 "
+                    f"[파생 문서] {doc}:{lineno} — '{v}'이(가) 원본({where})에 "
                     f"없습니다. 반올림했거나 새로 만든 수치입니다\n"
                     f"      {line.strip()[:110]}"
                 )

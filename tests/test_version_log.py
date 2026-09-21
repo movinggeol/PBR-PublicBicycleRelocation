@@ -486,3 +486,48 @@ def test_표_번호로_시작하는_본문_문장을_캡션으로_읽지_않는�
 | <표 6-1> | 비교한 다섯 가지 방법 |
 """
     assert _그림_문제(checker, tmp_path, 장, 앞붙이, []) == []
+
+
+# ──────────────────────────────────── 파생 검사 — 정본까지 보고, 경계를 문다 (1.26.259)
+
+def _파생_문제(checker, tmp_path, 파생, 원본들):
+    """가짜 논문 폴더를 만들고 정본 결론/초록 검사를 돌린다."""
+    원고 = tmp_path / "docs" / "연구" / "논문"
+    원고.mkdir(parents=True)
+    (원고 / "9장_결론.md").write_text(파생, encoding="utf-8")
+    for 이름, 내용 in 원본들.items():
+        (원고 / 이름).write_text(내용, encoding="utf-8")
+    원래_root, 원래_docs = checker.ROOT, checker.DERIVED_DOCS
+    checker.ROOT = tmp_path
+    checker.DERIVED_DOCS = {"docs/연구/논문/9장_결론.md": "CHAPTERS"}
+    try:
+        return checker.check_derived()
+    finally:
+        checker.ROOT, checker.DERIVED_DOCS = 원래_root, 원래_docs
+
+
+def test_정본_결론은_본문_장_전체를_원본으로_본다(checker, tmp_path):
+    """결론은 6장만이 아니라 1~8장을 압축한다 — 5장에서 온 값도 통과해야 한다."""
+    문제 = _파생_문제(
+        checker, tmp_path,
+        "안전계수는 1.99로 정하였고 결품은 0.18~0.28시간 낮다.",
+        {"5장_파라미터결정.md": "안전계수 1.99를 고른 근거는 커버리지다.",
+         "6장_성능평가.md": "그리디 대비 0.18~0.28시간 낮다."})
+    assert 문제 == [], 문제
+
+
+def test_원본에_없는_수치는_정본에서도_잡는다(checker, tmp_path):
+    문제 = _파생_문제(
+        checker, tmp_path,
+        "그리디는 회차당 251대를 옮긴다.",
+        {"6장_성능평가.md": "옮긴 대수는 표에 있다."})
+    assert len(문제) == 1 and "251" in 문제[0], 문제
+
+
+def test_부분_문자열로_통과시키지_않는다(checker, tmp_path):
+    """🔴 실제로 났다 — 9장의 '251대'가 <표 5-7>의 **251.4** 안에서 발견돼 통과했다."""
+    문제 = _파생_문제(
+        checker, tmp_path,
+        "그리디는 회차당 251대를 옮긴다.",
+        {"5장_파라미터결정.md": "| 2.33 | 84.0 | 251.4 | 429.3 |"})
+    assert len(문제) == 1 and "251" in 문제[0], 문제
