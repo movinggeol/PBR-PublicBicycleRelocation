@@ -138,6 +138,52 @@ def test_force는_휴일에도_수집한다(history_dir, fake_api):
     assert len(fake_api) == 1
 
 
+# ---- 채운 격자 지키기 (놓친 틱 따라잡기, 1.26.269) ----
+
+def test_이미_채운_격자는_API를_다시_부르지_않는다(history_dir, fake_api):
+    """스케줄러가 놓친 틱을 뒤늦게 따라잡아도 정시 값은 그대로 둔다."""
+    stamp = WEEKDAY.replace(hour=10, minute=0, second=3)
+    assert collector.run_tick(stamp, *WINDOW, INTERVAL) == 0
+    assert len(fake_api) == 1
+
+    late = WEEKDAY.replace(hour=10, minute=4)      # 같은 10:00 슬롯으로 반올림된다
+    assert collector.run_tick(late, *WINDOW, INTERVAL) == 0
+    assert len(fake_api) == 1                      # 건너뛰기는 실패가 아니다
+
+
+def test_늦게_든_틱은_정시_값을_갈아_끼우지_않는다(history_dir, monkeypatch):
+    """StartWhenAvailable을 켠 뒤로 이 가드가 격자 정렬을 지킨다."""
+    stocks = [(3, 0, 12)]
+    monkeypatch.setattr(collector.tashu, "fetch_stations",
+                        lambda: sample_frame(stocks[0]))
+
+    collector.run_tick(WEEKDAY.replace(hour=10, minute=0, second=3),
+                       *WINDOW, INTERVAL)
+    stocks[0] = (9, 9, 9)
+    collector.run_tick(WEEKDAY.replace(hour=10, minute=4), *WINDOW, INTERVAL)
+
+    with db.session() as conn:
+        frame = db.load_stock_history(conn)
+    assert int(frame.loc[frame["station_id"] == "ST0001", "stock"].iloc[0]) == 3
+
+
+def test_force는_채운_격자도_다시_받는다(history_dir, fake_api):
+    """손으로 고쳐 받는 길은 남겨 둔다 — 실패한 틱을 메울 때 쓴다."""
+    stamp = WEEKDAY.replace(hour=10, minute=0, second=3)
+    assert collector.run_tick(stamp, *WINDOW, INTERVAL) == 0
+    assert collector.run_tick(stamp, *WINDOW, INTERVAL, force=True) == 0
+    assert len(fake_api) == 2
+
+
+def test_빈_격자는_묻기만_하고_막지_않는다(history_dir, fake_api):
+    """가드가 지나치면 첫 틱까지 막힌다 — 비어 있으면 그대로 수집한다."""
+    with db.session() as conn:
+        assert db.has_stock_tick(conn, "2026-08-24 10:00") is False
+    assert collector.run_tick(WEEKDAY.replace(hour=10), *WINDOW, INTERVAL) == 0
+    with db.session() as conn:
+        assert db.has_stock_tick(conn, "2026-08-24 10:00") is True
+
+
 # ---- 휴일 수집 (두 번째 PC 구성, docs/구현/COLLECTOR.md 11장) ----
 
 def test_휴일_포함이면_휴일에도_수집한다(history_dir, fake_api):

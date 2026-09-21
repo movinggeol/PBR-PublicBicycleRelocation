@@ -5,7 +5,7 @@
 .DESCRIPTION
     Windows 작업 스케줄러 등록을 동사 하나로 감싼다. schtasks.exe 대신
     Register-ScheduledTask를 쓰는 이유는 아래 설정 절반이 schtasks 플래그로
-    표현되지 않기 때문이다(동시 실행 억제, 실행 시간 제한, 놓친 작업 따라잡기 끄기).
+    표현되지 않기 때문이다(동시 실행 억제, 실행 시간 제한, 놓친 작업 따라잡기).
 
     실행 파일로 pythonw.exe를 쓴다 — python.exe로 걸면 10분마다(24시간 창이면
     하루 144번) 콘솔 창이 깜빡인다.
@@ -235,11 +235,20 @@ function Invoke-Install {
         -RepetitionDuration $span.Duration
     $trigger.Repetition = $repeat.Repetition
 
-    # StartWhenAvailable은 켜지 않는다: 놓친 틱을 뒤늦게 실행하면 이미 값이 있는
-    # 격자 슬롯을 낡은 값으로 덮어쓴다. 10분 뒤 다음 틱이 오므로 따라잡을 이유가 없다.
+    # 🔴 StartWhenAvailable을 **켠다**(1.26.269). 끄고 두었더니 놓친 틱을 거부만
+    # 하고 끝나서 2026-09-21 집 PC의 하루가 통째로 비었다 — 운영 로그에 매 틱
+    # ID 153('예약 시각을 놓쳐 실행하지 않았다')이 찍히고 결과는 0x800710E0이었다.
+    # 반복 격자가 절전에서 깨어난 시각으로 재고정돼 :00에서 몇 분씩 밀리는데,
+    # 밀린 틱은 스케줄러 눈에 전부 '놓친 틱'이라 이 스위치가 꺼져 있으면 하나도
+    # 들어오지 않는다. 같은 계정·같은 토큰으로 도는 PBR도로시간수집은 이 스위치가
+    # 켜져 있어 멀쩡했다 — 로그온 방식 문제가 아니었다.
+    # 뒤늦게 도는 틱이 정시 값을 덮어쓰는 문제(원래 이 스위치를 끈 이유)는 수집기
+    # 쪽에서 막는다: collect_stock.run_tick이 이미 채운 격자 슬롯이면 API를 부르지도
+    # 않는다. 따라잡기를 허용하되 격자는 지키는 쪽이 하루를 통째로 잃는 것보다 낫다.
     $settings = New-ScheduledTaskSettingsSet `
         -MultipleInstances IgnoreNew `
         -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
+        -StartWhenAvailable `
         -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 
     $register = @{
