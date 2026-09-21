@@ -112,6 +112,10 @@ def registered_args() -> Optional[dict]:
         found["window"] = m.group(1)
     if (m := re.search(r"--interval\s+(\d+)", text)):
         found["interval"] = int(m.group(1))
+    # 요일 범위도 되읽는다 — `/collect`가 멈춤 판정 기준(매일 2일 · 평일만
+    # 4일)을 고르는 데 쓴다(1.26.262).
+    found["include_holidays"] = ("--include-holidays" in text
+                                 or "--holidays-only" in text)
     return found or None
 
 

@@ -120,6 +120,55 @@ def test_per_round_over_fleet_is_rejected(client, monkeypatch):
     assert "보유 차량 대수" in res.text
 
 
+@pytest.mark.parametrize("label", [
+    "2026-09-21 14:00",     # ':' → NTFS 대체 스트림, 0바이트 파일이 조용히 남는다
+    "2026/09/21",           # '/' → 폴더로 읽혀 저장에서 OSError
+    "../탈출",              # 경로 위로 나간다
+    "이름\t탭",             # 제어 문자
+    "가" * 81,              # 너무 길다
+])
+def test_파일명이_될_수_없는_실행_이름은_폼에서_거른다(client, monkeypatch, label):
+    """실행 이름은 모든 단계의 파일명에 박힌다 (1.26.262).
+
+    검사가 없어서 `2026-09-21 14:00`을 적으면 API 수집을 다 마친 뒤
+    `후보_05_10 (2026-09-21 14`라는 0바이트 파일이 생기고 다음 단계가
+    `.csv`를 못 찾았다 — 로그를 읽어야만 원인을 알 수 있는 실패다.
+    """
+    _reject_start(monkeypatch)
+    res = client.post("/runs", data={"now": label}, follow_redirects=False)
+
+    assert res.status_code == 400
+    assert "실행 이름" in res.text
+
+
+def test_보통의_실행_이름은_통과한다(client, monkeypatch):
+    """공백·하이픈·한글·괄호는 실제로 써 온 이름이다 — 막으면 안 된다."""
+    captured = _capture_start(monkeypatch)
+    for label in ["2026-09-21 14", "260813 휴일", "obs-cmp-1520", "실측(재)"]:
+        res = client.post("/runs", data={"now": label}, follow_redirects=False)
+        assert res.status_code == 303, f"{label!r}가 거절됐다: {res.text[:200]}"
+        args = captured[-1]
+        assert args[args.index("--now") + 1] == label
+
+
+def test_잘못된_쿼리값도_사람에게는_화면으로_답한다(client):
+    """`/vehicles?page=abc`가 날 JSON을 띄우고 있었다 (1.26.262).
+
+    1.26.107이 404·400을 화면으로 돌렸는데 형 검증 오류(422)는 빠져 있었다.
+    규칙은 같다 — 브라우저 주소창(text/html)은 화면, fetch·API는 JSON.
+    """
+    page = client.get("/vehicles?page=abc", headers={"accept": "text/html,*/*"})
+    assert page.status_code == 422
+    assert page.headers["content-type"].startswith("text/html")
+    assert "page" in page.text and "읽지 못했습니다" in page.text
+    assert '"int_parsing"' not in page.text, "날 JSON이 화면에 그대로 찍힌다"
+
+    api = client.get("/api/weather?refresh=x", headers={"accept": "*/*"})
+    assert api.status_code == 422
+    assert api.headers["content-type"].startswith("application/json")
+    assert api.json()["detail"][0]["loc"] == ["query", "refresh"]
+
+
 @pytest.mark.parametrize("path", ["/", "/data", "/maps", "/kpi", "/vehicles"])
 def test_data_tables_are_sortable(client, path):
     """표가 있는 화면은 열 정렬을 켠다.
@@ -450,6 +499,76 @@ def test_끝난_실행의_사라진_로그를_아직이라고_말하지_않는�
     끝난_문구 = jobs.read_log_tail(끝난것)
     assert "아직" not in 끝난_문구, f"끝난 실행에 '아직'이라고 말한다: {끝난_문구}"
     assert "정리" in 끝난_문구, "왜 없는지 밝혀야 한다"
+
+
+def test_돌고_있는_작업은_지금까지_걸린_시간을_말한다():
+    """예상만 적고 *지금 몇 분째인지*는 없었다 (1.26.262). 둘이 나란히 있어야 예상이 맞는지 보인다."""
+    import time as _time
+
+    running = jobs.Job(id="a", status="running", started_at="2026-09-21 10:00:00")
+    now = _time.mktime(_time.strptime("2026-09-21 10:02:30", "%Y-%m-%d %H:%M:%S"))
+    assert jobs.elapsed_seconds(running, now=now) == 150.0
+
+    # 끝났는데 종료 시각이 없는(추적 끊김) 작업은 모른다 — 지금까지로 지어내지 않는다.
+    lost = jobs.Job(id="b", status="interrupted", started_at="2026-09-21 10:00:00")
+    assert jobs.elapsed_seconds(lost, now=now) is None
+    done = jobs.Job(id="c", status="success", started_at="2026-09-21 10:00:00",
+                    finished_at="2026-09-21 10:01:00")
+    assert jobs.elapsed_seconds(done, now=now) == 60.0
+
+
+def test_예상_계수는_이력이_바뀔_때만_다시_센다(tmp_path, monkeypatch):
+    """화면 하나가 이 함수를 두세 번 부르고 한 번마다 로그 3개를 읽었다 (1.26.262).
+
+    열쇠는 이력의 (id, 상태) 목록이다 — 작업이 끝나면 상태가 바뀌어 저절로
+    다시 센다. 시각으로 만료시키면 끝난 직후 몇 분간 옛 계수를 보여 준다.
+    """
+    def job(job_id, status, 군집초):
+        j = jobs.Job(id=job_id, status=status, args=["--duration", "_05_10"],
+                     started_at="2026-08-24 10:00:00", finished_at="2026-08-24 10:02:00")
+        (tmp_path / f"run_{job_id}.log").write_text(_가짜_로그({
+            "step0_collect\\raw_to_net.py": 5.0,
+            "step1_cluster\\top_st_clustering.py": 군집초,
+        }), encoding="utf-8")
+        return j
+
+    monkeypatch.setattr(jobs, "LOG_DIR", tmp_path)
+    jobs.reset_estimate_cache()
+    history = [job("1", "success", 40.0)]
+    monkeypatch.setattr(jobs, "list_jobs", lambda: history)
+    first = jobs.estimate_model()
+    assert first["시간대당"] == 40.0
+    assert jobs.estimate_model() is first, "같은 이력인데 다시 셌다(같은 객체가 아니다)"
+
+    # 새 작업이 끝나면 열쇠가 어긋나 다시 센다.
+    history.insert(0, job("2", "success", 20.0))
+    assert jobs.estimate_model()["시간대당"] == 30.0, "이력이 바뀌었는데 옛 계수를 냈다"
+
+
+def test_작업이_끝나면_화면_캐시를_비운다(tmp_path, monkeypatch):
+    """서버를 띄운 채 새 달을 계산해도 /kpi 히트맵이 옛 그림을 냈다 (1.26.262).
+
+    `kpi_view._heatmap_cache`는 서버 재시작을 전제로 영영 살았는데, 웹 실행
+    폼으로 돌리면 서버는 그대로다. `jobs`의 완료 훅이 비운다 — app.py가 등록한다.
+    """
+    import webapp.app  # noqa: F401  — 훅 등록은 여기서 일어난다
+    from webapp import kpi_view
+
+    kpi_view._heatmap_cache["25년 11월"] = {"rows": ["월"]}
+
+    class 끝난프로세스:
+        @staticmethod
+        def wait():
+            return 0
+
+    monkeypatch.setattr(jobs, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(jobs, "_save_registry", lambda: None)
+    job = jobs.Job(id="hook-test", status="running", started_at="2026-09-21 10:00:00")
+    with (tmp_path / "x.log").open("w") as log_file:
+        jobs._watch(job, 끝난프로세스(), log_file)
+
+    assert job.status == "success"
+    assert kpi_view._heatmap_cache == {}, "작업이 끝났는데 히트맵 캐시가 남아 있다"
 
 
 def test_이력에서_잘린_실행의_로그도_함께_지운다(tmp_path, monkeypatch):
@@ -836,6 +955,31 @@ def test_home_marks_experiment_runs(client, monkeypatch):
     assert last["vehicles"] == 16, "차량을 회차별로 더했다 — 보유 대수를 넘는다"
 
 
+def test_첫_화면은_NULL_지표에_죽지_않는다(client, monkeypatch):
+    """`int(nan)`은 ValueError라 첫 화면이 통째로 500이 됐다 (1.26.262).
+
+    지표는 계산 못 하면 NULL로 남는다(db.KPI_FIELDS). /kpi는 결측을 먼저
+    거르는데(`whole` 매크로) 첫 화면의 요약만 `int(_max(...))`로 바로 넣었다.
+    `round(nan)`은 죽지는 않지만 "nan분"으로 찍힌다 — 둘 다 "—"여야 한다.
+    """
+    import pandas as pd
+    from webapp import store
+
+    fake = pd.DataFrame([{
+        "run_label": "2026-09-21 09", "duration": "_05_10",
+        "computed_at": "2026-09-21 09:12:14", "bikes_moved": 100,
+        "vehicles_used": None, "total_distance_km": 200.0,
+        "stockout_hours_before": 2.0, "stockout_hours_after": 1.0,
+        "max_cluster_minutes": None, "time_budget_minutes": None,
+    }])
+    monkeypatch.setattr(store, "kpi", lambda *a, **k: fake)
+
+    res = client.get("/")
+    assert res.status_code == 200
+    assert "nan" not in res.text.lower().replace("nan(", ""), "결측이 'nan'으로 찍힌다"
+    assert "출동 대수 기록 없음" in res.text
+
+
 # ── 작업지시서 조치 제안 — 수정안 39 ──────────────────────────────────
 
 def test_blocked_rows_get_an_action():
@@ -843,20 +987,26 @@ def test_blocked_rows_get_an_action():
 
     같은 군집 안에서만 대안을 찾는다 — 차량 1대가 군집 1개를 맡으므로
     군집을 벗어나면 그 회차에 갈 수 없는 곳이다(docs/구현/FLEET.md).
+
+    ⚠️ 행은 `compare_stock()`이 실제로 만드는 모양이어야 한다 (1.26.262).
+    예전 이 시험은 `possible: 12, need: 5`를 손으로 적었는데, `possible`은
+    `min(need, 지금 재고)`라 **지시량을 넘을 수 없다** — 계산이 만들 수 없는
+    상태로 통과시켜, 여유 안내가 한 번도 안 나오는 결함을 못 잡았다.
     """
     from webapp.orders import _suggest_actions
 
     rows = [
-        {"station_name": "가", "cluster": 1, "action": "pick",
-         "need": 10, "possible": 0, "status": "불가"},
-        {"station_name": "나", "cluster": 1, "action": "pick",
-         "need": 5, "possible": 12, "status": "가능"},
-        {"station_name": "다", "cluster": 2, "action": "drop",
-         "need": 8, "possible": 2, "status": "넘침"},
+        {"station_name": "가", "cluster": 1, "action": "pick", "parking_lot": 20,
+         "need": 10, "live_stock": 0, "possible": 0, "status": "불가"},
+        {"station_name": "나", "cluster": 1, "action": "pick", "parking_lot": 20,
+         "need": 5, "live_stock": 12, "possible": 5, "status": "가능"},
+        {"station_name": "다", "cluster": 2, "action": "drop", "parking_lot": 10,
+         "need": 8, "live_stock": 10, "possible": 2, "status": "넘침"},
     ]
     _suggest_actions(rows)
 
     assert "나" in rows[0]["advice"], "같은 군집의 여유 대여소를 짚어야 한다"
+    assert "여유 7대" in rows[0]["advice"], "여유는 지금 재고 − 지시량이다"
     assert rows[1]["advice"] == "", "'가능'한 행에는 조치가 붙지 않는다"
     # 같은 군집에 대안이 없으면 대안 없이 무엇을 할지 알려 준다
     assert rows[2]["advice"], "'넘침'인데 조치가 비어 있다"
@@ -868,14 +1018,56 @@ def test_advice_does_not_cross_clusters():
     from webapp.orders import _suggest_actions
 
     rows = [
-        {"station_name": "가", "cluster": 1, "action": "pick",
-         "need": 10, "possible": 0, "status": "불가"},
-        {"station_name": "먼곳", "cluster": 9, "action": "pick",
-         "need": 1, "possible": 50, "status": "가능"},
+        {"station_name": "가", "cluster": 1, "action": "pick", "parking_lot": 20,
+         "need": 10, "live_stock": 0, "possible": 0, "status": "불가"},
+        {"station_name": "먼곳", "cluster": 9, "action": "pick", "parking_lot": 20,
+         "need": 1, "live_stock": 50, "possible": 1, "status": "가능"},
     ]
     _suggest_actions(rows)
 
     assert "먼곳" not in rows[0]["advice"], "다른 군집을 대안으로 내놨다"
+
+
+def test_여유_안내는_지시량이_아니라_지금_재고에서_나온다():
+    """`possible`로 여유를 재면 안내가 **한 번도 안 나온다** (1.26.262).
+
+    `possible = min(need, 지금)`이라 지시량을 넘을 수 없는데, 예전 코드는
+    `possible > need`인 이웃을 찾았다 — 참이 될 수 없는 조건이었다. 이웃에
+    12대가 있어도 늘 *"같은 군집에 여유가 없으니"* 로 떨어졌다. 여기서는
+    손으로 행을 만들지 않고 **`compare_stock()`을 끝까지 거친다.**
+    """
+    import pandas as pd
+    from project_config import TARGET_QTY_UPPER_RATIO
+    from webapp import orders
+
+    ceiling = int(20 * TARGET_QTY_UPPER_RATIO)     # 거치대 20대의 내리기 상한
+    planned = pd.DataFrame([
+        {"station_id": "A", "station_name": "A소", "cluster": 1, "seq": 1,
+         "parking_lot": 20, "stock": 5, "need": 5, "action": "pick"},
+        {"station_id": "B", "station_name": "B소", "cluster": 1, "seq": 2,
+         "parking_lot": 20, "stock": 10, "need": 3, "action": "pick"},
+        {"station_id": "C", "station_name": "C소", "cluster": 1, "seq": 3,
+         "parking_lot": 20, "stock": 2, "need": 8, "action": "drop"},
+        {"station_id": "D", "station_name": "D소", "cluster": 1, "seq": 4,
+         "parking_lot": 20, "stock": 0, "need": 3, "action": "drop"},
+        {"station_id": "E", "station_name": "E소", "cluster": 1, "seq": 5,
+         "parking_lot": 20, "stock": 9, "need": 2, "action": "pick"},
+    ])
+    live = pd.DataFrame([
+        ("A", 2),      # 5대 지시, 2대뿐 → 부족 3대
+        ("B", 12),     # 3대 지시, 12대 → 여유 9대
+        ("C", ceiling - 2),   # 8대 지시, 자리 2대 → 넘침
+        ("D", 0),             # 3대 지시, 자리 ceiling → 여유 ceiling − 3
+        # E는 API에 없다 → 확인 불가. 여유를 모르는 곳은 대안이 될 수 없다.
+    ], columns=["station_id", "stock"])
+
+    by_id = orders.compare_stock(planned, live).set_index("station_id")
+    assert "B소에서 3대 더 실어" in by_id.loc["A", "advice"], \
+        "이웃에 여유가 있는데 '여유가 없다'고 한다 — 예전의 그 결함"
+    assert "여유 9대" in by_id.loc["A", "advice"]
+    assert "D소에 6대 더 내려놓으세요" in by_id.loc["C", "advice"]
+    assert f"여유 {ceiling - 3}대" in by_id.loc["C", "advice"]
+    assert "E소" not in by_id.loc["A", "advice"], "재고를 못 읽은 곳을 여유라고 짚었다"
 
 
 # ── 순수요 기간 기본값 — 수정안 34 ────────────────────────────────────
@@ -2032,8 +2224,10 @@ def test_문턱을_넘은_타일_값에_색_규칙이_있다():
     `.delta.bad`만 있고 `.value.bad`가 **없었다** — 122.8분(예산 120분)이
     평범한 검은 글씨로 떴다(1.26.107). 클래스를 붙이는 쪽과 칠하는 쪽이
     갈리면 화면은 경고했다고 믿으면서 아무것도 안 한다."""
-    assert 'class="value {% if last.max_minutes > last.budget %}bad{% endif %}"' \
-        in _css("home.html"), "홈이 초과 표시를 안 붙인다"
+    home = _css("home.html")
+    # 결측이면 비교하지 않는다(1.26.262) — 판정은 `over`에 모아 두고 그것을 붙인다.
+    assert "last.max_minutes is not none and last.max_minutes > last.budget" in home
+    assert 'class="value {% if over %}bad{% endif %}"' in home, "홈이 초과 표시를 안 붙인다"
     assert ".tile .value.bad" in _css(), "초과 타일 값을 칠하는 규칙이 없다"
 
 
@@ -2546,12 +2740,43 @@ def test_오래_멈췄으면_화면이_먼저_말한다(client, monkeypatch):
     assert "resume" in body, "다시 켜는 방법을 안 알려 준다"
 
 
-def test_주말_이틀은_멈춘_것으로_보지_않는다():
-    """수집은 평일만 돈다 — 하루로 두면 **월요일 아침마다 거짓 경보**가 뜬다."""
+def test_멈춤_판정_기준은_등록된_요일_범위를_따른다():
+    """매일 도는 수집은 어제가 비면 멈춘 것이고, 평일만 도는 수집은 주말을 넘겨야 한다 (1.26.262).
+
+    예전에는 3일 하나였고 "평일만 돈다"가 전제였다 — 2026-09-03부터 두 PC
+    모두 매일 도는데, 그 기준이면 금요일 밤에 멈춰도 월요일까지 아무 말이
+    없다. 거꾸로 평일만 돌 때 3일은 금→월이라 **월요일 아침마다** 거짓 경보였다.
+    """
     from webapp import collect_view
 
-    assert collect_view._stalled_note("2026-09-04", today="2026-09-07")["days"] == 3
-    assert collect_view._stalled_note("2026-09-06", today="2026-09-07")["stalled"] is False
+    note = collect_view._stalled_note      # (마지막 관측일, today=, daily=)
+    # 매일 — 어제(9/6 토)가 통째로 비면 멈춘 것이다.
+    assert note("2026-09-06", today="2026-09-07", daily=True)["stalled"] is False
+    assert note("2026-09-05", today="2026-09-07", daily=True)["stalled"] is True
+    # 평일만 — 금(9/4)→월(9/7)은 정상, 화(9/8)까지 비면 멈춘 것이다.
+    assert note("2026-09-04", today="2026-09-07", daily=False)["days"] == 3
+    assert note("2026-09-04", today="2026-09-07", daily=False)["stalled"] is False
+    assert note("2026-09-04", today="2026-09-08", daily=False)["stalled"] is True
+    # 화면이 기준을 밝힐 수 있게 함께 돌려준다.
+    assert note("2026-09-06", today="2026-09-07", daily=True)["limit"] == 2
+
+
+def test_등록을_못_읽으면_매일로_본다(monkeypatch):
+    """기본 등록 명령이 `-IncludeHolidays`다. 틀려도 경보가 하루 이를 뿐 놓치지는 않는다."""
+    from webapp import collect_view
+
+    class 도구:
+        DEFAULT_WINDOW = "09:00-17:00"; DEFAULT_INTERVAL = 10; TASK_NAME = "PBR재고수집"
+        @staticmethod
+        def registered_args():
+            return None
+
+    monkeypatch.setattr(collect_view, "_tool", lambda: 도구)
+    assert collect_view._window()[3] is True
+
+    도구.registered_args = staticmethod(
+        lambda: {"window": "07:00-23:00", "interval": 10, "include_holidays": False})
+    assert collect_view._window()[3] is False
 
 
 def test_멈췄는지_판정할_수_없으면_모른다고_한다():

@@ -101,7 +101,7 @@
          모르고, 틀린 채로 남는다 — 다음 예상이 이 기록에서 나오기 때문에
          어긋남이 눈에 보여야 한다(1.26.214). #}
       <tr><th scope="row">걸린 시간</th><td>
-        {%- if elapsed_minutes is not none %}{{ elapsed_minutes }}분
+        {%- if elapsed_minutes is not none %}{{ elapsed_minutes }}분{% if job.is_running %} 경과{% endif %}
           {%- if estimate_minutes is not none %} <span class="muted">(예상 {{ estimate_minutes }}분)</span>{% endif %}
         {%- elif estimate_minutes is not none %}<span class="muted">예상 {{ estimate_minutes }}분</span>
         {%- else %}—{% endif %}</td></tr>

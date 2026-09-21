@@ -33,9 +33,18 @@ import pandas as pd
 
 from webapp import store
 
-# 며칠 이상 새 관측이 없으면 "멈춘 것 같다"고 말할지. 수집은 평일만 돌므로
-# 주말(최대 2일)을 넘겨야 한다 — 하루로 두면 월요일 아침마다 거짓 경보가 뜬다.
-STALLED_DAYS = 3
+# 며칠 이상 새 관측이 없으면 "멈춘 것 같다"고 말할지. **등록된 요일 범위에
+# 따라 다르다** (1.26.262).
+#
+#   · 매일(`--include-holidays`) — 어제가 통째로 비면 멈춘 것이다: 2일.
+#   · 평일만 — 금요일 다음 관측은 월요일이라 주말을 넘겨야 한다: 4일
+#     (금→화). 예전 값 3은 금→월이 3일이라 **월요일 아침마다** 첫 틱 전까지
+#     거짓 경보가 떴다.
+#
+# 예전에는 3 하나였고 "수집은 평일만 돈다"가 전제였는데, 2026-09-03부터 두 PC
+# 모두 매일 돈다 — 그 기준이면 금요일 밤에 멈춰도 월요일까지 아무 말이 없다.
+STALLED_DAYS_DAILY = 2
+STALLED_DAYS_WEEKDAYS = 4
 
 
 def _tool():
@@ -53,16 +62,20 @@ def _tool():
 
 
 def _window() -> tuple:
-    """(창, 간격, 출처). 등록된 작업을 먼저 읽고 없으면 기본값으로 물러선다.
+    """(창, 간격, 출처, 매일 도는가). 등록된 작업을 먼저 읽고 없으면 기본값으로 물러선다.
 
     ⚠️ **출처를 함께 돌려주는 것이 핵심이다.** 기본값으로 떨어진 채 결측을
     세면 창이 다른 만큼 표가 통째로 틀리는데, 화면은 그것을 알 수 없다
     (1.26.55에 실제로 그랬다 — 07~22시로 등록해 두고 "하루 49틱 기대"라고
     답했다).
+
+    '매일 도는가'는 멈춤 판정의 기준을 고르는 데 쓴다 — 등록을 못 읽었으면
+    **매일**로 본다. 기본 등록 명령이 `-IncludeHolidays`이고, 틀려도 경보가
+    하루 이르게 뜰 뿐이지 멈춘 것을 놓치지는 않는다.
     """
     tool = _tool()
     if tool is None:
-        return None, None, "수집기 모듈을 읽지 못했습니다"
+        return None, None, "수집기 모듈을 읽지 못했습니다", True
     found = None
     try:
         found = tool.registered_args()
@@ -71,15 +84,16 @@ def _window() -> tuple:
     if found:
         return (found.get("window", tool.DEFAULT_WINDOW),
                 found.get("interval", tool.DEFAULT_INTERVAL),
-                f"등록된 작업 '{tool.TASK_NAME}'")
+                f"등록된 작업 '{tool.TASK_NAME}'",
+                bool(found.get("include_holidays", True)))
     return (tool.DEFAULT_WINDOW, tool.DEFAULT_INTERVAL,
-            "기본값 — 등록된 작업을 찾지 못했습니다")
+            "기본값 — 등록된 작업을 찾지 못했습니다", True)
 
 
 def context() -> dict:
     """수집 현황 화면이 쓸 값. **읽기만 한다** — 타슈 API를 부르지 않는다."""
     tool = _tool()
-    window, interval, source = _window()
+    window, interval, source, daily = _window()
     empty = {
         "window": window, "interval": interval, "source": source,
         "rows": [], "total_ticks": 0, "days": 0, "stations": 0,
@@ -117,16 +131,18 @@ def context() -> dict:
         # 하루가 여러 구간이면 수집 실패가 아니라 **PC가 꺼져 있던 것**이다.
         # 둘은 대응이 완전히 다르므로 세어서 화면이 갈라 말하게 한다.
         "split_days": sum(1 for r in rows if r["구간"] > 1),
-        "stalled": _stalled_note(last_seen),
+        "stalled": _stalled_note(last_seen, daily=daily),
         "error": None,
     }
 
 
-def _stalled_note(last_day: str, *, today=None) -> Optional[dict]:
+def _stalled_note(last_day: str, *, today=None, daily: bool = True) -> Optional[dict]:
     """마지막 관측이 오래됐으면 **멈춘 것 같다**고 말한다.
 
     수집이 두 번 조용히 멈췄고 둘 다 사람이 터미널을 열어야만 알 수 있었다.
     화면이 먼저 말하면 그 며칠이 사라지지 않는다.
+
+    `daily`는 등록된 작업이 매일 도는지다 — 기준일 수가 달라진다(위 상수).
 
     ⚠️ **판정할 수 없으면 `None`** 이다(날짜를 못 읽었거나 미래로 찍혔다).
     짐작해서 "정상"이라 답하면 멈춘 것을 알리려던 장치가 거짓말을 한다 —
@@ -140,4 +156,5 @@ def _stalled_note(last_day: str, *, today=None) -> Optional[dict]:
     days = (now - stamp.normalize()).days
     if days < 0:
         return None
-    return {"days": days, "stalled": days >= STALLED_DAYS}
+    limit = STALLED_DAYS_DAILY if daily else STALLED_DAYS_WEEKDAYS
+    return {"days": days, "stalled": days >= limit, "limit": limit}

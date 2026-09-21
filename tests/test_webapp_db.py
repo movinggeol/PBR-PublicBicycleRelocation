@@ -96,6 +96,28 @@ def test_stations_can_select_past_run(client):
     assert len(body["features"]) == 4
 
 
+def test_좌표가_없는_대여소는_geometry_null로_낸다(tmp_path, monkeypatch):
+    """NaN 좌표를 `float()`로 그대로 넣으면 JSON 직렬화(allow_nan=False)에서 500 (1.26.262).
+
+    GeoJSON은 `geometry: null`을 허용한다 — 대여소를 빼 버리면 있는 것을 없다고
+    하는 셈이라 남기되 자리만 비운다.
+    """
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "nan.db"))
+    frame = _pick_drop(3)
+    frame.loc[1, ["lat", "lon"]] = None
+    with db.session() as conn:
+        db.record_run(conn, "좌표없음", period="25년 11월", duration=DURATION)
+        db.save_frame(conn, "pick_drop", frame, run_label="좌표없음", duration=DURATION)
+
+    with TestClient(app) as c:
+        res = c.get("/api/stations", params={"run_label": "좌표없음"})
+    assert res.status_code == 200
+    features = res.json()["features"]
+    assert len(features) == 3
+    assert features[1]["geometry"] is None
+    assert features[0]["geometry"]["type"] == "Point"
+
+
 def test_station_feature_shape(client):
     props = client.get("/api/stations").json()["features"][0]["properties"]
 

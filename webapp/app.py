@@ -25,6 +25,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd
 from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -45,6 +47,11 @@ from webapp import (catalog, charts, collect_view, jobs, kpi_view, orders, store
 
 app = FastAPI(title="PBR 파이프라인 대시보드", docs_url="/api/docs")
 
+# 파이프라인이 끝나면 순수요 히트맵 캐시를 비운다 — 서버를 띄운 채 새 달을
+# 계산해도 /kpi가 옛 그림을 내지 않게(1.26.262). 등록은 여기서 한다: jobs가
+# 화면 모듈을 알면 층이 거꾸로 된다.
+jobs.add_finished_hook(lambda job: kpi_view.reset_cache())
+
 _HERE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(_HERE / "templates"))
 # 글꼴을 같이 담아 서빙한다 — 인터넷이 끊겨도 화면이 같아야 한다.
@@ -64,6 +71,7 @@ ERROR_TITLES = {
     404: "찾는 것이 없습니다",
     400: "요청을 이해하지 못했습니다",
     403: "열 수 없는 파일입니다",
+    422: "주소의 값을 읽지 못했습니다",
     500: "문제가 생겼습니다",
 }
 
@@ -90,6 +98,28 @@ def http_error(request: Request, exc: StarletteHTTPException):
         {"code": code, "title": ERROR_TITLES.get(code, f"오류 {code}"),
          "detail": detail},
         status_code=code)
+
+
+@app.exception_handler(RequestValidationError)
+def validation_error(request: Request, exc: RequestValidationError):
+    """쿼리·경로 값이 형에 안 맞을 때 (1.26.262).
+
+    1.26.107이 `HTTPException`만 화면으로 돌렸고 이쪽은 빠져 있었다 —
+    `/vehicles?page=abc`를 치면 브라우저에 `{"detail":[{"type":"int_parsing",…`
+    가 날것으로 떴다. 404와 같은 규칙이다: API와 `fetch`는 JSON, 사람은 화면.
+    """
+    errors = jsonable_encoder(exc.errors())
+    if not _wants_html(request):
+        return JSONResponse({"detail": errors}, status_code=422)
+    where = ", ".join(
+        "`" + ".".join(str(p) for p in err.get("loc", ()) if p not in ("query", "path")) + "`"
+        for err in errors) or "값"
+    return templates.TemplateResponse(
+        request, "error.html",
+        {"code": 422, "title": ERROR_TITLES[422],
+         "detail": f"{where} 값이 이 화면이 받는 모양이 아닙니다. "
+                   "주소를 고쳐 적었다면 원래 값으로 되돌려 보세요."},
+        status_code=422)
 
 
 # 작업 상태를 사람이 읽는 말로 — 템플릿 전역이라 어느 화면에서나 같은 낱말을 쓴다.
@@ -257,6 +287,36 @@ def _typical_vehicles() -> Optional[int]:
     return int(round(float(used.median()))) if len(used) else None
 
 
+# 실행 이름에 못 쓰는 글자. 윈도우 파일 이름 규칙이다 — 라벨이 그대로
+# `…{duration} ({now}).csv` 파일명에 들어간다.
+_LABEL_FORBIDDEN = set('\\/:*?"<>|')
+RUN_LABEL_MAX_LEN = 80
+
+
+def check_run_label(value: str) -> Optional[str]:
+    """실행 이름이 파일명으로 성립하는지. 문제가 있으면 **까닭 문장**, 없으면 None.
+
+    🔴 **폼에서 걸러야 한다** (1.26.262). 이름은 `data/pp_data/…/후보_05_10
+    (이름).csv`처럼 **모든 단계의 파일명**에 그대로 박히는데, 검사가 아무 데도
+    없었다. 기본값이 `2026-09-21 14`라 `:00`을 덧붙이기 쉬운데, 윈도우에서 `:`는
+    NTFS 대체 스트림이 되어 `후보_05_10 (2026-09-21 14`라는 **0바이트 파일**이
+    조용히 생기고(내용은 `00).csv` 스트림으로 들어간다) 다음 단계가 `.csv`를
+    못 찾는다. `/`·`..`는 API 수집을 다 마친 뒤 저장에서 OSError로 죽는다 —
+    둘 다 사람이 로그를 읽어야만 원인을 알 수 있는 실패다.
+    """
+    bad = sorted(ch for ch in set(value) if ch in _LABEL_FORBIDDEN)
+    if bad:
+        return ("실행 이름에 파일 이름으로 쓸 수 없는 글자가 있습니다: "
+                + " ".join(bad) + " — 예: 2026-09-21 14")
+    if any(ord(ch) < 32 for ch in value):
+        return "실행 이름에 제어 문자가 있습니다."
+    if ".." in value:
+        return "실행 이름에 '..'을 쓸 수 없습니다 — 파일 경로로 읽힙니다."
+    if len(value) > RUN_LABEL_MAX_LEN:
+        return f"실행 이름이 너무 깁니다({len(value)}자, 최대 {RUN_LABEL_MAX_LEN}자)."
+    return None
+
+
 def _suggested_now() -> str:
     """실행 폼에 채워 넣을 **이름 제안**. 오늘 날짜 + 지금 시각대다.
 
@@ -366,6 +426,14 @@ def _home_context() -> dict:
             # 발견). /kpi와 같은 규칙(대여소 수 가중평균)을 쓴다.
             stockout_before = kpi_view._weighted(part, "stockout_hours_before", "stations")
             stockout_after = kpi_view._weighted(part, "stockout_hours_after", "stations")
+            # ⚠️ 지표는 NULL일 수 있다(db.KPI_FIELDS — 계산 못 하면 빠진다).
+            #    `int(nan)`은 ValueError라 첫 화면이 통째로 500이 되고,
+            #    `round(nan)`은 "nan분"으로 찍힌다. 최대·합계는 `_max`·`_sum`이
+            #    결측을 건너뛰지만 **전부 결측이면** NaN을 돌려주므로 여기서
+            #    None으로 바꿔 화면이 "—"를 찍게 한다(1.26.262).
+            vehicles = _num(_max(part, "vehicles_used"))
+            max_minutes = _num(_max(part, "max_cluster_minutes"))
+            budget = _num(_max(part, "time_budget_minutes"))
             last = {
                 "run_label": order[0],
                 "computed_at": str(part["computed_at"].max()) if "computed_at" in part else "",
@@ -373,13 +441,12 @@ def _home_context() -> dict:
                 "bikes": int(_sum(part, "bikes_moved")),
                 # 차량은 회차마다 **다시 나가는 같은 차**라 더하면 보유 대수를
                 # 넘는다(14+14+16 = 44대 > 보유 21대). 회차 최대를 보여 준다.
-                "vehicles": int(_max(part, "vehicles_used")),
+                "vehicles": int(vehicles) if vehicles is not None else None,
                 "distance_km": round(float(_sum(part, "total_distance_km")), 1),
                 "stockout_before": round(float(stockout_before), 2) if stockout_before is not None else None,
                 "stockout_after": round(float(stockout_after), 2) if stockout_after is not None else None,
-                "max_minutes": round(float(_max(part, "max_cluster_minutes")), 1),
-                "budget": float(part["time_budget_minutes"].max())
-                          if "time_budget_minutes" in part else TIME_BUDGET_MINUTES,
+                "max_minutes": round(max_minutes, 1) if max_minutes is not None else None,
+                "budget": budget if budget is not None else float(TIME_BUDGET_MINUTES),
             }
             # 실험용 실행(파라미터 스윕·대조군)은 운영 계획이 아니다. DB에
             # 함께 쌓이므로 가장 최근 것이 실험일 수 있다.
@@ -445,6 +512,11 @@ def _sum(frame, column: str) -> float:
 
 def _max(frame, column: str) -> float:
     return float(pd.to_numeric(frame[column], errors="coerce").max()) if column in frame else 0.0
+
+
+def _num(value) -> Optional[float]:
+    """NaN을 None으로. 화면이 `is not none`으로 가를 수 있게 한다."""
+    return None if value is None or pd.isna(value) else float(value)
 
 
 @app.get("/")
@@ -537,15 +609,21 @@ def create_run(
     # 첫 화면 헤드라인에 '마지막 계획'으로 올라온다(1.26.107이 그 사고였다).
     # 실험 격자는 CLI에서 `--run-kind experiment`로 띄운다.
     args = ["--run-kind", "plan"]
-    for flag, value in (("--now", now), ("--raw-file", raw_file)):
-        value = value.strip()
-        if value:
-            args.extend([flag, value])
 
     # 잘못된 입력은 파이프라인을 띄우기 전에 폼 단계에서 거른다.
     def invalid(message: str):
         return templates.TemplateResponse(
             request, "index.html", _index_context(error=message), status_code=400)
+
+    # 이름은 모든 단계의 파일명에 들어간다 — 파일명으로 성립하지 않으면
+    # 수집을 다 마친 뒤에야 죽거나, 더 나쁘게는 잘못된 파일이 조용히 남는다.
+    if (problem := check_run_label(now.strip())):
+        return invalid(problem)
+
+    for flag, value in (("--now", now), ("--raw-file", raw_file)):
+        value = value.strip()
+        if value:
+            args.extend([flag, value])
 
     # 기간·시간대는 값이 조금만 어긋나도 한참 뒤 단계에서 파일을 못 찾고 멈춘다.
     # 여기서 거르면 사용자가 무엇을 고르면 되는지 그 자리에서 알 수 있다.
@@ -633,10 +711,12 @@ def run_detail(request: Request, job_id: str):
     job = jobs.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="해당 실행 이력이 없습니다.")
+    # 로그는 한 번만 읽는다 — 단계 표시(전체)와 꼬리(300줄)가 같은 파일이다.
+    text = jobs.read_log(job)
     return templates.TemplateResponse(request, "run_detail.html", {
         "job": job,
-        "log": jobs.read_log_tail(job),
-        "progress": pipeline_progress(jobs.read_log(job)),
+        "log": jobs.read_log_tail(job, text=text),
+        "progress": pipeline_progress(text),
         # 예상과 **실제**를 나란히 둔다. 예상만 보여 주면 그것이 맞았는지
         # 아무도 모르고, 틀린 채로 남는다 — 다음 예상이 여기서 나오므로
         # 어긋남이 보여야 고칠 생각도 든다(1.26.214).
@@ -691,8 +771,21 @@ def _orders_context(run_label: Optional[str], duration: Optional[str],
     if targets and not run_label:
         run_label = targets[0]["run_label"]
         duration = duration or targets[0]["duration"]
+    elif run_label and not duration:
+        # 🔴 **라벨만 받고 회차를 비워 두면 안 된다** (1.26.262). 회차 없이
+        #    `vrp_plan`을 읽으면 그 실행의 **모든 회차**가 한 표로 오고,
+        #    차량별로 묶는 순간 한 장에 두 회차의 정거장이 이어 붙는다 — 차고지
+        #    복귀가 두 번, 이동거리 합은 두 배였다(실측 재현). 칩은 늘 둘을
+        #    함께 넘기지만 손으로 고친 주소·옛 즐겨찾기는 그렇지 않다.
+        #    그 실행의 첫 회차(목록 순서 = 시간대 순)로 채운다.
+        match = next((t for t in targets if t["run_label"] == run_label), None)
+        if match:
+            duration = match["duration"]
 
-    sheets = orders.build(run_label, duration) if run_label else []
+    # 두 표를 여기서 한 번 읽어 지시서·대조가 같이 쓴다(1.26.262).
+    frames = orders.load_frames(run_label, duration) if run_label else None
+    all_sheets = orders.build(run_label, duration, frames=frames) if run_label else []
+    sheets = all_sheets
 
     # 차량 하나만 보기. 한 회차에 17대가 나가면 지시서가 세로로 39,000px,
     # 휴대폰에서 **47화면**이었다(실측 1.26.107). 기사는 자기 차 한 장만
@@ -720,6 +813,9 @@ def _orders_context(run_label: Optional[str], duration: Optional[str],
         "depot_name": DEPOT_NAME,
         "upper_ratio": TARGET_QTY_UPPER_RATIO,
         "min_qty": REBAL_MIN_QTY,
+        # 대조 라우트가 다시 읽지 않게 넘긴다 — 템플릿은 쓰지 않는다.
+        "_frames": frames,
+        "_all_sheets": all_sheets,
     }
 
 
@@ -746,7 +842,8 @@ def orders_live(request: Request, run_label: Optional[str] = None,
     이 화면만 따라가지 않았다.
     """
     context = _orders_context(run_label, duration, vehicle)
-    planned = orders.planned_work(context["run_label"], context["duration"])
+    planned = orders.planned_work(context["run_label"], context["duration"],
+                                  frames=context["_frames"])
 
     try:
         live = tashu.fetch_stations()
@@ -756,7 +853,8 @@ def orders_live(request: Request, run_label: Optional[str] = None,
 
     compared = orders.compare_stock(planned, live)
     live_sheets = orders.build_live(
-        context["run_label"], context["duration"], compared)
+        context["run_label"], context["duration"], compared,
+        sheets=context["_all_sheets"])
     # ⚠️ **대조 지시서에도 같은 필터를 건다.** `build_live()`는 `build()`를
     #    스스로 불러 전 차량을 만들므로, 라우트가 `vehicle`을 받는 것만으로는
     #    화면이 안 좁혀진다 — 실제로 그리는 것은 `sheets`가 아니라 이쪽이다.
@@ -1201,10 +1299,15 @@ def api_stations(run_label: Optional[str] = None, duration: Optional[str] = None
     features = []
     for _, row in df.iterrows():
         rebal = _int(row["rebal_qty"])
+        # 좌표가 없으면 geometry를 null로 둔다(GeoJSON이 허용한다). NaN을
+        # 그대로 넣으면 JSON 직렬화(allow_nan=False)에서 500이 났다(1.26.262).
+        lat, lon = row.get("lat"), row.get("lon")
+        geometry = None
+        if lat is not None and lon is not None and not (pd.isna(lat) or pd.isna(lon)):
+            geometry = {"type": "Point", "coordinates": [float(lon), float(lat)]}
         features.append({
             "type": "Feature",
-            "geometry": {"type": "Point",
-                         "coordinates": [float(row["lon"]), float(row["lat"])]},
+            "geometry": geometry,
             "properties": {
                 "station_id": row["station_id"],
                 "station_name": row.get("station_name", ""),

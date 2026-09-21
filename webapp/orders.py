@@ -26,15 +26,28 @@ from webapp import store
 ACTION_LABELS = {"pick": "싣기", "drop": "내리기", "return": "차고지 복귀"}
 
 
-def _station_names(run_label: Optional[str], duration: Optional[str]) -> dict:
+def load_frames(run_label: Optional[str], duration: Optional[str]) -> dict:
+    """지시서·대조가 쓰는 두 표를 **한 번만** 읽는다 (1.26.262).
+
+    반환: `{"plan": vrp_plan, "candidates": pick_drop}`. 예전에는 함수마다
+    따로 읽어 `/orders/live` 한 번에 `vrp_plan`을 3번, `pick_drop`을 5번
+    읽었다(`build`·`build_live→build`·`planned_work`·이름·좌표). 라우트가
+    여기서 한 번 읽어 아래 함수들에 `frames=`로 넘긴다 — 안 넘기면 각자
+    읽으므로 예전 호출도 그대로 돈다.
+    """
+    plan, _ = store.load("vrp_plan", run_label=run_label, duration=duration)
+    candidates, _ = store.load("pick_drop", run_label=run_label, duration=duration)
+    return {"plan": plan, "candidates": candidates}
+
+
+def _station_names(candidates: pd.DataFrame) -> dict:
     """station_id → 대여소 이름. 후보 목록(pick_drop)에서 가져온다."""
-    frame, _ = store.load("pick_drop", run_label=run_label, duration=duration)
-    if frame.empty or "station_name" not in frame:
+    if candidates.empty or "station_name" not in candidates:
         return {}
-    return dict(zip(frame["station_id"], frame["station_name"]))
+    return dict(zip(candidates["station_id"], candidates["station_name"]))
 
 
-def _station_coords(run_label: Optional[str], duration: Optional[str]) -> dict:
+def _station_coords(candidates: pd.DataFrame) -> dict:
     """station_id → (위도, 경도). 기사가 지도 앱에 넣을 좌표다 (TODO 20).
 
     이름과 같은 표(`pick_drop`)에서 가져온다 — 좌표는 이미 거기 있고, 따로
@@ -44,29 +57,31 @@ def _station_coords(run_label: Optional[str], duration: Optional[str]) -> dict:
     차고지가 낄 이유가 없는데, 지시서에는 복귀 구간으로 등장한다. 이름을
     `DEPOT_NAME`으로 채우는 것과 같은 이유로 좌표도 상수에서 채운다.
     """
-    frame, _ = store.load("pick_drop", run_label=run_label, duration=duration)
     coords = {DEPOT_ID: (DEPOT_LAT, DEPOT_LON)}
-    if frame.empty or not {"lat", "lon"} <= set(frame.columns):
+    if candidates.empty or not {"lat", "lon"} <= set(candidates.columns):
         return coords
-    for station_id, lat, lon in zip(frame["station_id"], frame["lat"], frame["lon"]):
+    for station_id, lat, lon in zip(candidates["station_id"], candidates["lat"],
+                                    candidates["lon"]):
         if pd.notna(lat) and pd.notna(lon):
             coords[station_id] = (float(lat), float(lon))
     return coords
 
 
-def build(run_label: Optional[str] = None, duration: Optional[str] = None) -> list:
+def build(run_label: Optional[str] = None, duration: Optional[str] = None,
+          frames: Optional[dict] = None) -> list:
     """차량별 작업지시서를 만든다.
 
     반환: [{vehicle_id, cluster, stations, bikes, distance_km, minutes, stops: [...]}]
     차량 배정이 없는 구버전 산출물에서는 클러스터 번호로 대신 묶는다.
     """
-    plan, _ = store.load("vrp_plan", run_label=run_label, duration=duration)
+    frames = frames or load_frames(run_label, duration)
+    plan = frames["plan"]
     if plan.empty:
         return []
 
-    names = _station_names(run_label, duration)
+    names = _station_names(frames["candidates"])
     names[DEPOT_ID] = DEPOT_NAME
-    coords = _station_coords(run_label, duration)
+    coords = _station_coords(frames["candidates"])
 
     # 방문 순서는 seq다. 없으면(구버전) 저장된 순서를 그대로 믿는다.
     if "seq" in plan:
@@ -117,7 +132,8 @@ def build(run_label: Optional[str] = None, duration: Optional[str] = None) -> li
 
 
 def planned_work(run_label: Optional[str] = None,
-                 duration: Optional[str] = None) -> pd.DataFrame:
+                 duration: Optional[str] = None,
+                 frames: Optional[dict] = None) -> pd.DataFrame:
     """이번 계획이 **실제로 지시하는** 대여소별 작업량.
 
     `pick_drop.rebal_qty`(요구량)가 아니라 `vrp_plan.qty`(지시량)를 쓴다 —
@@ -127,7 +143,8 @@ def planned_work(run_label: Optional[str] = None,
     같은 대여소가 싣기·내리기 양쪽에 나올 수 있으므로 행이 둘이 된다
     (VRP의 노드 키가 (대여소, 동작)인 것과 같은 이유).
     """
-    plan, _ = store.load("vrp_plan", run_label=run_label, duration=duration)
+    frames = frames or load_frames(run_label, duration)
+    plan = frames["plan"]
     if plan.empty:
         return pd.DataFrame()
 
@@ -149,7 +166,7 @@ def planned_work(run_label: Optional[str] = None,
     grouped = grouped.sort_values(sort_keys).reset_index(drop=True)
 
     # 대여소 이름·거치대·계획 시점 재고는 후보 목록에 있다.
-    candidates, _ = store.load("pick_drop", run_label=run_label, duration=duration)
+    candidates = frames["candidates"]
     if not candidates.empty:
         keep = [c for c in ("station_id", "station_name", "parking_lot", "stock")
                 if c in candidates]
@@ -223,6 +240,12 @@ def compare_stock(planned: pd.DataFrame, live: pd.DataFrame) -> pd.DataFrame:
                 status, note = "부족", f"{need}대 중 {possible}대만 실을 수 있습니다"
             else:
                 status, note = "가능", ""
+        elif parking_lot <= 0:
+            # 거치대 수를 모르면 상한을 셀 수 없다 (1.26.262). 예전에는 그대로
+            # 계산해 *"이미 N대로 상한(0대 x 1.5 = 0대)을 넘었습니다"* 라는
+            # 판정이 나왔다 — 모르는 것을 '불가'로 못박은 것이다.
+            possible = None
+            status, note = "확인 불가", "거치대 수를 몰라 내려놓을 상한을 계산할 수 없습니다"
         else:
             room = int(ceiling - now)
             possible = max(0, min(need, room))
@@ -291,16 +314,17 @@ def _suggest_actions(rows: list) -> None:
         need = int(row["need"] or 0)
         possible = int(row["possible"] or 0)
         short = need - possible          # 못 채우는 양
-        mates = [r for r in by_cluster.get(row.get("cluster"), []) if r is not row]
+        # 같은 군집에서 **같은 동작**에 여유가 있는 곳. 여유는 `_spare()`가
+        # 지금 재고로 잰다 — `possible`은 여유를 말하지 않는다(아래 참고).
+        spare = [(r, _spare(r)) for r in by_cluster.get(row.get("cluster"), [])
+                 if r is not row and r["action"] == action]
+        spare = sorted([(r, s) for r, s in spare if s > 0],
+                       key=lambda pair: pair[1], reverse=True)
 
         if action == "pick":
             # 실을 것이 모자란다 -> 같은 군집에서 **더 실을 수 있는 곳**
-            spare = [r for r in mates
-                     if r["action"] == "pick" and (r["possible"] or 0) > (r["need"] or 0)]
-            spare.sort(key=lambda r: (r["possible"] or 0) - (r["need"] or 0), reverse=True)
             if spare:
-                best = spare[0]
-                extra = (best["possible"] or 0) - (best["need"] or 0)
+                best, extra = spare[0]
                 row["advice"] = (f"{best['station_name']}에서 {min(short, extra)}대 더 실어 "
                                  f"메우세요 (여유 {extra}대)")
             else:
@@ -308,12 +332,8 @@ def _suggest_actions(rows: list) -> None:
                                  f"내려놓을 곳에서 그만큼 덜 내리세요")
         else:
             # 내려놓을 자리가 없다 -> 같은 군집에서 **더 받을 수 있는 곳**
-            spare = [r for r in mates
-                     if r["action"] == "drop" and (r["possible"] or 0) > (r["need"] or 0)]
-            spare.sort(key=lambda r: (r["possible"] or 0) - (r["need"] or 0), reverse=True)
             if spare:
-                best = spare[0]
-                extra = (best["possible"] or 0) - (best["need"] or 0)
+                best, extra = spare[0]
                 row["advice"] = (f"{best['station_name']}에 {min(short, extra)}대 더 내려놓으세요 "
                                  f"(여유 {extra}대)")
             else:
@@ -321,11 +341,37 @@ def _suggest_actions(rows: list) -> None:
                                  f"차고지로 가져가거나 실을 곳에서 그만큼 덜 실으세요")
 
 
+def _spare(row: dict) -> int:
+    """그 대여소가 지시량 **너머로** 더 받아 줄 수 있는 대수. 모르면 0.
+
+    🔴 **`possible`로 여유를 재면 안 된다** (1.26.262). `compare_stock()`의
+    `possible`은 `min(need, 지금 재고)`라 **지시량을 절대 넘지 않는다** — 그런데
+    예전 코드는 `possible > need`인 이웃을 찾았다. 그 조건은 참이 될 수 없어
+    *"○○에서 N대 더 실어 메우세요"* 라는 안내가 **한 번도 나온 적이 없고**,
+    이웃에 12대가 있어도 늘 *"같은 군집에 여유가 없으니"* 로 떨어졌다. 시험은
+    손으로 `possible: 12, need: 5`를 적어 넣어 통과시키고 있었다 — 실제 계산이
+    만들 수 없는 상태로 검사한 것이다.
+
+    여유는 지시량이 아니라 **지금 재고**에서 나온다.
+      · 싣기:   지금 재고 − 지시량        (남는 자전거)
+      · 내리기: 상한 − 지금 재고 − 지시량  (남는 자리, 상한은 계획과 같은 기준)
+    재고를 못 읽은 곳(`확인 불가`)은 여유를 모르므로 0이다.
+    """
+    now = row.get("live_stock")
+    if now is None or (isinstance(now, float) and pd.isna(now)):
+        return 0
+    need = int(row.get("need") or 0)
+    if row["action"] == "pick":
+        return max(0, int(now) - need)
+    ceiling = int(row.get("parking_lot") or 0) * TARGET_QTY_UPPER_RATIO
+    return max(0, int(ceiling - int(now)) - need)
+
+
 _LIVE_FIELDS = ("planned_stock", "live_stock", "delta", "possible", "status", "note", "advice")
 
 
 def build_live(run_label: Optional[str], duration: Optional[str],
-               compared: pd.DataFrame) -> list:
+               compared: pd.DataFrame, sheets: Optional[list] = None) -> list:
     """지금 재고와 대조한 결과만으로도 지시서 구실을 하게 만든다.
 
     `build()`가 만드는 지시서(순서·이동거리·누적시간·싣고 남는 수·차고지
@@ -334,9 +380,13 @@ def build_live(run_label: Optional[str], duration: Optional[str],
     두 화면을 오가며 대조해야 한다 — 한 장에 다 있어야 기사가 그 한 장만
     들고 나갈 수 있다.
 
+    `sheets`를 주면 그것에 얹는다(제자리에서 고친다) — 라우트가 이미 만든
+    지시서를 다시 만들 이유가 없다. 안 주면 `build()`로 만든다.
+
     차고지 복귀 구간은 대여소가 아니므로 대조 대상이 아니다(값이 없다).
     """
-    sheets = build(run_label, duration)
+    if sheets is None:
+        sheets = build(run_label, duration)
     if not sheets:
         return sheets
 
