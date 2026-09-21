@@ -1186,8 +1186,17 @@ def preview_csv(request: Request, relpath: str):
 
     # 미리보기는 앞부분만 필요하므로 전체를 읽지 않는다.
     max_rows = 200
+    note = ""
     try:
-        df = pd.read_csv(target, encoding="utf-8", nrows=max_rows)
+        try:
+            df = pd.read_csv(target, encoding="utf-8", nrows=max_rows)
+        except UnicodeDecodeError:
+            # 🔴 `data/` 아래에는 산출물(UTF-8)만 있는 것이 아니다 (1.26.263).
+            #    원천 대여이력 같은 외부 파일은 cp949이고, `/preview`는 `data/`
+            #    아래 `.csv`면 무엇이든 받으므로 그런 파일을 열면 **500**이었다.
+            #    한글 윈도우 인코딩으로 한 번 더 읽고, 그 사실을 화면에 적는다.
+            df = pd.read_csv(target, encoding="cp949", nrows=max_rows)
+            note = "이 파일은 UTF-8이 아니라 cp949(한글 윈도우) 인코딩입니다."
     except pd.errors.EmptyDataError:
         # 🔴 **빈 CSV는 화면이 500으로 죽을 이유가 아니다** (1.26.188).
         #    파이프라인은 빈 산출물을 낼 수 있고(한쪽 후보만 있는 시간대)
@@ -1195,8 +1204,16 @@ def preview_csv(request: Request, relpath: str):
         #    EmptyDataError로 터져 **화면 전체가 500**이 됐다.
         #    같은 부류를 ilp(1.26.185)·vrp·step4와 함께 쓸었다.
         df = pd.DataFrame()
+    except (pd.errors.ParserError, UnicodeDecodeError) as err:
+        # 표로 읽을 수 없는 파일은 그렇다고 말한다 — 내려받기는 그대로 된다.
+        raise HTTPException(
+            status_code=400,
+            detail=f"표로 읽을 수 없는 파일입니다 ({type(err).__name__}). "
+                   "내려받아 직접 여세요.") from err
     total_rows = _count_csv_rows(target)
-    table_html = (df.to_html(classes="preview-table", index=False, border=0)
+    # 빈 칸은 빈 칸으로 — pandas 기본은 `NaN`이라 대여소 정보의 빈 열이
+    # 글자 그대로 "NaN"으로 찍혔다(1.26.263, 실측 세 파일).
+    table_html = (df.to_html(classes="preview-table", index=False, border=0, na_rep="")
                   if len(df.columns) else "<p>내용이 없는 파일입니다.</p>")
 
     return templates.TemplateResponse(request, "preview.html", {
@@ -1205,6 +1222,7 @@ def preview_csv(request: Request, relpath: str):
         "total_rows": total_rows,
         "shown_rows": len(df),
         "table_html": table_html,
+        "note": note,
     })
 
 

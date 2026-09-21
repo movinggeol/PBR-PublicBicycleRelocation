@@ -154,6 +154,19 @@ def test_orders_page_renders(client):
     assert client.get("/orders").status_code == 200
 
 
+def test_목록에_없는_라벨로_열어도_링크에_None이_박히지_않는다(client, monkeypatch):
+    """`/orders?run_label=없음`의 '지금 재고와 대조하기'가 `&duration=None`이었다
+    (1.26.263, 실데이터 466개 주소 순회에서 발견). 회차가 없으면 인자를 뺀다."""
+    from webapp import app as webapp_app
+
+    monkeypatch.setattr(webapp_app.store, "plan_targets", lambda: pd.DataFrame())
+    monkeypatch.setattr(orders.store, "load", lambda *a, **k: (pd.DataFrame(), "none"))
+
+    html = client.get("/orders?run_label=%EC%97%86%EC%9D%8C").text
+    assert "duration=None" not in html
+    assert "/orders/live?run_label=" in html, "대조 링크 자체는 있어야 한다"
+
+
 def test_라벨만_주면_그_실행의_첫_회차로_채운다(monkeypatch):
     """`/orders?run_label=X`에 회차가 없으면 **회차가 섞였다** (1.26.262).
 

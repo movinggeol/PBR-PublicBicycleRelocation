@@ -4,7 +4,8 @@
 
 <section class="hero" style="padding-bottom:var(--sp-md)">
   <h1 style="font-size:var(--fs-h2)">{{ name }}</h1>
-  <p class="lead" style="font-size:var(--fs-ui)">전체 {{ total_rows }}행 중 앞 {{ shown_rows }}행</p>
+  <p class="lead" style="font-size:var(--fs-ui)">전체 {{ total_rows }}행 중 앞 {{ shown_rows }}행{% if note %}
+    <br><span class="hint">{{ note }}</span>{% endif %}</p>
   <div class="actions" style="margin-top:var(--sp-md)">
     <a class="btn sm" href="/files/{{ relpath | urlencode }}">CSV 내려받기</a>
   </div>

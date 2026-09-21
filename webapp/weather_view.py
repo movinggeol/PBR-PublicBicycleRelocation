@@ -45,6 +45,12 @@ CACHE_SECONDS = 600
 # 부르는 날에는 호출이 10여 번이라 캐시가 더 중요하다.
 FORECAST_CACHE_SECONDS = 1800
 
+# 🔴 **실패는 짧게만 기억한다** (1.26.263). 예전에는 실패 응답도 성공과 같은
+# 시간(관측 10분·예보 30분) 동안 캐시했다 — 기상청 API가 한 번 헛기침하면
+# 그 뒤 30분 동안 화면을 여는 모두가 "예보를 읽지 못했습니다"를 봤다. 실패는
+# 1분만 붙들어 둔다: 연타는 막되, 다음에 여는 사람은 다시 시도한다.
+FAILURE_CACHE_SECONDS = 60
+
 # 격자 강수량은 05~20시만 확인한다 — 낮 세 창(_05_10·_10_15·_15_20)을 덮는다.
 # 야간 창(_20_05)도 폼에서 고를 수 있지만 그 시간의 강수는 보지 않는다.
 FORECAST_HOURS = tuple(range(5, 21))
@@ -129,7 +135,7 @@ def describe(observed: dict) -> dict:
 def current(force: bool = False) -> dict:
     """지금 날씨. 실패해도 **예외를 올리지 않는다** — 화면이 죽으면 안 된다."""
     now = time.monotonic()
-    if not force and _CACHE["data"] is not None and now - _CACHE["at"] < CACHE_SECONDS:
+    if not force and _CACHE["data"] is not None and now - _CACHE["at"] < _ttl(_CACHE["data"], CACHE_SECONDS):
         return _CACHE["data"]
 
     try:
@@ -142,6 +148,11 @@ def current(force: bool = False) -> dict:
 
     _CACHE.update(at=now, data=described)
     return described
+
+
+def _ttl(cached: dict, normal: int) -> int:
+    """캐시 수명. 실패 응답(`available=False`)은 `FAILURE_CACHE_SECONDS`만."""
+    return normal if cached.get("available") else FAILURE_CACHE_SECONDS
 
 
 def reset_cache() -> None:
@@ -307,7 +318,8 @@ def forecast(target: Optional[date] = None, force: bool = False) -> dict:
     now = time.monotonic()
     if (not force and _FORECAST_CACHE["data"] is not None
             and _FORECAST_CACHE["key"] == key
-            and now - _FORECAST_CACHE["at"] < FORECAST_CACHE_SECONDS):
+            and now - _FORECAST_CACHE["at"] < _ttl(_FORECAST_CACHE["data"],
+                                                   FORECAST_CACHE_SECONDS)):
         return _FORECAST_CACHE["data"]
 
     try:

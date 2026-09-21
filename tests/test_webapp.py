@@ -3093,6 +3093,95 @@ def test_빈_CSV_미리보기가_500으로_죽지_않는다(client, tmp_path, mo
     assert "내용이 없는 파일입니다" in 응답.text
 
 
+def test_cp949_CSV_미리보기가_500으로_죽지_않는다(client, tmp_path, monkeypatch):
+    """`data/` 아래에는 산출물(UTF-8)만 있는 것이 아니다 (1.26.263).
+
+    원천 대여이력·기상자료는 cp949이고 `/preview`는 `data/` 아래 `.csv`면
+    무엇이든 받는다 — 실측: `raw_data/날씨/기상자료 (2025년).csv`가 500이었다.
+    """
+    from webapp import catalog
+
+    (tmp_path / "원천.csv").write_bytes("대여소,수량\n한글,1\n".encode("cp949"))
+    (tmp_path / "빈칸.csv").write_text("a,b\n1,\n", encoding="utf-8")
+    (tmp_path / "깨짐.csv").write_bytes(b'a,b\n1,2\n"unclosed\n' * 3 + b'\xff\xfe\x00')
+    monkeypatch.setattr(catalog, "DATA_ROOT", tmp_path)
+
+    응답 = client.get("/preview/원천.csv")
+    assert 응답.status_code == 200
+    assert "한글" in 응답.text and "cp949" in 응답.text, "인코딩을 밝혀야 한다"
+
+    # 빈 칸은 빈 칸이다 — pandas 기본 `NaN` 글자가 화면에 찍히면 안 된다.
+    assert "NaN" not in client.get("/preview/빈칸.csv").text
+
+    # 어느 인코딩으로도 표가 안 되면 500이 아니라 '표로 읽을 수 없다'는 400이다.
+    응답 = client.get("/preview/깨짐.csv", headers={"accept": "text/html"})
+    assert 응답.status_code in (200, 400), f"미리보기가 {응답.status_code}로 죽었다"
+    if 응답.status_code == 400:
+        assert "표로 읽을 수 없는" in 응답.text
+
+
+def test_목록을_만드는_사이_파일이_지워져도_화면은_뜬다(tmp_path, monkeypatch):
+    """`forget_run.py`·지도 다시 그리기가 파일을 지우는 순간 `/data`·`/run`이
+    `FileNotFoundError`로 통째로 500이 될 수 있었다 (1.26.263). 그 파일만 뺀다."""
+    from pathlib import Path
+    from webapp import catalog
+
+    folder = tmp_path / "pp_data" / "순수요"
+    folder.mkdir(parents=True)
+    (folder / "a.csv").write_text("x\n", encoding="utf-8")
+    (folder / "b.csv").write_text("x\n", encoding="utf-8")
+    monkeypatch.setattr(catalog, "DATA_ROOT", tmp_path)
+    monkeypatch.setattr(catalog, "PP_ROOT", tmp_path / "pp_data")
+
+    real_stat = Path.stat
+
+    def flaky_stat(self, *a, **k):
+        if self.name == "b.csv":
+            raise FileNotFoundError(self)
+        return real_stat(self, *a, **k)
+
+    monkeypatch.setattr(Path, "stat", flaky_stat)
+    groups = {g["title"]: g["entries"] for g in catalog.list_csvs()}
+    names = [e["name"] for e in groups["순수요 (step0)"]]
+    assert names == ["a.csv"], f"지워진 파일 때문에 목록이 깨졌다: {names}"
+
+
+def test_날씨_실패는_짧게만_기억한다(monkeypatch):
+    """실패 응답도 성공과 같은 시간(관측 10분·예보 30분) 동안 캐시했다 (1.26.263).
+
+    기상청 API가 한 번 헛기침하면 그 뒤 30분 동안 모두가 "읽지 못했습니다"를
+    봤다. 실패는 1분만 붙들어 둔다 — 연타는 막되 다음 사람은 다시 시도한다.
+    """
+    import weather
+    from webapp import weather_view
+
+    calls = []
+
+    def boom(*a, **k):
+        calls.append(1)
+        raise weather.WeatherError("점검 중")
+
+    monkeypatch.setattr(weather, "fetch_hour", boom)
+    monkeypatch.setattr(weather, "fetch_forecast", boom)
+    weather_view.reset_cache()
+
+    assert weather_view.current()["available"] is False
+    weather_view.current()
+    assert len(calls) == 1, "1분 안의 연타는 캐시로 막아야 한다"
+
+    # 실패 뒤 1분이 지났다 — 성공 캐시(10분)보다 훨씬 이르지만 다시 묻는다.
+    weather_view._CACHE["at"] -= weather_view.FAILURE_CACHE_SECONDS + 1
+    weather_view.current()
+    assert len(calls) == 2, "실패를 성공과 같은 시간 동안 기억하고 있다"
+
+    calls.clear()
+    assert weather_view.forecast()["available"] is False
+    weather_view._FORECAST_CACHE["at"] -= weather_view.FAILURE_CACHE_SECONDS + 1
+    weather_view.forecast()
+    assert len(calls) == 2, "예보 실패도 짧게만 기억해야 한다"
+    weather_view.reset_cache()
+
+
 def test_지도_미리보기는_납작하지도_화면을_다_먹지도_않는다(client):
     """🔴 46vh는 *"너무 짧다"* 는 지적을 받았다(1.26.209, 사용자 확인) — 대전
     전역이 들어가야 하는 지도라 세로가 짧으면 시가지가 위아래로 잘린다.
