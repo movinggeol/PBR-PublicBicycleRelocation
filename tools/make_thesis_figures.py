@@ -81,6 +81,10 @@ STYLE = {
     "P": dict(색="#3182bd", 해치="", 마커="D", 이름="P 제안"),
 }
 DURATIONS = ["_05_10", "_10_15", "_15_20"]
+# 6장 그림 셋의 원천. **채택한 이동시간 식(320.4초 · 32.11km/h)으로 돌린 12개월 반복**이다 —
+# 옛 `repeat_12month_pinned.csv`는 상수 속도(25km/h)로 잰 것이라, 그 파일로 그리면 그림 6-3이
+# *"km당으로는 대등하다"* 는 **철회된 주장**을 그린다(EXPERIMENTS 33장). 재현은 부록 A에 있다.
+REPEAT_12M = "baseline/repeat_12month_on.csv"
 # 그림 3-5의 표본 끝 — 게이트 A 판정일. 채택 계수(320.4초 · 32.11km/h)가 이날까지의 패널에서 나왔다.
 ROAD_FIT_TO = "2026-09-15"
 
@@ -121,7 +125,7 @@ def _need(path: Path, what: str) -> pd.DataFrame | None:
 # ────────────────────────────────────────────────────────────── 6-2
 def fig_6_2():
     """12개월 반복의 분포. 표는 이것을 평균±표준편차 한 줄로 줄인다."""
-    frame = _need(EXP / "baseline/repeat_12month_pinned.csv", "12개월 반복 결과")
+    frame = _need(EXP / REPEAT_12M, "12개월 반복 결과(채택한 이동시간 식)")
     if frame is None:
         return
     fig, axes = plt.subplots(1, 3, figsize=(11, 3.6), sharey=True)
@@ -143,7 +147,7 @@ def fig_6_2():
         ax.set_title(f"{duration}  (각 n={len(data[0])})", fontsize=10)
     axes[0].set_ylabel("재배치 후 결품 시간 (h) — 낮을수록 좋음")
     fig.suptitle("그림 6-2  12개월 × 씨앗 3개 반복의 결품 시간 분포 "
-                 "(평일, 스냅샷 2026-08-11 real)\n"
+                 "(평일, 스냅샷 2026-08-11 real, 이동시간 식 적용)\n"
                  "상자는 사분위·수염은 1.5 IQR, 겹친 점이 개별 실행 36개다", fontsize=11, y=1.06)
     save(fig, "그림6-2_결품분포", "반복의 분포 (표는 평균±표준편차로 줄인다)")
 
@@ -151,7 +155,7 @@ def fig_6_2():
 # ────────────────────────────────────────────────────────────── 6-1
 def fig_6_1():
     """편익과 대가를 한 축에. 표 둘을 맞대야만 보이던 것이다."""
-    frame = _need(EXP / "baseline/repeat_12month_pinned.csv", "12개월 반복 결과")
+    frame = _need(EXP / REPEAT_12M, "12개월 반복 결과(채택한 이동시간 식)")
     if frame is None:
         return
     base = (frame[frame["method"] == "B0"]
@@ -199,8 +203,13 @@ def fig_6_1():
 
 # ────────────────────────────────────────────────────────────── 6-3
 def fig_6_3():
-    """P가 더 멀리 다닌다 — 논문이 감추지 않기로 한 사실이다(6.6)."""
-    frame = _need(EXP / "baseline/repeat_12month_pinned.csv", "12개월 반복 결과")
+    """P는 더 멀리 다닌다. **그래도 km당으로 앞선다** — 채택한 식에서 뒤집힌 결론이다.
+
+    상수 속도로 재던 동안에는 100km당 이득이 P 0.360h · B1 0.380h로 대등해 보였고,
+    그때 이 그림의 오른쪽 패널은 *"km당으로 재면 대등하다"* 를 보여 주고 있었다.
+    채택한 식에서는 0.360h 대 0.310h로 뒤집힌다(EXPERIMENTS 33장).
+    """
+    frame = _need(EXP / REPEAT_12M, "12개월 반복 결과(채택한 이동시간 식)")
     if frame is None:
         return
     base = (frame[frame["method"] == "B0"]
@@ -235,11 +244,11 @@ def fig_6_3():
     axes[1].set_xticks(x)
     axes[1].set_xticklabels(DURATIONS)
     axes[1].set_ylabel("1,000km당 결품 감소 (h)")
-    axes[1].set_title("km당으로 재면 대등하다 (오차막대 = 표준편차)", fontsize=10)
+    axes[1].set_title("km당으로 재도 제안 방법이 앞선다 (오차막대 = 표준편차)", fontsize=10)
     axes[1].legend(fontsize=8)
-    fig.suptitle("그림 6-3  편익과 이동 비용 — 제안 방법의 우위 일부는 더 멀리 다녀서 얻은 것이다",
+    fig.suptitle("그림 6-3  편익과 이동 비용 — 제안 방법은 더 멀리 다니지만 거리당으로도 앞선다",
                  fontsize=11, y=1.02)
-    save(fig, "그림6-3_편익과_이동거리", "P가 더 멀리 다닌다 (6.6)")
+    save(fig, "그림6-3_편익과_이동거리", "거리를 같게 놓고 봐도 P가 앞선다 (6.5)")
 
 
 # ────────────────────────────────────────────────────────────── 5-1
