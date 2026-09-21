@@ -28,6 +28,8 @@
 {% if stalled and stalled.stalled %}
 <div class="alert bad">
   <span><b>{{ stalled.days }}일째 새 관측이 없습니다.</b>
+  {% if stalled.limit %}<span class="muted">(기준 {{ stalled.limit }}일 —
+  등록된 요일 범위에 따라 다릅니다)</span>{% endif %}
   수집이 멈췄을 수 있습니다 — 실제로 두 번 그랬고, 둘 다 며칠 뒤에야
   알아차렸습니다. <code>scripts/collector.ps1 status</code>로 스케줄 상태를
   확인하고, 꺼져 있으면 <code>resume</code>으로 다시 켜세요.</span>

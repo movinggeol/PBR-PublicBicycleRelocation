@@ -932,6 +932,11 @@
     .step.failed .step-mark { background: var(--critical); color: #fff; }
     .step.failed .step-name { color: var(--ink); font-weight: 600; }
     .step.failed .step-state, .step.missing .step-state { color: var(--critical-ink); }
+    /* 끝난 작업이 멈춘 자리 — 진행 중과 달리 깜박이지 않는다 (1.26.266) */
+    .step.stopped { background: var(--warning-soft); }
+    .step.stopped .step-mark { background: var(--warning); color: #3a2600; }
+    .step.stopped .step-name { color: var(--ink); font-weight: 600; }
+    .step.stopped .step-state { color: var(--warning-ink); }
     .step.missing .step-mark { background: var(--critical-soft); color: var(--critical-ink); }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 

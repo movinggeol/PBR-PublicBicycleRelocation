@@ -134,13 +134,23 @@ def list_jobs() -> List[Job]:
         return sorted(_jobs.values(), key=lambda j: j.id, reverse=True)
 
 
-def elapsed_seconds(job: "Job") -> Optional[float]:
-    """한 작업이 걸린 시간(초). 시각이 없거나 이상하면 None."""
-    if not (job.started_at and job.finished_at):
+def elapsed_seconds(job: "Job", *, now: Optional[float] = None) -> Optional[float]:
+    """한 작업이 걸린 시간(초). 시각이 없거나 이상하면 None.
+
+    **돌고 있는 작업은 지금까지 걸린 시간**이다 (1.26.262). 예전에는 `finished_at`
+    이 없으면 None이라, 진행 화면이 예상만 적고 *지금 몇 분째인지*는 말하지
+    않았다 — 예상이 맞는지 보려면 둘이 나란히 있어야 한다.
+    """
+    if not job.started_at:
         return None
     try:
         started = time.mktime(time.strptime(job.started_at, "%Y-%m-%d %H:%M:%S"))
-        finished = time.mktime(time.strptime(job.finished_at, "%Y-%m-%d %H:%M:%S"))
+        if job.finished_at:
+            finished = time.mktime(time.strptime(job.finished_at, "%Y-%m-%d %H:%M:%S"))
+        elif job.is_running:
+            finished = time.time() if now is None else now
+        else:
+            return None
     except ValueError:
         return None
     return finished - started if finished >= started else None
@@ -264,6 +274,12 @@ def _median(values: List[float]) -> float:
 # 계수를 뽑을 때 볼 실행 수. **3은 작지만 일부러 작다** — 아래 docstring 참고.
 ESTIMATE_WINDOW = 3
 
+# 계수 캐시. 열쇠는 **이력의 (id, 상태) 목록**이라 작업이 하나 끝나거나 새로
+# 뜨면 저절로 어긋나 다시 센다 — 시각으로 만료시키면 끝난 직후 몇 분간 옛
+# 계수를 보여 준다. 화면 하나가 이 함수를 두세 번 부르고(첫 화면 3번, 실행
+# 폼 2번) 한 번마다 로그 최대 3개(건당 약 360KB)를 읽고 있었다(1.26.262).
+_ESTIMATE_CACHE: Dict[str, object] = {"key": None, "value": None}
+
 
 def estimate_model(limit: int = ESTIMATE_WINDOW) -> Optional[Dict[str, float]]:
     """최근 성공한 실행에서 뽑은 예상 계수. 기록이 없으면 None.
@@ -288,24 +304,36 @@ def estimate_model(limit: int = ESTIMATE_WINDOW) -> Optional[Dict[str, float]]:
     돌린 실행은 수집이 0이라, 섞으면 **'API 수집 생략'을 안 켠 사람의 예상까지
     0으로 끌어내린다.**
     """
+    history = list_jobs()
+    key = (limit, tuple((job.id, job.status) for job in history))
+    if _ESTIMATE_CACHE["key"] == key:
+        return _ESTIMATE_CACHE["value"]
+
     shapes = []
-    for job in list_jobs():
+    for job in history:
         if job.status != "success":
             continue
         if (shape := run_shape(job)) is not None:
             shapes.append(shape)
         if len(shapes) >= limit:
             break
-    if not shapes:
-        return None
 
-    수집표본 = [s["수집"] for s in shapes if s["수집"] > 0]
-    return {
-        "수집": _median(수집표본) if 수집표본 else 0.0,
-        "전처리": _median([s["전처리"] for s in shapes]),
-        "시간대당": _median([s["시간대당"] for s in shapes]),
-        "표본": len(shapes),
-    }
+    model = None
+    if shapes:
+        수집표본 = [s["수집"] for s in shapes if s["수집"] > 0]
+        model = {
+            "수집": _median(수집표본) if 수집표본 else 0.0,
+            "전처리": _median([s["전처리"] for s in shapes]),
+            "시간대당": _median([s["시간대당"] for s in shapes]),
+            "표본": len(shapes),
+        }
+    _ESTIMATE_CACHE.update(key=key, value=model)
+    return model
+
+
+def reset_estimate_cache() -> None:
+    """테스트가 쓴다 — 같은 이력 목록으로 로그만 바꿔 다시 잴 때."""
+    _ESTIMATE_CACHE.update(key=None, value=None)
 
 
 def estimate_seconds(model: Optional[Dict[str, float]], durations: int,
@@ -350,7 +378,7 @@ def read_log(job: Job) -> str:
         return ""
 
 
-def read_log_tail(job: Job, max_lines: int = 300) -> str:
+def read_log_tail(job: Job, max_lines: int = 300, text: Optional[str] = None) -> str:
     """로그 파일의 마지막 max_lines 줄을 반환한다.
 
     ⚠️ **'아직'과 '이제 없다'를 가른다** (1.26.149). 예전에는 파일이 없으면
@@ -359,19 +387,39 @@ def read_log_tail(job: Job, max_lines: int = 300) -> str:
     11건의 로그가 이미 없었다). `interrupted` 상태에서는 화면이 *"실제로
     끝까지 돌았는지는 아래 로그로 판단하세요"* 라고 안내하므로 더 나쁘다 —
     없는 증거를 보라고 시키는 셈이다.
+
+    `text`를 주면 그것을 자른다 — 진행 화면이 단계 표시용으로 `read_log()`를
+    이미 읽어 두었는데 같은 파일(약 360KB)을 3초마다 두 번 열고 있었다(1.26.262).
     """
-    if not job.log_path.exists():
-        if job.is_running:
-            return "(로그가 아직 없습니다)"
-        return "(로그가 남아 있지 않습니다 — 오래된 실행이라 정리되었습니다)"
-    try:
-        text = job.log_path.read_text(encoding="utf-8", errors="replace")
-    except OSError as err:
-        return f"(로그를 읽을 수 없습니다: {err})"
+    if text is None:
+        if not job.log_path.exists():
+            return _missing_log_note(job)
+        try:
+            text = job.log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as err:
+            return f"(로그를 읽을 수 없습니다: {err})"
+    elif not text and not job.log_path.exists():
+        return _missing_log_note(job)
     lines = text.splitlines()
     if len(lines) > max_lines:
         lines = [f"... (앞 {len(lines) - max_lines}줄 생략) ..."] + lines[-max_lines:]
     return "\n".join(lines)
+
+
+def _missing_log_note(job: Job) -> str:
+    if job.is_running:
+        return "(로그가 아직 없습니다)"
+    return "(로그가 남아 있지 않습니다 — 오래된 실행이라 정리되었습니다)"
+
+
+# 작업이 끝났을 때 부를 함수들. 화면 쪽 캐시(순수요 히트맵 등)를 비우는 데
+# 쓴다 — 이 모듈이 화면 모듈을 import하면 층이 거꾸로 되므로 등록을 받는다.
+_finished_hooks: List = []
+
+
+def add_finished_hook(hook) -> None:
+    """작업이 끝날 때(성공·실패·중단 모두) `hook(job)`을 부른다."""
+    _finished_hooks.append(hook)
 
 
 def _terminate_tree(proc: subprocess.Popen) -> None:
@@ -418,6 +466,12 @@ def _watch(job: Job, proc: subprocess.Popen, log_file) -> None:
         job.finished_at = _now_str()
         _running_proc = None
         _save_registry()
+    # 락 밖에서 — 훅이 무엇을 하든 다른 요청을 막을 이유가 없다.
+    for hook in list(_finished_hooks):
+        try:
+            hook(job)
+        except Exception as err:                      # noqa: BLE001
+            print(f"[경고] 작업 완료 훅 실패: {type(err).__name__}: {err}")
 
 
 def start_job(pipeline_args: List[str]) -> Job:

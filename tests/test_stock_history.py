@@ -523,7 +523,8 @@ def test_등록된_창을_읽을_때_utf16으로_잘못_디코드하지_않는�
     payload.decode("utf-16")
 
     monkeypatch.setattr("subprocess.run", lambda *a, **k: _Done(payload))
-    assert collector.registered_args() == {"window": "07:00-22:00", "interval": 10}
+    assert collector.registered_args() == {"window": "07:00-22:00", "interval": 10,
+                                          "include_holidays": False}
 
 
 def test_schtasks가_PATH에_없어도_등록된_창을_읽는다(monkeypatch):
@@ -542,7 +543,8 @@ def test_schtasks가_PATH에_없어도_등록된_창을_읽는다(monkeypatch):
         return _Done(payload)
 
     monkeypatch.setattr("subprocess.run", fake_run)
-    assert collector.registered_args() == {"window": "07:00-22:00", "interval": 10}
+    assert collector.registered_args() == {"window": "07:00-22:00", "interval": 10,
+                                          "include_holidays": False}
     assert tried and tried[0].endswith("schtasks.exe"), "전체 경로를 먼저 시도해야 한다"
 
 

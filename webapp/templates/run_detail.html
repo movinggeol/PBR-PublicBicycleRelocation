@@ -2,7 +2,11 @@
 {% block title %}실행 {{ job.id }} — PBR 대시보드{% endblock %}
 
 {% block head_extra %}
-{% if job.is_running %}<meta http-equiv="refresh" content="3">{% endif %}
+{# 진행 중이면 3초마다 /api/runs/{id}를 받아 **바뀐 칸만** 고친다(아래 스크립트,
+   1.26.265). 예전의 <meta refresh>는 화면을 통째로 다시 그려서 로그를 읽던
+   자리가 매번 위로 튀고, 소리로 듣는 사람에겐 문서를 처음부터 다시 읽는
+   일이었다. 스크립트가 못 도는 환경에만 옛 방식을 남긴다. #}
+{% if job.is_running %}<noscript><meta http-equiv="refresh" content="3"></noscript>{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -10,20 +14,20 @@
 <section class="hero" style="padding-bottom:var(--sp-md)">
   <div class="row" style="gap:var(--sp-sm)">
     <h1 style="font-size:var(--fs-h2); margin:0">실행 {{ job.id }}</h1>
-    <span class="badge {{ job.status }}">{{ job_labels.get(job.status, job.status) }}</span>
+    <span class="badge {{ job.status }}" data-run-badge>{{ job_labels.get(job.status, job.status) }}</span>
   </div>
 </section>
 
 {% if job.is_running %}
-<div class="card">
+<div class="card" data-run-live="/api/runs/{{ job.id }}" data-run-steps-count="{{ progress | length }}">
   <div class="card-head">
     <h2>진행 중입니다</h2>
-    <span class="hint">3초마다 자동으로 새로고침됩니다</span>
+    <span class="hint">3초마다 진행 상황을 받아 옵니다</span>
   </div>
-  {# 새로고침은 화면을 통째로 다시 그린다 — 눈으로 보는 사람은 어디가 바뀌었는지
-     한눈에 알지만, 화면을 소리로 듣는 사람에게는 그 한 줄을 짚어 줘야 한다.
-     지금 어느 단계인지만 여기서 알린다(전체를 다시 읽히면 오히려 방해다). #}
-  <p role="status" class="hint" style="margin:0 0 var(--sp-sm)">
+  {# 눈으로 보는 사람은 단계 표가 바뀌는 것을 보지만, 화면을 소리로 듣는
+     사람에게는 그 한 줄을 짚어 줘야 한다. 지금 어느 단계인지만 여기서
+     알린다 — 이 문단의 글만 바뀌므로 보조기기는 이 한 줄만 다시 읽는다. #}
+  <p role="status" class="hint" style="margin:0 0 var(--sp-sm)" data-run-status>
     {%- if progress -%}
       {%- set done = progress | selectattr("status", "equalto", "done") | list | length -%}
       {%- set now = progress | selectattr("status", "equalto", "running") | list | first -%}
@@ -60,16 +64,17 @@
 {% if progress %}
 {% set done = progress | selectattr("status", "equalto", "done") | list | length %}
 <h2>진행 단계</h2>
-<p class="section-lead">전체 {{ progress | length }}단계 중 {{ done }}단계 완료.
+<p class="section-lead"><span data-run-done>전체 {{ progress | length }}단계 중 {{ done }}단계 완료.</span>
   앞 단계의 결과가 다음 단계의 입력이라 순서를 건너뛸 수 없습니다.</p>
 <div class="card flush">
-  <ol class="steps">
+  <ol class="steps" data-run-steps>
     {% for s in progress %}
-    <li class="step {{ s.status }}">
+    <li class="step {{ s.status }}" data-step="{{ loop.index0 }}">
       <span class="step-mark" aria-hidden="true">
         {%- if s.status == "done" %}✓
         {%- elif s.status == "running" %}●
         {%- elif s.status == "failed" %}✕
+        {%- elif s.status == "stopped" %}■
         {%- elif s.status == "missing" %}?
         {%- else %}{{ loop.index }}{% endif -%}
       </span>
@@ -81,6 +86,7 @@
         {%- if s.status == "done" %}완료
         {%- elif s.status == "running" %}진행 중
         {%- elif s.status == "failed" %}실패
+        {%- elif s.status == "stopped" %}여기서 멈춤
         {%- elif s.status == "missing" %}파일 없음
         {%- else %}대기{% endif -%}
       </span>
@@ -100,8 +106,8 @@
       {# 예상과 실제를 **나란히** 둔다. 예상만 보여 주면 그게 맞았는지 아무도
          모르고, 틀린 채로 남는다 — 다음 예상이 이 기록에서 나오기 때문에
          어긋남이 눈에 보여야 한다(1.26.214). #}
-      <tr><th scope="row">걸린 시간</th><td>
-        {%- if elapsed_minutes is not none %}{{ elapsed_minutes }}분
+      <tr><th scope="row">걸린 시간</th><td data-run-elapsed>
+        {%- if elapsed_minutes is not none %}{{ elapsed_minutes }}분{% if job.is_running %} 경과{% endif %}
           {%- if estimate_minutes is not none %} <span class="muted">(예상 {{ estimate_minutes }}분)</span>{% endif %}
         {%- elif estimate_minutes is not none %}<span class="muted">예상 {{ estimate_minutes }}분</span>
         {%- else %}—{% endif %}</td></tr>
@@ -114,7 +120,101 @@
 </div>
 
 <h2>로그</h2>
-<pre class="log">{{ log }}</pre>
+<pre class="log" data-run-log>{{ log }}</pre>
 
 <a class="back" href="/run">← 실행 화면으로</a>
+
+{% if job.is_running %}
+<script>
+  /* 3초마다 /api/runs/{id}를 받아 바뀐 칸만 고친다 (1.26.265).
+     단계 표시·현재 단계 문장·걸린 시간·로그 꼬리만 손대고, 작업이 끝나면
+     한 번만 통째로 다시 그린다 — 끝난 뒤의 안내(완성·실패·중단)는 서버
+     템플릿이 가지고 있어 여기서 흉내 내지 않는다. 단계 수가 달라지면
+     (계획 블록이 늦게 찍히는 첫 몇 초) 표의 뼈대가 바뀌므로 그때도 다시 그린다. */
+  (function () {
+    var card = document.querySelector("[data-run-live]");
+    if (!card || !window.fetch) return;
+    var url = card.getAttribute("data-run-live");
+    var stepsAtLoad = parseInt(card.getAttribute("data-run-steps-count"), 10) || 0;
+    var MARK = { done: "✓", running: "●", failed: "✕", missing: "?" };
+    var STATE = { done: "완료", running: "진행 중", failed: "실패", missing: "파일 없음", pending: "대기" };
+
+    function setText(sel, text) {
+      var el = document.querySelector(sel);
+      if (el && el.textContent !== text) el.textContent = text;
+    }
+
+    function drawSteps(progress) {
+      var done = 0, running = null;
+      progress.forEach(function (s) {
+        if (s.status === "done") done += 1;
+        if (s.status === "running" && !running) running = s;
+      });
+      var summary = "전체 " + progress.length + "단계 중 " + done + "단계 완료.";
+      setText("[data-run-done]", summary);
+      setText("[data-run-status]", progress.length
+        ? summary + (running ? " 지금은 " + running.label + " 단계입니다." : "")
+        : "준비 중입니다.");
+      progress.forEach(function (s, i) {
+        var li = document.querySelector('[data-step="' + i + '"]');
+        if (!li) return;
+        var cls = "step " + s.status;
+        if (li.className !== cls) li.className = cls;
+        setText('[data-step="' + i + '"] .step-mark', MARK[s.status] || String(i + 1));
+        setText('[data-step="' + i + '"] .step-state', STATE[s.status] || "대기");
+      });
+    }
+
+    function drawElapsed(d) {
+      var el = document.querySelector("[data-run-elapsed]");
+      if (!el) return;
+      /* 서버는 소수 한 자리(1.0)로 적는다 — JS의 1.0은 "1"이 되어 3초 뒤 글자가 바뀌므로 맞춘다 */
+      function m(v) { return Number(v).toFixed(1); }
+      var text;
+      if (d.elapsed_minutes !== null && d.elapsed_minutes !== undefined) {
+        text = m(d.elapsed_minutes) + "분 경과";
+        if (d.estimate_minutes !== null && d.estimate_minutes !== undefined) text += " (예상 " + m(d.estimate_minutes) + "분)";
+      } else if (d.estimate_minutes !== null && d.estimate_minutes !== undefined) {
+        text = "예상 " + m(d.estimate_minutes) + "분";
+      } else {
+        text = "—";
+      }
+      el.innerHTML = "";
+      /* 예상은 흐리게 — 서버 템플릿과 같은 모양이어야 첫 화면과 갱신된 화면이 다르지 않다 */
+      var parts = text.split(" (예상 ");
+      el.appendChild(document.createTextNode(parts[0] + (parts.length > 1 ? " " : "")));
+      if (parts.length > 1) {
+        var m = document.createElement("span"); m.className = "muted";
+        m.textContent = "(예상 " + parts[1]; el.appendChild(m);
+      }
+    }
+
+    function drawLog(text) {
+      var pre = document.querySelector("[data-run-log]");
+      if (!pre || pre.textContent === text) return;
+      /* 끝을 보고 있었으면 끝에 붙여 둔다 — 위로 올려 읽던 사람은 그 자리에 둔다 */
+      var atEnd = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 24;
+      pre.textContent = text;
+      if (atEnd) pre.scrollTop = pre.scrollHeight;
+    }
+
+    function tick() {
+      fetch(url, { headers: { "Accept": "application/json" } })
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function (d) {
+          if (!d.is_running || (d.progress || []).length !== stepsAtLoad) {
+            location.reload();           /* 끝났거나 표의 뼈대가 바뀌었다 — 한 번만 통째로 */
+            return;
+          }
+          drawSteps(d.progress || []);
+          drawElapsed(d);
+          drawLog(d.log || "");
+          setTimeout(tick, 3000);
+        })
+        .catch(function () { setTimeout(tick, 3000); });   /* 한 번 못 받았다고 멈추지 않는다 */
+    }
+    setTimeout(tick, 3000);
+  })();
+</script>
+{% endif %}
 {% endblock %}

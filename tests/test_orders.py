@@ -154,6 +154,54 @@ def test_orders_page_renders(client):
     assert client.get("/orders").status_code == 200
 
 
+def test_목록에_없는_라벨로_열어도_링크에_None이_박히지_않는다(client, monkeypatch):
+    """`/orders?run_label=없음`의 '지금 재고와 대조하기'가 `&duration=None`이었다
+    (1.26.263, 실데이터 466개 주소 순회에서 발견). 회차가 없으면 인자를 뺀다."""
+    from webapp import app as webapp_app
+
+    monkeypatch.setattr(webapp_app.store, "plan_targets", lambda: pd.DataFrame())
+    monkeypatch.setattr(orders.store, "load", lambda *a, **k: (pd.DataFrame(), "none"))
+
+    html = client.get("/orders?run_label=%EC%97%86%EC%9D%8C").text
+    assert "duration=None" not in html
+    assert "/orders/live?run_label=" in html, "대조 링크 자체는 있어야 한다"
+
+
+def test_라벨만_주면_그_실행의_첫_회차로_채운다(monkeypatch):
+    """`/orders?run_label=X`에 회차가 없으면 **회차가 섞였다** (1.26.262).
+
+    회차 없이 `vrp_plan`을 읽으면 그 실행의 모든 회차가 한 표로 오고, 차량별로
+    묶는 순간 한 장에 두 회차의 정거장이 이어 붙는다 — 차고지 복귀 두 번,
+    이동거리 합 두 배(실측 재현). 칩은 늘 둘을 함께 넘기지만 손으로 고친
+    주소는 그렇지 않다. 목록에서 그 실행의 첫 회차를 찾아 채운다.
+    """
+    from webapp import app as webapp_app
+
+    asked = []
+
+    def fake_load(table, run_label=None, duration=None):
+        asked.append((table, run_label, duration))
+        return pd.DataFrame(), "none"
+
+    targets = pd.DataFrame([
+        {"run_label": "X", "duration": "_05_10", "clusters": 2, "created_at": "t", "kind": "plan"},
+        {"run_label": "X", "duration": "_10_15", "clusters": 2, "created_at": "t", "kind": "plan"},
+        {"run_label": "Y", "duration": "_15_20", "clusters": 2, "created_at": "t", "kind": "plan"},
+    ])
+    monkeypatch.setattr(orders.store, "load", fake_load)
+    monkeypatch.setattr(webapp_app.store, "plan_targets", lambda: targets)
+
+    context = webapp_app._orders_context("X", None)
+    assert context["duration"] == "_05_10", "라벨만 왔는데 회차를 비워 뒀다"
+    assert all(d == "_05_10" for _t, label, d in asked if label == "X"), \
+        f"회차 없이 읽은 호출이 있다: {asked}"
+
+    # 회차를 함께 주면 그대로다 — 기본값이 사람의 선택을 덮으면 안 된다.
+    assert webapp_app._orders_context("X", "_10_15")["duration"] == "_10_15"
+    # 목록에 없는 라벨은 그대로 넘긴다 — 화면이 '경로가 없다'고 말할 자리다.
+    assert webapp_app._orders_context("없음", None)["duration"] is None
+
+
 def test_live_check_calls_the_api_once_and_only_when_asked(client, monkeypatch):
     """재고 대조는 **누를 때만** 외부 API를 부른다.
 
@@ -172,6 +220,53 @@ def test_live_check_calls_the_api_once_and_only_when_asked(client, monkeypatch):
 
     assert client.get("/orders/live").status_code == 200
     assert len(calls) == 1
+
+
+def test_대조_한_번에_두_표를_한_번씩만_읽는다(client, monkeypatch):
+    """`/orders/live`가 `vrp_plan`을 3번, `pick_drop`을 5번 읽고 있었다 (1.26.262).
+
+    지시서(`build`)·대조 지시서(`build_live→build`)·작업량(`planned_work`)·
+    이름·좌표가 각자 읽었다. 라우트가 한 번 읽어 넘긴다.
+    """
+    reads = []
+
+    def fake_load(table, run_label=None, duration=None):
+        reads.append(table)
+        if table == "vrp_plan":
+            return VRP.copy(), "db"
+        if table == "pick_drop":
+            return CANDIDATES.copy(), "db"
+        return pd.DataFrame(), "none"
+
+    monkeypatch.setattr(orders.store, "load", fake_load)
+    monkeypatch.setattr(tashu, "fetch_stations", lambda timeout=30: _live(ST0010=5))
+
+    res = client.get("/orders/live?run_label=R&duration=_05_10")
+    assert res.status_code == 200
+    assert reads.count("vrp_plan") == 1, f"vrp_plan을 {reads.count('vrp_plan')}번 읽었다"
+    assert reads.count("pick_drop") == 1, f"pick_drop을 {reads.count('pick_drop')}번 읽었다"
+    assert "지금 재고와 대조" in res.text, "대조 결과가 지시서에 얹히지 않았다"
+
+
+def test_거치대_수를_모르면_내리기_상한을_짐작하지_않는다(monkeypatch):
+    """거치대 0대 = 상한 0대라 *"이미 N대로 상한(0대 x 1.5 = 0대)을 넘었습니다"*
+    가 나왔다 (1.26.262). 모르는 것은 '불가'가 아니라 '확인 불가'다."""
+    work = pd.DataFrame([
+        {"station_id": "ST0020", "station_name": "다라 대여소", "cluster": 0, "seq": 1,
+         "parking_lot": 0, "stock": 1, "need": 6, "action": "drop"},
+        {"station_id": "ST0010", "station_name": "가나 대여소", "cluster": 0, "seq": 0,
+         "parking_lot": 0, "stock": 20, "need": 6, "action": "pick"},
+    ])
+    compared = orders.compare_stock(work, _live(ST0010=20, ST0020=1))
+
+    drop = compared[compared.station_id == "ST0020"].iloc[0]
+    assert drop["status"] == "확인 불가" and pd.isna(drop["possible"])
+    assert "거치대" in drop["note"]
+    assert drop["advice"] == "현장에서 직접 확인하세요"
+    # 싣기는 거치대 수와 무관하다 — 그대로 판정한다.
+    pick = compared[compared.station_id == "ST0010"].iloc[0]
+    assert pick["status"] == "가능"
+    assert orders.summarize(compared)["unknown"] == 1
 
 
 def test_api_failure_shows_a_message_instead_of_a_500(client, monkeypatch):

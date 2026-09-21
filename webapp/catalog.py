@@ -79,7 +79,16 @@ def _scan(categories) -> List[Dict]:
         folder = PP_ROOT / subdir
         entries: List[Dict] = []
         if folder.exists():
-            entries = [_entry(p) for p in folder.glob(pattern) if p.is_file()]
+            entries = []
+            for path in folder.glob(pattern):
+                # 목록을 만드는 사이 파일이 지워질 수 있다(`forget_run.py`·
+                # 다시 그리는 지도). `stat()`이 FileNotFoundError를 내면 그
+                # 파일만 빼고 간다 — 화면 전체가 500이 될 이유가 아니다(1.26.263).
+                try:
+                    if path.is_file():
+                        entries.append(_entry(path))
+                except OSError:
+                    continue
             entries.sort(key=lambda e: e["mtime_raw"], reverse=True)
         result.append({"title": title, "entries": entries})
     return result

@@ -390,3 +390,283 @@ def test_고친_규약을_문서가_현재형으로_가르치지_않는지_본�
         assert "영영" not in 붙잡힌_줄, "인용문을 낡은 것으로 잡는다"
     finally:
         checker.ROOT = 원래
+
+
+# ──────────────────────────────────────────── 그림·표가 원고에 실렸는가 (1.26.257)
+#
+# 🔴 실제로 났다. 6장 그림 셋은 **파일도 있고 초안에도 실려** 있었는데 원고와
+#    그림 차례 어디에도 없어, 논문의 핵심 장이 그림 0개로 남았다. 자리 표시
+#    규칙(원고 README 4-1)은 *아직 만들지 않은 자료*만 세므로 이것을 못 잡는다.
+
+def _그림_저장소(tmp_path, 장, 앞붙이, 파일들):
+    """원고·앞붙이·그림 폴더만 있는 작은 저장소를 만든다."""
+    원고 = tmp_path / "docs" / "연구" / "논문"
+    원고.mkdir(parents=True)
+    (원고 / "6장_성능평가.md").write_text(장, encoding="utf-8")
+    (원고 / "앞붙이.md").write_text(앞붙이, encoding="utf-8")
+    그림 = tmp_path / "docs" / "연구" / "초안" / "그림"
+    그림.mkdir(parents=True)
+    for 이름 in 파일들:
+        (그림 / 이름).write_bytes(b"")
+    return tmp_path
+
+
+def _그림_문제(checker, tmp_path, 장, 앞붙이, 파일들):
+    원래 = checker.ROOT
+    checker.ROOT = _그림_저장소(tmp_path, 장, 앞붙이, 파일들)
+    try:
+        return checker.check_figures()
+    finally:
+        checker.ROOT = 원래
+
+
+_장_한쪽 = """# 제6장
+
+[그림 6-1]은 편익과 대가를 함께 보인다.
+
+![그림 6-1](../초안/그림/그림6-1_편익과_대가.png)
+
+[그림 6-1] 재배치의 편익과 대가 (12개월 평균)
+"""
+_앞붙이_한쪽 = """## 6. 그림 차례
+
+| 번호 | 제목 |
+| --- | --- |
+| [그림 6-1] | 재배치의 편익과 대가 |
+"""
+
+
+def test_지금_원고의_그림과_표는_다_실려_있다(checker):
+    """실제 문서가 통과해야 검사를 켤 수 있다."""
+    assert checker.check_figures() == []
+
+
+def test_만들어_두고_원고에_싣지_않은_그림을_잡는다(checker, tmp_path):
+    문제 = _그림_문제(checker, tmp_path, _장_한쪽, _앞붙이_한쪽,
+                    ["그림6-1_편익과_대가.png", "그림6-2_결품분포.png"])
+    assert len(문제) == 1, 문제
+    assert "그림6-2_결품분포.png" in 문제[0]
+    assert "싣지 않았습니다" in 문제[0]
+
+
+def test_그림_차례에_빠진_것을_잡는다(checker, tmp_path):
+    문제 = _그림_문제(checker, tmp_path, _장_한쪽, "## 6. 그림 차례\n",
+                    ["그림6-1_편익과_대가.png"])
+    assert any("그림 차례에 없습니다" in p for p in 문제), 문제
+
+
+def test_다_그린_그림에_남은_자리_표시를_잡는다(checker, tmp_path):
+    앞붙이 = _앞붙이_한쪽.replace("| 재배치의 편익과 대가 |",
+                              "| 재배치의 편익과 대가 *(자리)* |")
+    문제 = _그림_문제(checker, tmp_path, _장_한쪽, 앞붙이,
+                    ["그림6-1_편익과_대가.png"])
+    assert any("자리" in p for p in 문제), 문제
+
+
+def test_표_번호로_시작하는_본문_문장을_캡션으로_읽지_않는다(checker, tmp_path):
+    """처음 돌렸을 때 이것으로 다섯 건을 잘못 잡았다.
+
+    원고는 `<표 2-1>은 …`처럼 표 번호로 문장을 시작한다. 줄머리만 보면 캡션과
+    구분되지 않으므로 **자리로 가른다** — 표 캡션은 바로 아래가 표다.
+    """
+    장 = """# 제6장
+
+<표 6-1>은 비교한 방법을 정리한 것이다.
+
+<표 6-1> 비교한 다섯 가지 방법
+
+| 기호 | 방법 |
+| --- | --- |
+| P | 제안 방법 |
+"""
+    앞붙이 = """## 7. 표 차례
+
+| 번호 | 제목 |
+| --- | --- |
+| <표 6-1> | 비교한 다섯 가지 방법 |
+"""
+    assert _그림_문제(checker, tmp_path, 장, 앞붙이, []) == []
+
+
+# ──────────────────────────────────── 파생 검사 — 정본까지 보고, 경계를 문다 (1.26.259)
+
+def _파생_문제(checker, tmp_path, 파생, 원본들):
+    """가짜 논문 폴더를 만들고 정본 결론/초록 검사를 돌린다."""
+    원고 = tmp_path / "docs" / "연구" / "논문"
+    원고.mkdir(parents=True)
+    (원고 / "9장_결론.md").write_text(파생, encoding="utf-8")
+    for 이름, 내용 in 원본들.items():
+        (원고 / 이름).write_text(내용, encoding="utf-8")
+    원래_root, 원래_docs = checker.ROOT, checker.DERIVED_DOCS
+    checker.ROOT = tmp_path
+    checker.DERIVED_DOCS = {"docs/연구/논문/9장_결론.md": "CHAPTERS"}
+    try:
+        return checker.check_derived()
+    finally:
+        checker.ROOT, checker.DERIVED_DOCS = 원래_root, 원래_docs
+
+
+def test_정본_결론은_본문_장_전체를_원본으로_본다(checker, tmp_path):
+    """결론은 6장만이 아니라 1~8장을 압축한다 — 5장에서 온 값도 통과해야 한다."""
+    문제 = _파생_문제(
+        checker, tmp_path,
+        "안전계수는 1.99로 정하였고 결품은 0.18~0.28시간 낮다.",
+        {"5장_파라미터결정.md": "안전계수 1.99를 고른 근거는 커버리지다.",
+         "6장_성능평가.md": "그리디 대비 0.18~0.28시간 낮다."})
+    assert 문제 == [], 문제
+
+
+def test_원본에_없는_수치는_정본에서도_잡는다(checker, tmp_path):
+    문제 = _파생_문제(
+        checker, tmp_path,
+        "그리디는 회차당 251대를 옮긴다.",
+        {"6장_성능평가.md": "옮긴 대수는 표에 있다."})
+    assert len(문제) == 1 and "251" in 문제[0], 문제
+
+
+def test_부분_문자열로_통과시키지_않는다(checker, tmp_path):
+    """🔴 실제로 났다 — 9장의 '251대'가 <표 5-7>의 **251.4** 안에서 발견돼 통과했다."""
+    문제 = _파생_문제(
+        checker, tmp_path,
+        "그리디는 회차당 251대를 옮긴다.",
+        {"5장_파라미터결정.md": "| 2.33 | 84.0 | 251.4 | 429.3 |"})
+    assert len(문제) == 1 and "251" in 문제[0], 문제
+
+
+# ────────────────────────── 인용과 참고문헌이 서로를 가리키는가 (1.26.260)
+#
+# 🔴 실제로 났다. 참고문헌은 도로 이동시간의 출처로 *티맵모빌리티 TMAP API*를
+#    싣는데 원고는 <표 4-1>에서도 *"상용 경로 안내 API"* 라고만 적어, 그 항목만
+#    본문 어디에도 닿지 않았다. 같은 표의 다른 행은 출처를 이름으로 적는다.
+
+def _인용_문제(checker, tmp_path, 참고문헌, 본문들):
+    """참고문헌과 본문 몇 쪽만 있는 작은 원고를 만들어 검사를 돌린다."""
+    원고 = tmp_path / "docs" / "연구" / "논문"
+    원고.mkdir(parents=True)
+    (원고 / "참고문헌.md").write_text(참고문헌, encoding="utf-8")
+    for 이름, 내용 in 본문들.items():
+        (원고 / 이름).write_text(내용, encoding="utf-8")
+    원래 = checker.ROOT
+    checker.ROOT = tmp_path
+    try:
+        return checker.check_citations()
+    finally:
+        checker.ROOT = 원래
+
+
+_참고문헌 = """# 참고문헌
+
+김영일 (2022, 12월 13일). [동행취재] 타슈2 수거 담당자의 바람. *중도일보*.
+
+Raviv, T., Tzur, M., & Forma, I. A. (2013). Static repositioning in a
+bike-sharing system. *EURO Journal on Transportation and Logistics*, 2, 187-229.
+
+티맵모빌리티. *TMAP API*. https://tmapapi.tmapmobility.com/
+"""
+
+
+def test_서술형과_괄호형_인용을_모두_짝짓는다(checker, tmp_path):
+    문제 = _인용_문제(checker, tmp_path, _참고문헌, {
+        "2장_관련연구.md": "Raviv 외(2013)는 두 가지 정식화를 제시하였다.",
+        "8장_한계와_향후과제.md": "7인 1개 조로 운영된다고 전한다(김영일, 2022).",
+        "4장_시스템설계.md": "| 도로 이동시간 | 티맵모빌리티 TMAP API | 100구간 |",
+    })
+    assert 문제 == [], 문제
+
+
+def test_참고문헌에_없는_인용을_잡는다(checker, tmp_path):
+    문제 = _인용_문제(checker, tmp_path, _참고문헌, {
+        "2장_관련연구.md": ("Raviv 외(2013)와 Schuijbroek 외(2017)를 보라."
+                            " 7인 1개 조이다(김영일, 2022)."),
+        "4장_시스템설계.md": "티맵모빌리티 TMAP API로 수집하였다.",
+    })
+    assert len(문제) == 1 and "Schuijbroek(2017)" in 문제[0], 문제
+
+
+def test_아무도_인용하지_않는_참고문헌을_잡는다(checker, tmp_path):
+    문제 = _인용_문제(checker, tmp_path, _참고문헌, {
+        "2장_관련연구.md": "Raviv 외(2013)는 두 가지 정식화를 제시하였다.",
+        "4장_시스템설계.md": "티맵모빌리티 TMAP API로 수집하였다.",
+    })
+    assert len(문제) == 1 and "김영일 2022" in 문제[0], 문제
+
+
+def test_이름을_적지_않은_자료_출처를_잡는다(checker, tmp_path):
+    """🔴 회귀 — 본문이 '상용 경로 안내 API'라고만 적으면 참고문헌이 떠 있게 된다."""
+    문제 = _인용_문제(checker, tmp_path, _참고문헌, {
+        "2장_관련연구.md": "Raviv 외(2013)를 보라. 7인 1개 조이다(김영일, 2022).",
+        "4장_시스템설계.md": "| 도로 이동시간 | 상용 경로 안내 API | 100구간 |",
+    })
+    assert len(문제) == 1 and "티맵모빌리티" in 문제[0], 문제
+
+
+def test_저자와_연도가_줄바꿈으로_갈려도_통과한다(checker, tmp_path):
+    """🔴 오탐 회귀 — 줄 단위로 읽으면 멀쩡한 인용 스무 건을 짝이 없다고 물었다."""
+    문제 = _인용_문제(checker, tmp_path, _참고문헌, {
+        "2장_관련연구.md": "두 가지 정식화를 제시한 것은 Raviv\n외(2013)이다.",
+        "8장_한계와_향후과제.md": "7인 1개 조로 운영된다(김영일,\n2022).",
+        "4장_시스템설계.md": "티맵모빌리티 TMAP API로 수집하였다.",
+    })
+    assert 문제 == [], 문제
+
+
+# ─────────────────── 부록 B의 발췌가 지금 코드와 같은가 (1.26.261)
+#
+# 학과 양식이 요구하는 핵심 코드 부록은 복사본이라, 원본이 바뀌어도 아무 일도
+# 일어나지 않는다. 심사자가 부록과 저장소를 대조하면 바로 드러나는 자리다.
+
+def test_지금_부록_발췌는_원본과_같다(checker):
+    assert checker.check_appendix_code() == []
+
+
+def _부록_문제(checker, tmp_path, 문서, 소스들):
+    """가짜 부록과 원본 파일을 만들고 검사를 돌린다."""
+    (tmp_path / "docs" / "연구" / "논문").mkdir(parents=True)
+    (tmp_path / "docs" / "연구" / "논문" / "부록_핵심코드.md").write_text(
+        문서, encoding="utf-8")
+    for 이름, 내용 in 소스들.items():
+        경로 = tmp_path / 이름
+        경로.parent.mkdir(parents=True, exist_ok=True)
+        경로.write_text(내용, encoding="utf-8")
+    원래 = checker.ROOT
+    checker.ROOT = tmp_path
+    try:
+        return checker.check_appendix_code()
+    finally:
+        checker.ROOT = 원래
+
+
+_원본 = "def f(x):\n    score = x / (x + 1e-6)\n    return score\n"
+
+
+def test_들여쓰기만_덜어_낸_발췌는_통과한다(checker, tmp_path):
+    문제 = _부록_문제(checker, tmp_path, (
+        "`pipeline/a.py`\n\n```python\n"
+        "# 식을 읽히려고 부록에서 새로 단 주석\n"
+        "score = x / (x + 1e-6)\n"
+        "return score\n"
+        "```\n"), {"pipeline/a.py": _원본})
+    assert 문제 == [], 문제
+
+
+def test_원본과_다른_줄을_잡는다(checker, tmp_path):
+    """🔴 회귀 — 코드가 바뀌었는데 부록만 옛 값을 싣고 있으면 잡아야 한다."""
+    문제 = _부록_문제(checker, tmp_path, (
+        "`pipeline/a.py`\n\n```python\n"
+        "score = x / (x + 1e-9)\n"
+        "```\n"), {"pipeline/a.py": _원본})
+    assert len(문제) == 1 and "1e-9" in 문제[0], 문제
+
+
+def test_파일_이름_없는_발췌를_잡는다(checker, tmp_path):
+    문제 = _부록_문제(checker, tmp_path, (
+        "발췌를 싣는다.\n\n```python\nscore = x / (x + 1e-6)\n```\n"),
+        {"pipeline/a.py": _원본})
+    assert len(문제) == 1 and "파일 이름이 없습니다" in 문제[0], 문제
+
+
+def test_없는_파일을_가리키면_잡는다(checker, tmp_path):
+    문제 = _부록_문제(checker, tmp_path, (
+        "`pipeline/b.py`\n\n```python\nscore = x / (x + 1e-6)\n```\n"),
+        {"pipeline/a.py": _원본})
+    assert len(문제) == 1 and "없는 파일" in 문제[0], 문제
