@@ -770,6 +770,129 @@ def check_stale_claims() -> list[str]:
     return problems
 
 
+# 원고가 그림·표를 싣는 곳. 장 파일이 본문이고, 앞붙이가 차례다.
+MANUSCRIPT_DIR = "docs/연구/논문"
+FIGURE_DIR = "docs/연구/초안/그림"
+FRONT_MATTER = "docs/연구/논문/앞붙이.md"
+# 차례를 싣지 않는 원고 문서 — 규약·절차 문서라 본문이 아니다.
+_NOT_BODY = {"README.md", "앞붙이.md", "한글_옮기기.md"}
+# 원고에 싣지 않기로 한 그림 파일. **비어 있는 것이 정상이고**, 넣을 때는
+# 값에 그 까닭을 적는다(지우면 검사가 다시 문다).
+FIGURE_EXEMPT: dict[str, str] = {}
+
+
+def check_figures() -> list[str]:
+    """그림 파일 · 원고 본문 · 앞붙이 차례가 **같은 목록**을 말하는지 본다 (1.26.257).
+
+    🔴 실제로 났다. 6장 그림 셋(6-1·6-2·6-3)은 **파일도 있고 초안에도 실려**
+    있었는데 원고 본문과 그림 차례 어디에도 없었다. 논문의 핵심 장이 그림 0개인
+    채로 넘어갔고, 그동안 그 파일들은 09-07의 옛 이동시간 가정으로 그린 것이라
+    **철회된 주장을 그린 그림**이 저장소에 남아 있었다.
+
+    원고 README 4-1의 '자리' 규칙은 이것을 못 잡는다 — 자리 표시는 *아직 만들지
+    않은 자료*만 세므로 **만들어 두고 싣지 않은 자료**는 세지 않는다. 사람이
+    눈으로 장을 넘겨 보아야만 걸리는 자리였다.
+    """
+    problems: list[str] = []
+    man = ROOT / MANUSCRIPT_DIR
+    if not man.exists():
+        return problems
+
+    body = sorted(f for f in man.glob("*.md") if f.name not in _NOT_BODY)
+    chapters = sorted(man.glob("*장_*.md"))
+    text = {f: f.read_text(encoding="utf-8") for f in body}
+
+    # ① 그림 파일 ↔ 원고가 건 이미지 링크
+    linked = {m.group(1) for s in text.values()
+              for m in re.finditer(r"!\[[^\]]*\]\([^)]*그림/([^)]+\.png)\)", s)}
+    on_disk = {f.name for f in (ROOT / FIGURE_DIR).glob("*.png")}
+    for name in sorted(on_disk - linked - set(FIGURE_EXEMPT)):
+        problems.append(
+            f"[그림] {FIGURE_DIR}/{name} — 그림 파일이 있는데 **원고가 싣지 않았습니다**. "
+            f"실을 자리가 없으면 FIGURE_EXEMPT에 까닭과 함께 적으십시오")
+    for name in sorted(linked - on_disk):
+        problems.append(f"[그림] 원고가 없는 파일을 가리킵니다: {FIGURE_DIR}/{name}")
+
+    # ② 캡션 ↔ 본문 참조
+    #
+    # ⚠️ **줄머리에 있다고 캡션이 아니다.** 본문 문장도 `<표 2-1>은 …`처럼 시작한다
+    #    (이 검사를 처음 돌렸을 때 그런 다섯 줄을 캡션으로 잘못 읽었다). 원고 규약이
+    #    표는 위에, 그림은 아래에 캡션을 두므로 **자리로 가른다** —
+    #    표 캡션은 바로 아래가 표(`|`)이고, 그림 캡션은 바로 위가 이미지 링크다.
+    caption_fig, caption_tab = {}, {}
+    caption_lines: set[tuple[str, int]] = set()
+
+    def _table_follows(lines: list[str], i: int) -> bool:
+        """캡션 줄 다음에 표가 오는가. **캡션은 여러 줄로 접힌다** — <표 8-2>의
+        조건 문구가 두 줄이라 바로 다음 줄만 보면 표를 못 찾는다."""
+        for nxt in lines[i:i + 6]:
+            if nxt.lstrip().startswith("|"):
+                return True
+            if nxt.lstrip().startswith("#"):
+                break
+        return False
+
+    def _prev_solid(lines: list[str], i: int) -> str:
+        for prev in reversed(lines[:i]):
+            if prev.strip():
+                return prev.strip()
+        return ""
+
+    for f in chapters:
+        lines = text[f].splitlines()
+        for idx, line in enumerate(lines):
+            lineno = idx + 1
+            m = re.match(r"\[그림 (\d+-\d+)\] ", line)
+            if m and _prev_solid(lines, idx).startswith("!["):
+                caption_fig.setdefault(m.group(1), f"{f.name}:{lineno}")
+                caption_lines.add((f.name, lineno))
+            m = re.match(r"<표 (\d+-\d+)> ", line)
+            if m and _table_follows(lines, lineno):
+                caption_tab.setdefault(m.group(1), f"{f.name}:{lineno}")
+                caption_lines.add((f.name, lineno))
+
+    ref_fig, ref_tab = set(), set()
+    for f, s in text.items():
+        for lineno, line in enumerate(s.splitlines(), 1):
+            if (f.name, lineno) in caption_lines:
+                continue
+            ref_fig |= set(re.findall(r"\[그림 (\d+-\d+)\]", line))
+            ref_tab |= set(re.findall(r"<표 (\d+-\d+)>", line))
+    for num in sorted(ref_fig - set(caption_fig)):
+        problems.append(f"[그림] 본문이 [그림 {num}]을 가리키는데 **캡션이 없습니다**")
+    for num in sorted(set(caption_fig) - ref_fig):
+        problems.append(f"[그림] [그림 {num}]에 캡션만 있고 **본문이 한 번도 가리키지 않습니다** "
+                        f"({caption_fig[num]})")
+    for num in sorted(ref_tab - set(caption_tab)):
+        problems.append(f"[표] 본문이 <표 {num}>을 가리키는데 **캡션이 없습니다**")
+    for num in sorted(set(caption_tab) - ref_tab):
+        problems.append(f"[표] <표 {num}>에 캡션만 있고 **본문이 한 번도 가리키지 않습니다** "
+                        f"({caption_tab[num]})")
+
+    # ③ 앞붙이의 그림·표 차례 ↔ 캡션
+    front = ROOT / FRONT_MATTER
+    if front.exists():
+        fm = front.read_text(encoding="utf-8")
+        listed_fig = set(re.findall(r"^\| \[그림 (\d+-\d+)\] \|", fm, re.M))
+        listed_tab = set(re.findall(r"^\| <표 (\d+-\d+)> \|", fm, re.M))
+        for num in sorted(set(caption_fig) - listed_fig):
+            problems.append(f"[그림] [그림 {num}]이 앞붙이의 **그림 차례에 없습니다**")
+        for num in sorted(listed_fig - set(caption_fig)):
+            problems.append(f"[그림] 그림 차례의 [그림 {num}]이 **원고에 없습니다**")
+        for num in sorted(set(caption_tab) - listed_tab):
+            problems.append(f"[표] <표 {num}>이 앞붙이의 **표 차례에 없습니다**")
+        for num in sorted(listed_tab - set(caption_tab)):
+            problems.append(f"[표] 표 차례의 <표 {num}>이 **원고에 없습니다**")
+        # 다 그린 그림에 '자리' 표시가 남아 있지 않은지 (README 4-1)
+        for lineno, line in enumerate(fm.splitlines(), 1):
+            m = re.match(r"^\| \[그림 (\d+-\d+)\] \|", line)
+            if m and "(자리)" in line and m.group(1) in caption_fig:
+                problems.append(
+                    f"[그림] 그림 차례 {FRONT_MATTER}:{lineno} — [그림 {m.group(1)}]은 "
+                    f"이미 원고에 실렸는데 *(자리)* 표시가 남아 있습니다")
+    return problems
+
+
 CHECKS = {
     "값": check_values,
     "링크": check_links,
@@ -779,6 +902,7 @@ CHECKS = {
     "논문": check_thesis,
     "파생": check_derived,
     "규약": check_stale_claims,
+    "그림": check_figures,
 }
 
 
