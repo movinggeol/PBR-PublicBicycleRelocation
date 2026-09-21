@@ -49,15 +49,16 @@ def measure(candidates, step1, solver, seed):
     frame["drop_qty"] = frame["rebal_qty"].clip(lower=0).astype(int)
     frame["pick_qty"] = (-frame["rebal_qty"].clip(upper=0)).astype(int)
 
-    moves, ilp_sec = [], 0.0
+    moves, ilp_each = [], []
     clusters = list(frame["cluster"].unique())
     for cluster in clusters:
         t = time.perf_counter()
         rows = bc.quiet(bc.ilp_mod.solve_cluster_moves,
                         frame[frame["cluster"] == cluster], solver)
-        ilp_sec += time.perf_counter() - t
+        ilp_each.append(time.perf_counter() - t)
         for row in rows:
             moves.append({"cluster": cluster, **row})
+    ilp_sec = sum(ilp_each)
 
     route_sec = 0.0
     move_frame = pd.DataFrame(moves)
@@ -78,7 +79,9 @@ def measure(candidates, step1, solver, seed):
             bc.quiet(bc.vrp_mod.greedy_route, nodes, cluster)
             route_sec += time.perf_counter() - t
     return dict(clusters=len(clusters), cluster_sec=cluster_sec,
-                ilp_sec=ilp_sec, route_sec=route_sec)
+                ilp_sec=ilp_sec, route_sec=route_sec,
+                ilp_min=min(ilp_each) if ilp_each else 0.0,
+                ilp_max=max(ilp_each) if ilp_each else 0.0)
 
 
 def main():
@@ -119,7 +122,8 @@ def main():
           f"스냅샷 '{args.run_label}' · {args.repeat}회 중앙값")
     print("=" * 92)
     print(f"{'회차':9}{'작업 대상':>9}{'군집':>6}{'후보 만들기':>12}"
-          f"{'군집화':>10}{'ILP 합':>10}{'군집당':>9}{'경로 합':>10}{'군집당':>9}")
+          f"{'군집화':>10}{'ILP 합':>10}{'군집당':>9}{'군집 하나 최소~최대':>20}"
+          f"{'경로 합':>10}{'군집당':>9}")
     for duration in durations:
         part = frame[frame["duration"] == duration]
         if part.empty:
@@ -129,8 +133,9 @@ def main():
         print(f"{duration:9}{int(part['stations'].median()):>9}{clusters:>6}"
               f"{part['prep_sec'].median():>11.1f}초"
               f"{part['cluster_sec'].median():>9.1f}초{ilp:>9.1f}초"
-              f"{ilp / max(clusters, 1):>8.2f}초{route:>9.2f}초"
-              f"{route / max(clusters, 1):>8.3f}초")
+              f"{ilp / max(clusters, 1):>8.2f}초"
+              f"{part['ilp_min'].median():>12.3f}~{part['ilp_max'].median():.3f}초"
+              f"{route:>9.2f}초{route / max(clusters, 1):>8.3f}초")
     print("=" * 92)
     print("읽는 법")
     print("  · 후보 만들기는 순수요 집계·목표 재고·작업 대상 선정까지다(회차마다 한 번).")
