@@ -1019,6 +1019,69 @@ def check_citations() -> list[str]:
     return problems
 
 
+# 부록 B(핵심 코드)의 발췌가 원본과 같은지 보는 검사가 쓰는 것.
+APPENDIX_CODE = "docs/연구/논문/부록_핵심코드.md"
+APPENDIX_TOOL = "tools/make_appendix_code.py"
+
+
+def check_appendix_code() -> list[str]:
+    """부록 B의 코드 발췌가 **지금 코드와 같은 줄인지** 본다 (1.26.261).
+
+    학과 양식은 구현한 프로그램의 핵심 코드를 부록으로 요구한다. 그런데 발췌는
+    복사본이라 **원본이 바뀌어도 아무 일도 일어나지 않는다** — 문서가 조용히 낡는
+    이 저장소의 단골 결함이고, 심사자가 부록과 저장소를 대조하면 바로 드러난다.
+
+    발췌의 코드 줄을 원본에서 한 줄씩 찾는다. 앞뒤 공백과 순서는 보지 않는다 —
+    부록은 들여쓰기를 덜어 내고 갈래 하나를 걷어 내기 때문이다. `#`로 시작하는 줄은
+    부록에서 식을 읽히려고 새로 단 주석이므로 건너뛴다.
+
+    고치는 법: `python tools/make_appendix_code.py`로 다시 뽑는다. 줄 번호가
+    어긋났으면 그 스크립트의 범위를 고친 뒤 다시 돌린다.
+    """
+    problems: list[str] = []
+    doc = ROOT / APPENDIX_CODE
+    if not doc.exists():
+        return problems
+
+    lines = doc.read_text(encoding="utf-8").splitlines()
+    cache: dict[str, set[str]] = {}
+    rel = None
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        m = re.fullmatch(r"`([\w./-]+\.py)`", line)
+        if m:
+            rel = m.group(1)
+        elif line.startswith("```python"):
+            i += 1
+            start = i
+            while i < len(lines) and not lines[i].strip().startswith("```"):
+                i += 1
+            if rel is None:
+                problems.append(
+                    f"[부록] {APPENDIX_CODE}:{start} — 발췌 위에 **파일 이름이 없습니다**")
+                continue
+            if rel not in cache:
+                src = ROOT / rel
+                if not src.exists():
+                    problems.append(f"[부록] {APPENDIX_CODE} — 없는 파일을 가리킵니다: {rel}")
+                    cache[rel] = set()
+                else:
+                    cache[rel] = {x.strip() for x in
+                                  src.read_text(encoding="utf-8").splitlines()}
+            for n in range(start, i):
+                code = lines[n].strip()
+                if not code or code.startswith("#") or not cache[rel]:
+                    continue
+                if code not in cache[rel]:
+                    problems.append(
+                        f"[부록] {APPENDIX_CODE}:{n + 1} — 이 줄이 {rel}에 **없습니다**. "
+                        f"`python {APPENDIX_TOOL}`로 다시 뽑으십시오\n      {code}")
+            rel = None
+        i += 1
+    return problems
+
+
 CHECKS = {
     "값": check_values,
     "링크": check_links,
@@ -1030,6 +1093,7 @@ CHECKS = {
     "규약": check_stale_claims,
     "그림": check_figures,
     "인용": check_citations,
+    "부록": check_appendix_code,
 }
 
 

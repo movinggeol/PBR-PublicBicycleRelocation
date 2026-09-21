@@ -608,3 +608,65 @@ def test_저자와_연도가_줄바꿈으로_갈려도_통과한다(checker, tmp
         "4장_시스템설계.md": "티맵모빌리티 TMAP API로 수집하였다.",
     })
     assert 문제 == [], 문제
+
+
+# ─────────────────── 부록 B의 발췌가 지금 코드와 같은가 (1.26.261)
+#
+# 학과 양식이 요구하는 핵심 코드 부록은 복사본이라, 원본이 바뀌어도 아무 일도
+# 일어나지 않는다. 심사자가 부록과 저장소를 대조하면 바로 드러나는 자리다.
+
+def test_지금_부록_발췌는_원본과_같다(checker):
+    assert checker.check_appendix_code() == []
+
+
+def _부록_문제(checker, tmp_path, 문서, 소스들):
+    """가짜 부록과 원본 파일을 만들고 검사를 돌린다."""
+    (tmp_path / "docs" / "연구" / "논문").mkdir(parents=True)
+    (tmp_path / "docs" / "연구" / "논문" / "부록_핵심코드.md").write_text(
+        문서, encoding="utf-8")
+    for 이름, 내용 in 소스들.items():
+        경로 = tmp_path / 이름
+        경로.parent.mkdir(parents=True, exist_ok=True)
+        경로.write_text(내용, encoding="utf-8")
+    원래 = checker.ROOT
+    checker.ROOT = tmp_path
+    try:
+        return checker.check_appendix_code()
+    finally:
+        checker.ROOT = 원래
+
+
+_원본 = "def f(x):\n    score = x / (x + 1e-6)\n    return score\n"
+
+
+def test_들여쓰기만_덜어_낸_발췌는_통과한다(checker, tmp_path):
+    문제 = _부록_문제(checker, tmp_path, (
+        "`pipeline/a.py`\n\n```python\n"
+        "# 식을 읽히려고 부록에서 새로 단 주석\n"
+        "score = x / (x + 1e-6)\n"
+        "return score\n"
+        "```\n"), {"pipeline/a.py": _원본})
+    assert 문제 == [], 문제
+
+
+def test_원본과_다른_줄을_잡는다(checker, tmp_path):
+    """🔴 회귀 — 코드가 바뀌었는데 부록만 옛 값을 싣고 있으면 잡아야 한다."""
+    문제 = _부록_문제(checker, tmp_path, (
+        "`pipeline/a.py`\n\n```python\n"
+        "score = x / (x + 1e-9)\n"
+        "```\n"), {"pipeline/a.py": _원본})
+    assert len(문제) == 1 and "1e-9" in 문제[0], 문제
+
+
+def test_파일_이름_없는_발췌를_잡는다(checker, tmp_path):
+    문제 = _부록_문제(checker, tmp_path, (
+        "발췌를 싣는다.\n\n```python\nscore = x / (x + 1e-6)\n```\n"),
+        {"pipeline/a.py": _원본})
+    assert len(문제) == 1 and "파일 이름이 없습니다" in 문제[0], 문제
+
+
+def test_없는_파일을_가리키면_잡는다(checker, tmp_path):
+    문제 = _부록_문제(checker, tmp_path, (
+        "`pipeline/b.py`\n\n```python\nscore = x / (x + 1e-6)\n```\n"),
+        {"pipeline/a.py": _원본})
+    assert len(문제) == 1 and "없는 파일" in 문제[0], 문제
