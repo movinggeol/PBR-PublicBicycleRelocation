@@ -756,9 +756,18 @@ def _run_view(job) -> dict:
     표시(전체)와 꼬리(300줄)가 같은 파일이다.
     """
     text = jobs.read_log(job)
+    progress = pipeline_progress(text)
+    if not job.is_running:
+        # 끝난 작업에 '진행 중'인 단계는 없다 — 중단·실패·추적 끊김이 **그 단계에서**
+        # 멈춘 것이다. 로그만 보면 '실행:' 뒤에 '완료:'가 없어 running으로 남고,
+        # 화면은 중단됨 배지 아래에서 한 단계가 계속 깜박였다(1.26.266, 웹으로
+        # 실제 계획을 중단해 보고 알았다).
+        for step in progress:
+            if step["status"] == "running":
+                step["status"] = "stopped"
     return {
         "log": jobs.read_log_tail(job, text=text),
-        "progress": pipeline_progress(text),
+        "progress": progress,
         # 예상과 **실제**를 나란히 둔다. 예상만 보여 주면 그것이 맞았는지
         # 아무도 모르고, 틀린 채로 남는다 — 다음 예상이 여기서 나오므로
         # 어긋남이 보여야 고칠 생각도 든다(1.26.214).

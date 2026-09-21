@@ -74,6 +74,7 @@
         {%- if s.status == "done" %}✓
         {%- elif s.status == "running" %}●
         {%- elif s.status == "failed" %}✕
+        {%- elif s.status == "stopped" %}■
         {%- elif s.status == "missing" %}?
         {%- else %}{{ loop.index }}{% endif -%}
       </span>
@@ -85,6 +86,7 @@
         {%- if s.status == "done" %}완료
         {%- elif s.status == "running" %}진행 중
         {%- elif s.status == "failed" %}실패
+        {%- elif s.status == "stopped" %}여기서 멈춤
         {%- elif s.status == "missing" %}파일 없음
         {%- else %}대기{% endif -%}
       </span>
@@ -166,12 +168,14 @@
     function drawElapsed(d) {
       var el = document.querySelector("[data-run-elapsed]");
       if (!el) return;
+      /* 서버는 소수 한 자리(1.0)로 적는다 — JS의 1.0은 "1"이 되어 3초 뒤 글자가 바뀌므로 맞춘다 */
+      function m(v) { return Number(v).toFixed(1); }
       var text;
       if (d.elapsed_minutes !== null && d.elapsed_minutes !== undefined) {
-        text = d.elapsed_minutes + "분 경과";
-        if (d.estimate_minutes !== null && d.estimate_minutes !== undefined) text += " (예상 " + d.estimate_minutes + "분)";
+        text = m(d.elapsed_minutes) + "분 경과";
+        if (d.estimate_minutes !== null && d.estimate_minutes !== undefined) text += " (예상 " + m(d.estimate_minutes) + "분)";
       } else if (d.estimate_minutes !== null && d.estimate_minutes !== undefined) {
-        text = "예상 " + d.estimate_minutes + "분";
+        text = "예상 " + m(d.estimate_minutes) + "분";
       } else {
         text = "—";
       }

@@ -3060,6 +3060,25 @@ def test_진행_화면은_통째로_새로고침하지_않는다(client, monkeyp
     assert "계획이 완성되었습니다" in html
 
 
+def test_끝난_작업에_진행_중인_단계는_없다(client, monkeypatch):
+    """웹으로 실제 계획을 중단해 보고 알았다 (1.26.266).
+
+    로그에는 '실행:' 뒤에 '완료:'가 없어 단계가 running으로 남고, 화면은
+    **중단됨 배지 아래에서 한 단계가 계속 깜박였다.** 끝난 작업이면 그 단계는
+    '여기서 멈춤'이다 — 중단·실패·추적 끊김 모두 같다.
+    """
+    for status in ("cancelled", "failed", "interrupted"):
+        _진행중_작업(monkeypatch, status=status)
+        d = client.get("/api/runs/테스트실행").json()
+        assert [s["status"] for s in d["progress"]] == ["done", "stopped", "pending"], status
+        html = client.get("/runs/테스트실행").text
+        assert "여기서 멈춤" in html and "진행 중</span>" not in html, status
+
+    # 돌고 있는 동안은 그대로 진행 중이다
+    _진행중_작업(monkeypatch)
+    assert client.get("/api/runs/테스트실행").json()["progress"][1]["status"] == "running"
+
+
 # ── 성과 지표 화면의 배치 (1.26.175) ─────────────────────────────────
 
 def _kpi_rows():
