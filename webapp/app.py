@@ -744,10 +744,19 @@ def run_detail(request: Request, job_id: str):
     job = jobs.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="해당 실행 이력이 없습니다.")
-    # 로그는 한 번만 읽는다 — 단계 표시(전체)와 꼬리(300줄)가 같은 파일이다.
+    return templates.TemplateResponse(request, "run_detail.html",
+                                      {"job": job, **_run_view(job)})
+
+
+def _run_view(job) -> dict:
+    """진행 화면과 상태 API가 **같은 것**을 본다 (1.26.265).
+
+    화면이 처음 그리는 것과 3초마다 받아 오는 것이 다른 계산이면, 새로고침
+    없이 갱신되는 부분만 슬며시 어긋난다. 로그는 한 번만 읽는다 — 단계
+    표시(전체)와 꼬리(300줄)가 같은 파일이다.
+    """
     text = jobs.read_log(job)
-    return templates.TemplateResponse(request, "run_detail.html", {
-        "job": job,
+    return {
         "log": jobs.read_log_tail(job, text=text),
         "progress": pipeline_progress(text),
         # 예상과 **실제**를 나란히 둔다. 예상만 보여 주면 그것이 맞았는지
@@ -755,7 +764,7 @@ def run_detail(request: Request, job_id: str):
         # 어긋남이 보여야 고칠 생각도 든다(1.26.214).
         "estimate_minutes": _running_estimate_minutes(job),
         "elapsed_minutes": _minutes(jobs.elapsed_seconds(job)),
-    })
+    }
 
 
 @app.get("/guide")
@@ -1278,16 +1287,26 @@ def serve_file(relpath: str):
 
 @app.get("/api/runs/{job_id}")
 def api_run_status(job_id: str):
+    """웹 작업 하나의 상태. 진행 화면이 3초마다 이걸 받아 부분만 고쳐 그린다.
+
+    예전에는 상태 다섯 칸만 주고 화면은 `<meta refresh>`로 통째로 다시
+    그렸다(1.26.265 전). 통째로 그리면 로그를 읽던 자리가 매번 위로 튀고,
+    화면을 소리로 듣는 사람에게는 문서를 처음부터 다시 읽는 일이다. 단계·
+    로그 꼬리·걸린 시간까지 함께 주어 화면이 바뀐 칸만 고치게 한다.
+    """
     job = jobs.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="해당 실행 이력이 없습니다.")
     return {
         "id": job.id,
         "status": job.status,
+        "status_label": JOB_STATUS_LABELS.get(job.status, job.status),
+        "is_running": job.is_running,
         "returncode": job.returncode,
         "started_at": job.started_at,
         "finished_at": job.finished_at,
         "args": job.args,
+        **_run_view(job),
     }
 
 

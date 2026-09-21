@@ -2999,6 +2999,67 @@ def test_진행_화면이_지금_어느_단계인지_말한다(client, monkeypat
     assert "지금은" in 말, f"현재 단계를 안 말한다: {말!r}"
 
 
+def _진행중_작업(monkeypatch, status="running"):
+    """진행 화면·상태 API 시험용 가짜 작업 하나와 단계 셋짜리 로그."""
+    class 작업:
+        id = "테스트실행"; is_running = status == "running"
+        started_at = "2026-09-10 21:00:00"; finished_at = None if status == "running" else "2026-09-10 21:05:00"
+        args: list[str] = []; kind = "plan"; run_label = "테스트실행"
+        returncode = None if status == "running" else 0; error = None
+    작업.status = status
+
+    로그 = ("[1/3] pipeline/step0_collect/tashu_api.py\n"
+           "[2/3] pipeline/step1_cluster/top_st_clustering.py\n"
+           "[3/3] pipeline/step2_optimize/ilp.py\n"
+           "[1/3] 실행: pipeline/step0_collect/tashu_api.py\n"
+           "완료: pipeline/step0_collect/tashu_api.py\n"
+           "[2/3] 실행: pipeline/step1_cluster/top_st_clustering.py\n")
+    monkeypatch.setattr(jobs, "get_job", lambda jid: 작업())
+    monkeypatch.setattr(jobs, "read_log", lambda job: 로그)
+    monkeypatch.setattr(jobs, "read_log_tail", lambda job, *a, **k: 로그)
+    return 로그
+
+
+def test_상태_API가_단계와_로그까지_준다(client, monkeypatch):
+    """진행 화면이 3초마다 받아 **바뀐 칸만** 고치려면 상태 다섯 칸으로는 모자란다 (1.26.265).
+
+    단계·현재 단계·로그 꼬리·걸린 시간이 화면과 같은 계산(`_run_view`)에서
+    나와야 첫 화면과 갱신된 화면이 어긋나지 않는다.
+    """
+    로그 = _진행중_작업(monkeypatch)
+    d = client.get("/api/runs/테스트실행").json()
+
+    assert d["is_running"] is True and d["status_label"] == "실행 중"
+    assert [s["status"] for s in d["progress"]] == ["done", "running", "pending"]
+    assert d["progress"][1]["label"], "단계에 한국어 이름이 없다"
+    assert d["log"] == 로그
+    assert d["elapsed_minutes"] is not None, "돌고 있는 작업의 경과 시간이 없다"
+    assert "estimate_minutes" in d
+
+
+def test_진행_화면은_통째로_새로고침하지_않는다(client, monkeypatch):
+    """`<meta refresh>`는 로그를 읽던 자리를 3초마다 위로 튕기고, 보조기기는 문서를
+    처음부터 다시 읽었다 (1.26.265). 스크립트가 API를 받아 칸만 고치고, 스크립트가
+    못 도는 환경에만 옛 방식을 남긴다.
+    """
+    _진행중_작업(monkeypatch)
+    html = client.get("/runs/테스트실행").text
+
+    assert re.search(r'<noscript>\s*<meta http-equiv="refresh"', html), "스크립트 없는 환경의 대비책이 없다"
+    assert not re.search(r'(?<!<noscript>)<meta http-equiv="refresh"', html.replace("\n", "")),         "여전히 통째로 새로고침한다"
+    assert 'data-run-live="/api/runs/테스트실행"' in html
+    for i in range(3):
+        assert f'data-step="{i}"' in html, f"{i}번째 단계에 고칠 자리가 없다"
+    for hook in ("data-run-status", "data-run-log", "data-run-elapsed", "data-run-badge"):
+        assert hook in html, f"{hook} 자리가 없다"
+
+    # 끝난 작업은 더 물을 것이 없다 — 폴링 스크립트도 대비책도 붙지 않는다
+    _진행중_작업(monkeypatch, status="success")
+    html = client.get("/runs/테스트실행").text
+    assert "data-run-live" not in html and "http-equiv" not in html
+    assert "계획이 완성되었습니다" in html
+
+
 # ── 성과 지표 화면의 배치 (1.26.175) ─────────────────────────────────
 
 def _kpi_rows():
