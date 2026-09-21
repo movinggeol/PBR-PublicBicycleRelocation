@@ -136,10 +136,10 @@ $use, $fixed, $speed, $sec1 = ($state -split '\s+')
 Write-Host ("[스위치] USE_ROAD_MODEL={0} · 고정비 {1}초 · 속도 {2} km/h · 1km {3}초" -f $use, $fixed, $speed, $sec1)
 if ($Mode -eq 'on') {
     if ($use -ne 'True' -or [double]$fixed -ne $Expect.Fixed -or [double]$speed -ne $Expect.Speed) {
-        $problems += "-Mode on인데 스위치가 판정값으로 켜져 있지 않습니다 (.env에 PBR_USE_ROAD_MODEL=1 · PBR_ROAD_FIXED_SEC_WEEKDAY=320.4 · PBR_ROAD_SPEED_KMPH_WEEKDAY=32.11)"
+        $problems += "-Mode on인데 스위치가 판정값으로 켜져 있지 않습니다 (기본이 켜져 있다 — .env의 PBR_USE_ROAD_MODEL·PBR_ROAD_*_WEEKDAY 줄을 지우십시오)"
     }
 } elseif ($use -ne 'False') {
-    $problems += "-Mode off인데 스위치가 켜져 있습니다. .env의 PBR_USE_ROAD_MODEL을 지우고 다시 실행하십시오"
+    $problems += "-Mode off인데 스위치가 켜져 있습니다. 기본이 켜져 있으므로 .env에 PBR_USE_ROAD_MODEL=0을 적고 다시 실행하십시오"
 }
 
 $today = Get-Date -Format 'yyyy-MM-dd'
