@@ -169,6 +169,68 @@ def test_잘못된_쿼리값도_사람에게는_화면으로_답한다(client):
     assert api.json()["detail"][0]["loc"] == ["query", "refresh"]
 
 
+def test_원천_CSV가_없으면_폼에서_거른다(client, monkeypatch):
+    """원천 CSV는 그 기간이 DB에 없을 때만 읽히는데, 없으면 step0가 수집을 다
+    마친 뒤에야 죽었다 (1.26.264). 실행 이름과 같은 부류다."""
+    from webapp import store
+
+    _reject_start(monkeypatch)
+    monkeypatch.setattr(store, "periods_with_rentals", lambda: frozenset())
+    res = client.post("/runs", data={"now": "2026-09-21 14", "period": "25년 11월",
+                                     "raw_file": "data/raw_data/없는파일.csv"},
+                      follow_redirects=False)
+    assert res.status_code == 400
+    assert "원천 대여 이력 CSV가 없습니다" in res.text
+
+
+def test_기간이_DB에_있으면_원천_CSV를_검사하지_않는다(client, monkeypatch):
+    """DB에 있는 기간이면 그 칸은 아예 안 쓰인다(db.read_rental_source) — 없는 파일이어도 막지 않는다."""
+    from webapp import store
+
+    captured = _capture_start(monkeypatch)
+    monkeypatch.setattr(store, "periods_with_rentals", lambda: frozenset({"25년 11월"}))
+    res = client.post("/runs", data={"now": "2026-09-21 14", "period": "25년 11월",
+                                     "raw_file": "data/raw_data/없는파일.csv"},
+                      follow_redirects=False)
+    assert res.status_code == 303, res.text[:200]
+    assert captured, "실행이 떠야 한다"
+
+
+def test_처리_안_된_예외도_사람에게는_화면으로_답한다(monkeypatch):
+    """404·422는 화면이었는데 예상 못 한 예외는 영어 한 줄 'Internal Server Error'였다 (1.26.264)."""
+    from fastapi.testclient import TestClient
+
+    from webapp import store
+    from webapp.app import app
+
+    def boom(*a, **k):
+        raise RuntimeError("일부러 낸 오류")
+
+    monkeypatch.setattr(store, "kpi", boom)
+    with TestClient(app, raise_server_exceptions=False) as c:
+        page = c.get("/kpi", headers={"accept": "text/html,*/*"})
+        assert page.status_code == 500
+        assert page.headers["content-type"].startswith("text/html")
+        assert "문제가 생겼습니다" in page.text and "RuntimeError" in page.text
+        assert "Internal Server Error" not in page.text
+
+        api = c.get("/api/kpi", headers={"accept": "*/*"})
+        assert api.status_code == 500
+        assert api.json()["detail"].startswith("서버 오류")
+
+
+def test_순회_도구가_임시_DB에서도_돈다():
+    """`tools/crawl_webapp.py`는 실데이터용이지만, 도구 자체가 깨지지 않았는지는 여기서 본다 (1.26.264).
+
+    임시 DB(비어 있음)에서는 문제가 0이어야 한다 — 빈 상태의 화면이 `None`을
+    흘리면 여기서 걸린다.
+    """
+    import importlib
+
+    crawl = importlib.import_module("tools.crawl_webapp")
+    assert crawl.main(["--show", "5"]) == 0
+
+
 @pytest.mark.parametrize("path", ["/", "/data", "/maps", "/kpi", "/vehicles"])
 def test_data_tables_are_sortable(client, path):
     """표가 있는 화면은 열 정렬을 켠다.

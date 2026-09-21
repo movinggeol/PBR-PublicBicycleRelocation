@@ -133,6 +133,14 @@ def test_metrics_envelope_reports_source_and_label(client):
     assert body["count"] == len(body["rows"]) == 6
 
 
+def test_저장된_실행_표의_바로_보기는_화면으로_보낸다(client):
+    """사람이 보는 표가 `/api/metrics?…` JSON으로 보내고 있었다 (1.26.264)."""
+    html = client.get("/run").text
+    assert f"/kpi?run_label={NEW}" in html.replace("%20", " ") or "/kpi?run_label=" in html
+    assert "/orders?run_label=" in html
+    assert '/api/metrics?run_label=' not in html, "지표 링크가 아직 JSON으로 간다"
+
+
 def test_metrics_past_run_differs(client):
     """실행별로 다른 결과가 나온다(비교의 기반)."""
     new_rows = client.get("/api/metrics").json()["rows"]

@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 import sys
 import time
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -35,7 +36,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from project_config import (
     DAY_TYPE_AUTO, DAY_TYPE_LABELS, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_DURATION,
     DEFAULT_RAW_FILE, DEFAULT_WARMUP_DAYS, DEPOT_NAME, DURATION_LABELS, DURATIONS,
-    FLEET_SIZE, MAX_FLEET_SIZE, REBAL_MIN_QTY, TARGET_QTY_UPPER_RATIO, TARGET_Z,
+    FLEET_SIZE, MAX_FLEET_SIZE, PROJECT_ROOT, REBAL_MIN_QTY, TARGET_QTY_UPPER_RATIO, TARGET_Z,
     TIME_BUDGET_MINUTES, TOP_STATION_LIMIT, VEHICLE_CAPACITY, VEHICLE_SPEED_KMPH,
     VEHICLES_PER_ROUND,
     available_periods, latest_period, normalize_day_type, normalize_durations,
@@ -120,6 +121,27 @@ def validation_error(request: Request, exc: RequestValidationError):
          "detail": f"{where} 값이 이 화면이 받는 모양이 아닙니다. "
                    "주소를 고쳐 적었다면 원래 값으로 되돌려 보세요."},
         status_code=422)
+
+
+@app.exception_handler(Exception)
+def server_error(request: Request, exc: Exception):
+    """처리 안 된 예외 (1.26.264).
+
+    404·422는 화면으로 돌렸는데 **예상 못 한 예외**는 Starlette 기본값인 영어
+    한 줄 *"Internal Server Error"* 였다 — 내비도 돌아갈 링크도 없고, 무엇이
+    잘못됐는지 로그를 열어야만 알 수 있었다. 규칙은 같다: 사람에게는 화면,
+    API·fetch에는 JSON. 원인은 서버 로그에 그대로 남긴다.
+    """
+    traceback.print_exception(exc)
+    if not _wants_html(request):
+        return JSONResponse(
+            {"detail": f"서버 오류: {type(exc).__name__}"}, status_code=500)
+    return templates.TemplateResponse(
+        request, "error.html",
+        {"code": 500, "title": ERROR_TITLES[500],
+         "detail": f"{type(exc).__name__}: {exc}"[:300]
+                   + " — 서버 로그에 자세한 내용이 있습니다."},
+        status_code=500)
 
 
 # 작업 상태를 사람이 읽는 말로 — 템플릿 전역이라 어느 화면에서나 같은 낱말을 쓴다.
@@ -624,6 +646,17 @@ def create_run(
         value = value.strip()
         if value:
             args.extend([flag, value])
+
+    # 원천 CSV는 **그 기간이 DB에 없을 때만** 읽힌다(db.read_rental_source).
+    # 그때 파일이 없으면 step0가 수집을 다 마친 뒤에야 죽는다 — 실행 이름과
+    # 같은 부류라 폼에서 거른다(1.26.264). 기간이 DB에 있으면 이 칸은 안 쓰이므로
+    # 검사하지 않는다(폼이 그 칸을 비활성화하고 값도 안 보낸다).
+    raw_path = raw_file.strip()
+    if raw_path and (wanted := (period.strip() or latest_period())) \
+            and wanted not in store.periods_with_rentals() \
+            and not (PROJECT_ROOT / raw_path).is_file():
+        return invalid(f"원천 대여 이력 CSV가 없습니다: {raw_path} — "
+                       f"'{wanted}'은 DB에 없어 이 파일이 꼭 필요합니다.")
 
     # 기간·시간대는 값이 조금만 어긋나도 한참 뒤 단계에서 파일을 못 찾고 멈춘다.
     # 여기서 거르면 사용자가 무엇을 고르면 되는지 그 자리에서 알 수 있다.
