@@ -186,30 +186,67 @@ def expected_ticks(start: clock, end: clock, interval: int) -> int:
     return int(span.total_seconds() // 60 // interval) + 1
 
 
-# 창을 넓힌 날들. 🔴 **오늘 창을 모든 날에 적용하면 옛 날짜가 통째로 결측이 된다** —
-# 09~17시에 49틱을 다 채운 2026-08-25가 97틱 기준으로 '48 결측'이 되고, 그래서
-# '온전한 날'이 영영 0일이었다(2026-09-14 발견). 그날 등록돼 있던 창으로 판정한다.
+# 창을 넓힌 **시각**들. 🔴 **오늘 창을 모든 날에 적용하면 옛 날짜가 통째로 결측이
+# 된다** — 09~17시에 49틱을 다 채운 2026-08-25가 97틱 기준으로 '48 결측'이 되고,
+# 그래서 '온전한 날'이 영영 0일이었다(2026-09-14 발견). 그때 등록돼 있던 창으로 판정한다.
+#
+# 🔴 **날짜가 아니라 시각이다** (1.26.277). 창은 낮에 `install`을 다시 돌려 **그날 안에서**
+# 바뀌는데, 예전에는 날짜로 적어 경계일을 하루 내내 한쪽 창으로 셌다. 2026-09-14는
+# 저녁에 24시간이 들었는데 이력표가 09-15로 적고 있어 07~23시(97틱) 기준으로 100틱을
+# 세고 `온전`이라 했다(23:10~23:50 틱이 창 안의 빈자리를 메웠다). 시각은 창을 바꾼
+# 커밋이고, 그날 옛 창 밖에서 처음 찍힌 틱(08-27 17:10 · 09-14 23:10)이 그 뒤임을
+# 뒷받침한다. 옛 창과 새 창이 겹치는 시간대는 어느 쪽으로 세도 같으므로 경계일의
+# 결과는 이 시각이 몇 시간 어긋나도 거의 움직이지 않는다.
 # ⚠️ **창을 바꾸면 여기 한 줄 추가한다** — 근거는 docs/기록/버전관리.md의 해당 판.
-WINDOW_HISTORY: Tuple[Tuple[date, clock, clock, int], ...] = (
-    (date(2026, 8, 27), clock(7, 0), clock(22, 0), 10),    # 1.25.1
-    (date(2026, 9, 3), clock(7, 0), clock(23, 0), 10),     # 1.26.106
-    (date(2026, 9, 15), clock(0, 0), clock(23, 50), 10),   # 1.26.206 — 24시간
+WINDOW_HISTORY: Tuple[Tuple[datetime, clock, clock, int], ...] = (
+    (datetime(2026, 8, 27, 14, 46), clock(7, 0), clock(22, 0), 10),    # 1.25.1 · 199ca27
+    (datetime(2026, 9, 3, 11, 23), clock(7, 0), clock(23, 0), 10),     # 1.26.106 · 96aa3cf
+    (datetime(2026, 9, 14, 17, 27), clock(0, 0), clock(23, 50), 10),  # 1.26.206 · 1394072 — 24시간
 )
 FIRST_WINDOW = (clock(9, 0), clock(17, 0), 10)
 
 
-def window_on(day: date) -> Tuple[clock, clock, int]:
-    """그날 등록돼 있던 수집 창 — 이력에 없는 옛 날짜는 최초 창(09~17시)으로 본다."""
+def window_at(moment: datetime) -> Tuple[clock, clock, int]:
+    """그 **시각**에 등록돼 있던 수집 창 — 이력보다 앞이면 최초 창(09~17시)."""
     chosen = FIRST_WINDOW
     for since, start, end, interval in WINDOW_HISTORY:
-        if day >= since:
+        if moment >= since:
             chosen = (start, end, interval)
     return chosen
 
 
+def window_on(day: date) -> Tuple[clock, clock, int]:
+    """그날 **끝에** 등록돼 있던 수집 창. 그날 안에서 바뀌었으면 바뀐 뒤의 창이다.
+
+    경계일의 기대 틱은 이것 하나로 셀 수 없다 — `expected_slots_on()`을 쓴다.
+    """
+    return window_at(datetime.combine(day, clock.max))
+
+
+def expected_slots_on(day: date, until: Optional[datetime] = None) -> list:
+    """그날 기대되는 격자 슬롯(시각 목록). **슬롯마다 그 시각의 창**으로 가린다.
+
+    창이 그날 안에서 바뀌었으면 바뀌기 전은 옛 창, 뒤는 새 창으로 센다. `until`을
+    주면 그 시각까지만 — 진행 중인 오늘을 하루치 기대로 세면 아직 오지 않은 틱이
+    결측으로 잡혀 결손 합계가 시각마다 흐른다(2026-09-22 확인).
+    """
+    slots = []
+    t = datetime.combine(day, clock(0, 0))
+    stop = t + timedelta(days=1)
+    if until is not None:
+        stop = min(stop, until + timedelta(seconds=1))
+    while t < stop:
+        start, end, interval = window_at(t)
+        anchor = datetime.combine(day, start)
+        if start <= t.time() <= end and (t - anchor) % timedelta(minutes=interval) == timedelta(0):
+            slots.append(t)
+        t += timedelta(minutes=1)
+    return slots
+
+
 def expected_ticks_on(day: date) -> int:
-    """**그날** 창 기준 기대 틱 수. 표의 '기대' 열은 이것을 쓴다."""
-    return expected_ticks(*window_on(day))
+    """**그날** 기대 틱 수 — 경계일은 시각별 창으로 센다. 표의 '기대' 열이 쓴다."""
+    return len(expected_slots_on(day))
 
 
 # ---- 절전 ----
@@ -448,16 +485,22 @@ def coverage(start: clock, end: clock, interval: int) -> pd.DataFrame:
         return pd.DataFrame(columns=columns)
 
     stamps = pd.to_datetime(ticks["observed_at"])
-    today = date.today()
-    now = datetime.now().time()
+    moment = datetime.now()
+    today = moment.date()
+    now = moment.time()
 
     rows = []
     for day, group in stamps.groupby(stamps.dt.strftime("%Y-%m-%d")):
         stamp = datetime.strptime(day, "%Y-%m-%d").date()
         count = int(len(group))
-        # 오늘 창이 아니라 **그날** 창으로 센다 (WINDOW_HISTORY).
-        target = expected_ticks_on(stamp)
-        missing = max(target - count, 0)
+        # 오늘 창이 아니라 **그 시각의** 창으로, 개수가 아니라 **슬롯**으로 센다(1.26.277).
+        # 예전 `max(기대 − 실제, 0)`은 창 밖에서 받은 틱이 창 안의 빈자리를 메웠다 —
+        # 경계일 09-14가 100틱 · 기대 97로 `온전`이 됐다. 진행 중인 오늘은 지금까지의
+        # 슬롯만 기대한다(아직 안 온 틱을 결측으로 세면 합계가 시각마다 흐른다).
+        expected = expected_slots_on(stamp, until=moment if stamp == today else None)
+        seen = {ts.to_pydatetime() for ts in group}
+        target = len(expected)
+        missing = sum(1 for slot in expected if slot not in seen)
         if stamp == today and now < end:
             status = "수집 중"
         elif missing == 0:

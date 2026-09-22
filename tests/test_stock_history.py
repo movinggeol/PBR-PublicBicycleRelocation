@@ -11,7 +11,7 @@
 API는 부르지 않는다(monkeypatch로 대체). 실호출 검증은 docs/구현/TESTING.md 참고.
 """
 import sys
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -442,6 +442,82 @@ def test_창_이력은_바뀐_날짜부터_적용된다():
     assert collector.expected_ticks_on(date(2026, 8, 26)) == 49
     assert collector.expected_ticks_on(date(2026, 9, 3)) == 97
     assert collector.expected_ticks_on(date(2026, 9, 15)) == 144   # 24시간
+
+
+def test_경계일_기대는_창을_바꾼_시각으로_나눠_센다():
+    """🔴 창은 **그날 안에서** 바뀐다(1.26.277). 하루 내내 한쪽 창으로 세면 경계일이 틀린다.
+
+    09-14는 17:27에 24시간이 들었다 — 그 전은 07~23시, 그 뒤는 00:00~23:50이다.
+    옛 창과 새 창이 겹치는 시간대는 어느 쪽으로 세도 같으므로 차이는 23:10~23:50
+    다섯 틱뿐이다(97 → 102). 08-27은 14:46에 07~22시가 들어 07~09시는 기대하지 않는다.
+    """
+    assert collector.window_at(datetime(2026, 9, 14, 17, 26)) == (time(7, 0), time(23, 0), 10)
+    assert collector.window_at(datetime(2026, 9, 14, 17, 27)) == (time(0, 0), time(23, 50), 10)
+    assert collector.window_on(date(2026, 9, 14)) == (time(0, 0), time(23, 50), 10)   # 그날 끝의 창
+
+    assert collector.expected_ticks_on(date(2026, 9, 14)) == 97 + 5
+    assert collector.expected_ticks_on(date(2026, 8, 27)) == 35 + 44     # 09:00~14:40 · 14:50~22:00
+    slots = collector.expected_slots_on(date(2026, 9, 14))
+    assert slots[0] == datetime(2026, 9, 14, 7, 0) and slots[-1] == datetime(2026, 9, 14, 23, 50)
+
+
+def test_경계일에_창_밖_틱이_빈자리를_메우지_않는다(history_dir):
+    """🔴 실제로 났다 — 09-14가 100틱 · 기대 97로 `온전`이라 표시됐다(2026-09-22 확인).
+
+    `max(기대 − 실제, 0)`은 23:10~23:50에 받은 틱이 창 안의 빈자리를 덮었다.
+    슬롯으로 세면 07:00과 빈 한 칸이 그대로 결측이다.
+    """
+    with db.session() as conn:
+        t = datetime(2026, 9, 14, 7, 10)
+        while t <= datetime(2026, 9, 14, 23, 50):
+            if t != datetime(2026, 9, 14, 12, 0):                       # 창 안의 빈 한 칸
+                db.save_stock_snapshot(conn, f"{t:%Y-%m-%d %H:%M}", sample_frame())
+            t += timedelta(minutes=10)
+
+    row = collector.coverage(time(0, 0), time(23, 50), 10).set_index("날짜").loc["2026-09-14"]
+    assert row["틱"] == 100
+    assert row["기대"] == 102
+    assert row["결측"] == 2           # 07:00 · 12:00
+    assert row["상태"] == "결측"
+
+
+def test_창_밖에서_받은_틱은_결측을_갚지_않는다(history_dir):
+    """경계일이 아니어도 같다 — 손으로 창 밖에서 돌린 틱이 창 안 빈자리를 가리면 안 된다."""
+    with db.session() as conn:
+        for hour in range(9, 17):                                       # 09:00~16:50, 17:00이 빠짐
+            for minute in range(0, 60, 10):
+                db.save_stock_snapshot(conn, f"2026-08-24 {hour:02d}:{minute:02d}", sample_frame())
+        for extra in ("17:10", "17:20"):                                # 창 밖 두 틱
+            db.save_stock_snapshot(conn, f"2026-08-24 {extra}", sample_frame())
+
+    row = collector.coverage(*WINDOW, INTERVAL).set_index("날짜").loc["2026-08-24"]
+    assert row["틱"] == 50            # 기대 49보다 많지만
+    assert row["결측"] == 1           # 17:00은 여전히 비었다
+    assert row["상태"] == "결측"
+
+
+def test_진행_중인_오늘은_지금까지의_슬롯만_기대한다(history_dir, monkeypatch):
+    """하루치(144)를 기대로 두면 아직 안 온 틱이 결측이 되어 합계가 시각마다 흐른다.
+
+    2026-09-22에 *"결손 639틱 가운데 47틱이 진행 중인 오늘분"* 이라 인용마다 기준
+    시각을 달아야 했다. 지금까지의 슬롯만 세면 오늘의 결측은 **이미 놓친 것**뿐이다.
+    """
+    class _Now(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 9, 22, 12, 5)
+
+    monkeypatch.setattr(collector, "datetime", _Now)
+    with db.session() as conn:
+        t = datetime(2026, 9, 22, 0, 0)
+        while t <= datetime(2026, 9, 22, 12, 0):
+            db.save_stock_snapshot(conn, f"{t:%Y-%m-%d %H:%M}", sample_frame())
+            t += timedelta(minutes=10)
+
+    row = collector.coverage(time(0, 0), time(23, 50), 10).set_index("날짜").loc["2026-09-22"]
+    assert row["기대"] == 73          # 00:00~12:00
+    assert row["결측"] == 0
+    assert row["상태"] == "수집 중"
 
 
 # ---------------------------------------------------------------- 창 기준 해석
