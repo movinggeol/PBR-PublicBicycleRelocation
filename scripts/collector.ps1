@@ -174,7 +174,11 @@ function Test-PowerSettings {
 
     $acSeconds = $null
     try {
-        $raw = (powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE) -join "`n"
+        # 🔴 전체 경로로 부른다(1.26.276). 집환경은 System32가 PATH에 없어 `powercfg`가
+        # 이름으로는 안 잡히는데, 아래 catch가 그 오류를 삼켜 **이 점검이 한 번도 돌지
+        # 않았다** — AC 절전 5시간이 경고 없이 지나간 까닭이다.
+        $powercfg = Join-Path $env:SystemRoot 'System32\powercfg.exe'
+        $raw = (& $powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE) -join "`n"
         $hex = [regex]::Matches($raw, '0x[0-9a-fA-F]{8}')
         if ($hex.Count -ge 2) {
             $acSeconds = [convert]::ToInt64($hex[$hex.Count - 2].Value, 16)
@@ -193,9 +197,12 @@ function Test-PowerSettings {
             Write-Warning ("전원 연결 시 {0}분 뒤 절전인데 틱 간격이 {1}분입니다. " -f ($acSeconds / 60), $IntervalMinutes +
                            "유휴 리셋으로 막을 수 없어 수집이 끊깁니다 — 전원 옵션에서 절전 시간을 늘리거나 '안 함'으로 두세요.")
         } elseif ($acSeconds -lt $span) {
-            # 창보다 짧지만 간격보다는 길다. 매 틱이 타이머를 되돌리므로 수집 중에는
-            # 잠들지 않는다 — 겁주지 말고 사실만 알린다.
-            Write-Host ("  전원 연결 시 절전: {0}분 (수집 창 {1}시간) — 매 틱이 유휴 타이머를 되돌려 수집 중에는 잠들지 않습니다." -f ($acSeconds / 60), ($span / 3600)) -ForegroundColor DarkGray
+            # 창보다 짧지만 간격보다는 길다. 예전에는 "매 틱이 타이머를 되돌려 수집 중엔
+            # 안 잔다"고 안내했는데 **모던 대기에서는 틀렸다**(2026-09-22 집환경 실측,
+            # 1.26.276) — 틱이 10분마다 돌아도 조작이 없으면 정확히 이 시간 뒤 절전 단계에
+            # 들고, 그때부터 수집이 멈춘다(09-14 AC 296분 · 09-19 AC 300분). COLLECTOR.md 7장.
+            Write-Warning ("전원 연결 시 {0}분 동안 조작이 없으면 절전에 들고 그때부터 수집이 멈춥니다(틱은 이 타이머를 되돌리지 못합니다). " -f ($acSeconds / 60) +
+                           "자리를 비울 때는 전원 옵션에서 절전을 '안 함'으로 두세요.")
         }
     }
 }
