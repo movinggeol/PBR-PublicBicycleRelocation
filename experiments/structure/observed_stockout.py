@@ -183,17 +183,49 @@ def target_stations(duration: str = None) -> set:
     return set(plan.loc[plan["rebal_qty"].abs() > REBAL_MIN_QTY, "station_id"])
 
 
-def simulated_stockout() -> pd.DataFrame:
-    """step4가 남긴 **복원** 결품(재배치 전). 실측과 맞대어 볼 상대다."""
+def simulated_stockout(day_type: str) -> pd.DataFrame:
+    """step4가 남긴 **복원** 결품(재배치 전). 실측과 맞대어 볼 상대다.
+
+    🔴 **요일 구분과 실행 종류를 가린다** (1.26.267). 예전에는 `kpi_summary`를
+    통째로 평균했다 — `runs`에 `day_type`·`kind`가 다 있는데 둘 다 읽지 않았다.
+    그래서 `--day-type holiday`로 돌려도 **평일 복원과 맞대고 있었고**, 평균에
+    `z165`·`g2000`·`sweep-*`·`brokenmix-*` 같은 **파라미터를 바꾼 실험**까지
+    섞여 기준선을 흔들었다. 요일을 바꿔도 복원 열이 한 자리도 안 변하는 것이
+    그 증거였다.
+
+    `db.run_day_type()`의 주석이 적어 둔 1.26.127과 **같은 실패**다 — 정답은
+    DB에 저장돼 있는데 분석 쪽이 읽지 않았다.
+
+    `kind`가 비어 있는 옛 실행은 `db.classify_run_label()`의 짐작에 맡긴다.
+    `day_type`이 비어 있는 실행은 **뺀다** — 어느 요일로 계획했는지 알 수 없는
+    값을 요일별 비교에 넣을 수는 없다.
+    """
     with db.session() as conn:
-        return pd.read_sql(
-            "SELECT duration, AVG(stockout_hours_before) AS 복원"
-            " FROM kpi_summary WHERE stockout_hours_before IS NOT NULL"
-            " GROUP BY duration", conn)
+        frame = pd.read_sql(
+            "SELECT k.run_label, k.duration, k.stockout_hours_before AS 복원,"
+            "       r.kind, r.day_type"
+            "  FROM kpi_summary k JOIN runs r ON r.run_label = k.run_label"
+            " WHERE k.stockout_hours_before IS NOT NULL", conn)
+    if frame.empty:
+        return frame
+    frame = frame[frame["day_type"] == day_type]
+    if frame.empty:
+        return frame
+    kind = frame["kind"].fillna("").map(
+        lambda x: x or None)
+    frame = frame[[
+        (k or db.classify_run_label(lab)) == "plan"
+        for k, lab in zip(kind, frame["run_label"])]]
+    if frame.empty:
+        return frame
+    labels = sorted(frame["run_label"].unique())
+    print(f"\n복원 기준 — 요일 {day_type} · 계획 실행 {len(labels)}건: "
+          f"{', '.join(labels)}")
+    return (frame.groupby("duration", as_index=False)["복원"].mean())
 
 
 def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
-                            targets: set) -> None:
+                            targets: set, day_type: str) -> None:
     """복원과 실측을 나란히 놓는다 — **시간대가 온전히 겹칠 때만.**
 
     좁은 창(09~17시)에서는 `_05_10`이 09시 한 시각만, `_15_20`이 15시 한 시각만
@@ -211,9 +243,11 @@ def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
     두 편향이 상쇄돼 우연히 비슷해 보일 수도 있다. **가른 뒤에야 정확한 비교가
     된다**(TODO 17-B 3단계).
     """
-    simulated = simulated_stockout()
+    simulated = simulated_stockout(day_type)
     if simulated.empty:
-        return
+        print("\n(복원 대비 비교: 이 요일 구분으로 계획한 실행이 DB에 없습니다 —"
+              " 먼저 `python run_pipeline.py --day-type ...`을 돌리십시오)")
+        return []
     rows = []
     for duration in durations:
         hours = duration_hours(duration)
@@ -386,7 +420,7 @@ def main() -> int:
         print(f"  수집 창({hours[0]:02d}~{hours[-1]:02d}시)과 겹치는 시간대가 없습니다.")
         return 1
 
-    rows = compare_with_simulation(frame, durations, window, targets)
+    rows = compare_with_simulation(frame, durations, window, targets, args.day_type)
 
     if args.save:
         _save_calibration(rows, args.day_type, window)
