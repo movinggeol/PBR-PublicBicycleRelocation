@@ -11,6 +11,7 @@
 > | 파라미터 값을 어떻게 정했나 (`z`·`γ`·학습 창) | [EXPERIMENTS.md](EXPERIMENTS.md) |
 > | 선행 연구 중 어디에 서 있나 | [RELATED_WORK.md](../연구/RELATED_WORK.md) · [LITERATURE.md](../연구/LITERATURE.md) |
 > | 무엇을 했고 무엇이 예상과 달랐나 | [RETROSPECTIVE.md](../기록/RETROSPECTIVE.md) |
+> | 선택 **전부**를 대안·시험·의견과 함께 한 표로 | [선택과_대안.md](../연구/선택과_대안.md) — 이 문서는 방법 여덟을 깊이, 그쪽은 일흔 개를 넓게 |
 > | **왜 이 방법을 골랐고 대가는 무엇인가** | **이 문서** |
 >
 > **원칙 하나**: 여기 적힌 근거는 되도록 **측정된 것**입니다. 측정하지 않고 고른
@@ -655,4 +656,5 @@ IQR은 잘라 낸 뒤 다시 재면 좁아지므로 **멱등이 아닙니다** �
 - [DEMAND_DISTRIBUTION.md](DEMAND_DISTRIBUTION.md) — 분포 진단과 ML 시도의 전말
 - [WEATHER.md](WEATHER.md) — 3차 ML 시도(날씨)의 측정과 판정
 - [RETROSPECTIVE.md](../기록/RETROSPECTIVE.md) — 측정이 뒤집은 가설들
+- [선택과_대안.md](../연구/선택과_대안.md) — 프로젝트 전체의 선택 대장 (대안·시험·얻음·잃음·의견)
 - [GLOSSARY.md](../GLOSSARY.md) — 여기 나온 용어의 뜻

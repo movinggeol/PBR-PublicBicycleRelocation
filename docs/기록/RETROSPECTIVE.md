@@ -648,6 +648,7 @@ python experiments/params/seasonal_window.py             # 학습 창 (계절 �
 | 문서 | 내용 |
 | --- | --- |
 | [THESIS.md](../연구/THESIS.md) | 졸업작품·논문에 필요한 것 (대조군·반복 실험·선행연구) |
+| [선택과_대안.md](../연구/선택과_대안.md) | 선택 대장 — 4장의 뒤집힘과 5장의 설계 결정을 대안·얻음·잃음·의견까지 넓혀 한 표로 |
 | [TODO.md](TODO.md) | 남은 과제와 버전별 완료 내역 |
 | [버전관리.md](버전관리.md) | 전체 변경 이력(최신이 위) — 무엇을 왜 바꿨는지 |
 | [PROJECT_PIPELINE.md](../구현/PROJECT_PIPELINE.md) | 데이터 파이프라인 구조 |
