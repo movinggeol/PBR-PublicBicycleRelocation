@@ -29,6 +29,8 @@ uvicorn webapp.app:app --reload
   또는 지금 환경에 설치:  python -m pip install -r requirements.txt
 ```
 
+> 2026-09-21~22의 점검 아홉 판이 무엇을 왜 고쳤는지는 [기록/웹_대시보드_점검_2026-09.md](../기록/웹_대시보드_점검_2026-09.md)에 있습니다.
+
 ## 화면 구성
 
 | 경로 | 내용 |
