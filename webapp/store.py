@@ -77,12 +77,14 @@ def stockout_calibration(day_type: str = "weekday") -> list:
     결품 시간은 순수요로 **복원**한 값이라 재고 0에서 잘려 실제보다 낮게 나온다.
     그 격차를 관측과 맞대어 재 둔 것이 이 계수다. **수집이 멈춰도 표에 남는다.**
     """
-    with db.session() as conn:
-        try:
+    try:
+        with db.session() as conn:
             frame = db.latest_stockout_calibration(conn)
-        except Exception:
-            # 표가 아직 없는 옛 DB. 화면은 떠야 하므로 조용히 비운다.
-            return []
+    except Exception as err:
+        # 표가 아직 없는 옛 DB, 또는 DB가 잠기거나 손상된 경우. 화면은 떠야 한다.
+        # 예전에는 `db.session()`이 try 밖이라 연결 실패가 /kpi를 500으로 만들었다(1.26.273).
+        print(f"[경고] 결품 보정 조회 실패: {type(err).__name__}: {err}")
+        return []
     return [] if frame.empty else frame.to_dict("records")
 
 
@@ -280,9 +282,13 @@ def stock_station_count() -> int:
     `webapp/`에서 `db.py`를 아는 곳은 이 파일 하나여야 한다(1.26.110에서
     되돌린 그 규약이고, 테스트가 지킨다).
     """
-    with db.session() as conn:
-        frame = pd.read_sql(
-            "SELECT COUNT(DISTINCT station_id) AS n FROM stock_history", conn)
+    try:
+        with db.session() as conn:
+            frame = pd.read_sql(
+                "SELECT COUNT(DISTINCT station_id) AS n FROM stock_history", conn)
+    except Exception as err:
+        print(f"[경고] 재고 대여소 수 조회 실패: {type(err).__name__}: {err}")
+        return 0
     return int(frame["n"].iloc[0]) if not frame.empty else 0
 
 
@@ -292,5 +298,62 @@ def periods_with_rentals() -> frozenset:
     `/run` 폼이 "이 기간은 원천 CSV를 안 씁니다"를 알리는 데 쓴다 —
     `db.read_rental_source()`가 이 목록에 있는 기간이면 CSV 경로를 안 보기 때문이다.
     """
-    with db.session() as conn:
-        return db.rental_periods(conn)
+    try:
+        with db.session() as conn:
+            return db.rental_periods(conn)
+    except Exception as err:
+        # 비우면 폼이 "원천 CSV가 필요하다"고 보수적으로 말한다 — 500보다 낫다(1.26.273).
+        print(f"[경고] 적재된 기간 조회 실패: {type(err).__name__}: {err}")
+        return frozenset()
+
+
+def backtest(day_type: str = "weekday") -> pd.DataFrame:
+    """월쌍 백테스트 기록(`tools/backtest_demand.py`). 못 읽으면 빈 표.
+
+    `kpi_view.py`가 1.19.3부터 `db.load_backtest`를 직접 불렀다 — "webapp에서 db를
+    import하는 곳은 store 하나"라는 규약의 알려진 예외였고(1.26.110), 여기로 옮겨
+    예외 목록에서 지운다(1.26.273).
+    """
+    try:
+        with db.session() as conn:
+            return db.load_backtest(conn, day_type=day_type)
+    except Exception as err:
+        print(f"[경고] 백테스트 조회 실패: {type(err).__name__}: {err}")
+        return pd.DataFrame()
+
+
+def net_demand(period: str) -> pd.DataFrame:
+    """한 기간의 순수요 표(`net_demand`). 못 읽으면 빈 표. (`backtest()`와 같은 이유로 여기에.)"""
+    try:
+        with db.session() as conn:
+            return db.load_frame(conn, "net_demand", period=period)
+    except Exception as err:
+        print(f"[경고] 순수요 조회 실패: {type(err).__name__}: {err}")
+        return pd.DataFrame()
+
+
+def db_stamp() -> Optional[float]:
+    """DB 파일의 수정 시각. 캐시 열쇠에 넣어 **웹 밖의 실행**도 캐시를 낡게 한다.
+
+    1.26.262의 완료 훅은 웹에서 띄운 작업만 잡는다 — 서버를 켠 채 CLI로
+    `run_pipeline.py`나 `tools/rebuild_net_demand.py`를 돌리면 히트맵이 영영 옛
+    그림이었다(1.26.273). 파일이 없으면 None(그때는 어차피 캐시할 것도 없다).
+    """
+    try:
+        return db.active_db_path().stat().st_mtime
+    except OSError:
+        return None
+
+
+def time_budgets() -> dict:
+    """(run_label, duration) → 그 회차가 계획될 때의 시간 예산(분). 기록 없으면 빈 dict.
+
+    예산은 실행마다 바뀔 수 있어 `kpi_summary.time_budget_minutes`에 함께 적힌다.
+    `/vehicles`의 예산 준수 타일이 상수 하나로 과거 회차 전부를 재고 있었다(1.26.273).
+    """
+    rows = kpi()
+    if rows.empty or "time_budget_minutes" not in rows:
+        return {}
+    ok = rows.dropna(subset=["time_budget_minutes"])
+    return {(str(r), str(d)): float(b)
+            for r, d, b in zip(ok["run_label"], ok["duration"], ok["time_budget_minutes"])}

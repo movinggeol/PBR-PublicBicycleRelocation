@@ -101,12 +101,19 @@ def _prune() -> None:
 
 
 def _save_registry() -> None:
+    """이력을 원자적으로 저장한다 (1.26.273).
+
+    예전에는 `write_text`로 바로 덮어썼다 — 쓰는 도중 서버가 죽으면 `runs.json`이
+    반쪽만 남고, `_load_registry`는 그것을 읽지 못해 **빈 이력으로 조용히 시작**
+    했다(로그 파일 100건이 고아가 된다 — 1.26.149가 막으려던 상태). 임시 파일에
+    다 쓴 뒤 `os.replace`로 바꾸면 파일은 늘 옛것 아니면 새것이다.
+    """
     WEBAPP_DATA.mkdir(parents=True, exist_ok=True)
     _prune()
     payload = [asdict(job) for job in _jobs.values()]
-    REGISTRY_FILE.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    tmp = REGISTRY_FILE.with_name(REGISTRY_FILE.name + ".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, REGISTRY_FILE)
 
 
 def _load_registry() -> None:
@@ -114,7 +121,10 @@ def _load_registry() -> None:
         return
     try:
         payload = json.loads(REGISTRY_FILE.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as err:
+        # 조용히 비우지 않는다 — 이력이 왜 사라졌는지 로그에는 남아야 한다(1.26.273).
+        print(f"[경고] 작업 이력({REGISTRY_FILE.name})을 읽지 못해 빈 이력으로 시작합니다: "
+              f"{type(err).__name__}: {err}")
         return
 
     known = {f.name for f in fields(Job)}
@@ -444,6 +454,11 @@ def cancel_job(job_id: str) -> bool:
         job = _jobs.get(job_id)
         if job is None or not job.is_running or _running_proc is None:
             return False
+        # 프로세스가 **막 끝난** 뒤 `_watch`가 락을 잡기 전에 들어온 중단은 거절한다
+        # (1.26.273) — 안 그러면 성공한 실행이 `cancelled`로 기록된다. 창은 수 ms지만
+        # 기록은 영구다.
+        if _running_proc.poll() is not None:
+            return False
         job.cancelled = True
         proc = _running_proc
 
@@ -465,7 +480,12 @@ def _watch(job: Job, proc: subprocess.Popen, log_file) -> None:
             job.status = "success" if returncode == 0 else "failed"
         job.finished_at = _now_str()
         _running_proc = None
-        _save_registry()
+        try:
+            _save_registry()
+        except OSError as err:
+            # 동기화 클라이언트·백신이 파일을 잠근 경우. 메모리 상태는 이미 맞으니
+            # 화면은 살고, 아래 훅(캐시 비우기)도 돌아야 한다(1.26.273).
+            print(f"[경고] 작업 이력을 저장하지 못했습니다: {type(err).__name__}: {err}")
     # 락 밖에서 — 훅이 무엇을 하든 다른 요청을 막을 이유가 없다.
     for hook in list(_finished_hooks):
         try:

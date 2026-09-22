@@ -422,11 +422,6 @@ def test_복사_단추가_모든_방문지에_있다(client, planned_with_coords
     화면이 실제로 단추를 그리는지 본다 — orders.build()가 좌표를 실어도
     템플릿이 안 쓰면 기사에게는 아무것도 안 보인다.
     """
-    # 라우트는 '어느 계획을 보여줄까'를 DB에서 고른다. 조립은 planned_with_coords가
-    # 가로채므로, 목록만 한 건 있는 것처럼 만들어 준다.
-    monkeypatch.setattr("webapp.app.catalog.order_targets",
-                        lambda: [{"run_label": "R", "duration": "_05_10"}],
-                        raising=False)
     html = client.get("/orders?run_label=R&duration=_05_10").text
 
     assert 'class="copy-btn"' in html

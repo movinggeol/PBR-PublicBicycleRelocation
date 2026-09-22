@@ -39,7 +39,7 @@
     <p class="label">시간 예산 준수</p>
     <p class="value">{{ budget.rate }}%</p>
     <p class="sub">{{ budget.total }}회차 중 {{ budget.within }}회차가
-      {{ budget.limit | round | int }}분 안에 완료<br>
+      {% if budget.limits and budget.limits | length > 1 %}각 실행의 시간 예산 안에{% else %}{{ budget.limit | round | int }}분 안에{% endif %} 완료<br>
       <span class="muted">{% if selected_run %}실행 “{{ selected_run }}”만{% else %}전체 실행{% endif %}</span></p>
   </div>
   {% endif %}

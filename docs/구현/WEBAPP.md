@@ -67,6 +67,17 @@ uvicorn webapp.app:app --reload
 | `GET /api/weather` | **지금 날씨**(대전 관측). 실행 폼이 비 여부를 띄우는 데 쓴다. `?refresh=1`로 캐시 무시 |
 | `GET /api/forecast` | **계획 대상일 예보**(문장 + 격자 mm). `?target_date=YYYY-MM-DD`(생략하면 내일)·`?refresh=1`. 계획은 하루 앞서 세우므로 화면의 주 신호는 이쪽이다 |
 
+폼과 파일 경로(1.26.273에 표로 옮겼다 — 본문에만 있어 표만 보면 없는 라우트였다):
+
+| 경로 | 내용 |
+| --- | --- |
+| `POST /runs` | 실행 폼 제출 → `303 /runs/{id}`. 입력이 틀리면 `400`(폼 화면에 안내), 이미 돌고 있으면 `409`. 실행 이름은 `check_run_label()`(1.26.262), 원천 CSV 경로는 기간이 DB에 없을 때만 검사(1.26.264) |
+| `POST /runs/{id}/cancel` | 실행 중단(프로세스 트리 종료). 막 끝난 작업은 거절한다(1.26.273) |
+| `POST /runs/{run_label}/kind` | 실행 종류(plan·experiment·probe) 못박기. **있는 실행만** 받는다 — 없는 라벨 `404`, 규칙 위반 `400`(1.26.271) |
+| `GET /view/{relpath}` · `/preview/{relpath}` · `/files/{relpath}` | `data/` 아래 `.html`(iframe 열람)·`.csv`(표 미리보기 200행, UTF-8→cp949 폴백)·내려받기. `catalog.safe_resolve()`가 경로 탈출·확장자를 거른다 |
+
+화면의 쿼리 인자: `/kpi?run_label=`, `/vehicles?run_label=&page=`, `/orders?run_label=&duration=&vehicle=`(회차를 빼면 그 실행의 첫 회차로 채운다, 1.26.262), `/orders/live?…`(같은 인자 + 타슈 API 호출), `/device?path=`.
+
 산출물 API는 `?run_label=...&duration=...` 쿼리를 받습니다. 생략하면 **최신 실행분**입니다.
 
 ```

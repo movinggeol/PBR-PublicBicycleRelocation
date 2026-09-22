@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd
 
-import db
+from webapp import store
 
 # 실행 축 꺾은선으로 낼 지표. (컬럼, 제목, 단위, 배수, 가중치 컬럼, 낮은 쪽이 좋은가)
 #
@@ -206,12 +206,7 @@ def forecast_accuracy(day_type: str = "weekday") -> dict:
     기준선(늘 0이라고 예측)을 못 이기는 시간대가 있으면 그 시간대의 목표 재고는
     근거가 약하다는 뜻이다.
     """
-    try:
-        with db.session() as conn:
-            rows = db.load_backtest(conn, day_type=day_type)
-    except Exception as err:
-        print(f"[경고] 백테스트 조회 실패: {type(err).__name__}: {err}")
-        return {"summary": [], "series": []}
+    rows = store.backtest(day_type)
     if rows.empty:
         return {"summary": [], "series": []}
 
@@ -254,16 +249,14 @@ def demand_heatmap(period: str) -> dict:
     대여소별로 쪼개지 않는 이유는 한 칸이 대여소 하나짜리 표본이 되어 잡음만
     커지기 때문이다(계절 배율을 도시 전체로 구하는 것과 같은 이유).
     """
-    if period in _heatmap_cache:
-        return _heatmap_cache[period]
+    # 열쇠에 DB 파일의 수정 시각을 넣는다 — 완료 훅(1.26.262)은 웹 작업만 잡아서
+    # CLI로 순수요를 다시 계산하면 옛 그림이 영영 남았다(1.26.273).
+    key = (period, store.db_stamp())
+    if key in _heatmap_cache:
+        return _heatmap_cache[key]
 
     empty = {"rows": [], "cols": [], "matrix": [], "scale": 0.0, "period": period}
-    try:
-        with db.session() as conn:
-            frame = db.load_frame(conn, "net_demand", period=period)
-    except Exception as err:
-        print(f"[경고] 순수요 조회 실패: {type(err).__name__}: {err}")
-        return empty
+    frame = store.net_demand(period)
     if frame.empty or "date" not in frame:
         return empty
 
@@ -287,5 +280,6 @@ def demand_heatmap(period: str) -> dict:
         "period": period,
         "days": int(len(daily)),
     }
-    _heatmap_cache[period] = result
+    _heatmap_cache.clear()          # 지문이 바뀐 옛 열쇠를 쌓아 두지 않는다
+    _heatmap_cache[key] = result
     return result

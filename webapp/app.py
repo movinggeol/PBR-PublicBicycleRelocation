@@ -1129,9 +1129,18 @@ def vehicles_page(request: Request, run_label: Optional[str] = None, page: int =
     budget = None
     all_assignments = store.vehicle_assignments(run_label=run_label)
     if not all_assignments.empty:
-        within = int((all_assignments["minutes"] <= TIME_BUDGET_MINUTES).sum())
+        # 예산은 실행마다 바뀔 수 있다(`kpi_summary.time_budget_minutes`). 상수 하나로
+        # 과거 회차 전부를 재면 그때 예산이 달랐던 실행이 틀리게 판정된다 — 그 회차가
+        # 계획될 때의 예산으로 재고, 기록이 없는 옛 회차만 지금 상수로 본다(1.26.273).
+        limits = store.time_budgets()
+        keys = zip(all_assignments.get("run_label", pd.Series(index=all_assignments.index, dtype=object)),
+                   all_assignments.get("duration", pd.Series(index=all_assignments.index, dtype=object)))
+        per_row = pd.Series([limits.get((str(r), str(d)), TIME_BUDGET_MINUTES) for r, d in keys],
+                            index=all_assignments.index, dtype=float)
+        within = int((all_assignments["minutes"] <= per_row).sum())
         budget = {
             "limit": TIME_BUDGET_MINUTES,
+            "limits": sorted(set(per_row.tolist())),   # 둘 이상이면 화면이 "각 실행의 예산"이라 말한다
             "within": within,
             "total": len(all_assignments),
             "rate": round(within / len(all_assignments) * 100),
@@ -1345,7 +1354,7 @@ def api_run_status(job_id: str):
 
 
 def _load_or_404(table: str, run_label: Optional[str], duration: Optional[str]):
-    """산출물을 읽고, 없으면 404. (DB 우선, 이전 산출물은 CSV 폴백)"""
+    """산출물을 읽고, 없으면 404. (DB만 본다 — CSV 폴백은 1.26.165에 없어졌다)"""
     frame, source = store.load(table, run_label=run_label, duration=duration)
     if frame.empty:
         raise HTTPException(
@@ -1382,7 +1391,7 @@ def _envelope(frame: pd.DataFrame, source: str, run_label: Optional[str],
     return {
         "run_label": label,
         "duration": duration,
-        "source": source,          # db | csv
+        "source": source,          # db | none
         "count": len(frame),
         "rows": store.records(frame),
     }
@@ -1465,8 +1474,3 @@ def api_route_summary(run_label: Optional[str] = None, duration: Optional[str] =
     df, source = _load_or_404("route_summary", run_label, duration)
     return JSONResponse(_envelope(df, source, run_label, duration))
 
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run("webapp.app:app", host="127.0.0.1", port=8000, reload=True)

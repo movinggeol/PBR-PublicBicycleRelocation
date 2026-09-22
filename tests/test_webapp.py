@@ -2339,12 +2339,10 @@ def test_웹이_db를_직접_열지_않는다():
 
     from webapp import app as webapp_app
 
-    # ⚠️ `kpi_view.py`는 **알려진 예외**다. 1.19.3(2026-08-24)부터 `db.load_backtest`·
-    #    `db.load_frame`을 직접 부르는데, `store.py`에 대응하는 조회가 없어서
-    #    옮기려면 저장소 계층에 함수를 새로 내야 한다. 이번(1.26.110)은 **새로
-    #    생긴 위반만** 되돌렸고 옛것은 손대지 않았다 — 목록에 남겨 두는 이유는
-    #    "재 보고 남겨 둔 것"과 "못 본 것"을 구분하기 위해서다(TODO P3).
-    KNOWN = {"store.py", "kpi_view.py"}
+    # `kpi_view.py`는 1.19.3부터 1.26.272까지 **알려진 예외**였다(`db.load_backtest`·
+    # `db.load_frame` 직접 호출, TODO P3). 1.26.273에서 `store.backtest()`·
+    # `store.net_demand()`로 옮겨 예외가 store.py 하나로 줄었다.
+    KNOWN = {"store.py"}
 
     webapp_dir = Path(webapp_app.__file__).parent
     offenders = []
@@ -3498,3 +3496,114 @@ def test_기사와_사용자에게_버전_번호와_날_JSON을_들이대지_않
     vehicles_tpl = Path("webapp/templates/vehicles.html").read_text(encoding="utf-8")
     assert '>보기</a>' not in vehicles_tpl and 'title="이 차량의 배정 이력 원자료(JSON)">JSON</a>' in vehicles_tpl
     assert "a.minutes is not none and a.minutes > time_budget" in vehicles_tpl
+
+
+# ── 웹 대시보드 6차 점검 — 내구성 묶음 (1.26.273) ───────────────────────────
+
+def test_작업_이력은_원자적으로_저장되고_깨진_파일은_경고한다(capsys):
+    """`write_text`로 바로 덮어쓰면 쓰는 도중 죽은 `runs.json`이 반쪽만 남고,
+    `_load_registry`는 그것을 **조용히** 빈 이력으로 읽었다 (1.26.273)."""
+    import json
+    jobs._jobs.clear()
+    jobs._jobs["x"] = jobs.Job(id="x", status="success", started_at="2026-09-22 10:00:00",
+                               finished_at="2026-09-22 10:01:00")
+    jobs._save_registry()
+    assert json.loads(jobs.REGISTRY_FILE.read_text(encoding="utf-8"))[0]["id"] == "x"
+    assert not list(jobs.REGISTRY_FILE.parent.glob("*.tmp")), "임시 파일이 남았다"
+
+    jobs.REGISTRY_FILE.write_text('[{"id": "x", "status": ', encoding="utf-8")   # 반쪽
+    jobs._jobs.clear()
+    jobs._load_registry()
+    assert jobs._jobs == {}
+    assert "[경고]" in capsys.readouterr().out, "깨진 이력을 조용히 버렸다"
+
+
+def test_막_끝난_작업은_중단할_수_없다(monkeypatch):
+    """프로세스가 끝난 뒤 `_watch`가 락을 잡기 전에 들어온 중단이 성공한 실행을
+    `cancelled`로 기록했다 (1.26.273). 창은 수 ms지만 기록은 영구다."""
+    class 끝난프로세스:
+        def poll(self):
+            return 0
+    job = jobs.Job(id="끝남", status="running", started_at="2026-09-22 10:00:00")
+    jobs._jobs.clear(); jobs._jobs[job.id] = job
+    monkeypatch.setattr(jobs, "_running_proc", 끝난프로세스())
+    assert jobs.cancel_job("끝남") is False
+    assert job.cancelled is False
+
+
+def test_이력_저장이_실패해도_완료_훅은_돈다(monkeypatch, capsys):
+    """동기화 클라이언트·백신이 `runs.json`을 잠그면 `_watch` 스레드가 죽어
+    캐시 비우기 훅이 안 불렸다 (1.26.273). 메모리 상태는 맞으니 화면은 살지만
+    히트맵이 낡는다."""
+    import io
+    class 프로세스:
+        def wait(self):
+            return 0
+    called = []
+    job = jobs.Job(id="훅", status="running", started_at="2026-09-22 10:00:00")
+    jobs._jobs.clear(); jobs._jobs[job.id] = job
+    monkeypatch.setattr(jobs, "_save_registry", lambda: (_ for _ in ()).throw(OSError("locked")))
+    monkeypatch.setattr(jobs, "_finished_hooks", [lambda j: called.append(j.id)])
+    jobs._watch(job, 프로세스(), io.StringIO())
+    assert job.status == "success" and called == ["훅"]
+    assert "저장하지 못했습니다" in capsys.readouterr().out
+
+
+def test_store는_DB가_죽어도_화면을_살린다(monkeypatch, capsys):
+    """세 함수만 예외를 안 삼켰다 — `stockout_calibration`은 `db.session()`이 try 밖,
+    `stock_station_count`·`periods_with_rentals`는 try가 없어 /kpi·/run이 500이었다
+    (1.26.273). 새로 낸 `backtest`·`net_demand`도 같은 규약이다."""
+    from webapp import store
+    class 죽은세션:
+        def __enter__(self):
+            raise RuntimeError("database is locked")
+        def __exit__(self, *a):
+            return False
+    monkeypatch.setattr(store.db, "session", lambda *a, **k: 죽은세션())
+    assert store.stockout_calibration() == []
+    assert store.stock_station_count() == 0
+    assert store.periods_with_rentals() == frozenset()
+    assert store.backtest().empty and store.net_demand("25년 11월").empty
+    assert capsys.readouterr().out.count("[경고]") == 5
+
+
+def test_kpi_view는_db를_직접_부르지_않고_캐시는_DB_지문을_따른다(monkeypatch):
+    """1.19.3부터 알려진 예외였던 직접 import를 store로 옮겼고(1.26.273), 히트맵
+    캐시 열쇠에 DB 파일 지문을 넣어 **CLI 실행 뒤에도** 옛 그림이 남지 않게 했다."""
+    from webapp import kpi_view, store
+    src = Path(kpi_view.__file__).read_text(encoding="utf-8")
+    assert "import db" not in src.replace("from webapp import store", "")
+
+    sentinel = {"rows": ["보초"], "cols": [], "matrix": [], "scale": 0.0, "period": "25년 11월"}
+    kpi_view._heatmap_cache.clear()
+    kpi_view._heatmap_cache[("25년 11월", 1.0)] = sentinel
+    monkeypatch.setattr(store, "db_stamp", lambda: 1.0)
+    assert kpi_view.demand_heatmap("25년 11월") is sentinel
+    monkeypatch.setattr(store, "db_stamp", lambda: 2.0)             # CLI가 DB를 다시 썼다
+    monkeypatch.setattr(store, "net_demand", lambda period: pd.DataFrame())
+    fresh = kpi_view.demand_heatmap("25년 11월")
+    assert fresh is not sentinel and fresh["rows"] == []
+    kpi_view._heatmap_cache.clear()
+
+
+def test_예산_준수는_그_회차가_계획될_때의_예산으로_센다(client, monkeypatch):
+    """`/vehicles` 타일이 상수 `TIME_BUDGET_MINUTES` 하나로 과거 회차 전부를 재고
+    있었다 (1.26.273). 예산은 실행마다 바뀌고 `kpi_summary.time_budget_minutes`에
+    함께 적힌다 — 첫 화면은 이미 그 열을 쓰고 있었다."""
+    from webapp import store
+    # 예산 표는 kpi_summary에서 나온다 — NULL인 회차는 빠진다(그 회차는 지금 상수로 본다)
+    kpi = pd.DataFrame({"run_label": ["A", "B"], "duration": ["_05_10", "_05_10"],
+                        "time_budget_minutes": [90.0, None]})
+    monkeypatch.setattr(store, "kpi", lambda *a, **k: kpi)
+    assert store.time_budgets() == {("A", "_05_10"): 90.0}
+
+    rows = pd.DataFrame([
+        {"run_label": "A", "duration": "_05_10", "minutes": 100.0, "vehicle_id": "V01"},
+        {"run_label": "B", "duration": "_05_10", "minutes": 100.0, "vehicle_id": "V02"},
+    ])
+    monkeypatch.setattr(store, "vehicle_assignments", lambda *a, **k: rows)
+    monkeypatch.setattr(store, "vehicle_assignment_count", lambda *a, **k: 2)
+    monkeypatch.setattr(store, "time_budgets", lambda: {("A", "_05_10"): 90.0, ("B", "_05_10"): 120.0})
+    html = client.get("/vehicles").text
+    assert "2회차 중 1회차가" in " ".join(html.split()), "A는 90분 예산을 넘었는데 상수 120분으로 통과시켰다"
+    assert "각 실행의 시간 예산 안에" in html

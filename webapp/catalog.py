@@ -19,7 +19,7 @@ from project_config import DATA_ROOT, PP_ROOT, PROJECT_ROOT
 
 ALLOWED_SUFFIXES = {".html", ".csv"}
 
-# (표시 이름, pp_data 기준 폴더, 패턴, 종류)
+# (표시 이름, pp_data 기준 폴더, 패턴)
 MAP_CATEGORIES = [
     ("클러스터 지도 (step1)", "ILP/visualization", "*.html"),
     ("VRP 경로 지도 (step3)", "VRP/visualization", "*.html"),
@@ -79,7 +79,6 @@ def _scan(categories) -> List[Dict]:
         folder = PP_ROOT / subdir
         entries: List[Dict] = []
         if folder.exists():
-            entries = []
             for path in folder.glob(pattern):
                 # 목록을 만드는 사이 파일이 지워질 수 있다(`forget_run.py`·
                 # 다시 그리는 지도). `stat()`이 FileNotFoundError를 내면 그
@@ -206,13 +205,3 @@ def safe_resolve(relpath: str) -> Optional[Path]:
         return None
     return target
 
-
-def latest_file(subdir: str, pattern: str) -> Optional[Path]:
-    """pp_data/subdir 안에서 pattern에 맞는 가장 최근 파일."""
-    folder = PP_ROOT / subdir
-    if not folder.exists():
-        return None
-    files = [p for p in folder.glob(pattern) if p.is_file()]
-    if not files:
-        return None
-    return max(files, key=lambda p: p.stat().st_mtime)
