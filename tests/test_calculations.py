@@ -1345,17 +1345,52 @@ def test_ilp와_vrp가_같은_이동시간_함수를_쓴다():
         assert vrp._travel_sec(km) == pytest.approx(expected)
 
 
-def test_기본값은_예전_그대로다():
-    """`USE_ROAD_MODEL`이 꺼져 있으면 **문서의 모든 수치가 그대로 나와야 한다.**
+def test_기본은_게이트_A_판정값으로_켜져_있다():
+    """게이트 A 채택 뒤 **문서의 수치는 새 식 위에서 나온다** — 기본이 조용히 꺼지면 무효가 된다.
 
-    켜는 순간 대조군 비교·z·γ 실험이 전부 다른 값이 된다. 기본이 조용히
-    바뀌는 것을 막는다.
+    예전에는 반대로 *"기본값은 예전 그대로다"* 를 지켰다(켜는 순간 대조군·z·γ 수치가 전부 달라지므로).
+    끈 채/켠 채 재실행으로 문서를 다시 쓴 뒤 이 단언을 뒤집었다(수집완료_계획 절차서 ⑦).
+    계수는 2026-09-15 판정값이다 — 손으로 고치면 판정 기록과 어긋난다.
     """
     import project_config as pc
 
-    assert pc.USE_ROAD_MODEL is False, "기본이 켜져 있다 — 문서 수치가 무효가 된다"
+    assert pc.USE_ROAD_MODEL is True, "기본이 꺼져 있다 — 문서 수치가 무효가 된다"
+    assert pc.ROAD_FIXED_SEC_WEEKDAY == pytest.approx(320.4)
+    assert pc.ROAD_SPEED_KMPH_WEEKDAY == pytest.approx(32.11)
     for km in (0.5, 2.0, 10.0):
-        assert pc.travel_seconds(km) == pytest.approx(km / 25.0 * 3600.0)
+        assert pc.travel_seconds(km) == pytest.approx(320.4 + km * 3600.0 / 32.11)
+
+
+def test_끄면_채택_전_식으로_돌아간다(monkeypatch):
+    """`PBR_USE_ROAD_MODEL=0`은 **채택 전 기록을 재현하는 길**이다 — `km / 25 × 3600`이 나와야 한다."""
+    import importlib
+
+    import project_config as pc
+
+    monkeypatch.setenv("PBR_USE_ROAD_MODEL", "0")
+    importlib.reload(pc)
+    try:
+        assert pc.USE_ROAD_MODEL is False
+        for km in (0.5, 2.0, 10.0):
+            assert pc.travel_seconds(km) == pytest.approx(km / 25.0 * 3600.0)
+    finally:
+        monkeypatch.delenv("PBR_USE_ROAD_MODEL", raising=False)
+        importlib.reload(pc)
+
+
+def test_스위치_오타는_조용히_켜지_않고_멈춘다(monkeypatch):
+    """`PBR_USE_ROAD_MODEL=offf`가 켜진 채로 지나가면 끈 줄 알고 새 식으로 돈다 — 흔적이 안 남는다."""
+    import importlib
+
+    import project_config as pc
+
+    monkeypatch.setenv("PBR_USE_ROAD_MODEL", "offf")
+    try:
+        with pytest.raises(ValueError, match="PBR_USE_ROAD_MODEL"):
+            importlib.reload(pc)
+    finally:
+        monkeypatch.delenv("PBR_USE_ROAD_MODEL", raising=False)
+        importlib.reload(pc)
 
 
 def test_실도로_모형은_짧은_구간에_고정비를_붙인다(monkeypatch):
@@ -1395,6 +1430,9 @@ def test_모형을_켜도_거리는_그대로다(monkeypatch):
 
     import project_config as pc
 
+    # 기본이 켜진 뒤(게이트 A 채택)에는 '끈 채'를 명시해야 옛 식이 나온다
+    monkeypatch.setenv("PBR_USE_ROAD_MODEL", "0")
+    importlib.reload(pc)
     off = [pc.travel_seconds(k) for k in (1.0, 5.0)]
     monkeypatch.setenv("PBR_USE_ROAD_MODEL", "1")
     importlib.reload(pc)

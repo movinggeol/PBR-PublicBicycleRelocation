@@ -1126,6 +1126,19 @@ def save_stock_master(conn: sqlite3.Connection, observed_on: str,
     return len(rows)
 
 
+def has_stock_tick(conn: sqlite3.Connection, observed_at: str) -> bool:
+    """그 격자 슬롯에 관측이 이미 들어와 있는가.
+
+    `save_stock_snapshot`은 덮어쓰기라 손으로 다시 돌려도 안전하지만 **늦게 도는
+    틱**은 이야기가 다르다 — 정시에 받은 값을 몇 분 밀린 값으로 갈아 끼운다.
+    수집기는 저장이 아니라 API 호출 전에 여기로 물어본다(COLLECTOR.md 6-A장).
+    """
+    row = conn.execute(
+        "SELECT 1 FROM stock_history WHERE observed_at = ? LIMIT 1",
+        (observed_at,)).fetchone()
+    return row is not None
+
+
 def has_stock_master(conn: sqlite3.Connection, observed_on: str) -> bool:
     """그날 마스터를 이미 남겼는가. 하루 첫 틱을 판단하는 데 쓴다."""
     row = conn.execute(

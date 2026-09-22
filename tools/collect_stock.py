@@ -284,6 +284,12 @@ def collect_once(tick: datetime, *, dry_run: bool = False) -> int:
     return rows
 
 
+def tick_already_collected(observed_at: str) -> bool:
+    """그 슬롯이 이미 찼는가. 늦게 도는 틱이 정시 값을 덮어쓰는 것을 막는 데 쓴다."""
+    with db.session() as conn:
+        return db.has_stock_tick(conn, observed_at)
+
+
 def run_tick(stamp: datetime, start: clock, end: clock, interval: int,
              *, force: bool = False, dry_run: bool = False,
              include_holidays: bool = False, holidays_only: bool = False) -> int:
@@ -297,8 +303,16 @@ def run_tick(stamp: datetime, start: clock, end: clock, interval: int,
     if tick is None:                      # --force로 휴일에 수집하는 경우
         tick = tick_of(stamp, start, interval)
 
-    keep_awake()
     observed_at = tick.strftime("%Y-%m-%d %H:%M")
+    # 이미 채운 격자 슬롯은 건드리지 않는다. 스케줄러가 놓친 틱을 뒤늦게 따라잡도록
+    # 열어 둔 이상(StartWhenAvailable, 1.26.269) 정시에 받은 값이 몇 분 밀린 값으로
+    # 갈아 끼워질 수 있어서다 — 격자 정렬이 이 데이터의 값어치이므로 먼저 지킨다.
+    # 저장이 아니라 **API 호출 전에** 막는다. 헛되이 부를 이유가 없다.
+    if not force and not dry_run and tick_already_collected(observed_at):
+        print(f"[건너뜀] 이미 채운 격자 — {observed_at}")
+        return 0
+
+    keep_awake()
     try:
         rows = collect_once(tick, dry_run=dry_run)
     except tashu.TashuError as err:

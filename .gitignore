@@ -74,6 +74,9 @@ Thumbs.db
 docs/연구/references/**/*.pdf
 # 학과 양식 한글 파일 — 샘플 학생·교수 이름이 들어 있다 (2026-09-18).
 docs/연구/references/**/*.hwp
+# 경진대회 포스터 양식과 채운 포스터 — 채운 쪽에 학번이 들어간다 (2026-09-21).
+docs/연구/references/**/*.pptx
+docs/연구/references/**/작품 포스터*
 docs/연구/references/**/*.jfif
 docs/연구/references/아이디어/
 

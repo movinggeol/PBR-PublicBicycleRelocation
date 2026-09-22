@@ -369,6 +369,39 @@ New-Item -ItemType Directory -Force $d | Out-Null
 📌 **②를 합쳐야 진짜 공백이 보입니다.** 이동 중 구멍이 실제로 얼마인지,
 보조배터리 같은 추가 대책이 필요한지는 그때 판단합니다.
 
+### 7단계 — **놓친 틱 거부 고침을 적용하십시오** (2026-09-21)
+
+집환경에서 09-21 하루가 통째로 빈 원인을 가렸습니다 — 반복 트리거의 10분 격자가 절전 복귀
+시각으로 재고정돼 `:00`에서 밀리고, 밀린 틱은 스케줄러 눈에 '놓친 틱'이라 `StartWhenAvailable`이
+꺼져 있으면 **거부만 됩니다**(`ID 153`). 자세한 것은 [COLLECTOR.md 6-A장](COLLECTOR.md)입니다.
+
+🔴 **회사환경(A)의 `09:31·11:11·14:01·16:11` 거부가 같은 계열로 보입니다.** 한 줄이면 됩니다.
+
+```powershell
+git pull
+.\scripts\collector.ps1 install -Window 00:00-23:50 -IncludeHolidays
+```
+
+확인은 두 줄입니다. 등록이 바뀌었는지, 그리고 다음 틱이 격자에 맞게 들어오는지 봅니다.
+
+```powershell
+(Get-ScheduledTask -TaskName PBR재고수집 | Export-ScheduledTask) -match 'StartWhenAvailable'
+.\scripts\collector.ps1 status
+```
+
+기대: `<StartWhenAvailable>true</StartWhenAvailable>`. 집환경에서는 고친 직후 22:00 틱이 `22:00:03`,
+22:10 틱이 `22:10:05`에 들어왔습니다(그 전에는 하루 0틱).
+
+📌 **덮어써도 데이터는 안전합니다.** 늦게 도는 틱이 정시 값을 갈아 끼우던 문제는 수집기가 막습니다 —
+이미 채운 격자 슬롯이면 API를 부르지도 않습니다. 손으로 메울 때만 `--force`로 풉니다.
+
+⚠️ **사유를 직접 보려면** 관리자 권한 PowerShell에서 운영 로그를 먼저 켜십시오. 기본이 꺼짐이라
+집환경도 이것 때문에 이틀을 헤맸습니다.
+
+```powershell
+wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true
+```
+
 ---
 
 ## 1. 네 갈래 — 무엇을 어떻게 다루나

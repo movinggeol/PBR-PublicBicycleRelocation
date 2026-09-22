@@ -186,7 +186,7 @@ def target_stations(duration: str = None) -> set:
 def simulated_stockout(day_type: str) -> pd.DataFrame:
     """step4가 남긴 **복원** 결품(재배치 전). 실측과 맞대어 볼 상대다.
 
-    🔴 **요일 구분과 실행 종류를 가린다** (1.26.267). 예전에는 `kpi_summary`를
+    🔴 **요일 구분과 실행 종류를 가린다** (1.26.270). 예전에는 `kpi_summary`를
     통째로 평균했다 — `runs`에 `day_type`·`kind`가 다 있는데 둘 다 읽지 않았다.
     그래서 `--day-type holiday`로 돌려도 **평일 복원과 맞대고 있었고**, 평균에
     `z165`·`g2000`·`sweep-*`·`brokenmix-*` 같은 **파라미터를 바꾼 실험**까지
