@@ -159,28 +159,63 @@ def observed_hours(frame: pd.DataFrame, hours: list) -> pd.DataFrame:
     return result
 
 
-def target_stations(duration: str = None) -> set:
-    """계획이 실제로 손대는 대여소. 전체 평균은 결론을 흐린다.
+def is_plan_run(run_label: str, kind: str = None) -> bool:
+    """이 실행이 **계획**인가. 복원과 모집단이 같은 잣대를 쓰게 하는 한 곳이다.
+
+    `runs.kind`가 비어 있는 옛 실행만 `db.classify_run_label()`의 짐작에
+    맡긴다 — 선언이 없으면 NULL로 두는 것이 1.26.114의 설계다.
+    """
+    return (kind or db.classify_run_label(run_label)) == "plan"
+
+
+def target_stations(run_label: str, duration: str = None) -> set:
+    """**그 실행이** 실제로 손대는 대여소. 전체 평균은 결론을 흐린다.
 
     **회차마다 대상이 다르다**(2026-09-01 발견). 예전에는 `MAX(run_label)`
     하나로 모든 회차를 재서, **`_10_15`의 결품을 `_15_20`의 대상으로** 재는
     일이 생겼다 — 실측 245 / 304 / 260곳으로 세 회차가 모두 다르다.
-    `duration`을 주면 **그 회차를 다룬 가장 최근 실행**의 대상을 돌려준다.
+
+    🔴 **실행을 반드시 지정한다**(1.26.274). 회차는 갈랐지만 실행은 그 뒤로도
+    `MAX(run_label)`로 짐작했는데, 그것은 **문자열 최대**라 요일도 실행 종류도
+    가리지 않았다. 실측으로 `_05_10`·`_10_15`·`_15_20`은 `sweep-21`(평일 γ
+    실험), `_20_05`는 `brokenmix4-2603`(kind=experiment)을 집고 있었다. 그래서
+    `--day-type holiday`로 돌려도 모집단은 **평일 실험의 작업 대상**이었고,
+    휴일 계획의 실제 대상 281곳과 겹치는 곳이 115곳(41%)뿐이었다.
+
+    복원 쪽만 요일·종류로 가리게 고친 1.26.270이 **짝을 반쪽만 맞춘** 셈이다.
+    짐작하는 분기를 남겨 두면 같은 자리에서 세 번째가 나므로 아예 없앴다 —
+    부르는 쪽이 어느 실행인지 말해야 한다.
     """
+    sql = "SELECT station_id, rebal_qty FROM rebalance_plan WHERE run_label = ?"
+    params = [run_label]
+    if duration:
+        sql += " AND duration = ?"
+        params.append(duration)
     with db.session() as conn:
-        if duration:
-            plan = pd.read_sql(
-                "SELECT station_id, rebal_qty FROM rebalance_plan"
-                " WHERE duration = ? AND run_label = ("
-                "   SELECT MAX(run_label) FROM rebalance_plan WHERE duration = ?)",
-                conn, params=[duration, duration])
-        else:
-            plan = pd.read_sql(
-                "SELECT station_id, rebal_qty FROM rebalance_plan"
-                " WHERE run_label = (SELECT MAX(run_label) FROM rebalance_plan)", conn)
+        plan = pd.read_sql(sql, conn, params=params)
     if plan.empty:
         return set()
     return set(plan.loc[plan["rebal_qty"].abs() > REBAL_MIN_QTY, "station_id"])
+
+
+def latest_plan_targets(day_type: str, duration: str) -> set:
+    """그 요일 구분으로 **계획**한 가장 최근 실행의 작업 대상.
+
+    개요 표에만 쓴다. 비교표는 이것을 쓰지 않는다 — 거기서는 복원값을 낸
+    실행마다 **그 실행의** 대상으로 짝지어 잰다(`compare_with_simulation`).
+    """
+    with db.session() as conn:
+        runs = pd.read_sql(
+            "SELECT r.run_label, r.kind FROM runs r"
+            " WHERE r.day_type = ?"
+            "   AND EXISTS (SELECT 1 FROM rebalance_plan p"
+            "                WHERE p.run_label = r.run_label"
+            "                  AND p.duration = ?)"
+            " ORDER BY r.created_at DESC", conn, params=[day_type, duration])
+    for label, kind in zip(runs["run_label"], runs["kind"]):
+        if is_plan_run(label, kind):
+            return target_stations(label, duration)
+    return set()
 
 
 def simulated_stockout(day_type: str) -> pd.DataFrame:
@@ -199,6 +234,10 @@ def simulated_stockout(day_type: str) -> pd.DataFrame:
     `kind`가 비어 있는 옛 실행은 `db.classify_run_label()`의 짐작에 맡긴다.
     `day_type`이 비어 있는 실행은 **뺀다** — 어느 요일로 계획했는지 알 수 없는
     값을 요일별 비교에 넣을 수는 없다.
+
+    🔴 **실행별로 한 행씩 돌려준다**(1.26.274). 예전에는 여기서 회차별로
+    평균해 버렸는데, 그러면 복원은 실행 여럿의 평균인데 모집단은 집합 하나가
+    되어 **자가 어긋난다.** 짝은 부르는 쪽이 실행 단위로 맞춘다.
     """
     with db.session() as conn:
         frame = pd.read_sql(
@@ -214,18 +253,18 @@ def simulated_stockout(day_type: str) -> pd.DataFrame:
     kind = frame["kind"].fillna("").map(
         lambda x: x or None)
     frame = frame[[
-        (k or db.classify_run_label(lab)) == "plan"
+        is_plan_run(lab, k)
         for k, lab in zip(kind, frame["run_label"])]]
     if frame.empty:
         return frame
     labels = sorted(frame["run_label"].unique())
     print(f"\n복원 기준 — 요일 {day_type} · 계획 실행 {len(labels)}건: "
           f"{', '.join(labels)}")
-    return (frame.groupby("duration", as_index=False)["복원"].mean())
+    return frame[["run_label", "duration", "복원"]].reset_index(drop=True)
 
 
 def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
-                            targets: set, day_type: str) -> None:
+                            day_type: str) -> list:
     """복원과 실측을 나란히 놓는다 — **시간대가 온전히 겹칠 때만.**
 
     좁은 창(09~17시)에서는 `_05_10`이 09시 한 시각만, `_15_20`이 15시 한 시각만
@@ -263,25 +302,52 @@ def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
         if daily.empty:
             continue
         per_day = daily.groupby("station_id")["결품시간"].mean()
-        # 대상도 **그 회차의 것**을 쓴다 — 회차마다 집합이 다르다.
-        dur_targets = target_stations(duration) or targets
-        if dur_targets:
-            per_day = per_day.loc[per_day.index.isin(dur_targets)]
-        match = simulated.loc[simulated["duration"] == duration, "복원"]
-        if per_day.empty or match.empty:
+        runs = simulated[simulated["duration"] == duration]
+        if per_day.empty or runs.empty:
             continue
-        rows.append((duration, float(match.iloc[0]), float(per_day.mean()),
-                     len(per_day), len(ok_days)))
+        # 🔴 **실행별로 짝지어 잰 뒤 평균한다** (1.26.274). 복원이 실행 여럿의
+        # 평균인데 모집단이 집합 하나면 자가 어긋난다 — 실행마다 **그 실행의**
+        # 작업 대상으로 실측을 재고, 그 다음에 평균한다.
+        paired = []
+        for label, sim in zip(runs["run_label"], runs["복원"]):
+            own = target_stations(label, duration)
+            if not own:
+                print(f"  ⚠️  {duration} {label}: 그 실행의 작업 대상이"
+                      f" rebalance_plan에 없어 건너뜁니다")
+                continue
+            sub = per_day.loc[per_day.index.isin(own)]
+            if sub.empty:
+                print(f"  ⚠️  {duration} {label}: 작업 대상 {len(own):,}곳 가운데"
+                      f" 온전히 관측된 곳이 없어 건너뜁니다")
+                continue
+            paired.append((label, float(sim), float(sub.mean()), len(sub)))
+        if not paired:
+            continue
+        n_runs = len(paired)
+        rows.append((duration,
+                     sum(p[1] for p in paired) / n_runs,
+                     sum(p[2] for p in paired) / n_runs,
+                     round(sum(p[3] for p in paired) / n_runs),
+                     len(ok_days), paired))
 
     if not rows:
         print("\n(복원 대비 비교: 수집 창과 온전히 겹치는 시간대가 아직 없습니다)")
         return []
 
     print(f"\n복원 vs 실측 — 작업 대상 대여소, 대여소·일 평균 결품 시간(h)")
-    print(f"{'시간대':8} {'복원(step4)':>11} {'실측(수집)':>11} {'차이':>9} {'대여소':>7} {'날':>4}")
-    for duration, sim, obs, count, ndays in rows:
+    print("  실행마다 **그 실행의** 작업 대상으로 재고 나서 평균했습니다"
+          " (1.26.274). `대여소`는 그 평균입니다.")
+    print(f"{'시간대':8} {'복원(step4)':>11} {'실측(수집)':>11} {'차이':>9} "
+          f"{'대여소':>7} {'날':>4} {'실행':>4}")
+    for duration, sim, obs, count, ndays, paired in rows:
         gap = (obs / sim - 1) * 100 if sim else float("nan")
-        print(f"{duration:8} {sim:11.2f} {obs:11.2f} {gap:+8.0f}% {count:7,d} {ndays:4d}")
+        print(f"{duration:8} {sim:11.2f} {obs:11.2f} {gap:+8.0f}% {count:7,d}"
+              f" {ndays:4d} {len(paired):4d}")
+        if len(paired) > 1:          # 평균 뒤에 숨지 않게 실행별로 펼친다
+            for label, one_sim, one_obs, n_st in paired:
+                one_gap = (one_obs / one_sim - 1) * 100 if one_sim else float("nan")
+                print(f"      · {label}: 복원 {one_sim:.2f} · 실측 {one_obs:.2f}"
+                      f" ({one_gap:+.0f}%) · {n_st:,}곳")
     print("  → 실측이 크면 **복원이 결품을 낮춰 잡고 있었다**는 뜻입니다"
           "(0에서 잘라 못 빌린 수요가 사라지므로 예상된 방향입니다).")
     print("  ⚠️ 다만 실측에는 **공사가 실제로 돌린 재배치**가 이미 반영돼 있어")
@@ -310,14 +376,17 @@ def _save_calibration(rows: list, day_type: str, window) -> None:
     hours = sorted(int(h) for h in window)
     note = f"관측 창 {hours[0]:02d}~{hours[-1]:02d}시"
     payload = []
-    for duration, simulated, observed, stations, ndays in rows:
+    for duration, simulated, observed, stations, ndays, paired in rows:
         payload.append({
             "measured_at": stamp, "duration": duration, "day_type": day_type,
             "ratio": (observed / simulated) if simulated else None,
             "observed": observed, "simulated": simulated,
             # **회차별 날 수**를 쓴다(2026-09-01) — 하루 전체 판정의 값 하나를
             # 모든 회차에 붙이면 얼마나 얇은 근거인지 가려진다.
-            "days": ndays, "stations": stations, "note": note,
+            "days": ndays, "stations": stations,
+            # **짝지은 계획 실행 수**를 함께 남긴다 (1.26.274) — 실행 1건에
+            # 기댄 값인지 여럿의 평균인지가 계수를 읽는 데 필요하다.
+            "note": f"{note} · 계획 실행 {len(paired)}건",
         })
 
     with db.session() as conn:
@@ -367,7 +436,6 @@ def main() -> int:
     # 수집 창과 겹치는 시간대만 뜻이 있다. 창은 자료에서 읽는다(박아 두지 않는다).
     window = frame["시각"].unique()
     durations = [args.duration] if args.duration else list(DURATIONS)
-    targets = target_stations()
 
     # ⚠️ **위 숫자를 머리기사로 쓰지 않는다** (2026-09-05). 분석이 실제로 쓰는
     # 것은 **회차별** 판정이다 — 회차를 덮었는지는 날의 촘촘함이 답하지 못한다.
@@ -407,7 +475,10 @@ def main() -> int:
               f"{share * 100:8.1f}%")
         printed += 1
 
-        dur_targets = target_stations(duration) or targets
+        # 요일 구분까지 맞춘 **계획** 실행의 대상을 쓴다 (1.26.274).
+        # `or targets`로 떨어지는 길은 없앴다 — 그 자리가 평일 실험의
+        # 모집단을 휴일 표에 흘려 넣던 구멍이었다.
+        dur_targets = latest_plan_targets(args.day_type, duration)
         if dur_targets:
             picked = per_day.loc[per_day.index.isin(dur_targets)]
             if not picked.empty:
@@ -420,7 +491,7 @@ def main() -> int:
         print(f"  수집 창({hours[0]:02d}~{hours[-1]:02d}시)과 겹치는 시간대가 없습니다.")
         return 1
 
-    rows = compare_with_simulation(frame, durations, window, targets, args.day_type)
+    rows = compare_with_simulation(frame, durations, window, args.day_type)
 
     if args.save:
         _save_calibration(rows, args.day_type, window)

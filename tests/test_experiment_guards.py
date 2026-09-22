@@ -328,6 +328,100 @@ def test_날_판정은_넓은_날이_들어와도_소급해_뒤집히지_않는�
     assert len(after) == 3
 
 
+def _obs_frame(day: str = "2026-09-19") -> pd.DataFrame:
+    """`_10_15`(10~14시)를 온전히 덮은 하루. 두 대여소의 결품이 다르게 나온다.
+
+    한 시각에 6틱이므로 5시간이면 30틱이다. `ST0001`은 18틱이 비어 3.0시간,
+    `ST0002`는 6틱이 비어 1.0시간이 된다.
+    """
+    rows = []
+    for station, n_empty in (("ST0001", 18), ("ST0002", 6)):
+        tick = 0
+        for hour in range(10, 15):
+            for minute in range(0, 60, 10):
+                rows.append({"station_id": station,
+                             "관측": pd.Timestamp(f"{day} {hour:02d}:{minute:02d}"),
+                             "날짜": day, "시각": hour,
+                             "stock": 0 if tick < n_empty else 5,
+                             "parking_lot": 10})
+                tick += 1
+    return pd.DataFrame(rows)
+
+
+def test_작업_대상은_실행을_반드시_지정해야_한다(obs):
+    """🔴 **1.26.274에서 구조로 막은 결함이다.**
+
+    복원 기준선은 1.26.270에서 요일과 실행 종류를 가리게 고쳤는데, 맞은편
+    모집단은 그대로 `MAX(run_label)`로 짐작하고 있었다. 그것은 **문자열
+    최대**라 요일도 종류도 안 가린다 — 실측으로 평일 γ 실험 `sweep-21`과
+    `brokenmix4-2603`을 집었고, 휴일로 돌려도 **평일 실험의 작업 대상**으로
+    실측을 쟀다. 휴일 계획의 실제 대상 281곳과 겹치는 곳은 115곳(41%)뿐이다.
+
+    짐작하는 분기를 남겨 두면 세 번째가 나므로 인자를 필수로 만들었다.
+    """
+    with pytest.raises(TypeError):
+        obs.target_stations()                      # 실행을 안 주면 부를 수 없다
+
+    # 질의문에서 되살아나는지만 본다 — 문서주석은 이 결함을 **기록**하므로
+    # 이름이 그대로 남아 있다.
+    src = (PROJECT_ROOT / "experiments" / "structure"
+           / "observed_stockout.py").read_text(encoding="utf-8")
+    assert "SELECT MAX(run_label)" not in src, (
+        "실행을 짐작하는 질의가 되살아났다 — 1.26.274를 되돌리는 변경이다")
+
+
+def test_계획_판정은_선언된_kind를_먼저_본다(obs):
+    """`runs.kind`가 있으면 그것이 이기고, 없을 때만 라벨로 짐작한다.
+
+    `brokenmix4-2603`이 실제 예다 — 라벨만 보면 `classify_run_label()`이
+    **계획으로 짐작**하는데 DB에는 `experiment`로 선언돼 있다. 선언을 먼저
+    보지 않으면 파라미터를 바꾼 실험이 기준선에 섞인다.
+    """
+    assert obs.db.classify_run_label("brokenmix4-2603") == "plan"  # 짐작은 틀린다
+    assert not obs.is_plan_run("brokenmix4-2603", "experiment")  # 선언이 이긴다
+    assert obs.is_plan_run("2026-09-22 휴일 전회차", "plan")
+    assert not obs.is_plan_run("sweep-21", None)                 # 선언이 없으면 짐작
+
+
+def test_비교표는_실행마다_그_실행의_대상으로_잰다(obs, monkeypatch):
+    """복원이 실행 여럿의 평균이면 **모집단도 실행별로** 짝지어야 한다 (1.26.274).
+
+    집합 하나로 재면 자가 어긋난다. 여기서 A는 결품 3.0시간짜리 한 곳만,
+    B는 3.0시간과 1.0시간 두 곳을 대상으로 삼는다. 실행별로 짝지으면
+    (3.0 + 2.0) / 2 = 2.5시간이고, 둘을 합친 집합 하나로 재면 2.0시간이다.
+    옛 동작이 뒤쪽이었다.
+    """
+    frame = _obs_frame()
+    window = frame["시각"].unique()
+    monkeypatch.setattr(obs, "simulated_stockout", lambda day_type: pd.DataFrame(
+        [{"run_label": "A", "duration": "_10_15", "복원": 1.0},
+         {"run_label": "B", "duration": "_10_15", "복원": 1.0}]))
+    monkeypatch.setattr(obs, "target_stations",
+                        lambda label, duration=None:
+                        {"ST0001"} if label == "A" else {"ST0001", "ST0002"})
+
+    rows = obs.compare_with_simulation(frame, ["_10_15"], window, "weekday")
+
+    assert len(rows) == 1
+    duration, simulated, observed, stations, ndays, paired = rows[0]
+    assert duration == "_10_15"
+    assert [label for label, *_ in paired] == ["A", "B"]
+    assert observed == pytest.approx(2.5), "실행별로 짝지어 재지 않았다"
+    assert observed != pytest.approx(2.0), "집합 하나로 재는 옛 동작으로 돌아갔다"
+    assert stations == 2                       # 1곳과 2곳의 평균
+
+
+def test_보정_계수에_짝지은_실행_수가_남는다(obs, monkeypatch):
+    """계수가 실행 1건에 기댄 값인지 여럿의 평균인지 표에서 알 수 있어야 한다."""
+    saved = {}
+    monkeypatch.setattr(obs.db, "save_stockout_calibration",
+                        lambda conn, payload: saved.setdefault("payload", payload))
+    rows = [("_10_15", 1.0, 2.5, 2, 1,
+             [("A", 1.0, 3.0, 1), ("B", 1.0, 2.0, 2)])]
+    obs._save_calibration(rows, "weekday", [10, 11, 12, 13, 14])
+    assert "계획 실행 2건" in saved["payload"][0]["note"]
+
+
 def test_촘촘한_날은_창의_넓이를_묻지_않는다(obs):
     """`dense_days()`가 답하는 것은 *"그 창을 촘촘히 채웠나"* 뿐이다.
 
