@@ -39,8 +39,30 @@ def test_guide_shows_live_settings(client):
     assert f"{FLEET_SIZE}대" in html, "보유 차량 대수가 안 보인다"
     assert f"최대 {VEHICLES_PER_ROUND}대" in html
     assert f"{VEHICLE_CAPACITY}대" in html
-    assert f"{int(round(VEHICLE_SPEED_KMPH))} km/h" in html
+    # 이동시간 문장은 스위치를 따른다 (1.26.272) — 실도로 모형이 기본이 된 뒤에도
+    # 안내는 "25 km/h 직선거리"를 말하고 있었다.
+    import project_config
+    if project_config.USE_ROAD_MODEL:
+        assert f"{int(round(project_config.ROAD_SPEED_KMPH_WEEKDAY))} km/h" in html
+        assert f"고정 {round(project_config.ROAD_FIXED_SEC_WEEKDAY / 60, 1)}분" in html
+        assert "실측 도로 시간의 약 76%" not in html, "꺼진 모형의 문장이 남았다"
+    else:
+        assert f"{int(round(VEHICLE_SPEED_KMPH))} km/h" in html
     assert f"{int(round(TIME_BUDGET_MINUTES))}분" in html
+
+
+def test_guide_travel_time_sentence_follows_the_switch(client, monkeypatch):
+    """`USE_ROAD_MODEL`을 양쪽으로 두고 안내가 각자 맞는 문장을 내는지 본다 (1.26.272)."""
+    from webapp import app as app_module
+
+    monkeypatch.setattr(app_module, "USE_ROAD_MODEL", True)
+    on = client.get("/guide").text
+    assert "실도로 계수" in on and "실측 도로 시간의 약 76%" not in on
+
+    monkeypatch.setattr(app_module, "USE_ROAD_MODEL", False)
+    off = client.get("/guide").text
+    assert "실측 도로 시간의 약 76%" in off and "실도로 계수" not in off
+    assert f"{int(round(VEHICLE_SPEED_KMPH))} km/h" in off
 
 
 def test_expected_runtime_comes_from_past_runs(client, monkeypatch):

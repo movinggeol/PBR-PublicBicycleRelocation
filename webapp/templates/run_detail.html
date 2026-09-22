@@ -120,7 +120,7 @@
 </div>
 
 <h2>로그</h2>
-<pre class="log" data-run-log>{{ log }}</pre>
+<pre class="log" data-run-log tabindex="0" aria-label="실행 로그">{{ log }}</pre>
 
 <a class="back" href="/run">← 실행 화면으로</a>
 
@@ -184,8 +184,8 @@
       var parts = text.split(" (예상 ");
       el.appendChild(document.createTextNode(parts[0] + (parts.length > 1 ? " " : "")));
       if (parts.length > 1) {
-        var m = document.createElement("span"); m.className = "muted";
-        m.textContent = "(예상 " + parts[1]; el.appendChild(m);
+        var note = document.createElement("span"); note.className = "muted";
+        note.textContent = "(예상 " + parts[1]; el.appendChild(note);
       }
     }
 

@@ -206,7 +206,7 @@
       <td class="num" data-label="개선률"><b>{{ fmt(r.avg_improvement_rate, "pct") }}</b></td>
       <td class="num col-more" data-label="목표 도달">{{ fmt(r.target_met_ratio, "pct") }}</td>
       <td class="num col-more" data-label="한 번에 닿는 범위">{{ fmt(r.reachable_ratio, "pct") }}</td>
-      <td class="num muted col-more" data-label="격차 (중앙/최대)">{% if r.gap_median is not none %}{{ r.gap_median | round | int }} / {{ r.gap_max | round | int }}대{% else %}—{% endif %}</td>
+      <td class="num muted col-more" data-label="격차 (중앙/최대)">{% if r.gap_median is not none %}{{ r.gap_median | round | int }} / {% if r.gap_max is not none %}{{ r.gap_max | round | int }}{% else %}—{% endif %}대{% else %}—{% endif %}</td>
       <td class="num muted" data-label="이동거리">{{ whole(r.total_distance_km, " km") }}</td>
       {% set over = r.time_budget_minutes and r.max_cluster_minutes
                     and r.max_cluster_minutes > r.time_budget_minutes %}
@@ -217,7 +217,7 @@
       <td class="num col-more" data-label="km당 개선">{{ fmt(r.improvement_per_km, "num") }}</td>
       <td class="muted col-more" data-label="결품 (전→후)">
         {% if r.stockout_hours_before is not none %}
-          {{ r.stockout_hours_before | round(2) }} → {{ r.stockout_hours_after | round(2) }}시간
+          {{ r.stockout_hours_before | round(2) }} → {% if r.stockout_hours_after is not none %}{{ r.stockout_hours_after | round(2) }}{% else %}—{% endif %}시간
         {% else %}—{% endif %}
       </td>
     </tr>
@@ -274,11 +274,11 @@
     <tr class="{% if r.gain is not none and r.gain <= 0 %}over-budget{% endif %}">
       <td data-label=""><b>{{ r.duration }}</b></td>
       <td class="num muted" data-label="월쌍">{{ r.pairs }}</td>
-      <td class="num" data-label="예측 오차">{{ r.mae | round(2) }}대</td>
-      <td class="num muted" data-label="기준선">{{ r.baseline | round(2) }}대</td>
+      <td class="num" data-label="예측 오차">{{ r.mae | round(2) if r.mae is not none else "—" }}대</td>
+      <td class="num muted" data-label="기준선">{{ r.baseline | round(2) if r.baseline is not none else "—" }}대</td>
       <td class="num" data-label="기준선 대비">{% if r.gain is not none %}{{ "%+.1f" | format(r.gain) }}%{% if r.gain <= 0 %} ⚠{% endif %}{% else %}—{% endif %}</td>
-      <td class="num" data-label="커버리지">{{ r.coverage | round(1) }}%</td>
-      <td class="num muted" data-label="편향">{{ "%+.2f" | format(r.bias) }}대</td>
+      <td class="num" data-label="커버리지">{{ r.coverage | round(1) if r.coverage is not none else "—" }}%</td>
+      <td class="num muted" data-label="편향">{{ "%+.2f" | format(r.bias) if r.bias is not none else "—" }}대</td>
     </tr>
     {% endfor %}
     </tbody>

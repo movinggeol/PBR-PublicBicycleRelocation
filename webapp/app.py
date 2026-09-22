@@ -33,7 +33,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from project_config import (
+from project_config import (ROAD_FIXED_SEC_WEEKDAY, ROAD_SPEED_KMPH_WEEKDAY, USE_ROAD_MODEL,
     DAY_TYPE_AUTO, DAY_TYPE_LABELS, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_DURATION,
     DEFAULT_RAW_FILE, DEFAULT_WARMUP_DAYS, DEPOT_NAME, DURATION_LABELS, DURATIONS,
     FLEET_SIZE, MAX_FLEET_SIZE, PROJECT_ROOT, REBAL_MIN_QTY, TARGET_QTY_UPPER_RATIO, TARGET_Z,
@@ -800,6 +800,11 @@ def guide_page(request: Request):
         "per_round": VEHICLES_PER_ROUND,
         "capacity": VEHICLE_CAPACITY,
         "speed": VEHICLE_SPEED_KMPH,
+        # 실도로 모형이 기본값이 된 뒤(1.26.268)에도 안내는 "25 km/h 직선거리"를
+        # 말하고 있었다(1.26.272). 켜짐 여부와 계수를 넘겨 문장이 스위치를 따른다.
+        "road_model": USE_ROAD_MODEL,
+        "road_fixed_min": round(ROAD_FIXED_SEC_WEEKDAY / 60, 1),
+        "road_speed": ROAD_SPEED_KMPH_WEEKDAY,
         "time_budget": TIME_BUDGET_MINUTES,
         "target_z": TARGET_Z,
         "today_day_type": DAY_TYPE_LABELS[resolve_day_type()],

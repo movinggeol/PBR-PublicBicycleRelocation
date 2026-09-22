@@ -107,7 +107,7 @@
       <td class="num muted" data-label="누적 거리">{{ v.distance_km }} km</td>
       <td class="num muted" data-label="누적 시간">{{ v.minutes }}분</td>
       <td class="muted" data-label="최근 작업">{% if v.last_run %}{{ v.last_run }} {{ v.last_duration }}{% else %}—{% endif %}</td>
-      <td data-label="이력"><a href="/api/vehicles/assignments?vehicle_id={{ v.vehicle_id }}">보기</a></td>
+      <td data-label="이력"><a class="muted" href="/api/vehicles/assignments?vehicle_id={{ v.vehicle_id }}" title="이 차량의 배정 이력 원자료(JSON)">JSON</a></td>
     </tr>
     {% endfor %}
     </tbody>
@@ -146,7 +146,7 @@
     </tr></thead>
     <tbody>
     {% for a in assignments %}
-    {% set over = a.minutes > time_budget %}
+    {% set over = a.minutes is not none and a.minutes > time_budget %}
     <tr{% if over %} class="over-budget"{% endif %}>
       <td class="muted" data-label="">{{ a.run_label }}</td>
       <td data-label="회차">{{ a.duration }}</td>

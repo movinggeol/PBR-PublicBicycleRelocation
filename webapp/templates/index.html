@@ -179,13 +179,13 @@
            data-samples="{{ run_estimate.samples }}"
            {% endif %}
            data-default-durations="{{ defaults.duration.split(',') | length }}">
-          <span data-estimate-text>
+          <span data-estimate-text role="status">
             {%- if run_estimate -%}
             예상 <b>{{ ((run_estimate.collect + run_estimate.preprocess
                         + run_estimate.per_duration
                           * (defaults.duration.split(',') | length)) / 60) | round(1) }}분</b>
             {%- else -%}
-            시간대 하나면 <b>2분 남짓</b>
+            기록이 쌓이면 예상 시간이 여기 나옵니다
             {%- endif -%}
           </span>
           걸립니다. 대여소를 묶는 단계가 대부분이라, <b>시간대를 하나 더 고를 때마다</b>

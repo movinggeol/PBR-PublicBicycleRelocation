@@ -3440,3 +3440,61 @@ def test_수집_화면의_기대_틱은_지금_창_기준이다(monkeypatch):
     ctx = collect_view.context()
     assert ctx["expected"] == 144, f"첫 행의 기대치를 집었다: {ctx['expected']}"
     assert ctx["rows"][0]["기대"] == 49, "표의 그날 기대치는 그대로여야 한다"
+
+
+# ── 웹 대시보드 6차 점검 — 낡은 안내·조작 흐름 접근성 묶음 (1.26.272) ──────────
+
+def test_문서형_화면이_코드를_따라왔다(client):
+    """안내와 첫 화면은 코드보다 늦게 낡는다 (1.26.272).
+
+    첫 화면은 5개월·n=15 검정을, 안내는 "3초마다 새로고침"과 "보통 2~4분"을
+    말하고 있었다 — 각각 README(12개월·n=36), 1.26.265(부분 갱신), 1.26.214(예상은
+    기록에서)가 바꾼 것들이다.
+    """
+    home = client.get("/").text
+    assert "n = 36" in home and "n = 15" not in home
+    assert "상수 속도 25 km/h" in home, "'검증된 효과' 표가 어느 모형 기준인지 말하지 않는다"
+    guide = client.get("/guide").text
+    assert "저절로 새로고침" not in guide and "3초마다 진행 상황을 받아" in guide
+    assert "보통 2~4분" not in guide
+    assert "2분 남짓" not in client.get("/run").text
+
+
+def test_조작_흐름의_접근성_고침이_템플릿에_있다(client):
+    """axe가 속성 유무를 봤다면 여기는 조작 흐름이다 (1.26.272).
+
+    스크롤되는 로그가 초점을 못 받으면 키보드로 못 내리고, 정렬 단추 30개가 같은
+    이름이면 어느 열인지 모르고, 앵커로 들어온 행이 고정 내비 뒤에 숨는다.
+    """
+    run = client.get("/run").text          # base.html의 스크립트가 실린다
+    assert 'tabindex="0" aria-label="실행 로그"' in \
+        Path("webapp/templates/run_detail.html").read_text(encoding="utf-8")
+    assert "var colName" in run and '"정렬 전환")' in run, "정렬 단추 이름에 열 이름이 없다"
+    assert 'document.querySelectorAll("[id]").forEach(function (h) { h.style.scrollMarginTop' in run
+    assert 'copy.querySelectorAll(".hint")' in run, "차례가 부제까지 복사한다"
+    assert run.count("--on-critical:") == 3, "위험 채움 위 글자 토큰이 라이트·다크 두 블록에 없다"
+    assert "color: #fff; }" not in run.split(".btn.danger")[1][:200]
+    assert ".table-open, .table-panel { display: none !important; }" in run
+    assert 'data-estimate-text role="status"' in run
+
+
+def test_kpi_표는_짝_없는_NULL도_그린다(client, monkeypatch):
+    """`gap_max`·`stockout_hours_after`가 짝(`gap_median`·`_before`)만 검사받고
+    `round`에 들어갔다 (1.26.272). 둘이 따로 NULL이면 화면 전체가 500이다."""
+    from webapp import store
+    rows = _kpi_rows()
+    for col in ("gap_max", "stockout_hours_after"):
+        if col in rows:
+            rows[col] = None
+    monkeypatch.setattr(store, "kpi", lambda *a, **k: rows)
+    res = client.get("/kpi")
+    assert res.status_code == 200, res.text[:300]
+
+
+def test_기사와_사용자에게_버전_번호와_날_JSON을_들이대지_않는다(client):
+    """지시서에 '(1.19.1 이전 산출물)', 차량 표의 이력 링크가 날 JSON '보기'였다 (1.26.272)."""
+    orders_tpl = Path("webapp/templates/orders.html").read_text(encoding="utf-8")
+    assert "1.19.1" not in orders_tpl
+    vehicles_tpl = Path("webapp/templates/vehicles.html").read_text(encoding="utf-8")
+    assert '>보기</a>' not in vehicles_tpl and 'title="이 차량의 배정 이력 원자료(JSON)">JSON</a>' in vehicles_tpl
+    assert "a.minutes is not none and a.minutes > time_budget" in vehicles_tpl

@@ -38,7 +38,7 @@
         <span class="step-name"><b>끝날 때까지 기다립니다</b> — 진행 단계가 화면에 나옵니다</span>
         <span class="step-note">
           <b>대여소를 묶는 단계</b>가 전체 시간의 3분의 2 이상을 차지합니다.
-          화면은 3초마다 저절로 새로고침됩니다.
+          화면은 3초마다 진행 상황을 받아 바뀐 칸만 고칩니다.
           대여소 수집·순수요 계산은 <b>한 번만</b> 하고, 군집·경로·지표는
           <b>시간대마다 다시</b> 계산하기 때문에 고른 만큼 늘어납니다.
           {% if estimate_one is not none %}
@@ -50,7 +50,7 @@
             나면 그 기록에서 뽑아 보여 줍니다.
           {% endif %}</span>
       </span>
-      <span class="step-state">{% if estimate_one is not none %}시간대 1개 {{ estimate_one }}분{% else %}보통 2~4분{% endif %}</span>
+      <span class="step-state">{% if estimate_one is not none %}시간대 1개 {{ estimate_one }}분{% else %}기록이 쌓이면 여기에 나옵니다{% endif %}</span>
     </li>
     <li class="step">
       <span class="step-mark" aria-hidden="true">3</span>
@@ -122,9 +122,15 @@
       <span class="step-body">
         <span class="step-name">차량이 도는 순서를 짭니다 — 경로</span>
         <span class="step-note">
-          차고지에서 출발해 맡은 대여소를 다 들르고 돌아옵니다. 순서와 예상 시간은
-          대여소 사이 <b>직선거리</b>를 평균 {{ speed | round | int }} km/h로 달린다고
-          보고 계산하므로 실제 도로에서는 더 걸립니다(실측 도로 시간의 약 76%).
+          차고지에서 출발해 맡은 대여소를 다 들르고 돌아옵니다.
+          {%- if road_model %}
+          순서와 예상 시간은 대여소 사이 <b>직선거리</b>에 실측 도로 계수를 적용해
+          계산합니다 — 구간마다 고정 {{ road_fixed_min }}분 + {{ road_speed | round | int }} km/h로,
+          TMAP 실도로 소요시간에 맞춘 값입니다.
+          {%- else %}
+          순서와 예상 시간은 대여소 사이 <b>직선거리</b>를 평균 {{ speed | round | int }} km/h로
+          달린다고 보고 계산하므로 실제 도로에서는 더 걸립니다(실측 도로 시간의 약 76%).
+          {%- endif %}
           지도에 그리는 선은 가능하면 실제 도로(TMAP)를 따릅니다.</span>
       </span>
     </li>
@@ -143,7 +149,11 @@
           <tr><th scope="row">실제로 나간 대수</th><td class="num">회차당 {{ typical_vehicles }}대</td></tr>
           {% endif %}
           <tr><th scope="row">한 대 적재 용량</th><td class="num">최대 {{ capacity }}대</td></tr>
+          {%- if road_model %}
+          <tr><th scope="row">이동시간 모형</th><td class="num">고정 {{ road_fixed_min }}분 + {{ road_speed | round | int }} km/h <span class="muted">(실도로 계수)</span></td></tr>
+          {%- else %}
           <tr><th scope="row">평균 주행 속도</th><td class="num">{{ speed | round | int }} km/h</td></tr>
+          {%- endif %}
           <tr><th scope="row">한 회차 시간 예산</th><td class="num">{{ time_budget | round | int }}분</td></tr>
         </tbody>
       </table>
@@ -463,8 +473,9 @@
           그 회차가 겨냥한 시간대입니다.</td></tr>
       <tr><td><b>작업 시간</b></td>
         <td class="muted">차고지를 떠나 대여소를 다 돌고 <b>차고지로 돌아올 때까지</b>입니다.
-          이동 시간 + 자전거를 싣고 내리는 시간이고, 주행은 직선거리를
-          {{ speed | round | int }} km/h로 잡습니다.</td></tr>
+          이동 시간 + 자전거를 싣고 내리는 시간이고, 주행은 직선거리에
+          {%- if road_model %} 실도로 계수(고정 {{ road_fixed_min }}분 + {{ road_speed | round | int }} km/h)를
+          {%- else %} {{ speed | round | int }} km/h를{% endif %} 적용해 잡습니다.</td></tr>
       <tr><td><b>시간 예산</b></td>
         <td class="muted">한 회차를 마치는 <b>목표</b> 시간({{ time_budget | round | int }}분).
           연구에서 세운 값이라 운영 제약이 아닙니다 — 넘겨도 계획은 그대로 집행할 수 있고,
