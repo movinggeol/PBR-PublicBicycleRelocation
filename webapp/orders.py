@@ -22,6 +22,22 @@ from project_config import (
 )
 from webapp import store
 
+
+def _int(value, default: int = 0) -> int:
+    """결측(None/NaN)은 기본값. `int(nan)`은 ValueError로 지시서 전체를 죽인다(1.26.271)."""
+    try:
+        return default if pd.isna(value) else int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _float(value, default: float = 0.0) -> float:
+    """결측(None/NaN)은 기본값. 화면에 `nan`이 찍히지 않게 한다(1.26.271)."""
+    try:
+        return default if pd.isna(value) else float(value)
+    except (TypeError, ValueError):
+        return default
+
 # 화면에 그대로 쓰는 말. pick/drop은 현장 용어가 아니다.
 ACTION_LABELS = {"pick": "싣기", "drop": "내리기", "return": "차고지 복귀"}
 
@@ -93,7 +109,7 @@ def build(run_label: Optional[str] = None, duration: Optional[str] = None,
         stops, load = [], 0
         for _, row in rows.iterrows():
             action = row["action"]
-            qty = int(row.get("qty", 0) or 0)
+            qty = _int(row.get("qty"))
             if action == "pick":
                 load += qty
             elif action == "drop":
@@ -112,8 +128,8 @@ def build(run_label: Optional[str] = None, duration: Optional[str] = None,
                 "action_label": ACTION_LABELS.get(action, action),
                 "qty": qty,
                 "load_after": load,
-                "distance_km": round(float(row.get("distance_km", 0) or 0), 2),
-                "minutes": round(float(row.get("cum_sec", 0) or 0) / 60, 1),
+                "distance_km": round(_float(row.get("distance_km")), 2),
+                "minutes": round(_float(row.get("cum_sec")) / 60, 1),
             })
 
         work = rows[rows["action"] != "return"]

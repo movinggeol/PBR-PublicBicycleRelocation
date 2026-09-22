@@ -433,3 +433,29 @@ def test_복사_단추가_모든_방문지에_있다(client, planned_with_coords
     assert "좌표 복사" in html and "이름 복사" in html
     assert 'class="copy-row no-print"' in html, "복사 단추가 종이에 나온다"
     assert "36.350000, 127.380000" in html, "좌표가 복사할 값으로 들어가지 않았다"
+
+
+def test_계획의_결측_수량과_거리에도_지시서가_산다():
+    """`int(row.get("qty", 0) or 0)`은 NaN을 참으로 보고 `int(nan)`으로 죽는다 (1.26.271).
+
+    거리는 화면에 `nan`이 찍혔다. 실데이터 `vrp_plan`에 NULL은 없지만, 이 함수는
+    옛 산출물과 손으로 고친 표도 받는다.
+    """
+    plan = pd.DataFrame([
+        {"cluster": 0, "seq": 0, "action": "pick", "to_id": "ST0010", "qty": float("nan"),
+         "distance_km": float("nan"), "cum_sec": 300},
+        {"cluster": 0, "seq": 1, "action": "drop", "to_id": "ST0020", "qty": 4,
+         "distance_km": 1.5, "cum_sec": float("nan")},
+        {"cluster": 0, "seq": 2, "action": "return", "to_id": "ST0001", "qty": 0,
+         "distance_km": 2.0, "cum_sec": 900},
+    ])
+    candidates = pd.DataFrame([
+        {"station_id": "ST0010", "station_name": "가나", "lat": 36.3, "lon": 127.3},
+        {"station_id": "ST0020", "station_name": "다라", "lat": 36.4, "lon": 127.4},
+    ])
+    sheets = orders.build(frames={"plan": plan, "candidates": candidates})
+    assert len(sheets) == 1
+    stops = sheets[0]["stops"]
+    assert stops[0]["qty"] == 0 and stops[0]["distance_km"] == 0.0
+    assert stops[1]["minutes"] == 0.0
+    assert all(not (isinstance(v, float) and pd.isna(v)) for stop in stops for v in stop.values())

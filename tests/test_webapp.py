@@ -11,6 +11,7 @@ import re
 import time
 from pathlib import Path
 
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
@@ -3339,3 +3340,103 @@ def test_지도_미리보기는_납작하지도_화면을_다_먹지도_않는�
     assert 60 <= int(미리보기.group(1)) < int(전용.group(1)), (
         f"미리보기 {미리보기.group(1)}vh · 전용 {전용.group(1)}vh — "
         "납작하거나, 전용 화면만큼 커져 목록에 닿지 못한다")
+
+
+# ── 웹 대시보드 6차 점검 — 계산 결함 묶음 (1.26.271) ─────────────────────
+
+def test_가중평균은_NULL_회차의_가중치를_분모에_넣지_않는다():
+    """값 [1.0, NaN]·가중치 [10, 10]에서 0.5가 나왔다 (1.26.271).
+
+    분자는 NaN 행을 건너뛰는데 분모는 그 행의 가중치를 더했다. `db.KPI_FIELDS`는
+    계산 못 한 지표를 NULL로 두므로 회차 하나가 비는 날 헤드라인이 반값이 된다.
+    첫 화면(`headline`)과 `/kpi`(`_weighted`)는 같은 함수를 써야 한다.
+    """
+    from webapp import kpi_view
+    import numpy as np
+    frame = pd.DataFrame({"v": [1.0, np.nan, 3.0], "w": [10, 10, 30]})
+    assert kpi_view._weighted(frame, "v", "w") == pytest.approx(2.5)        # (10·1 + 30·3) / 40
+    assert kpi_view.weighted_mean is kpi_view._weighted
+    # 가중치가 전부 0이면 남은 값의 단순평균 — None이 아니다(첫 화면과 /kpi가 갈리던 자리)
+    zero = pd.DataFrame({"v": [1.0, np.nan, 3.0], "w": [0, 0, 0]})
+    assert kpi_view._weighted(zero, "v", "w") == pytest.approx(2.0)
+    assert kpi_view._weighted(pd.DataFrame({"v": [np.nan], "w": [1]}), "v", "w") is None
+
+
+def test_실행_종류_변경은_있는_실행만_받는다(client, monkeypatch):
+    """`POST /runs/<아무 라벨>/kind`가 `runs`에 행을 만들었다 (1.26.271).
+
+    `store.set_run_kind`는 행이 없으면 만들어 두므로 오타 난 즐겨찾기나 curl
+    한 줄이 빈 라벨을 심고, 그 라벨이 저장된 실행 표와 필터 칩에 지표 없는
+    칩으로 떴다 — 1.26.107이 없앤 바로 그 증상이다.
+    """
+    from webapp import store
+    written = []
+    monkeypatch.setattr(store, "run_labels",
+                        lambda: pd.DataFrame({"run_label": ["있는실행"], "kind": ["plan"]}))
+    monkeypatch.setattr(store, "set_run_kind", lambda label, kind: written.append((label, kind)))
+
+    assert client.post("/runs/없는실행/kind", data={"kind": "experiment"},
+                       follow_redirects=False).status_code == 404
+    assert client.post("/runs/%3A%3Abad%3F/kind", data={"kind": "experiment"},
+                       follow_redirects=False).status_code == 400
+    assert written == [], "거절했는데 store를 불렀다"
+    assert client.post("/runs/있는실행/kind", data={"kind": "experiment"},
+                       follow_redirects=False).status_code == 303
+    assert written == [("있는실행", "experiment")]
+
+
+def test_405도_한국어_화면이다(client):
+    """POST 전용 주소를 GET하면 영어 'Method Not Allowed'였다 (1.26.271)."""
+    res = client.get("/runs/abc/kind", headers={"Accept": "text/html"})
+    assert res.status_code == 405
+    assert "그 방법으로는 열 수 없는 주소입니다" in res.text
+    assert "Method Not Allowed" not in res.text
+
+
+def test_끝_개행이_없는_CSV도_행_수를_맞게_센다(tmp_path):
+    """`"a,b\n1,2\n3,4"`를 1행으로 셌다 (1.26.271). /preview는 원천 CSV도 받는다."""
+    from webapp.app import _count_csv_rows
+    no_newline = tmp_path / "a.csv"; no_newline.write_bytes(b"a,b\n1,2\n3,4")
+    with_newline = tmp_path / "b.csv"; with_newline.write_bytes(b"a,b\n1,2\n3,4\n")
+    header_only = tmp_path / "c.csv"; header_only.write_bytes(b"a,b")
+    empty = tmp_path / "d.csv"; empty.write_bytes(b"")
+    assert _count_csv_rows(no_newline) == 2
+    assert _count_csv_rows(with_newline) == 2
+    assert _count_csv_rows(header_only) == 0
+    assert _count_csv_rows(empty) == 0
+
+
+def test_수집_화면의_기대_틱은_지금_창_기준이다(monkeypatch):
+    """타일이 '하루 49틱 기대'인데 머리말은 '00:00-23:50 · 10분'(144틱)이었다 (1.26.271).
+
+    표의 첫 행(가장 오래된 날, 09~17시 시절)의 기대치를 집었다. 표의 '기대' 열은
+    그날 창이 맞고, 타일은 오늘 창이 맞다.
+    """
+    from webapp import collect_view
+    from datetime import time as clock
+
+    class 도구:
+        DEFAULT_WINDOW = "00:00-23:50"; DEFAULT_INTERVAL = 10; TASK_NAME = "PBR재고수집"
+        @staticmethod
+        def registered_args():
+            return {"window": "00:00-23:50", "interval": 10, "include_holidays": True}
+        @staticmethod
+        def parse_window(window):
+            return clock(0, 0), clock(23, 50)
+        @staticmethod
+        def expected_ticks(start, end, interval):
+            return 144
+        @staticmethod
+        def coverage(start, end, interval):
+            return pd.DataFrame([
+                {"날짜": "2026-08-25", "요일": "화", "틱": 49, "기대": 49, "결측": 0, "실패": 0,
+                 "구간": 1, "덮은 시간": "09:00~17:00", "상태": "온전"},
+                {"날짜": "2026-09-21", "요일": "월", "틱": 140, "기대": 144, "결측": 4, "실패": 0,
+                 "구간": 1, "덮은 시간": "00:00~23:50", "상태": "결측"},
+            ])
+
+    monkeypatch.setattr(collect_view, "_tool", lambda: 도구)
+    monkeypatch.setattr(collect_view.store, "stock_station_count", lambda: 1361)
+    ctx = collect_view.context()
+    assert ctx["expected"] == 144, f"첫 행의 기대치를 집었다: {ctx['expected']}"
+    assert ctx["rows"][0]["기대"] == 49, "표의 그날 기대치는 그대로여야 한다"

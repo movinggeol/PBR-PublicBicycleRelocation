@@ -72,6 +72,7 @@ ERROR_TITLES = {
     404: "찾는 것이 없습니다",
     400: "요청을 이해하지 못했습니다",
     403: "열 수 없는 파일입니다",
+    405: "그 방법으로는 열 수 없는 주소입니다",
     422: "주소의 값을 읽지 못했습니다",
     500: "문제가 생겼습니다",
 }
@@ -94,6 +95,8 @@ def http_error(request: Request, exc: StarletteHTTPException):
     detail = exc.detail
     if not isinstance(detail, str) or detail == "Not Found":
         detail = "주소가 바뀌었거나, 그 사이에 산출물이 정리되었을 수 있습니다."
+    elif detail == "Method Not Allowed":                  # POST 전용 주소를 GET (1.26.271)
+        detail = "이 주소는 화면의 단추가 폼으로 보내는 곳입니다. 주소창에 직접 쳐서는 열리지 않습니다."
     return templates.TemplateResponse(
         request, "error.html",
         {"code": code, "title": ERROR_TITLES.get(code, f"오류 {code}"),
@@ -729,6 +732,15 @@ def set_run_kind(run_label: str, kind: str = Form(...)):
     """
     if kind not in store.RUN_KINDS:
         raise HTTPException(status_code=400, detail="모르는 실행 종류입니다.")
+    # 🔴 있는 실행만 받는다 (1.26.271). `store.set_run_kind`는 행이 없으면 만들어
+    # 두므로, 오타 난 즐겨찾기나 curl 한 줄이 `runs`에 빈 라벨을 심고 그 라벨이
+    # 저장된 실행 표와 필터 칩에 지표 없는 칩으로 떴다 — 1.26.107이 없앤 바로 그
+    # 증상이다. 라벨 규칙(1.26.262)도 같은 자리에서 거른다.
+    if (problem := check_run_label(run_label)):
+        raise HTTPException(status_code=400, detail=problem)
+    known = store.run_labels()
+    if known.empty or run_label not in set(known["run_label"].astype(str)):
+        raise HTTPException(status_code=404, detail=f"그런 실행이 없습니다: {run_label}")
     try:
         # 실행 행이 없으면 만들어 두고 못박는 것까지 store가 맡는다 — 라우트가
         # DB 연결을 직접 여는 자리가 아니다(1.26.110).
@@ -964,8 +976,9 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
             return None
         if weight is None:
             return float(frame[column].sum())
-        w = frame[weight].fillna(0)
-        return float((frame[column] * w).sum() / w.sum()) if w.sum() else None
+        # /kpi와 같은 함수다 — 따로 적어 두었을 때 NULL 회차의 편향(1.26.271)이
+        # 두 곳에 같이 있었고, 가중치 합 0에서는 답까지 달랐다.
+        return kpi_view.weighted_mean(frame, column, weight)
 
     stockout = None
     if latest is not None and not latest["stockout_hours_before"].isna().all():
@@ -1224,8 +1237,15 @@ def _count_csv_rows(path: Path) -> int:
     전체를 파싱하지 않고 개행만 세므로 큰 파일에서도 가볍다.
     (필드 안에 줄바꿈이 든 CSV는 과다 계산되지만 파이프라인 산출물에는 없다.)
     """
+    newlines, last = 0, b""
     with path.open("rb") as f:
-        newlines = sum(chunk.count(b"\n") for chunk in iter(lambda: f.read(1 << 20), b""))
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            newlines += chunk.count(b"\n")
+            last = chunk[-1:]
+    # 끝 개행이 없는 파일은 마지막 줄이 세어지지 않았다 — pandas 산출물에는
+    # 늘 있지만 /preview는 원천 CSV도 받는다(1.26.263 · 고침 1.26.271).
+    if last not in (b"\n", b""):
+        newlines += 1
     return max(0, newlines - 1)
 
 
@@ -1331,8 +1351,15 @@ def _load_or_404(table: str, run_label: Optional[str], duration: Optional[str]):
     return frame, source
 
 
+def _text(value) -> str:
+    """결측(None/NaN)은 빈 문자열로. `JSONResponse`는 NaN을 거절해 500이 된다(1.26.271)."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    return str(value)
+
+
 def _int(value, default=0) -> int:
-    """CSV 폴백 등으로 결측이 섞여도 API가 500으로 죽지 않게 한다."""
+    """결측이 섞여도 API가 500으로 죽지 않게 한다(1.26.165까지는 CSV 폴백이 원인이었다)."""
     try:
         if pd.isna(value):
             return default
@@ -1389,7 +1416,7 @@ def api_stations(run_label: Optional[str] = None, duration: Optional[str] = None
             "geometry": geometry,
             "properties": {
                 "station_id": row["station_id"],
-                "station_name": row.get("station_name", ""),
+                "station_name": _text(row.get("station_name")),
                 "rebal_qty": rebal,
                 "type": "drop" if rebal > 0 else "pick",
                 "cluster": _int(row.get("cluster")),

@@ -83,12 +83,22 @@ def _weighted(frame: pd.DataFrame, column: str,
     """
     if column not in frame or frame[column].isna().all():
         return None
-    if weight is None or weight not in frame:
-        return float(frame[column].mean())
-    weights = frame[weight].fillna(0)
+    # 🔴 분자와 분모를 **같은 행**에서 센다 (1.26.271). 예전에는 분자만 NaN 행을
+    # 건너뛰고 분모는 그 행의 가중치를 더해, 회차 하나가 NULL이면 값이 그만큼
+    # 끌려 내려갔다(값 [1.0, NaN]·가중치 [10, 10] → 0.5). `db.KPI_FIELDS`는
+    # 계산 못 한 지표를 NULL로 두므로 언제든 생길 수 있는 조건이다.
+    part = frame.loc[frame[column].notna()]
+    if weight is None or weight not in part:
+        return float(part[column].mean())
+    weights = part[weight].fillna(0)
     if weights.sum() <= 0:
-        return float(frame[column].mean())
-    return float((frame[column] * weights).sum() / weights.sum())
+        return float(part[column].mean())
+    return float((part[column] * weights).sum() / weights.sum())
+
+
+# 첫 화면(`app.py`의 헤드라인)도 이 함수를 쓴다 — 같은 가중평균을 두 곳에
+# 따로 적으면 가중치 합 0일 때처럼 가장자리에서 답이 갈린다(1.26.271).
+weighted_mean = _weighted
 
 
 def _runs_in_order(rows: pd.DataFrame) -> list:

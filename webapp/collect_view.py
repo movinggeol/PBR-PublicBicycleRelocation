@@ -122,7 +122,11 @@ def context() -> dict:
         "window": window, "interval": interval, "source": source,
         "rows": rows,
         "total_ticks": int(table["틱"].sum()),
-        "expected": int(table["기대"].iloc[0]),
+        # 🔴 **지금 창**의 기대 틱이다 (1.26.271). 예전에는 표의 첫 행(가장 오래된
+        # 날)을 집어, 머리말은 "00:00-23:50 · 10분"(144틱)이라 말하면서 타일은
+        # 09~17시 시절의 "하루 49틱 기대"를 보여 줬다. 표의 '기대' 열은 그날
+        # 창(`expected_ticks_on`)이 맞고, 타일은 오늘 기준이 맞다.
+        "expected": int(tool.expected_ticks(start, end, interval)),
         "days": len(rows),
         "stations": store.stock_station_count(),
         "span": f"{rows[0]['날짜']} ~ {last_seen}",

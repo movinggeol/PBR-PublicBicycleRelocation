@@ -118,6 +118,23 @@ def test_좌표가_없는_대여소는_geometry_null로_낸다(tmp_path, monkeyp
     assert features[0]["geometry"]["type"] == "Point"
 
 
+
+def test_이름이_없는_대여소도_stations_API가_산다(tmp_path, monkeypatch):
+    """1.26.262가 좌표 NaN만 막았다 — 이름 NaN은 그대로 JSON으로 가 500 (1.26.271)."""
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "noname.db"))
+    frame = _pick_drop(3)
+    frame.loc[1, "station_name"] = None
+    with db.session() as conn:
+        db.record_run(conn, "이름없음", period="25년 11월", duration=DURATION)
+        db.save_frame(conn, "pick_drop", frame, run_label="이름없음", duration=DURATION)
+
+    with TestClient(app) as c:
+        res = c.get("/api/stations", params={"run_label": "이름없음"})
+    assert res.status_code == 200
+    names = [f["properties"]["station_name"] for f in res.json()["features"]]
+    assert names[1] == "" and names[0] == "대여소0"
+
+
 def test_station_feature_shape(client):
     props = client.get("/api/stations").json()["features"][0]["properties"]
 
