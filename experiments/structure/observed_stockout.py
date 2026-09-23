@@ -37,9 +37,10 @@
     python experiments/structure/observed_stockout.py
     python experiments/structure/observed_stockout.py --duration _10_15
     python experiments/structure/observed_stockout.py --day-type holiday --save
+    python experiments/structure/observed_stockout.py --day-type holiday --same-day
 """
 import argparse
-from datetime import datetime
+from datetime import datetime, time as clock, timedelta
 import sys
 from pathlib import Path
 
@@ -48,7 +49,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd
 
 import db
-from project_config import DURATIONS, REBAL_MIN_QTY, duration_hours
+from project_config import DURATIONS, REBAL_MIN_QTY, duration_hours, is_holiday
 
 # 수집 간격(분). 한 틱이 대표하는 시간이 곧 결품 시간의 단위다.
 TICK_MINUTES = 10
@@ -64,6 +65,10 @@ TICK_MINUTES = 10
 # 들어올 때마다 좁은 창의 촘촘한 날들이 **소급해 탈락**했다. 이제 분모는
 # 언제나 **재는 대상 자신의 창**이다 — 날은 그날의 창, 회차는 그 회차의 시간대.
 COMPLETE_DAY_RATIO = 0.8
+
+# `--same-day`가 "회차 시작 시각에 세운 계획"으로 인정하는 늦음(분). 그보다 늦게 세운
+# 계획은 출발 재고가 회차 시작의 상태가 아니므로 뺀다(1.26.278).
+SAME_DAY_TOLERANCE_MIN = 30
 
 # 창을 못 읽었을 때의 최소 안전선(틱). 하루에 이만큼도 없으면 어떤 비율이든 볼 것이 없다.
 MIN_TICKS_FLOOR = 12
@@ -423,6 +428,127 @@ def _save_calibration(rows: list, day_type: str, window) -> None:
               f" {thinnest['days']}일입니다. 논문에 인용할 때 함께 적으십시오.")
 
 
+def same_day_runs(day_type: str, run_label: str = None) -> pd.DataFrame:
+    """**회차 시작 시각에 세운** 계획 실행 — 출발 재고가 그날 그 시각의 실제 상태인 것 (1.26.278).
+
+    왜 따로 고르나 — 복원은 계획을 세운 시각의 재고에서 출발한다. 오후에 세운 계획으로
+    새벽 회차를 복원하면 출발부터 어긋난다(EXPERIMENTS 32장: 휴일 `_05_10` 작업 대상의
+    빈 곳이 출발점 45.7% · 실제 05시 22.0%). 여기서는 `runs.created_at`이 그 회차 시작
+    시각부터 `SAME_DAY_TOLERANCE_MIN`분 안인 실행만 남긴다. 그날이 요일 구분과 맞는지도
+    본다 — 휴일 계획을 평일 날 세웠으면 그날의 관측은 휴일이 아니다.
+
+    `run_label`을 주면 그 실행 하나를 **늦음과 요일을 가리지 않고** 돌려준다(점검용).
+    늦은 만큼 출발 재고가 어긋난다는 것은 표가 함께 찍는다.
+    """
+    with db.session() as conn:
+        frame = pd.read_sql(
+            "SELECT k.run_label, k.duration, k.stockout_hours_before AS 복원,"
+            "       r.kind, r.day_type, r.created_at"
+            "  FROM kpi_summary k JOIN runs r ON r.run_label = k.run_label"
+            " WHERE k.stockout_hours_before IS NOT NULL", conn)
+    if run_label:
+        frame = frame[frame["run_label"] == run_label]
+    else:
+        frame = frame[frame["day_type"] == day_type]
+        frame = frame[[is_plan_run(lab, k or None)
+                       for lab, k in zip(frame["run_label"], frame["kind"])]]
+    keep = []
+    for row in frame.itertuples(index=False):
+        made = pd.Timestamp(row.created_at).to_pydatetime()
+        start = datetime.combine(made.date(), clock(duration_hours(row.duration)[0]))
+        late = (made - start).total_seconds() / 60
+        if not run_label:
+            if not 0 <= late <= SAME_DAY_TOLERANCE_MIN:
+                continue
+            if is_holiday(start.date()) != (day_type == "holiday"):
+                continue
+        keep.append({"run_label": row.run_label, "duration": row.duration,
+                     "복원": row.복원, "start": start, "late_min": late})
+    return pd.DataFrame(keep)
+
+
+def same_day_window(start: datetime, duration: str) -> tuple:
+    """관측 창 `[회차 시작, 회차 시작 + 회차 길이)`. `_20_05`는 다음 날 05시에 닫힌다."""
+    return start, start + timedelta(hours=len(duration_hours(duration)))
+
+
+def compare_same_day(day_type: str, run_label: str = None) -> list:
+    """같은 날·같은 시각에서 출발한 복원과 관측을 맞댄다 (1.26.278).
+
+    관측 창은 **그 회차 시작 시각부터 회차 길이만큼**이다 — `_20_05`는 그날 20시부터
+    다음 날 05시까지라, 달력 날짜로 자르면 두 밤이 섞인다(요일 필터도 걸지 않는다 —
+    휴일 밤이 평일 새벽으로 넘어간다).
+
+    출발 재고가 정말 맞았는지를 **같이 찍는다.** `출발 빈 곳`은 계획이 뜬 스냅샷,
+    `실제 빈 곳`은 회차 시작 정각의 관측이다. 둘이 가까워야 이 비교가 뜻이 있다 —
+    오후 스냅샷으로 세운 계획에서는 이 차가 3.9~23.7%p였다.
+    """
+    runs = same_day_runs(day_type, run_label)
+    if runs.empty:
+        what = f"실행 {run_label}" if run_label else (
+            f"요일 {day_type} · 회차 시작 {SAME_DAY_TOLERANCE_MIN}분 안에 세운 계획")
+        print(f"(같은 시각 비교: {what}이 없습니다 — tools/sameday_plan.py로 세웁니다)")
+        return []
+
+    per_hour = 60 // TICK_MINUTES
+    rows = []
+    for run in runs.itertuples(index=False):
+        hours = duration_hours(run.duration)
+        start, end = same_day_window(run.start, run.duration)
+        with db.session() as conn:
+            obs = db.load_stock_history(conn, start=start.strftime("%Y-%m-%d"),
+                                        end=(start + timedelta(days=2)).strftime("%Y-%m-%d"))
+            snap = pd.read_sql("SELECT station_id, stock FROM station_stock"
+                               " WHERE run_label = ?", conn, params=[run.run_label])
+        own = target_stations(run.run_label, run.duration)
+        if obs.empty or not own:
+            continue
+        obs["관측"] = pd.to_datetime(obs["observed_at"])
+        window = obs[(obs["관측"] >= start) & (obs["관측"] < end)]
+        ticks = window["관측"].nunique()
+        need = int(len(hours) * per_hour * COMPLETE_DAY_RATIO)
+        mine = window[window["station_id"].isin(own)]
+        empty = (mine["stock"] <= 0).groupby(mine["station_id"]).sum() * TICK_MINUTES / 60
+        first = mine[mine["관측"] == mine["관측"].min()] if not mine.empty else mine
+        snap_own = snap[snap["station_id"].isin(own)]
+        rows.append({
+            "run_label": run.run_label, "duration": run.duration, "date": start.date(),
+            "late_min": run.late_min, "복원": float(run.복원),
+            "관측": float(empty.mean()) if len(empty) else float("nan"),
+            "stations": int(len(empty)), "ticks": ticks,
+            "expected": len(hours) * per_hour, "complete": ticks >= need,
+            "snap_empty": (snap_own["stock"] <= 0).mean() * 100 if len(snap_own) else float("nan"),
+            "real_empty": (first["stock"] <= 0).mean() * 100 if len(first) else float("nan"),
+        })
+
+    print("")
+    print("같은 시각 비교 — 회차 시작에 세운 계획의 복원 vs 그날의 관측 (1.26.278)")
+    print(f"{'날짜':10} {'회차':7} {'늦음':>5} {'복원':>6} {'관측':>6} {'차이':>6} "
+          f"{'대여소':>5} {'틱':>7} {'출발 빈곳':>8} {'실제 빈곳':>8}")
+    for r in rows:
+        gap = (r["관측"] / r["복원"] - 1) * 100 if r["복원"] else float("nan")
+        mark = "" if r["complete"] else "  ← 창이 덜 찼다(평균에서 뺀다)"
+        print(f"{r['date']!s:10} {r['duration']:7} {r['late_min']:4.0f}분 {r['복원']:6.2f} "
+              f"{r['관측']:6.2f} {gap:+5.0f}% {r['stations']:5d} {r['ticks']:3d}/{r['expected']:<3d} "
+              f"{r['snap_empty']:7.1f}% {r['real_empty']:7.1f}%{mark}")
+
+    done = [r for r in rows if r["complete"]]
+    if done:
+        print("")
+        print(f"{'회차':7} {'복원':>6} {'관측':>6} {'차이':>6} {'날':>3}   (창이 찬 것만)")
+        for duration in DURATIONS:
+            part = [r for r in done if r["duration"] == duration]
+            if not part:
+                continue
+            sim = sum(r["복원"] for r in part) / len(part)
+            obs_ = sum(r["관측"] for r in part) / len(part)
+            gap = (obs_ / sim - 1) * 100 if sim else float("nan")
+            print(f"{duration:7} {sim:6.2f} {obs_:6.2f} {gap:+5.0f}% {len(part):3d}")
+    print("  ⚠️ `출발 빈곳`과 `실제 빈곳`이 가까워야 출발 재고의 몫이 빠진 비교다.")
+    print("     남는 차이는 0 절단 · 지난달 순수요 · 공사의 실제 재배치 몫이다.")
+    return rows
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="관측 재고로 결품을 직접 센다")
     parser.add_argument("--duration", help="시간대 하나만 (예: _10_15)")
@@ -430,7 +556,16 @@ def main() -> int:
     parser.add_argument("--save", action="store_true",
                         help="보정 계수를 stockout_calibration에 남긴다 "
                              "(수집이 멈춰도 계수는 남는다)")
+    parser.add_argument("--same-day", action="store_true",
+                        help="회차 시작 시각에 세운 계획만 그날의 관측과 맞댄다 "
+                             "(출발 재고를 맞춘 비교, 1.26.278)")
+    parser.add_argument("--run-label",
+                        help="실행 하나만 같은 시각 비교로 본다(늦음·요일을 가리지 않는다)")
     args = parser.parse_args()
+
+    if args.same_day or args.run_label:
+        compare_same_day(args.day_type, args.run_label)
+        return 0
 
     frame = load(args.day_type)
     if frame.empty:

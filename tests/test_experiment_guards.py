@@ -422,6 +422,62 @@ def test_보정_계수에_짝지은_실행_수가_남는다(obs, monkeypatch):
     assert "계획 실행 2건" in saved["payload"][0]["note"]
 
 
+def _seed_same_day(label, created_at, duration="_05_10", day_type="holiday",
+                   kind="plan", restored=1.5):
+    """`same_day_runs()`가 읽는 두 표(`runs`·`kpi_summary`)에 실행 하나를 심는다."""
+    import db
+    with db.session() as conn:
+        conn.execute("INSERT INTO runs (run_label, day_type, kind, created_at)"
+                     " VALUES (?, ?, ?, ?)", (label, day_type, kind, created_at))
+        conn.execute("INSERT INTO kpi_summary (run_label, duration, computed_at,"
+                     " stockout_hours_before) VALUES (?, ?, ?, ?)",
+                     (label, duration, created_at, restored))
+        conn.commit()
+
+
+def test_같은_시각_비교는_회차_시작에_세운_휴일_계획만_고른다(obs):
+    """🔴 **1.26.278의 전제다.** 복원은 계획을 세운 시각의 재고에서 출발하므로,
+    오후에 세운 계획으로 새벽 회차를 복원하면 출발부터 어긋난다(EXPERIMENTS 32장:
+    휴일 `_05_10` 작업 대상의 빈 곳이 출발점 45.7% · 실제 05시 22.0%).
+
+    그래서 `--same-day`는 **회차 시작 30분 안에 · 그 요일 구분의 날에 · 계획으로**
+    세운 실행만 남긴다. 셋 가운데 하나라도 어기면 출발 재고의 몫이 다시 섞인다.
+    """
+    _seed_same_day("추석 05시", "2026-09-25 05:03:10")              # 남는다
+    _seed_same_day("오후에 세움", "2026-09-22 15:06:39")            # 606분 늦다
+    _seed_same_day("평일에 세움", "2026-09-23 05:03:00")            # 그날은 평일이다
+    _seed_same_day("실험", "2026-09-25 05:04:00", kind="experiment")  # 계획이 아니다
+    _seed_same_day("평일 계획", "2026-09-25 05:03:00", day_type="weekday")
+
+    got = obs.same_day_runs("holiday")
+
+    assert list(got["run_label"]) == ["추석 05시"]
+    assert got["late_min"].iloc[0] == pytest.approx(3 + 10 / 60)
+
+
+def test_실행을_지정하면_늦어도_보여_준다(obs):
+    """점검용이다 — 늦음과 요일을 가리지 않되, 늦은 만큼을 **표에 함께 싣는다.**"""
+    _seed_same_day("오후에 세움", "2026-09-22 15:06:39")
+
+    got = obs.same_day_runs("holiday", run_label="오후에 세움")
+
+    assert list(got["run_label"]) == ["오후에 세움"]
+    assert got["late_min"].iloc[0] > 600                 # 05시 회차를 15시에 세웠다
+
+
+def test_밤_회차의_관측_창은_다음_날_새벽에_닫힌다(obs):
+    """`_20_05`를 달력 날짜로 자르면 **두 밤이 섞인다** — 그날 새벽 00~05시는
+    전날 밤의 것이다. 같은 시각 비교는 회차 시작부터 회차 길이만큼을 잰다.
+    """
+    from datetime import datetime
+
+    start, end = obs.same_day_window(datetime(2026, 9, 27, 20), "_20_05")
+    assert end == datetime(2026, 9, 28, 5)               # 휴일 밤이 평일 새벽으로 넘어간다
+
+    start, end = obs.same_day_window(datetime(2026, 9, 25, 5), "_05_10")
+    assert end == datetime(2026, 9, 25, 10)
+
+
 def test_촘촘한_날은_창의_넓이를_묻지_않는다(obs):
     """`dense_days()`가 답하는 것은 *"그 창을 촘촘히 채웠나"* 뿐이다.
 
