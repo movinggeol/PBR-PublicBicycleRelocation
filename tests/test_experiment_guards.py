@@ -1188,3 +1188,45 @@ def test_한쪽짜리_군집은_짝이_될_가장_가까운_대여소의_군집�
     assert merged.loc[merged["station_id"] == "C", "cluster"].item() == 0
     assert module.one_sided(merged) == []
     assert merged.drop(index=2).equals(frame.drop(index=2)), "다른 대여소는 그대로다"
+
+
+# ---------------------------------------------------------------------------
+# 같은 시각 비교의 판정 — 자료를 보기 전에 정한 규칙 (1.26.285)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("day_type, duration, gap, days, expect", [
+    ("holiday", "_05_10", -40, 4, "설명되지 않는다"),     # 출발을 맞춰도 그대로
+    ("holiday", "_05_10", -10, 4, "주 원인"),             # −35 → −10: 절반 넘게 줄었다
+    ("holiday", "_05_10", 5, 4, "뒤집혔다"),              # 부호가 바뀌었다
+    ("weekday", "_15_20", 30, 5, "방향 유지"),
+    ("weekday", "_15_20", -3, 5, "거둔다"),               # 일곱 칸의 서술이 이 칸에서 무너진다
+    ("holiday", "_05_10", -40, 2, "보류"),                # 날이 모자라면 판정하지 않는다
+])
+def test_같은_시각_판정은_미리_정한_규칙을_따른다(obs, day_type, duration, gap, days, expect):
+    """🔴 **문턱을 결과 보고 옮기지 마라.** 이 표는 첫 동시각 계획이 서기 전에 적었다 —
+    결과가 문턱 근처면 날을 더 모으는 것이 답이다(EXPERIMENTS 32장 '사전 등록')."""
+    assert expect in obs.same_day_verdict(day_type, duration, gap, days)
+
+
+def test_같은_시각_판정에는_창이_차고_출발이_맞은_날만_넣는다(obs):
+    """출발이 어긋난 날을 넣으면 이 실험이 떼려던 **출발 재고의 몫이 다시 섞인다.**
+    같은 날 다시 세운 계획은 날 수를 부풀리지 않는다."""
+    from datetime import date
+
+    def row(day, snap, real, restored=1.0, seen=1.5, complete=True):
+        return {"duration": "_05_10", "date": date(2026, 9, day), "복원": restored,
+                "관측": seen, "complete": complete, "snap_empty": snap, "real_empty": real}
+
+    rows = [row(24, 22.0, 21.0), row(25, 23.0, 22.5), row(25, 23.5, 22.5),   # 25일은 두 번
+            row(26, 45.7, 22.0, restored=9.0),          # 출발이 23.7%p 어긋났다 → 뺀다
+            row(27, 22.0, 22.0, restored=9.0, complete=False),               # 창이 덜 찼다
+            row(28, float("nan"), 20.0, restored=9.0)]  # 스냅샷이 없다 → 뺀다
+
+    assert "어긋났다" in obs.same_day_usable(rows[3])
+    assert obs.same_day_usable(rows[4]) == "창이 덜 찼다"
+    assert "확인할 수 없다" in obs.same_day_usable(rows[5])
+
+    (got,) = obs.summarize_same_day(rows, "holiday")
+    assert got["days"] == 2                               # 24 · 25일
+    assert got["복원"] == pytest.approx(1.0)              # 빠진 날의 9.0이 섞이지 않았다
+    assert "보류" in got["verdict"]

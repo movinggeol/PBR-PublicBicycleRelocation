@@ -40,7 +40,7 @@
     python experiments/structure/observed_stockout.py --day-type holiday --same-day
 """
 import argparse
-from datetime import datetime, time as clock, timedelta
+from datetime import date, datetime, time as clock, timedelta
 import sys
 from pathlib import Path
 
@@ -69,6 +69,25 @@ COMPLETE_DAY_RATIO = 0.8
 # `--same-day`가 "회차 시작 시각에 세운 계획"으로 인정하는 늦음(분). 그보다 늦게 세운
 # 계획은 출발 재고가 회차 시작의 상태가 아니므로 뺀다(1.26.278).
 SAME_DAY_TOLERANCE_MIN = 30
+
+# ── 같은 시각 비교의 판정 — **자료를 보기 전에** 정했다 (2026-09-23, 1.26.285) ──────────
+# 첫 동시각 계획이 서기 전(09-23 15:03 · 추석 09-24 05:03)에 적었다. 결과를 보고 문턱을
+# 옮기지 마라 — 모자라면 날을 더 모으는 것이 답이다(EXPERIMENTS 32장 '사전 등록').
+#
+# 출발 빈 곳(계획 스냅샷)과 실제 빈 곳(회차 시작 정각의 관측)의 차가 이 안이어야 **출발 재고를
+# 맞춘 실행**이다. 오후 스냅샷으로 세운 계획은 3.9~23.7%p 어긋났다.
+SAME_DAY_START_MATCH_PP = 5.0
+# 한 칸(요일 × 회차)을 판정하는 데 필요한 날 — 창이 차고 출발이 맞은 날만 센다.
+SAME_DAY_MIN_DAYS = 3
+# 비교 기준 — **다른 날로 잰** 여덟 칸의 차이(관측 ÷ 복원 − 1, %). 1.26.274 · 원고 8.3.
+SAME_DAY_OLD_GAPS = {
+    ("weekday", "_05_10"): 12, ("weekday", "_10_15"): 21,
+    ("weekday", "_15_20"): 46, ("weekday", "_20_05"): 92,
+    ("holiday", "_05_10"): -35, ("holiday", "_10_15"): 42,
+    ("holiday", "_15_20"): 70, ("holiday", "_20_05"): 79,
+}
+# 휴일은 10월 연휴의 마지막 날(10-11)까지 받으면 확정한다. 그 전의 판정(추석 나흘 등)은 잠정이다.
+SAME_DAY_HOLIDAY_FINAL = date(2026, 10, 11)
 
 # 창을 못 읽었을 때의 최소 안전선(틱). 하루에 이만큼도 없으면 어떤 비율이든 볼 것이 없다.
 MIN_TICKS_FLOOR = 12
@@ -472,6 +491,65 @@ def same_day_window(start: datetime, duration: str) -> tuple:
     return start, start + timedelta(hours=len(duration_hours(duration)))
 
 
+def same_day_usable(row: dict) -> str:
+    """판정에 넣을 수 있으면 빈 문자열, 아니면 **뺀 까닭**을 돌려준다 (1.26.285)."""
+    if not row["complete"]:
+        return "창이 덜 찼다"
+    snap, real = row["snap_empty"], row["real_empty"]
+    if pd.isna(snap) or pd.isna(real):
+        return "출발 재고를 확인할 수 없다"
+    if abs(snap - real) > SAME_DAY_START_MATCH_PP:
+        return f"출발이 {snap - real:+.1f}%p 어긋났다"
+    return ""
+
+
+def same_day_verdict(day_type: str, duration: str, gap: float, days: int) -> str:
+    """한 칸의 판정. 규칙은 **자료를 보기 전에** 정했다 (1.26.285, EXPERIMENTS 32장).
+
+    - 날이 `SAME_DAY_MIN_DAYS`보다 적으면 판정하지 않는다.
+    - 다른 날로 잰 차이가 음수였던 칸(휴일 `_05_10` −35%)은 **원인**을 묻는다 — 출발 재고를
+      맞추자 부호가 바뀌거나 차이가 절반 넘게 줄면 출발 재고가 주 원인이고, 아니면 출발
+      재고로는 설명되지 않는다(남는 것은 지난달 순수요 · 0 절단 · 공사의 실제 재배치).
+    - 양수였던 일곱 칸은 **방향**을 묻는다 — 관측이 여전히 크면 8.3의 서술이 서고, 아니면
+      그 칸에서 *"관측이 크다"* 를 거둔다.
+    """
+    if days < SAME_DAY_MIN_DAYS:
+        return f"보류 — {days}일뿐이다(판정은 {SAME_DAY_MIN_DAYS}일부터)"
+    old = SAME_DAY_OLD_GAPS.get((day_type, duration))
+    if old is None:
+        return "비교 기준이 없다"
+    if old < 0:
+        if gap >= 0:
+            return f"뒤집혔다 ({old:+d}% → {gap:+.0f}%) — 출발 재고가 원인이었다"
+        if gap > old / 2:
+            return f"출발 재고가 주 원인 ({old:+d}% → {gap:+.0f}%, 절반 넘게 줄었다)"
+        return (f"출발 재고로는 설명되지 않는다 ({old:+d}% → {gap:+.0f}%)"
+                " — 순수요 · 0 절단 · 공사 재배치가 남는다")
+    if gap > 0:
+        return f"방향 유지 — 관측이 크다 ({old:+d}% → {gap:+.0f}%)"
+    return f"뒤집혔다 ({old:+d}% → {gap:+.0f}%) — 이 칸에서 '관측이 크다'를 거둔다"
+
+
+def summarize_same_day(rows: list, day_type: str) -> list:
+    """회차마다 **판정에 넣을 수 있는** 실행만 모아 평균하고 판정을 붙인다 (1.26.285).
+
+    날 수는 서로 다른 날짜로 센다 — 같은 날 다시 세운 계획이 표본을 부풀리지 않게.
+    """
+    out = []
+    for duration in DURATIONS:
+        part = [r for r in rows if r["duration"] == duration and not same_day_usable(r)]
+        if not part:
+            continue
+        sim = sum(r["복원"] for r in part) / len(part)
+        seen = sum(r["관측"] for r in part) / len(part)
+        gap = (seen / sim - 1) * 100 if sim else float("nan")
+        days = len({r["date"] for r in part})
+        out.append({"duration": duration, "복원": sim, "관측": seen, "gap": gap, "days": days,
+                    "last": max(r["date"] for r in part),
+                    "verdict": same_day_verdict(day_type, duration, gap, days)})
+    return out
+
+
 def compare_same_day(day_type: str, run_label: str = None) -> list:
     """같은 날·같은 시각에서 출발한 복원과 관측을 맞댄다 (1.26.278).
 
@@ -527,23 +605,20 @@ def compare_same_day(day_type: str, run_label: str = None) -> list:
           f"{'대여소':>5} {'틱':>7} {'출발 빈곳':>8} {'실제 빈곳':>8}")
     for r in rows:
         gap = (r["관측"] / r["복원"] - 1) * 100 if r["복원"] else float("nan")
-        mark = "" if r["complete"] else "  ← 창이 덜 찼다(평균에서 뺀다)"
+        why = same_day_usable(r)
+        mark = f"  ← {why}(판정에서 뺀다)" if why else ""
         print(f"{r['date']!s:10} {r['duration']:7} {r['late_min']:4.0f}분 {r['복원']:6.2f} "
               f"{r['관측']:6.2f} {gap:+5.0f}% {r['stations']:5d} {r['ticks']:3d}/{r['expected']:<3d} "
               f"{r['snap_empty']:7.1f}% {r['real_empty']:7.1f}%{mark}")
 
-    done = [r for r in rows if r["complete"]]
-    if done:
+    summary = [] if run_label else summarize_same_day(rows, day_type)
+    if summary:
         print("")
-        print(f"{'회차':7} {'복원':>6} {'관측':>6} {'차이':>6} {'날':>3}   (창이 찬 것만)")
-        for duration in DURATIONS:
-            part = [r for r in done if r["duration"] == duration]
-            if not part:
-                continue
-            sim = sum(r["복원"] for r in part) / len(part)
-            obs_ = sum(r["관측"] for r in part) / len(part)
-            gap = (obs_ / sim - 1) * 100 if sim else float("nan")
-            print(f"{duration:7} {sim:6.2f} {obs_:6.2f} {gap:+5.0f}% {len(part):3d}")
+        print(f"{'회차':7} {'복원':>6} {'관측':>6} {'차이':>6} {'날':>3}   판정 (창이 차고 출발이 맞은 날만 · 규칙은 1.26.285에 미리 정함)")
+        for g in summary:
+            print(f"{g['duration']:7} {g['복원']:6.2f} {g['관측']:6.2f} {g['gap']:+5.0f}% {g['days']:3d}   {g['verdict']}")
+        if day_type == "holiday" and max(g["last"] for g in summary) < SAME_DAY_HOLIDAY_FINAL:
+            print(f"  ⚠️ 휴일은 잠정이다 — {SAME_DAY_HOLIDAY_FINAL}(10월 연휴 마지막 날)까지 받으면 확정한다.")
     print("  ⚠️ `출발 빈곳`과 `실제 빈곳`이 가까워야 출발 재고의 몫이 빠진 비교다.")
     print("     남는 차이는 0 절단 · 지난달 순수요 · 공사의 실제 재배치 몫이다.")
     return rows
