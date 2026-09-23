@@ -12,7 +12,12 @@
 
 **한 번 실행 = 한 회차.** 작업 스케줄러가 회차마다 한 번씩 부른다.
 
+**평일도 같은 방식으로 건다** (1.26.280). 원고 8.3이 *"관측이 크다"* 로 쓴 일곱 칸에는
+평일 칸도 들어 있고, 평일 복원도 오후 스냅샷에서 출발했다. 휴일만 맞추면 8.3의 절반만
+다시 쓸 수 있다. 요일 구분이 그날과 어긋나면 두 방향 모두 세우지 않는다.
+
     python tools/sameday_plan.py install --dates 2026-09-24 2026-09-25 2026-09-26 2026-09-27
+    python tools/sameday_plan.py install --day-type weekday --dates 2026-09-28 2026-09-29
     python tools/sameday_plan.py status
     python tools/sameday_plan.py uninstall
     python tools/sameday_plan.py run --duration _05_10      # 스케줄러가 부르는 것
@@ -78,6 +83,21 @@ def within_window(now: datetime, duration: str, tolerance_min: int) -> bool:
     return start <= now <= start + timedelta(minutes=tolerance_min)
 
 
+def day_type_mismatch(day: date, day_type: str) -> str:
+    """그날이 요일 구분과 어긋나면 그 까닭을, 맞으면 빈 문자열을 돌려준다.
+
+    **두 방향 모두 막는다** (1.26.280). 처음(1.26.278)에는 휴일 계획만 걸어서 *"휴일
+    계획을 평일에 세우지 않는다"* 한쪽만 있었다. 평일 계획을 걸면서 반대쪽이 비어
+    있었다 — 10-05(대체공휴일)에 평일 계획이 서면 휴일 재고로 평일을 복원한다.
+    """
+    holiday = is_holiday(day)
+    if day_type == "holiday" and not holiday:
+        return f"{day}은 휴일이 아니다. 휴일 계획을 평일 재고로 세우지 않는다."
+    if day_type == "weekday" and holiday:
+        return f"{day}은 휴일이다. 평일 계획을 휴일 재고로 세우지 않는다."
+    return ""
+
+
 def pipeline_command(python: str, label: str, duration: str, day_type: str,
                      period: str, run_kind: str) -> list[str]:
     """계획 한 회차를 세우는 명령. 스냅샷은 라이브 API로 뜬다(`--skip-api`를 주지 않는다)."""
@@ -110,8 +130,9 @@ def run(args: argparse.Namespace) -> int:
         note(f"건너뜀 — {args.duration} 시작 시각에서 {args.tolerance_min}분을 넘겼다"
              f"(지금 {now:%H:%M}). 출발 재고가 회차 시작의 상태가 아니게 되므로 세우지 않는다.")
         return 0
-    if args.day_type == "holiday" and not is_holiday(now.date()):
-        note(f"건너뜀 — {now.date()}은 휴일이 아니다. 휴일 계획을 평일 재고로 세우지 않는다.")
+    mismatch = day_type_mismatch(now.date(), args.day_type)
+    if mismatch:
+        note(f"건너뜀 — {mismatch}")
         return 0
 
     label = label_for(now.date(), args.duration, args.day_type, args.tag)
@@ -169,8 +190,9 @@ def install(args: argparse.Namespace) -> int:
     entries = []
     for text in args.dates:
         day = date.fromisoformat(text)
-        if args.day_type == "holiday" and not is_holiday(day):
-            print(f"  ⚠️ {day}은 휴일이 아니다 — 건너뛴다")
+        mismatch = day_type_mismatch(day, args.day_type)
+        if mismatch:
+            print(f"  ⚠️ 건너뛴다 — {mismatch}")
             continue
         for duration in args.durations:
             at = datetime.combine(day, clock(start_hour(duration), OFFSET_MIN))

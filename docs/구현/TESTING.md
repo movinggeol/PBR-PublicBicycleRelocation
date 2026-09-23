@@ -5,7 +5,7 @@
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 1035개 (약 200초)
+python -m pytest              # 전체 1037개 (약 200초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -52,8 +52,8 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_fleet_outage_stress.py](../../tests/test_fleet_outage_stress.py) | 2 | **결원 실험의 수렴 판정** (1.26.241) — 창 안에서 수렴하지 않으면 값을 지어내지 않는지. 예전에는 미수렴을 `창 + 1`로 세어 25장의 *"결원 5대 수렴 7.0회차"* 가 **씨앗 다섯 모두 미수렴**이었다(30회차로 다시 재니 실제로 7회차째라 값은 우연히 맞았다) |
 | [tests/test_capture_thesis_screens.py](../../tests/test_capture_thesis_screens.py) | 4 | **논문 화면 캡처** (1.26.241) — 브라우저는 띄우지 않고 찍기 전의 판단만 본다. 파일 이름이 그림 번호와 **원고의 이미지 링크**를 따르는지, 모르는 번호면 아무것도 안 하는지, 외부 API를 부르는 4-9가 `--live` 없이 **서버에 닿지도 않는지**, 대시보드가 없으면 띄울 명령을 말하는지 |
 | [tests/test_db_tools.py](../../tests/test_db_tools.py) | 9 | **시험이 없던 DB 도구 셋** — `show_schema`(`PBR_DB_PATH`를 따르는지)·`rebuild_net_demand`(예행이 순수요를 안 건드리고 평일/휴일을 갈라 세는지)·`train_demand_model`(기간이 모자라면 이유를 말하는지, 예행이 모델을 저장하지 않는지). 모델이 생기면 파이프라인이 **다음 실행부터 그것을 쓴다** |
-| [tests/test_sameday_plan.py](../../tests/test_sameday_plan.py) | 11 | **회차 시작 시각 계획의 무인 도구** (1.26.278) — 추석처럼 아무도 없는 날 예약 작업으로 돌아 **틀려도 아무도 모른다.** 늦게 깨면 세우지 않는지(출발 재고가 회차 시작의 상태가 아니게 된다), 휴일 계획을 평일에 세우지 않는지, TMAP을 부르지 않고 스냅샷을 라이브로 뜨는지(`--skip-api`로 물려받으면 출발 재고가 또 어긋난다), 스케줄러에 넘기는 작업 이름·인자가 ASCII인지 |
-| **합계** | **1035** | 36개 파일 · 약 200초 (`python -m pytest`) |
+| [tests/test_sameday_plan.py](../../tests/test_sameday_plan.py) | 13 | **회차 시작 시각 계획의 무인 도구** (1.26.278) — 추석처럼 아무도 없는 날 예약 작업으로 돌아 **틀려도 아무도 모른다.** 늦게 깨면 세우지 않는지(출발 재고가 회차 시작의 상태가 아니게 된다), 휴일 계획을 평일에 · 평일 계획을 휴일에 세우지 않는지(두 방향, 1.26.280 — 10-05 대체공휴일), TMAP을 부르지 않고 스냅샷을 라이브로 뜨는지(`--skip-api`로 물려받으면 출발 재고가 또 어긋난다), 스케줄러에 넘기는 작업 이름·인자가 ASCII인지 |
+| **합계** | **1037** | 36개 파일 · 약 200초 (`python -m pytest`) |
 
 > **이 합계는 손으로 세지 마세요.** 1.26.88이 손으로 세어 548이라 적었는데
 > 실측은 555였습니다 — `test_version_log.py` 한 파일을 통째로 빠뜨린 것입니다.

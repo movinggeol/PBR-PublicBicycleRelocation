@@ -106,3 +106,40 @@ def test_늦게_깨면_세우지_않는다(plan, monkeypatch, tmp_path):
 
     assert code == 0
     assert "넘겼다" in next(tmp_path.glob("*.log")).read_text(encoding="utf-8")
+
+
+def test_평일_계획을_휴일에_세우지_않는다(plan, monkeypatch, tmp_path):
+    """반대 방향도 막는다 (1.26.280) — 10-05는 대체공휴일이라 월요일이어도 휴일이다."""
+    class Substitute(_Clock):
+        fixed = datetime(2026, 10, 5, 5, 3)
+
+    monkeypatch.setattr(plan, "datetime", Substitute)
+    monkeypatch.setattr(plan, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(plan.subprocess, "run",
+                        lambda *a, **k: pytest.fail("휴일인데 평일 계획을 세웠다"))
+
+    code = plan.main(["run", "--duration", "_05_10", "--day-type", "weekday"])
+
+    assert code == 0
+    assert "휴일이다" in next(tmp_path.glob("*.log")).read_text(encoding="utf-8")
+
+
+def test_걸_때도_요일_구분이_어긋난_날은_뺀다(plan, monkeypatch):
+    """평일로 걸면 10-03(토)·10-05(대체공휴일)는 빠지고, 휴일로 걸면 10-02(금)가 빠진다."""
+    monkeypatch.setattr(plan, "datetime", _Clock)            # 2026-09-23 05:03
+    scripts = []
+    monkeypatch.setattr(plan, "_powershell",
+                        lambda script: scripts.append(script) or
+                        plan.subprocess.CompletedProcess([], 0, "", ""))
+
+    assert plan.main(["install", "--day-type", "weekday", "--durations", "_05_10",
+                      "--dates", "2026-10-02", "2026-10-03", "2026-10-05"]) == 0
+    assert plan.main(["install", "--day-type", "holiday", "--durations", "_05_10",
+                      "--dates", "2026-10-02", "2026-10-03", "2026-10-05"]) == 0
+
+    weekday, holiday = scripts
+    assert "PBR-sameday-20261002-05" in weekday
+    assert "20261003" not in weekday and "20261005" not in weekday
+    assert "--day-type weekday" in weekday
+    assert "20261002" not in holiday
+    assert "PBR-sameday-20261003-05" in holiday and "PBR-sameday-20261005-05" in holiday
