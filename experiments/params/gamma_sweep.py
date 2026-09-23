@@ -61,8 +61,10 @@ def main():
     # 그러면 같은 명령이 다른 날 다른 값을 내고 다른 실험과 기준이 갈린다
     # (DECISIONS.md 6-B: 백분율은 기준 스냅샷과 함께 인용한다).
     with bc.db.session() as conn:
-        run_label = args.run_label or conn.execute(
-            "SELECT MAX(run_label) FROM station_info").fetchone()[0]
+        # 기본은 가장 최근 **계획**이다. 예전의 `MAX(run_label)`은 문자열 최대라 08-24의
+        # 스윕 실행 `sweep-10`을 말없이 골랐다(1.26.281). 논문 수치는 라벨을 고정해 잰다
+        # (`--run-label "2026-08-11 real"`, EXPERIMENTS 머리말).
+        run_label = args.run_label or bc.db.latest_label(conn, "station_info", kinds=("plan",))
         available = [r[0] for r in conn.execute(
             "SELECT DISTINCT run_label FROM station_info ORDER BY 1")]
     if run_label not in available:
@@ -72,7 +74,7 @@ def main():
     total_runs = len(periods) * len(gammas) * len(seeds) * len(durations)
     print(f"γ {len(gammas)}개 × 달 {len(periods)}개 × 씨앗 {len(seeds)}개"
           f" × 회차 {len(durations)}개 = {total_runs}회 실행")
-    print(f"현행 기본값 γ = {baseline_gamma:.0f}\n")
+    print(f"현행 기본값 γ = {baseline_gamma:.0f} · 재고 스냅샷 '{run_label}'\n")
 
     rows = []
     for period in periods:

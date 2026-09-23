@@ -53,7 +53,7 @@ from pipeline.step2_optimize import vrp as vrp_mod                       # noqa:
 from pipeline.step4_metrics import imbalance as kpi_mod                  # noqa: E402
 from project_config import (                # noqa: E402
     DEFAULT_PERIOD, DEFAULT_WARMUP_DAYS, TIME_BUDGET_MINUTES, VEHICLES_PER_ROUND,
-    normalize_day_type, select_day_type,
+    align_day_type, normalize_day_type, select_day_type,
 )
 
 METHODS = ("P", "B0", "B1", "B2", "B3")
@@ -569,6 +569,9 @@ def main():
         raise SystemExit(f"알 수 없는 방법: {unknown} (가능: {', '.join(METHODS)})")
 
     step1 = load_step1()
+    # 이동시간 계수는 import한 모듈의 `config.day_type`을 본다 — `--day-type`을 안 주면
+    # 그 값은 오늘 달력이라, 순수요(평일 기본)와 요일이 갈린다(1.26.281).
+    align_day_type(args.day_type, ilp_mod, vrp_mod, kpi_mod, step1)
     solver = ilp_mod.build_solver()   # 파이프라인과 같은 솔버 설정
     net, st_info, warmup = load_inputs(args.period, args.run_label, args.day_type,
                                        args.warmup_days, args.warmup_period)

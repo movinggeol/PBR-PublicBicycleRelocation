@@ -1129,3 +1129,35 @@ def test_출력을_파일로_넘겨도_cp949_한_글자에_죽지_않는다(tmp_
         "cp949로 못 쓰는 글자를 출력하는데 함수 밖에서 UTF-8 가드를 안 거친다 — 출력을 파일로 "
         "넘기면 그 print에서 죽는다. 최상단에서 `import project_config`를 거치게 하라"
         "(cluster_time_term.py 참고):\n  " + "\n  ".join(위반))
+
+
+# ---------------------------------------------------------------------------
+# step 모듈이 import 시점에 argv를 읽는 것 — **실험의 통로다. 막지 마라** (1.26.281)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("relpath", [
+    "pipeline/step1_cluster/top_st_clustering.py",
+    "pipeline/step2_optimize/ilp.py",
+    "pipeline/step2_optimize/vrp.py",
+    "pipeline/step4_metrics/imbalance.py",
+])
+def test_실험의_요일_구분은_import한_step_모듈까지_argv로_흐른다(monkeypatch, relpath):
+    """TODO에 *"import 시점에 argv를 판다"* 를 고칠 거리로 올려 두었는데(1.26.129), 재 보니
+    **그것이 실험의 `--day-type`이 이동시간 계수까지 닿는 유일한 길**이었다.
+
+    `baseline_compare.py --day-type holiday`는 순수요를 자기 인자로 읽지만, ILP·VRP의
+    이동시간(`travel_seconds(day_type=config.day_type)`)은 그 모듈의 `config`를 본다.
+    import 시점의 해석을 없애면 그 `config`는 **오늘 달력**을 따르게 되고, 휴일 계수를
+    채우는 날 휴일 실험이 평일 계수로 조용히 돈다. 모르는 인자(`--methods`)는 흘려보낸다.
+    """
+    monkeypatch.setattr(sys, "argv", ["baseline_compare.py", "--methods", "P",
+                                      "--period", "25년 11월", "--day-type", "holiday"])
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    spec = importlib.util.spec_from_file_location(
+        f"_argv_{Path(relpath).stem}", PROJECT_ROOT / relpath)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert module.config.day_type == "holiday"
+    assert module.config.period == "25년 11월"

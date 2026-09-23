@@ -70,9 +70,15 @@ def load_all(run_label: str, duration: str) -> pd.DataFrame:
         plan = pd.read_sql(
             "SELECT station_id, stock, parking_lot, rebal_qty FROM rebalance_plan"
             " WHERE run_label = ? AND duration = ?", conn, params=[run_label, duration])
+        # 좌표는 그 실행의 것을 쓴다 — 예전의 `MAX(run_label)`은 문자열 최대라 스윕
+        # 실행(`sweep-10`)의 좌표였다(1.26.281). 없으면 가장 최근 실행으로.
         info = pd.read_sql(
-            "SELECT station_id, lat, lon FROM station_info"
-            " WHERE run_label = (SELECT MAX(run_label) FROM station_info)", conn)
+            "SELECT station_id, lat, lon FROM station_info WHERE run_label = ?",
+            conn, params=[run_label])
+        if info.empty:
+            info = pd.read_sql(
+                "SELECT station_id, lat, lon FROM station_info WHERE run_label = ?",
+                conn, params=[db.latest_label(conn, "station_info")])
     return plan.merge(info.drop_duplicates("station_id"), on="station_id", how="left")
 
 

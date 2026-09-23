@@ -35,7 +35,7 @@ import pandas as pd
 import db
 from pipeline.step2_optimize import vrp as vrp_mod                     # noqa: E402  (step2)
 from project_config import (                       # noqa: E402
-    DURATIONS, TIME_BUDGET_MINUTES, get_runtime_config,
+    DURATIONS, TIME_BUDGET_MINUTES, align_day_type, get_runtime_config,
 )
 
 WINDOWS = ("_05_10", "_10_15", "_15_20")
@@ -57,8 +57,8 @@ def station_points(run_label: str) -> dict:
             conn, params=[run_label])
         if info.empty:      # 그 실행분이 없으면 최신 것으로
             info = pd.read_sql(
-                "SELECT station_id, lat, lon FROM station_info"
-                " WHERE run_label = (SELECT MAX(run_label) FROM station_info)", conn)
+                "SELECT station_id, lat, lon FROM station_info WHERE run_label = ?",
+                conn, params=[db.latest_label(conn, "station_info")])   # 사전순 MAX 아님(1.26.281)
     return {r.station_id: (r.lat, r.lon) for r in info.itertuples()}
 
 
@@ -133,10 +133,16 @@ def stockout_compare(label: str, durations: list, budget_sec: float) -> None:
         print("\n(결품 비교: 순수요가 없어 건너뜁니다)")
         return
 
+    # 🔴 출발 재고는 **그 계획의 스냅샷**이다(1.26.281). 예전에는 `MAX(run_label)`의 재고를
+    # 썼는데, 그것은 문자열 최대라 계획(`label`)과 다른 실행 — 2026-09-23에는 08-24의
+    # 스윕 실행 `sweep-10` — 의 재고에서 결품을 셌다. 계획과 출발 재고가 다른 날의 것이었다.
     with db.session() as conn:
         stock = pd.read_sql(
-            "SELECT station_id, stock, parking_lot FROM station_info"
-            " WHERE run_label = (SELECT MAX(run_label) FROM station_info)", conn)
+            "SELECT station_id, stock, parking_lot FROM station_info WHERE run_label = ?",
+            conn, params=[label])
+    if stock.empty:
+        print(f"\n(결품 비교: '{label}'의 재고 스냅샷(station_info)이 없어 건너뜁니다)")
+        return
 
     print("\n결품 시간 (대여소·일 평균 h) — **이것이 판정 기준이다**")
     print(f"{'시간대':8} {'현행':>8} {'예산 강제':>10} {'차이':>8}")
@@ -186,7 +192,8 @@ def main() -> int:
     durations = [args.duration] if args.duration else list(WINDOWS)
     print(f"실행 '{label}' · 예산 {args.budget:.0f}분")
     from pipeline.step4_metrics import imbalance as kpi_mod                     # noqa: E402  (step4)
-    kpi_mod.use_run_day_type(label)                 # 오늘 달력이 아니라 그 실행의 요일로
+    # 오늘 달력이 아니라 그 실행의 요일로 — 채점(step4)도 경로의 이동시간(VRP)도(1.26.281)
+    align_day_type(kpi_mod.use_run_day_type(label), vrp_mod)
     print()
 
     print(f"{'시간대':8} {'구분':10} {'군집':>4} {'최장분':>7} {'초과':>4} "
