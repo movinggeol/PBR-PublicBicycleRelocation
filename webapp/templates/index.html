@@ -242,7 +242,12 @@
   <b>한 데이터베이스에 세 가지가 섞여 쌓입니다</b> — 운영 계획, 견줘 보려고 돌린
   실험, 계획이 아닌 기록(도로 시간 수집 등). <b>실험·수집은 결과 화면의 계획
   목록에서 다르게 다룹니다</b>, 그래서 종류를 여기서 밝히고 고칠 수 있게 뒀습니다.</p>
-<div class="card flush">
+{# 최신순(`runs.created_at`) **전부**를 내려보내고 10행씩 쪽으로 끊는다 (1.26.283).
+   예전에는 서버가 사전 역순 10행만 보내서 앞 10행이 모두 실험·수집이었고, 계획
+   8건을 포함한 19건에는 닿을 길이 없었다 — 위 설명문이 "여기서 고치라"는 표인데.
+   종류로 묶지 않는 것은 일부러다: 실험으로 잘못 매긴 계획이 아래로 가라앉지 않게,
+   방금 돌린 실행이 맨 위에 와서 종류를 바로 확인하게 한다. #}
+<div class="card flush" data-pager="10" data-pager-label="저장된 실행 쪽 넘기기">
   {% if pipeline_runs %}
   <div class="table-wrap">
   <table data-sortable class="m-cards">
@@ -255,7 +260,9 @@
     </tr></thead>
     <tbody>
     {% for run in pipeline_runs %}
-    <tr>
+    {# 방금 종류를 바꾼 행이면 쪽 넘기기가 이 행이 든 쪽을 연다(`data-pager-focus`) —
+       10행씩 끊은 뒤로 2쪽 이후 행을 고치면 1쪽으로 돌아와 그 행이 숨었다. #}
+    <tr data-page-item="{{ loop.index0 }}"{% if kind_changed and run.run_label == kind_changed %} data-pager-focus{% endif %}>
       <td data-label=""><b>{{ run.run_label }}</b></td>
       {# 종류는 눌러서 바꾼다. 라벨 규칙으로 짐작한 것이 틀릴 수 있고, 틀린 채
          두면 실험이 첫 화면에 운영 계획으로 올라간다(1.26.107). #}
@@ -270,7 +277,13 @@
         </form>
       </td>
       <td class="muted" data-label="순수요 기간">{{ run.period or "—" }}</td>
-      <td class="muted" data-label="시간대">{{ run.duration or "—" }}</td>
+      {# 경로가 있는 회차를 모아 적는다(`store.saved_runs` — `/api/pipeline-runs`의
+         `durations`와 같은 값). 예전에는 `runs.duration`(첫 회차 하나)만이라 네 회차
+         실행이 `_05_10`으로 보였다(1.26.283). #}
+      {% set rounds = run.durations or [] %}
+      <td class="muted" data-label="시간대"{% if rounds | length > 1 %} title="{{ rounds | map(attribute='label') | join(' · ') }}"{% endif %}>
+        {%- if rounds %}{{ rounds[0].label }}{% if rounds | length > 1 %} 외 {{ rounds | length - 1 }}{% endif %}{% else %}—{% endif -%}
+      </td>
       <td class="muted" data-label="요일">{{ "휴일" if run.day_type == "holiday" else ("평일" if run.day_type else "—") }}</td>
       <td class="muted" data-label="기록 시각">{{ run.created_at }}</td>
       {# 사람이 보는 표다 — 예전에는 `/api/metrics?…` JSON으로 보냈다(1.26.264).

@@ -159,14 +159,9 @@
   <b>모든 열 보기</b>로 펼칩니다.</p>
 
 {% if runs %}
-<div class="filterbar">
-  <span class="label">실행</span>
-  <a class="chip" href="/kpi" {% if not selected_run %}aria-current="true"{% endif %}>전체</a>
-  {% for r in runs %}
-  <a class="chip" href="/kpi?run_label={{ r.run_label | urlencode }}"
-     {% if selected_run == r.run_label %}aria-current="true"{% endif %}>{{ r.run_label }}</a>
-  {% endfor %}
-</div>
+{# 계획 먼저·최신순, 실험은 다음 줄, 좁은 화면에서는 접는다 — /vehicles와 같은 매크로(1.26.283). #}
+{% from "_run_picker.html" import run_picker %}
+{{ run_picker(runs, selected_run, "/kpi") }}
 {% endif %}
 
 <div class="card flush">
@@ -175,7 +170,11 @@
     <button type="button" class="chip" data-col-toggle aria-pressed="false" aria-controls="kpi-runs-table">모든 열 보기</button>
   </div>
   <div class="table-wrap">
-  <table data-sortable class="m-cards" id="kpi-runs-table">
+  {# 행은 서버가 **최근 실행이 위, 한 실행 안에서는 하루 순서대로** 세워 보낸다
+     (`store.kpi()`, 1.26.283). 예전에는 라벨 사전순이라 72행이 `sweep-21`부터
+     시작했고 390px에서 표만 17,148px(20화면)였다. 위 12행(실행 서너 개의 회차)만
+     펴 둔다 — 실행 하나를 고르면 4행 이하라 조작부가 생기지 않는다. #}
+  <table data-sortable class="m-cards" id="kpi-runs-table" data-row-limit="12">
     <thead><tr>
       <th scope="col" class="tight">실행</th>
       <th scope="col" class="tight"><span class="tip" data-tip="계획한 시간대입니다. 예: _10_15 는 10시~15시.">회차</span></th>

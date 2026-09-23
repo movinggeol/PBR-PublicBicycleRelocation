@@ -102,12 +102,15 @@ weighted_mean = _weighted
 
 
 def _runs_in_order(rows: pd.DataFrame) -> list:
-    """실행 라벨을 **오래된 것부터**. 라벨은 사람이 붙인 이름이라 사전순은 뜻이 없다."""
+    """실행 라벨을 **오래된 것부터**. 라벨은 사람이 붙인 이름이라 사전순은 뜻이 없다.
+
+    `/kpi` 표·헤드라인과 같은 `store.kpi_run_order()`를 거꾸로 쓴다(1.26.283 검토) —
+    예전에는 여기만 `computed_at`으로 따로 세워, 같은 라벨을 다시 돌리면 그래프의
+    맨 오른쪽 점과 표의 첫 행이 서로 다른 실행이 될 수 있었다.
+    """
     if rows.empty:
         return []
-    order = "computed_at" if "computed_at" in rows else "run_label"
-    seen = rows.sort_values(order)["run_label"].drop_duplicates().tolist()
-    return seen
+    return list(reversed(store.kpi_run_order(rows)))
 
 
 def trends(rows: pd.DataFrame, limit: int = 12) -> list:

@@ -106,7 +106,10 @@
       <td class="num" data-label="옮긴 대수">{{ v.bikes }}</td>
       <td class="num muted" data-label="누적 거리">{{ v.distance_km }} km</td>
       <td class="num muted" data-label="누적 시간">{{ v.minutes }}분</td>
-      <td class="muted" data-label="최근 작업">{% if v.last_run %}{{ v.last_run }} {{ v.last_duration }}{% else %}—{% endif %}</td>
+      {# 기록에 실제로 있는 한 배정이다(`store.vehicle_workload`, 1.26.283) — 예전에는
+         실행·회차를 따로 사전순 MAX로 붙여 21대 모두 없는 조합 `sweep-21 _20_05`였다.
+         그 차량의 그 회차 지시서로 바로 간다. 실험이면 밝힌다(표는 실험도 합친다). #}
+      <td class="muted" data-label="최근 작업">{% if v.last_run %}<a class="muted" href="/orders?run_label={{ v.last_run | urlencode }}{% if v.last_duration %}&duration={{ v.last_duration | urlencode }}{% endif %}&vehicle={{ v.vehicle_id | urlencode }}" title="이 차량의 그 회차 작업지시서">{{ v.last_run }} · {{ duration_labels.get(v.last_duration, v.last_duration) }}</a>{% if v.last_kind and v.last_kind != "plan" %} <span class="hint">{{ kind_labels.get(v.last_kind, v.last_kind) }}</span>{% endif %}{% else %}—{% endif %}</td>
       <td data-label="이력"><a class="muted" href="/api/vehicles/assignments?vehicle_id={{ v.vehicle_id }}" title="이 차량의 배정 이력 원자료(JSON)">JSON</a></td>
     </tr>
     {% endfor %}
@@ -123,14 +126,11 @@
   {% if assignments_total %}<span class="hint">{{ assignments_total }}건</span>{% endif %}</h2>
 
 {% if runs %}
-<div class="filterbar">
-  <span class="label">실행</span>
-  <a class="chip" href="/vehicles" {% if not selected_run %}aria-current="true"{% endif %}>전체</a>
-  {% for r in runs %}
-  <a class="chip" href="/vehicles?run_label={{ r.run_label | urlencode }}"
-     {% if selected_run == r.run_label %}aria-current="true"{% endif %}>{{ r.run_label }}</a>
-  {% endfor %}
-</div>
+{# 계획 먼저·최신순, 실험은 다음 줄, 좁은 화면에서는 접는다 — /kpi와 같은 매크로(1.26.283).
+   ⚠️ 칩은 시각순이지만 아래 표는 `db.assignment_history`가 SQL에서 라벨 사전순으로
+   쪽을 끊으므로 여기서는 못 바꾼다(db.py는 이 판의 범위 밖 — 버전관리 1.26.283). #}
+{% from "_run_picker.html" import run_picker %}
+{{ run_picker(runs, selected_run, "/vehicles") }}
 {% endif %}
 
 <div class="card flush">
@@ -149,7 +149,9 @@
     {% set over = a.minutes is not none and a.minutes > time_budget %}
     <tr{% if over %} class="over-budget"{% endif %}>
       <td class="muted" data-label="">{{ a.run_label }}</td>
-      <td data-label="회차">{{ a.duration }}</td>
+      {# 회차는 위 '최근 작업'과 같은 사람 이름이다 — 한 화면에서 `_05_10`과
+         '05~10시 (출근)'이 섞였다(1.26.283 검토). 정렬은 코드로 한다(`data-sort`). #}
+      <td data-label="회차" data-sort="{{ a.duration or '' }}">{{ duration_labels.get(a.duration, a.duration) or "—" }}</td>
       <td data-label="차량"><b>{{ a.vehicle_id }}</b></td>
       <td class="num muted" data-label="군집">{{ a.cluster }}</td>
       <td class="num" data-label="대여소">{{ a.stations }}</td>

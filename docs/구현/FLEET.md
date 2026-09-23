@@ -295,9 +295,10 @@ UPDATE vehicle SET active = 0, note = '정비 입고' WHERE vehicle_id = 'V07';
 - **투입 현황** — 출동한 차량 수 / 미출동 대수
 - **형평성** — 누적 작업시간의 최소·최대·편차 (편차가 작을수록 고르게 나뉜 것)
 - **차량별 누적** — 출동 횟수, 처리 대수, 누적 거리·시간, 최근 작업
-  (⚠️ '최근 작업'의 실행·회차는 `run_label`·`duration`을 **각각 사전순 MAX**로 뽑아
-  붙인 값이라, 한 회차가 아닐 수 있고 `runs.created_at` 기준의 '최신'과도 다릅니다 —
-  `db.vehicle_workload`, 고칠 과제)
+  ('최근 작업'은 **기록에 실제로 있는 한 배정**입니다 — `runs.created_at` → 라벨 →
+  하루 순서(`DURATIONS`)로 고르고, `store.vehicle_workload`가 덮습니다(1.26.283).
+  ⚠️ `db.vehicle_workload`의 `last_*` 칸 자체는 여전히 **각각 사전순 MAX**라 한 회차가
+  아닐 수 있습니다 — db.py 고칠 과제. 웹은 그 칸을 쓰지 않습니다.)
 - **회차별 배정 이력** — 실행을 골라서 조회
 
 API로도 제공합니다.

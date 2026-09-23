@@ -21,6 +21,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
+from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -166,6 +167,11 @@ RUN_KIND_LABELS = {
     "probe": "수집",
 }
 templates.env.globals["kind_labels"] = RUN_KIND_LABELS
+
+# 회차(시간대)의 사람 이름도 같은 방식이다 — `project_config.DURATION_LABELS` 한 벌.
+# 칩·지시서 머리가 `_05_10` 같은 코드를 그대로 찍고 있었다(1.26.283). 템플릿은
+# `duration_labels.get(d, d)`로 쓴다 — 모르는 코드는 짐작하지 않고 그대로 둔다.
+templates.env.globals["duration_labels"] = DURATION_LABELS
 
 # 배정 이력 한 쪽에 실을 건수. 실행 1건이 평균 17.2행이므로(실측, 1.26.116)
 # 50이면 대략 3회 실행분이 한 쪽에 들어온다.
@@ -371,7 +377,9 @@ def _year_ago_period(periods) -> Optional[str]:
     return want if want in set(periods) else None
 
 
-def _index_context(error: Optional[str] = None) -> dict:
+def _index_context(error: Optional[str] = None,
+                   kind_changed: Optional[str] = None) -> dict:
+    # `kind_changed`: 방금 종류를 바꾼 실행 — '저장된 실행' 표가 그 행이 든 쪽을 연다.
     # 기간·시간대는 **요청마다 다시 읽는다.** 서버를 띄워 둔 채 새 달치 순수요를
     # 계산해도 곧바로 선택지에 나와야 하기 때문이다(project_config의 상수는
     # import 시점에 굳는다).
@@ -413,9 +421,60 @@ def _index_context(error: Optional[str] = None) -> dict:
         "running": jobs.running_job(),
         "jobs": jobs.list_jobs()[:15],
         "latest": catalog.latest_outputs(),
-        "pipeline_runs": store.records(store.run_labels().head(10)),
+        "pipeline_runs": _saved_runs(),
+        # 종류를 바꾸고 돌아오면 쪽 넘기기가 1쪽에서 시작해 방금 고친 행이 숨었다
+        # (1.26.283 검토 — 표를 10행씩 끊으면서 생겼다). 그 행에 표식을 달면
+        # base.html의 쪽 넘기기가 그 행이 든 쪽을 연다.
+        "kind_changed": kind_changed,
         "error": error,
     }
+
+
+def _run_groups(targets: list) -> list:
+    """(실행, 회차) 목록을 **실행 단위로** 묶는다 (1.26.283).
+
+    반환: `[{run_label, kind, created_at, durations: [{value, label}]}]`. 실행의 순서는
+    `targets`에 처음 나온 순서(= `store.plan_targets()`의 계획 먼저·최신순)이고,
+    회차는 `project_config.DURATIONS`의 하루 순서, 이름은 `DURATION_LABELS`다.
+    `targets`는 `store.records(store.plan_targets())` 모양의 dict 목록이다.
+    """
+    groups: dict = {}
+    for target in targets:
+        label = target["run_label"]
+        group = groups.setdefault(label, {
+            "run_label": label,
+            "kind": target.get("kind"),
+            "created_at": target.get("created_at"),
+            "durations": [],
+        })
+        if target.get("duration") and target["duration"] not in group["durations"]:
+            group["durations"].append(target["duration"])
+    for group in groups.values():
+        group["durations"] = [
+            {"value": d, "label": DURATION_LABELS.get(d, d)}
+            for d in sorted(group["durations"], key=store.duration_rank)]
+    return list(groups.values())
+
+
+def _saved_runs() -> list:
+    """`/run` '저장된 실행' 표의 행 — **최신순 전부**와 실행별 회차 목록 (1.26.283).
+
+    예전에는 `run_labels().head(10)`이라 29개 중 19개에 닿을 길이 없었고(계획 8건이
+    모두 거기 들었다), 앞 10행은 사전 역순이라 전부 실험·수집이었다. 이 표는 종류를
+    **여기서 고치라고** 둔 표다(설명문) — 전부 내려보내고 화면이 쪽으로 끊는다.
+
+    '시간대' 칸은 `runs.duration`(첫 회차 하나)만 보여 네 회차 실행을 `_05_10`으로
+    적었다. 경로가 있는 회차(`vrp_plan`)를 모아 적고, 없으면 `runs.duration`, 그것도
+    없으면 빈 목록(화면은 '—')이다 — 기록에서 읽은 값만 쓴다.
+
+    목록 계산은 `store.saved_runs()` 한 벌이고 `/api/pipeline-runs`도 그것을 준다
+    (화면과 API는 같은 계산). 여기서는 코드에 사람 이름만 붙인다.
+    """
+    runs = store.records(store.saved_runs())
+    for run in runs:
+        run["durations"] = [{"value": d, "label": DURATION_LABELS.get(d, d)}
+                            for d in (run.get("durations") or [])]
+    return runs
 
 
 def _run_kind(run_label: str) -> str:
@@ -503,13 +562,14 @@ def _home_context() -> dict:
 
 
 def _runs_newest_first(rows) -> list:
-    """실행 라벨을 최신순으로. computed_at이 있으면 그것으로, 없으면 라벨순."""
-    if "computed_at" in rows:
-        order = (rows.groupby("run_label")["computed_at"].max()
-                 .sort_values(ascending=False).index.tolist())
-    else:
-        order = sorted(rows["run_label"].unique(), reverse=True)
-    return order
+    """실행 라벨을 최신순으로 — `runs.created_at`, 옛 라벨은 `computed_at`, 그다음 라벨순.
+
+    규칙은 `store.kpi_run_order()` 한 벌이다 — `/kpi` 표·`/api/kpi`의 행 순서도
+    같은 함수로 세우므로, 헤드라인의 '최신'과 표의 첫 행이 갈리지 않는다(1.26.283).
+    기준이 `runs.created_at`인 것은 실행 칩·지시서 기본값과 같은 '최신'을 쓰기
+    위해서다 — 같은 라벨을 다시 돌렸을 때 `computed_at`만 새로워진다.
+    """
+    return store.kpi_run_order(rows)
 
 
 def _kpi_labels_newest_first(rows) -> list:
@@ -524,9 +584,12 @@ def _kpi_labels_newest_first(rows) -> list:
     /kpi만 안 쓰고 있었다 — 화면마다 다른 기준으로 '최신'을 고르면 화면마다
     다른 답이 나온다.
 
-    📌 지금 자료에서는 두 순서가 **우연히 같다.** 그래서 이 값은 눈으로는
-    안 보였다. 다만 `2026-05-21 18`이 실제로는 08-25에 계산된 것처럼 라벨과
-    시각이 갈리는 자료가 이미 있어, 우연에 기대 둘 자리가 아니다.
+    📌 1.26.146에는 이 주석이 *"지금 자료에서는 두 순서가 우연히 같다"* 고 적었다.
+    2026-09-23 자료에서는 **갈린다** — 사전순 1행은 `sweep-21`(08-24)이고 가장 최근
+    실행은 `2026-09-22 휴일 전회차`다. 그런데 표(`db.load_kpi`)는 사전순 그대로라
+    히어로와 표 첫 행이 서로 다른 '최신'을 말했다. 1.26.283부터 `store.kpi()`가 같은
+    규칙(`store.kpi_run_order`)으로 행을 세우고, 그 기준은 실행 칩과 같은
+    `runs.created_at`이다(`runs`에 없는 옛 라벨만 `computed_at`).
     """
     return _runs_newest_first(rows)
 
@@ -551,8 +614,11 @@ def home(request: Request):
 
 
 @app.get("/run")
-def index(request: Request):
-    return templates.TemplateResponse(request, "index.html", _index_context())
+def index(request: Request, kind_changed: Optional[str] = None):
+    # `kind_changed`는 표식을 달 행을 고르는 데만 쓴다 — 없는 라벨이면 아무 행에도
+    # 안 붙어 1쪽이 뜬다(예전 동작). 템플릿이 이스케이프하므로 그대로 넘긴다.
+    return templates.TemplateResponse(request, "index.html",
+                                      _index_context(kind_changed=kind_changed))
 
 
 def _device_frame_path(path: str) -> str:
@@ -748,7 +814,11 @@ def set_run_kind(run_label: str, kind: str = Form(...)):
     except Exception as err:                          # noqa: BLE001
         raise HTTPException(status_code=500,
                             detail=f"실행 종류를 바꾸지 못했습니다: {err}") from err
-    return RedirectResponse(url="/run#saved-runs", status_code=303)
+    # 고친 실행을 주소에 싣는다 — '저장된 실행'이 10행씩 쪽으로 끊겨(1.26.283) 2쪽
+    # 이후 행을 고치면 1쪽으로 돌아와 방금 고친 행이 숨었다. `/run`이 그 행이 든
+    # 쪽을 연다. `quote(safe="")`로 공백·`#`·`&`가 든 라벨도 한 값으로 간다.
+    return RedirectResponse(
+        url=f"/run?kind_changed={quote(run_label, safe='')}#saved-runs", status_code=303)
 
 
 @app.get("/runs/{job_id}")
@@ -836,19 +906,42 @@ def _orders_context(run_label: Optional[str], duration: Optional[str],
                     vehicle: Optional[str] = None) -> dict:
     """작업지시서 화면의 공통 재료. 고르지 않으면 가장 최근 경로를 쓴다."""
     targets = store.records(store.plan_targets())
-    if targets and not run_label:
-        run_label = targets[0]["run_label"]
-        duration = duration or targets[0]["duration"]
+    groups = _run_groups(targets)
+    if groups and not run_label:
+        # 기본값도 **묶음에서** 고른다 — 실행은 계획 먼저·최신순(1.26.125), 회차는
+        # 그 실행의 첫 회차(하루 순서). 예전에는 `targets[0]["duration"]`, 곧 SQL의
+        # 문자열 순서라 아래 폴백·실행 칩과 '첫 회차'의 정의가 둘이었다(1.26.283 검토).
+        run_label = groups[0]["run_label"]
+        if not duration and groups[0]["durations"]:
+            duration = groups[0]["durations"][0]["value"]
     elif run_label and not duration:
         # 🔴 **라벨만 받고 회차를 비워 두면 안 된다** (1.26.262). 회차 없이
         #    `vrp_plan`을 읽으면 그 실행의 **모든 회차**가 한 표로 오고,
         #    차량별로 묶는 순간 한 장에 두 회차의 정거장이 이어 붙는다 — 차고지
         #    복귀가 두 번, 이동거리 합은 두 배였다(실측 재현). 칩은 늘 둘을
         #    함께 넘기지만 손으로 고친 주소·옛 즐겨찾기는 그렇지 않다.
-        #    그 실행의 첫 회차(목록 순서 = 시간대 순)로 채운다.
-        match = next((t for t in targets if t["run_label"] == run_label), None)
-        if match:
-            duration = match["duration"]
+        #    그 실행의 첫 회차(하루 순서 — `_run_groups`가 `DURATIONS`로 세운다)로
+        #    채운다. 예전에는 '목록에서 처음 나온 것'이었는데, `plan_targets`의 조인
+        #    결함으로 목록이 회차순이 아니어서 `brokenmix4-2603`에 `_10_15`가
+        #    골라졌다(1.26.283).
+        match = next((g for g in groups if g["run_label"] == run_label), None)
+        if match and match["durations"]:
+            duration = match["durations"][0]["value"]
+
+    # 실행 → 회차 두 단으로 고른다 (1.26.283). 칩이 (실행, 회차)마다 하나라 72개였고
+    # (1400px에서 488px — 첫 지시서가 y=1011로 첫 화면 밖), 같은 계획의 회차가
+    # 흩어져 있었다. 실험은 **지우지 않고**(1.26.125) 화면이 접어 둔다.
+    current_group = next((g for g in groups if g["run_label"] == run_label), None)
+    # 접어 둘 묶음은 **종류별로** 나눈다 — 수집(`probe`)에 경로가 있으면 '실험' 줄에
+    # 서서 실험이라 불렸다(1.26.283 검토, 점검 기록 4장 "판정할 수 없으면 모른다고
+    # 한다"). 이름은 `kind_labels` 한 벌, 순서는 그 사전의 순서다.
+    folded = []
+    for kind in [k for k in RUN_KIND_LABELS if k != "plan"] + sorted(
+            {g["kind"] for g in groups} - set(RUN_KIND_LABELS), key=str):
+        members = [g for g in groups if g["kind"] == kind]
+        if members:
+            folded.append({"kind": kind, "label": RUN_KIND_LABELS.get(kind, str(kind)),
+                           "groups": members})
 
     # 두 표를 여기서 한 번 읽어 지시서·대조가 같이 쓴다(1.26.262).
     frames = orders.load_frames(run_label, duration) if run_label else None
@@ -864,9 +957,17 @@ def _orders_context(run_label: Optional[str], duration: Optional[str],
         sheets = [s for s in sheets if _sheet_name(s) == vehicle]
 
     return {
+        # 기본값(`targets[0]`)·시험이 쓰는 평평한 목록 — 칩은 아래 묶음으로 그린다.
         "targets": targets,
+        "plan_groups": [g for g in groups if g["kind"] == "plan"],
+        # 계획이 아닌 실행 — 종류마다 `{kind, label, groups}` 한 줄. 화면은 접어 둔다.
+        "folded_kinds": folded,
+        "current_group": current_group,
         "run_label": run_label,
         "duration": duration,
+        # 지시서 머리·요약에 찍는 회차 이름. 종이에 `_05_10`이 아니라
+        # '05~10시 (출근)'으로 남는다. 모르는 코드는 그대로 둔다.
+        "duration_label": DURATION_LABELS.get(duration, duration) if duration else "",
         "sheets": sheets,
         "sheet_names": names,
         # ⚠️ **유효한 값일 때만 넘기면 안 된다.** `vehicle in names`가 아닐
@@ -1399,12 +1500,19 @@ def _envelope(frame: pd.DataFrame, source: str, run_label: Optional[str],
 
 @app.get("/api/pipeline-runs")
 def api_pipeline_runs():
-    """DB에 기록된 파이프라인 실행 이력(최신순).
+    """DB에 기록된 파이프라인 실행 이력 — 최신순(`runs.created_at`, `store.run_labels()`).
+
+    1.26.283 전까지 이 docstring은 *"최신순"* 이라 적었지만 실제로는 라벨 사전
+    역순이었다(`db.list_runs`). 종류로 묶지 않는다 — `/run` '저장된 실행'과 같은 순서다.
+
+    각 행의 `durations`는 경로가 있는 회차 목록(하루 순서)이다 — `duration`은 `runs`에
+    남은 첫 회차 하나뿐이다. `/run` '저장된 실행'의 시간대 칸과 같은
+    `store.saved_runs()`를 쓴다(화면과 API는 같은 계산, 1.26.283).
 
     웹에서 띄운 작업 상태를 보는 /api/runs/{job_id}와는 다른 개념이다.
     이쪽은 산출물이 어느 실행(run_label)에 속하는지를 다룬다.
     """
-    runs = store.run_labels()
+    runs = store.saved_runs()
     return JSONResponse({"count": len(runs), "rows": store.records(runs)})
 
 

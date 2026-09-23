@@ -1933,6 +1933,15 @@
       var status = nav.querySelector(".pager-status");
       var page = 0;
 
+      /* 서버가 표식을 단 덩어리(`data-pager-focus`)가 있으면 그것이 든 쪽에서 시작한다.
+         `/run` 저장된 실행에서 2쪽 이후 행의 종류를 바꾸면 되돌아온 화면이 1쪽이라
+         방금 고친 행이 숨어 있었다(1.26.283). 표식이 없으면 예전처럼 첫 쪽이다. */
+      var focus = box.querySelector("[data-page-item][data-pager-focus]");
+      if (focus) {
+        var at = keys.indexOf(focus.dataset.pageItem);
+        if (at >= 0) page = Math.floor(at / size);
+      }
+
       function render() {
         var shown = keys.slice(page * size, page * size + size);
         items.forEach(function (el) {
