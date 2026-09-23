@@ -198,11 +198,17 @@ def build_candidates(net, st_info, duration, z, warmup, warmup_days, step1):
 
 # ---------------------------------------------------------------- 방법별 계획
 
-def plan_with_clusters(candidates, step1, solver, adjust, seed):
-    """군집 → ILP → VRP. adjust=False면 K-Medoids 결과를 그대로 쓴다(B3)."""
+def plan_with_clusters(candidates, step1, solver, adjust, seed, post=None):
+    """군집 → ILP → VRP. adjust=False면 K-Medoids 결과를 그대로 쓴다(B3).
+
+    `post`는 조정이 끝난 군집표를 받아 군집표를 돌려주는 함수다 — 조정 **뒤에** 손을 댄
+    변형을 같은 ILP·VRP로 재려고 열어 두었다(`experiments/structure/one_sided_clusters.py`).
+    """
     clustered = quiet(step1.make_clustering, candidates.copy(), random_state=seed).copy()
     if adjust:
         clustered = quiet(step1.adjust_clustering, clustered).copy()
+    if post is not None:
+        clustered = post(clustered).copy()
 
     frame = clustered.copy()
     frame["drop_qty"] = frame["rebal_qty"].clip(lower=0).astype(int)

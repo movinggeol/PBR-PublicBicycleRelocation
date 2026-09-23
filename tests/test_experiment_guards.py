@@ -1161,3 +1161,30 @@ def test_실험의_요일_구분은_import한_step_모듈까지_argv로_흐른�
 
     assert module.config.day_type == "holiday"
     assert module.config.period == "25년 11월"
+
+
+def test_한쪽짜리_군집은_짝이_될_가장_가까운_대여소의_군집으로_붙인다():
+    """`one_sided_clusters.py`(1.26.282)의 붙이는 규칙 — 군집 중심이 아니라 **부호가 반대인**
+    가장 가까운 대여소를 본다. 같은 쪽 대여소 곁으로 보내면 ILP가 여전히 짝을 못 짓는다."""
+    for path in (PROJECT_ROOT, PROJECT_ROOT / "experiments" / "baseline"):
+        if str(path) not in sys.path:
+            sys.path.insert(0, str(path))
+    spec = importlib.util.spec_from_file_location(
+        "one_sided_clusters", PROJECT_ROOT / "experiments" / "structure" / "one_sided_clusters.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    frame = pd.DataFrame({
+        "station_id": ["A", "B", "C", "D", "E"],
+        "rebal_qty": [3, -4, 5, -2, 6],
+        "cluster": [0, 0, 1, 2, 2],
+        # C(배송만, 군집 1)에 가장 가까운 것은 E(군집 2)지만 E도 배송이다 — 짝은 B(군집 0)다
+        "lat": [36.40, 36.302, 36.300, 36.50, 36.3005],
+        "lon": [127.40, 127.302, 127.300, 127.50, 127.3005],
+    })
+
+    assert module.one_sided(frame) == [1]
+    merged = module.merge_one_sided(frame)
+    assert merged.loc[merged["station_id"] == "C", "cluster"].item() == 0
+    assert module.one_sided(merged) == []
+    assert merged.drop(index=2).equals(frame.drop(index=2)), "다른 대여소는 그대로다"

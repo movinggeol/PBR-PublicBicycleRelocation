@@ -135,6 +135,7 @@ python experiments/baseline/repeat_eval.py --periods "25년 09월,25년 10월,25
 | `stock_nowcast_signal.py` | **회차 시작 재고를 계획 시각 재고로 미리 맞힐 수 있나** (ML 고도화 F1의 착수 전 검사) | ❌ **GBM은 사전 등록을 못 넘는다(4/12).** 대신 파이프라인이 이미 아는 순수요 평균을 빼 주는 **비-ML 보정**이 `_10_15` 작업대상급 오차를 7.1 → 3.3대로 줄이고, `_05_10`은 밤새 재고가 안 움직여 전날 계획해도 된다(EXPERIMENTS 38장 · [ML_고도화_계획](../docs/분석/ML_고도화_계획.md)) |
 | `outlier_impact.py` | 이상치 제거가 계획을 바꾸나 | 바꾼다(작업 대상 13.4%). **그런데 IQR이 자르는 것은 오류가 아니라 정상 상위 4%였다** — 옮기지 않는다 |
 | `budget_split.py` | 예산 초과 군집을 **쪼개면** 예산을 지키나 | 🔴 **지키는 것처럼 보이지만 일을 버린다** — 좌표로 가르면 ILP가 짝지은 pick↔drop이 깨져 **4.5~22.1%를 못 옮긴다.** 배율 1.32에서는 21대를 다 써도 초과가 남는다. 쪼개려면 **ILP를 다시 풀어야** 한다(26장) |
+| `one_sided_clusters.py` | 조정 뒤 남는 **한쪽짜리 군집**(수거만·배송만)을 이웃에 붙이면 결품이 나아지나 | **채택 안 함** — 18개 조합 중 15개에 남지만 붙여도 38곳 중 7곳만 계획이 생기고(받는 군집도 같은 쪽으로 기울었다), 결품 −0.011h · 예산 초과 72 → 76건(EXPERIMENTS 39장) |
 | `multi_cluster_route.py` | 차량 1대가 **군집 여럿을 이어 돌면** 값어치가 있나 | **맞교환이다.** 2개씩 묶으면 차량 48 → **25대**·거리 **−23.2%**·차고지 왕복 65% → 43%, 대가는 최장 소요 2.6 → **3.5시간**. 3개씩은 17대·−34.6%지만 5.2시간. 현행 유지 — **성능 한계가 아니라 미확인 운영 조건**이다(8·27장) |
 | `fleet_outage_stress.py` | 차량 정비 결원이 **여러 회차** 이어지면 견디나 | **5대까지 견딘다**(25장). 🔴 창 안 미수렴을 *창+1*로 세던 것을 고쳤다 — 결원 5대의 *"7회차"* 는 12회차에서 관측되지 않았다(30회차로 확인, 1.26.241) |
 | `fulfill_gross.py` | 순수요 충족률을 **총 대여 건수**로 재면 달라지나 | **달라지고, 순서까지 뒤집힌다.** 순수요는 총 대여의 **18~44%만** 센다(분모 2.3~5.4배). `_15_20`은 총대여 기준이 **더 높다**(0.489 대 0.378) — 둘은 상·하한이 아니라 **다른 물음**이다(29장) |
@@ -146,6 +147,7 @@ python experiments/baseline/repeat_eval.py --periods "25년 09월,25년 10월,25
 
 ```powershell
 python experiments/structure/budget_split.py --road-factor 1.32  # 초과 군집 쪼개기
+python experiments/structure/one_sided_clusters.py --periods "25년 11월,26년 03월"  # 한쪽짜리 군집 붙이기
 python experiments/structure/multi_cluster_route.py --chain-size 2  # 군집 연쇄 주행
 python experiments/structure/fulfill_gross.py       # 충족률 두 정의 비교
 python experiments/structure/net_vs_volume.py     # 이용량 ↔ 필요량 상관
