@@ -40,21 +40,25 @@
     <p class="value">{{ budget.rate }}%</p>
     <p class="sub">{{ budget.total }}회차 중 {{ budget.within }}회차가
       {% if budget.limits and budget.limits | length > 1 %}각 실행의 시간 예산 안에{% else %}{{ budget.limit | round | int }}분 안에{% endif %} 완료<br>
-      <span class="muted">{% if selected_run %}실행 “{{ selected_run }}”만{% else %}전체 실행{% endif %}</span></p>
+      {# 거른 조건을 **모두** 밝힌다 — 차량으로 좁혔는데 '전체 실행'이라 적으면 거짓이다(1.26.284). #}
+      <span class="muted">{% if selected_run %}실행 “{{ selected_run }}”{% else %}전체 실행{% endif %}{% if selected_vehicle %} · 차량 {{ selected_vehicle }}{% endif %}{% if selected_run or selected_vehicle %}만{% endif %}</span></p>
   </div>
   {% endif %}
 </div>
 
+{# 차량으로 좁혔으면 알림도 그 차량만 센 값이다 — 범위를 말하지 않으면 바로 아래 '차량별 누적 ·
+   전체 실행 합계' 머리와 붙어 전체 차량의 판정처럼 읽혔다(1.26.284 검토). #}
+{% set who = ("차량 " ~ selected_vehicle ~ "의 ") if selected_vehicle else "" %}
 {% if budget and budget.over %}
 <div class="alert bad">
-  <span><b>{{ budget.over }}건이 시간 예산을 넘었습니다.</b>
+  <span><b>{{ who }}{{ budget.over }}건이 시간 예산을 넘었습니다.</b>
   작업이 늦어지면 계획이 겨냥한 시간대가 이미 지나가 버려 효과가 줄어듭니다.
   아래 표에서 붉은 배경에 ⚠가 붙은 행입니다{% if pages > 1 %} —
   <span class="muted">이 수는 전체 {{ assignments_total }}건을 센 것이라,
     {{ pages }}쪽에 나뉘어 있습니다</span>{% endif %}.</span>
 </div>
 {% elif budget %}
-<div class="alert ok"><span>모든 작업이 시간 예산 안에서 끝납니다.</span></div>
+<div class="alert ok"><span>{% if selected_vehicle %}차량 {{ selected_vehicle }}의 {% endif %}모든 작업이 시간 예산 안에서 끝납니다.</span></div>
 {% endif %}
 
 <h2>차량별 누적 <span class="hint">전체 실행 합계</span></h2>
@@ -110,7 +114,10 @@
          실행·회차를 따로 사전순 MAX로 붙여 21대 모두 없는 조합 `sweep-21 _20_05`였다.
          그 차량의 그 회차 지시서로 바로 간다. 실험이면 밝힌다(표는 실험도 합친다). #}
       <td class="muted" data-label="최근 작업">{% if v.last_run %}<a class="muted" href="/orders?run_label={{ v.last_run | urlencode }}{% if v.last_duration %}&duration={{ v.last_duration | urlencode }}{% endif %}&vehicle={{ v.vehicle_id | urlencode }}" title="이 차량의 그 회차 작업지시서">{{ v.last_run }} · {{ duration_labels.get(v.last_duration, v.last_duration) }}</a>{% if v.last_kind and v.last_kind != "plan" %} <span class="hint">{{ kind_labels.get(v.last_kind, v.last_kind) }}</span>{% endif %}{% else %}—{% endif %}</td>
-      <td data-label="이력"><a class="muted" href="/api/vehicles/assignments?vehicle_id={{ v.vehicle_id }}" title="이 차량의 배정 이력 원자료(JSON)">JSON</a></td>
+      {# 사람이 보는 표의 링크는 화면으로 보낸다 — 이 차량의 배정 이력을 이 화면에서 좁혀 본다
+         (1.26.284, `/run` 저장된 실행이 1.26.264에 고친 것과 같은 부류). 원자료 JSON은 작게 남긴다. #}
+      <td data-label="이력"><span class="row-links"><a href="/vehicles?vehicle_id={{ v.vehicle_id | urlencode }}#assignments" title="이 차량의 배정 이력만 봅니다">이력</a> ·
+        <a class="muted" href="/api/vehicles/assignments?vehicle_id={{ v.vehicle_id }}" title="이 차량의 배정 이력 원자료(JSON)">JSON</a></span></td>
     </tr>
     {% endfor %}
     </tbody>
@@ -122,15 +129,27 @@
   {% endif %}
 </div>
 
-<h2>회차별 배정 이력
+{# `id`는 사람이 붙인다 — 누적 표의 '이력'과 /kpi 표의 ⚠가 여기로 온다(1.26.284). 차례
+   스크립트의 `sec-N`은 절 수에 따라 번호가 밀려 앵커로 못 쓴다. #}
+<h2 id="assignments">회차별 배정 이력
   {% if assignments_total %}<span class="hint">{{ assignments_total }}건</span>{% endif %}</h2>
 
 {% if runs %}
 {# 계획 먼저·최신순, 실험은 다음 줄, 좁은 화면에서는 접는다 — /kpi와 같은 매크로(1.26.283).
    ⚠️ 칩은 시각순이지만 아래 표는 `db.assignment_history`가 SQL에서 라벨 사전순으로
-   쪽을 끊으므로 여기서는 못 바꾼다(db.py는 이 판의 범위 밖 — 버전관리 1.26.283). #}
+   쪽을 끊으므로 여기서는 못 바꾼다(db.py는 이 판의 범위 밖 — 버전관리 1.26.283).
+   차량 하나를 보던 중이면 실행을 바꿔도 그 차량을 이어 간다(`keep`, 1.26.284). #}
 {% from "_run_picker.html" import run_picker %}
-{{ run_picker(runs, selected_run, "/vehicles") }}
+{{ run_picker(runs, selected_run, "/vehicles", keep_vehicle) }}
+{% endif %}
+
+{% if selected_vehicle %}
+{# /orders의 '한 대만 보고 있습니다'와 같은 모양이다. 푸는 링크는 실행 조건은 남긴다. #}
+{# 타일 문장은 타일이 있을 때만 — 배정이 0건이면 예산 타일이 그려지지 않는데 '위 시간 예산 타일도'
+   라고 없는 타일을 가리켰다(1.26.284 검토, 실측 V99). #}
+<div class="alert no-print"><span><b>{{ selected_vehicle }}</b> 한 대의 배정 이력만 보고 있습니다
+  {%- if budget %} — 위 시간 예산 타일과 그 아래 알림도 이 차량만 셉니다(누적 표와 막대는 그대로 전체입니다){% endif %}.
+  <a href="/vehicles{% if selected_run %}?run_label={{ selected_run | urlencode }}{% endif %}#assignments">전체 차량 보기</a></span></div>
 {% endif %}
 
 <div class="card flush">
@@ -142,17 +161,23 @@
       <th scope="col" class="num"><span class="tip" data-tip="이 차량이 맡은 대여소 덩어리의 번호입니다.">군집</span></th>
       <th scope="col" class="num">대여소</th><th scope="col" class="num">옮긴 대수</th>
       <th scope="col" class="num">거리</th>
-      <th scope="col" class="num"><span class="tip" data-tip="이동 시간 + 자전거를 싣고 내리는 시간입니다. {{ time_budget | round | int }}분을 넘으면 붉게 표시됩니다.">작업 시간</span></th>
+      <th scope="col" class="num"><span class="tip" data-tip="이동 시간 + 자전거를 싣고 내리는 시간입니다. 그 회차가 계획될 때의 시간 예산(기록이 없으면 {{ time_budget | round | int }}분)을 넘으면 붉게 표시됩니다.">작업 시간</span></th>
     </tr></thead>
     <tbody>
     {% for a in assignments %}
-    {% set over = a.minutes is not none and a.minutes > time_budget %}
+    {# 붉은 행은 위 타일·알림과 **같은 예산**(그 회차가 계획될 때의 예산, `budget_minutes`)으로
+       가른다 — 예전에는 여기만 상수라, 예산이 더 작은 실행에서 알림은 '넘었다'는데 붉은 행이
+       0개였다(1.26.284 검토, `/kpi` 표의 ⚠가 여기로 온다). #}
+    {% set over = a.minutes is not none and a.minutes > (a.budget_minutes or time_budget) %}
     <tr{% if over %} class="over-budget"{% endif %}>
       <td class="muted" data-label="">{{ a.run_label }}</td>
       {# 회차는 위 '최근 작업'과 같은 사람 이름이다 — 한 화면에서 `_05_10`과
          '05~10시 (출근)'이 섞였다(1.26.283 검토). 정렬은 코드로 한다(`data-sort`). #}
       <td data-label="회차" data-sort="{{ a.duration or '' }}">{{ duration_labels.get(a.duration, a.duration) or "—" }}</td>
-      <td data-label="차량"><b>{{ a.vehicle_id }}</b></td>
+      {# 한 번 누르면 **그 차량의 그 회차 지시서** 한 장이다(1.26.284) — 예전에는 글자뿐이라 ⚠ 행의
+         경로를 보려면 /orders에서 실행·회차·차량 칩을 다시 골라야 했다. 이름은 `_sheet_name`과
+         같은 값(차량 ID)이다. #}
+      <td data-label="차량"><a href="/orders?run_label={{ a.run_label | urlencode }}{% if a.duration %}&duration={{ a.duration | urlencode }}{% endif %}&vehicle={{ a.vehicle_id | urlencode }}" title="이 차량의 이 회차 작업지시서"><b>{{ a.vehicle_id }}</b></a></td>
       <td class="num muted" data-label="군집">{{ a.cluster }}</td>
       <td class="num" data-label="대여소">{{ a.stations }}</td>
       <td class="num" data-label="옮긴 대수">{{ a.bikes }}</td>
@@ -175,7 +200,9 @@
   {% if pages > 1 %}
   <nav class="pager" aria-label="배정 이력 쪽 넘기기"
        style="padding:0 var(--sp-lg) var(--sp-md)">
-    {% set base = "/vehicles?run_label=" ~ (selected_run | urlencode) ~ "&" if selected_run else "/vehicles?" %}
+    {# 쪽 주소의 앞부분은 라우트가 실행·차량을 **함께** 인코딩해 준다(`page_base`, 1.26.284) —
+       예전에는 여기서 `run_label`만 이어 붙여, 차량을 좁힐 인자가 생기면 쪽을 넘길 때 풀렸다. #}
+    {% set base = page_base %}
     {% if page > 1 %}
     <a class="btn ghost sm" href="{{ base }}page={{ page - 1 }}" rel="prev">← 이전</a>
     {% endif %}
@@ -190,7 +217,11 @@
   {% else %}
   {# 실행을 고른 상태라면 '실행하세요'가 틀린 안내다 — 이력은 있는데 그 실행에만
      없는 것이므로, 필터를 푸는 쪽을 알려 준다. #}
-  {% if selected_run %}
+  {% if selected_vehicle %}
+  {# 차량으로 좁혀 빈 자리도 필터를 푸는 링크다(DESIGN.md '빈 상태', 1.26.284). #}
+  <p class="empty">{% if selected_run %}실행 “{{ selected_run }}”에서 {% endif %}차량 “{{ selected_vehicle }}”의 배정 이력이 없습니다.
+    <a href="/vehicles{% if selected_run %}?run_label={{ selected_run | urlencode }}{% endif %}">전체 차량 보기</a></p>
+  {% elif selected_run %}
   <p class="empty">실행 “{{ selected_run }}”에는 배정 이력이 없습니다.
     <a href="/vehicles">전체 실행 보기</a></p>
   {% else %}

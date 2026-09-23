@@ -16,21 +16,25 @@
      390px에서는 '전체 계획'이 한 말처럼 읽혔다(1.26.283 검토). '전체'는 두 종류를
      다 보는 것이라 계획 줄에 넣지 않고 제 줄에 둔다.
 
-   base: 칩 주소의 앞부분(`/kpi` · `/vehicles`). #}
-{% macro run_picker(runs, selected_run, base) -%}
+   base: 칩 주소의 앞부분(`/kpi` · `/vehicles`).
+   keep: 실행을 바꿔도 **이어 갈 다른 조건**의 쿼리 조각(이미 인코딩된 `vehicle_id=V03`) —
+     `/vehicles`에서 차량 하나를 보던 중 실행을 바꾸면 그 차량이 풀리지 않게 한다(1.26.284).
+     비우면 예전 주소 그대로다. 부르는 쪽이 `urlencode`로 만든 값만 넘긴다(그래서 `safe`). #}
+{% macro run_picker(runs, selected_run, base, keep="") -%}
 {% set plans = runs | selectattr("kind", "equalto", "plan") | list %}
 {% set others = runs | rejectattr("kind", "equalto", "plan") | list %}
+{% set tail = ("&" ~ keep) if keep else "" %}
 <details class="m-fold no-print" open>
   <summary>실행 고르기 <span class="hint">· {{ selected_run or "전체" }} ({{ runs | length }}개)</span></summary>
   <div class="filterbar">
     <span class="label">실행</span>
-    <a class="chip" href="{{ base }}" {% if not selected_run %}aria-current="true"{% endif %}>전체</a>
+    <a class="chip" href="{{ base }}{% if keep %}?{{ keep | safe }}{% endif %}" {% if not selected_run %}aria-current="true"{% endif %}>전체</a>
   </div>
   {% if plans %}
   <div class="filterbar">
     <span class="label">계획</span>
     {% for r in plans %}
-    <a class="chip" href="{{ base }}?run_label={{ r.run_label | urlencode }}"
+    <a class="chip" href="{{ base }}?run_label={{ r.run_label | urlencode }}{{ tail | safe }}"
        {% if selected_run == r.run_label %}aria-current="true"{% endif %}>{{ r.run_label }}</a>
     {% endfor %}
   </div>
@@ -39,7 +43,7 @@
   <div class="filterbar">
     <span class="label">실험</span>
     {% for r in others %}
-    <a class="chip" href="{{ base }}?run_label={{ r.run_label | urlencode }}"
+    <a class="chip" href="{{ base }}?run_label={{ r.run_label | urlencode }}{{ tail | safe }}"
        {% if selected_run == r.run_label %}aria-current="true"{% endif %}>{{ r.run_label }}</a>
     {% endfor %}
   </div>

@@ -256,13 +256,46 @@ def test_trend_weights_rounds_by_station_count():
 
 
 def test_cost_benefit_prefers_stockout_and_says_so():
+    """시간대는 색이 아니라 글자로 구분한다. 1.26.284부터 그 글자는 코드(`_05_10`)가 아니라
+    `DURATION_LABELS`의 사람 이름이다 — 같은 `/kpi` 화면의 표·칩과 표기를 맞춘다. 코드는
+    `duration`에 그대로 남는다(정렬·주소가 쓴다)."""
+    from project_config import DURATION_LABELS
+
     rows = pd.DataFrame([_kpi(), _kpi(duration="_10_15")])
     result = kpi_view.cost_benefit(rows)
 
     assert result["y_label"] == "결품 감소 (시간)"
     assert [p["y"] for p in result["points"]] == [1.0, 1.0]
-    assert result["points"][0]["label"] == "_05_10", (
-        "시간대는 색이 아니라 글자로 구분하고, 표기는 맨 앞 밑줄까지가 값이다")
+    first = result["points"][0]
+    # 점 옆 글자는 이름의 괄호 앞까지다 — 전체 이름은 넓어 이름표를 붙인 점이 17 → 9개로 줄었다
+    # (1.26.284 검토 실측). 풍선·표 보기는 전체 이름이다.
+    assert first["label"] == kpi_view.duration_name("_05_10", short=True) == "05~10시", \
+        "점 이름표가 회차 이름(짧은 형태)이 아니다"
+    assert first["name"] == DURATION_LABELS["_05_10"]
+    assert first["duration"] == "_05_10", "코드는 따로 남아야 한다"
+    assert DURATION_LABELS["_05_10"] in first["tip"] and "_05_10" not in first["tip"], \
+        "풍선이 코드로 남으면 한 화면에서 표기가 갈린다"
+    assert all("_05_10" not in name and "_10_15" not in name for name, _, _ in result["table"]), \
+        "표 보기가 코드로 남았다"
+    assert any(DURATION_LABELS["_10_15"] in name for name, _, _ in result["table"]), \
+        "표 보기는 전체 이름이어야 한다"
+
+
+def test_점_옆_짧은_이름은_전체_이름의_앞머리이고_더_좁다():
+    """점 옆 글자의 짧은 형태는 `kpi_view.duration_name(short=True)` 한 곳에서 만든다 (1.26.284 검토).
+
+    전체 이름('05~10시 (출근)')을 점 옆에 붙였더니 글자가 넓어 빈자리를 찾은 점이 72개 중 17개
+    → 9개로 줄었다(실측, 조용한 정보 손실). 짧은 형태는 전체 이름의 앞머리라 표·풍선과 표기가
+    갈리지 않고, 폭은 코드와 비슷하다. 모르는 코드는 짐작하지 않고 그대로 둔다."""
+    from project_config import DURATION_LABELS, DURATIONS
+
+    for d in DURATIONS:
+        full, short = kpi_view.duration_name(d), kpi_view.duration_name(d, short=True)
+        assert full == DURATION_LABELS[d] and full.startswith(short) and short
+        assert charts._label_width(short) < charts._label_width(full)
+        assert charts._label_width(short) <= charts._label_width(d) + 11, "코드보다 한 글자 넘게 넓다"
+    assert kpi_view.duration_name("_07_09", short=True) == "_07_09"
+    assert kpi_view.duration_name(None) == ""
 
 
 def test_cost_benefit_falls_back_without_mixing_two_meanings():
@@ -639,3 +672,32 @@ def test_히트맵_풍선이_방향을_글자로_말한다():
 
     svg2 = charts.heatmap(["월"], ["09"], [[-8.0]], unit="대")
     assert "쌓임 · 빼내야 함" in svg2
+
+
+def test_점_이름표의_폭은_한글을_넓게_센다():
+    """산점도 점 이름표가 회차 코드(`_05_10`)에서 이름('05~10시 (출근)')으로 바뀌었다 (1.26.284).
+    폭 어림이 글자 수 × 6.6px 하나라 한글 두 자를 13px(실제 약 22px)로 잡았다 — 좁게 잡으면
+    '안 겹친다'고 놓고 실제로는 겹친다. 전각 글자는 넓게 센다. 겹치는 자리에는 여전히 놓지 않는다."""
+    from project_config import DURATION_LABELS
+
+    name = DURATION_LABELS["_05_10"]
+    hangul = sum(1 for ch in name if ord(ch) >= 0x1100)
+    assert hangul > 0, "시험 전제: 이름에 한글이 있어야 한다"
+    assert charts._label_width(name) > len(name) * 6.6 + 2, "한글을 라틴 글자 폭으로 셌다"
+    assert charts._label_width("_05_10") == pytest.approx(len("_05_10") * 6.6 + 2), \
+        "코드처럼 라틴 글자만 있으면 예전과 같다"
+
+    # 두 점이 가까우면 둘째 이름표는 빈자리를 찾거나 포기한다 — 겹쳐 찍지 않는다
+    points = [{"x": 10.0, "y": 1.0, "label": name}, {"x": 10.4, "y": 1.0, "label": name},
+              {"x": 90.0, "y": 0.2, "label": name}]
+    svg = charts.scatter(points, x_key="x", y_key="y", x_label="거리", y_label="결품")
+    boxes = []
+    for m in re.finditer(r'<text x="([\d.]+)" y="([\d.]+)" class="viz-value" text-anchor="(\w+)">', svg):
+        x, y, anchor = float(m.group(1)), float(m.group(2)), m.group(3)
+        w = charts._label_width(name)
+        left = x - (w / 2 if anchor == "middle" else (w if anchor == "end" else 0))
+        boxes.append((left, y - 9, left + w, y + 3))
+    for i, a in enumerate(boxes):
+        for b in boxes[i + 1:]:
+            assert not (a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]), \
+                f"이름표가 겹쳤다: {a} {b}"

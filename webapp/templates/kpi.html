@@ -16,15 +16,84 @@
   {%- endif -%}
 {%- endmacro %}
 
+{# 증감 딱지 — 네 타일과 결품 타일이 **같은 것**을 쓴다(1.26.284). 방향(▲▼)은 값이 오르내린
+   쪽, 색(good/bad)은 그 지표가 좋아진 쪽이다. 결품처럼 낮을수록 좋은 지표는 `lower_is_better`로
+   뒤집는다 — 예전에는 결품 타일에만 초록 ▼를 **박아** 두어, 결품이 늘어도 초록이었다.
+   ⚠️ 딱지를 낼지는 **찍힐 값**으로 가른다(1.26.284 검토). 문턱이 `|delta| > 0.001`이면 표시 단위
+   (정수 %, 소수 둘째)보다 작아서, 실측 `sweep-16`의 결품 타일에 빨간 '▲ 0.0', `brokenmix4-2506`의
+   개선률 타일에 초록 '▲ 0%'가 떴다 — 0으로 보이는 증감에 색을 칠하면 없는 변화를 말한다.
+   아래 판정은 `fmt`와 같은 반올림이다(pct는 백분율 정수, 그 밖은 소수 둘째). #}
+{% macro delta_badge(delta, kind, lower_is_better=false) -%}
+  {%- if delta is not none -%}
+  {%- set shown = (((delta | abs) * 100) | round(0)) if kind == "pct" else ((delta | abs) | round(2)) -%}
+  {%- if shown > 0 -%}
+  {%- set better = (delta < 0) if lower_is_better else (delta > 0) -%}
+  <span class="delta {{ 'good' if better else 'bad' }}">{{ '▲' if delta > 0 else '▼' }} {{ fmt(delta | abs, kind) }}</span>
+  {%- endif -%}
+  {%- endif -%}
+{%- endmacro %}
+
+{# 비교 조건을 사람 말로 — '휴일 · 운영 계획 · 회차 4개 · 26년 03월'. 요일 구분은 기록이 없으면
+   그렇다고 적는다(짐작하지 않는다). 이름은 전역 `day_type_labels`·`kind_labels` 한 벌이다.
+   수요 기간은 짝을 가르는 조건이 아니지만(`kpi_view.COMPARE_KEYS`) 함께 적는다 — 읽는 사람이
+   두 실행의 달을 볼 수 있어야 한다(C05 반박자 조정안, 1.26.284 검토). #}
+{% macro condition_text(c) -%}
+  {{ day_type_labels.get(c.day_type, c.day_type) if c.day_type else "요일 구분 기록 없음" }}
+  · {% if c.kind != "plan" %}<b>{{ kind_labels.get(c.kind, c.kind) }}</b>{% else %}{{ kind_labels.get(c.kind, c.kind) }}{% endif %}
+  · 회차 {{ c.durations | length }}개
+  {%- if c.period %} · {{ c.period }}{% endif %}
+{%- endmacro %}
+
 {% block content %}
 {# 오른쪽 차례. 항목은 스크립트가 아래 h2에서 읽는다 — 여기 손으로 적지 않는다.
    다른 화면에 도입할 때도 이 한 줄만 두면 된다. #}
 <div data-toc="이 화면의 절" hidden></div>
+{# 히어로는 **무엇을 보고 있는지**와 **증감이 무엇 대비인지**를 말한다 (1.26.284).
+   - 실행을 고르면 '고른 실행 X만 봅니다'와 푸는 링크를 낸다. 예전에는 골라도 *"가장 최근
+     실행은 X입니다"* 라고 해서, 가장 오래된 실행을 고르면 그것을 '가장 최근'이라 불렀다.
+     히어로는 인쇄에서도 남으므로(`.filterbar`만 지운다) 종이에도 고른 범위가 찍힌다.
+   - 증감은 **같은 조건**(종류·요일 구분·회차 구성)의 앞선 실행 대비다. 짝이 없으면 증감을
+     비우고 까닭을 말한다 — 평일과 휴일은 섞지 않는다(`kpi_view.comparable_previous`). #}
+{% set cond = baseline.condition if baseline else none %}
+{% set base_cond = baseline.baseline_condition if baseline else none %}
 <section class="hero">
   <h1>성과 지표</h1>
-  <p class="lead">계획이 목표 재고를 얼마나 채웠는지, 그러기 위해 얼마나 움직였는지를 봅니다.
-    {% if cards %}가장 최근 실행은 <b>{{ latest_label }}</b>{% if previous_label %},
-    증감은 직전 <b>{{ previous_label }}</b> 대비{% endif %}입니다.{% endif %}</p>
+  <p class="lead">계획이 목표 재고를 얼마나 채웠는지, 그러기 위해 얼마나 움직였는지를 봅니다.</p>
+  {# 푸는 링크는 종이에 남기지 않는다(`no-print`) — 무엇을 골랐는지 문장만 남는다.
+     링크 글자는 한 덩어리로 둔다(`.keep-links`) — 1300px에서 '한 실행만 보'/'기'로 쪼개져
+     마지막 글자 하나가 다음 줄 맨 앞에 홀로 남았다(1.26.284 검토). 줄은 ' · ' 사이에서만 바뀐다.
+     '다른 실행 고르기'는 좁은 화면에서 접힌 실행 고르기를 **펴고** 간다(`data-open-fold`) — 제목에만
+     닿고 칩은 접힌 채라 한 번 더 눌러야 했다. #}
+  {% if selected_run %}
+  <p class="lead" data-kpi-scope>
+    {%- if rows %}고른 실행 <b>{{ selected_run }}</b>({{ condition_text(cond) }})만
+    봅니다. 수요 예측·수요 구조는 전체 자료입니다.
+    {%- elif not known_run %}기록된 실행이 아닙니다: <b>{{ selected_run }}</b>.
+    {%- else %}고른 실행 <b>{{ selected_run }}</b>에는 성과 지표 기록이 없습니다.{% endif %}
+    <span class="no-print keep-links"><a href="/kpi">전체 실행 보기</a> ·
+      <a href="#kpi-runs" data-open-fold="#kpi-runs ~ details.m-fold">다른 실행 고르기</a></span></p>
+  {% elif latest_label %}
+  <p class="lead" data-kpi-scope>가장 최근 실행은 <b>{{ latest_label }}</b>({{ condition_text(cond) }})입니다.
+    <span class="no-print keep-links"><a href="#kpi-runs" data-open-fold="#kpi-runs ~ details.m-fold">한 실행만 보기</a></span></p>
+  {% endif %}
+  {# 증감의 짝은 **종류·요일 구분·회차 구성**이 같은 것이다 — '같은 조건'이라고만 쓰면 수요 기간까지
+     같다고 읽힌다(1.26.284 검토 실측: `brokenmix4-2506`(25년 06월)의 짝이 26년 03월 실행). 기간이
+     다르면 그렇다고 적고, 한쪽 기록이 없으면 같은 달인지 모른다고 적는다(짐작하지 않는다). #}
+  {% if cards %}
+  <p class="lead" data-kpi-baseline>
+    {%- if previous_label %}증감(▲▼)은 종류·요일 구분·회차 구성이 같은 앞선 실행
+    <b>{{ previous_label }}</b>{% if base_cond and base_cond.period %}({{ base_cond.period }}){% endif %} 대비입니다.
+      {%- if cond.period and base_cond.period and cond.period != base_cond.period %}
+      <b>수요 기간이 다릅니다</b>({{ cond.period }} ↔ {{ base_cond.period }}) — 달이 바뀐 몫도 증감에 섞여 있습니다.
+      {%- elif not (cond.period and base_cond.period) %} 수요 기간 기록이 없어 같은 달 자료인지는 모릅니다.{% endif %}
+    {%- elif baseline and baseline.reason == "day_type_unknown" %}요일 구분(평일·휴일) 기록이 없는 실행이라
+    증감을 내지 않습니다.
+    {%- else %}종류·요일 구분·회차 구성이 같은 앞선 실행이 없어 증감을 내지 않습니다 — 이 셋이
+    다른 실행과는 견주지 않습니다.{% endif %}
+    {#- 기호 없이 글로 쓴다 — VS16이 붙은 '⚠️'는 컬러 이모지(주황)로 그려져 같은 화면 표의 '⚠'(경고
+        글자색)와 모양·색이 갈렸다(DESIGN.md '강조색 하나', 1.26.284 검토). #}
+    {%- if cond and cond.kind != "plan" %} <b>운영 계획이 아닌 실행</b>입니다.{% endif %}</p>
+  {% endif %}
 </section>
 
 {% if cards %}
@@ -32,17 +101,19 @@
   {% for c in cards %}
   <div class="tile">
     <p class="label">{% if c.tip %}<span class="tip" data-tip="{{ c.tip }}">{{ c.label }}</span>{% else %}{{ c.label }}{% endif %}</p>
-    <p class="value">{{ fmt(c.value, c.fmt) }}{% if c.delta is not none and c.delta | abs > 0.001 %}<span
-        class="delta {{ 'good' if c.delta > 0 else 'bad' }}">{{ '▲' if c.delta > 0 else '▼' }} {{ fmt(c.delta | abs, c.fmt) }}</span>{% endif %}</p>
+    <p class="value">{{ fmt(c.value, c.fmt) }}{{ delta_badge(c.delta, c.fmt, c.lower_is_better) }}</p>
   </div>
   {% endfor %}
 
   {% if stockout %}
-  <div class="tile">
+  {# ▲▼는 다른 타일과 같은 **앞선 실행 대비**다. 재배치 전후의 차이는 부제에 글로 적는다 —
+     예전에는 그 차이를 이 자리에 초록 ▼로 찍어 '직전보다 1.25시간 좋아졌다'로 읽혔다(1.26.284).
+     비율은 첫 화면과 같은 함수(`kpi_view.stockout_cut_pct`)라 두 화면의 숫자가 같다. #}
+  <div class="tile" data-stockout-tile>
     <p class="label"><span class="tip" data-tip="대여소에 자전거가 한 대도 없어 빌리려던 사람이 그냥 돌아가는 시간입니다. 대여소·일 평균이며, 이 프로젝트가 실제로 줄이려는 값입니다.">결품 시간</span></p>
-    <p class="value">{{ stockout.after | round(2) }}<span class="unit">시간</span><span
-        class="delta good">▼ {{ stockout.cut | round(2) }}</span></p>
-    <p class="sub">대여소·일 평균 · 재배치 전 {{ stockout.before | round(2) }}시간</p>
+    <p class="value">{{ stockout.after | round(2) }}<span class="unit">시간</span>{{ delta_badge(stockout.delta, "num", stockout.lower_is_better) }}</p>
+    <p class="sub">대여소·일 평균 · 재배치 전 {{ stockout.before | round(2) }}시간
+      {%- if stockout.cut_pct is not none %} · {% if stockout.cut_pct > 0 %}{{ stockout.cut_pct }}% 감소{% elif stockout.cut_pct < 0 %}{{ -stockout.cut_pct }}% 증가{% else %}변화 없음{% endif %}{% endif %}</p>
   </div>
   {% endif %}
 </div>
@@ -61,7 +132,7 @@
     <p style="margin-top:.6em">
       <b>관측으로 맞대어 본 결과</b>:
       {% for c in calibration %}
-      {{ c.duration }}에서 실측이 복원의 <b>{{ "%.2f"|format(c.ratio) }}배</b>{% if not loop.last %}, {% endif %}
+      {{ duration_labels.get(c.duration, c.duration) }}에서 실측이 복원의 <b>{{ "%.2f"|format(c.ratio) }}배</b>{% if not loop.last %}, {% endif %}
       {% endfor %}
       였습니다. 복원은 재고가 0일 때 못 빌린 수요를 세지 않으므로
       <b>실제 결품은 이 화면의 값보다 큽니다</b> — 이 지표는 <b>하한</b>으로 읽으세요.
@@ -85,11 +156,28 @@
 {# ───────────────────────── 2단: 추세 ─────────────────────────
    지표마다 작은 그래프를 따로 낸다. 단위가 다른 것을 한 판에 겹치면 두 축의
    정렬이 임의가 되고, 없는 상관관계가 있는 것처럼 보인다(docs/구현/DESIGN.md). #}
-{% if trends %}
+{# ⚠️ 이 절은 실행을 고르면 **h2째 사라졌다**(1.26.284 전) — `{% if trends %}`가 제목까지
+   감싸서, 한 실행을 고른 화면에는 그런 절이 있다는 것조차 안 보였다. 수요 예측 절(아래)이
+   1.26.107에 고친 것과 같은 부류다. 자리를 남기고 왜 비었는지 적는다 — 필터 때문에 빈
+   자리는 필터를 푸는 링크다(DESIGN.md '빈 상태'). #}
+{% if rows %}
 <h2>추세</h2>
+{# 커서 안내는 그래프가 있을 때만 — 빈 카드 바로 위에 '점에 커서를 대면'이 남아 있었다(1.26.284 검토). #}
 <p class="section-lead">실행을 거듭하며 값이 어떻게 움직였는지입니다. 오래된 실행이 왼쪽입니다.
-  점에 커서를 대면 그 실행의 값이 나옵니다.</p>
+  {%- if trends %}
+  점에 커서를 대면 그 실행의 값이 나옵니다.{% endif %}</p>
+{% if not trends %}
+<div class="card"><p class="empty">
+  {%- if selected_run %}추세는 실행이 둘 이상일 때 그립니다 — 지금은 <b>{{ selected_run }}</b> 하나만
+  보고 있습니다. <a href="/kpi">전체 실행 보기</a>
+  {%- elif runs_total < 2 %}실행이 하나뿐이라 아직 그릴 추세가 없습니다.
+  <a href="/run#run">계획을 한 번 더 실행</a>하면 실행마다 값이 이어진 선이 그려집니다.
+  {%- else %}두 실행 이상에서 잰 지표가 없어 그릴 선이 없습니다.
+  <a href="/run#run">계획을 실행</a>해 지표를 더 쌓으면 그려집니다.{% endif %}</p></div>
+{% endif %}
+{% endif %}
 
+{% if trends %}
 <div class="viz-grid2">
   {% for t in trends %}
   <div class="card viz-card">
@@ -116,7 +204,16 @@
 </div>
 {% endif %}
 
-{# ───────── 효과·비용 트레이드오프 ───────── #}
+{# ───────── 효과·비용 트레이드오프 ─────────
+   점이 둘 미만이면(회차 하나짜리 실행을 고른 경우) 추세 절과 같은 이유로 자리를 남긴다(1.26.284). #}
+{% if rows and cost.points | length < 2 %}
+<h2>효과와 비용</h2>
+<div class="card"><p class="empty">
+  {%- if selected_run %}점(실행·회차 하나)이 둘 이상일 때 그립니다 — <b>{{ selected_run }}</b>에는
+  그릴 점이 {{ cost.points | length }}개입니다. <a href="/kpi">전체 실행 보기</a>
+  {%- else %}이동거리와 효과를 함께 잰 회차(점)가 둘 이상일 때 그립니다.
+  <a href="/run#run">계획을 실행</a>하면 점이 쌓입니다.{% endif %}</p></div>
+{% endif %}
 {% if cost.points | length > 1 %}
 <h2>효과와 비용</h2>
 <p class="section-lead"><b>개선률만 올리면 소요시간과 거리가 늘어납니다.</b>
@@ -125,8 +222,10 @@
   {% if cost.note %}<span class="hint">{{ cost.note }}</span>{% endif %}</p>
 <div class="card viz-card">
   {{ cost_svg | safe }}
-  <p class="hint" style="margin:var(--sp-xs) 0 0">점 옆 숫자는 시간대입니다
-    (<code>_05_10</code> = 05~10시). 커서를 대면 실행 이름까지 나옵니다.
+  {# 점 이름표·풍선·표 보기는 회차의 사람 이름이다 — 표·칩과 같은 표기(1.26.284). 점 옆에는 괄호
+     앞까지만 적는다 — 전체 이름은 넓어 이름표를 붙인 점이 17 → 9개로 줄었다(`duration_name(short=True)`). #}
+  <p class="hint" style="margin:var(--sp-xs) 0 0">점 옆 글자는 회차의 시각입니다.
+    커서를 대면 회차 이름과 실행 이름까지 나옵니다.
     회차를 색으로 나누지 않은 것은 이 화면에서 색이 곧 뜻이 되지 않게 하려는 것입니다.
     <b>글자가 들어갈 자리가 없는 점은 이름을 붙이지 않습니다</b> — 겹쳐 찍는 것보다
     아래 표에서 읽는 편이 낫기 때문입니다.</p>
@@ -152,11 +251,15 @@
 </div>
 {% endif %}
 
-<h2>실행·회차별 지표</h2>
+{# `id`를 사람이 붙인다 — 히어로의 '다른 실행 고르기'가 여기로 온다(1.26.284). 차례 스크립트가
+   붙이는 `sec-N`은 추세 절이 있고 없음에 따라 번호가 밀려 앵커로 못 쓴다. 칩 주소에는
+   앵커를 달지 않는다 — 고르면 맨 위에서 바뀐 타일과 '고른 실행' 문장부터 보게 한다. #}
+<h2 id="kpi-runs">실행·회차별 지표</h2>
 <p class="section-lead">표의 각 열 제목에 커서를 대면 그 숫자가 무엇을 뜻하는지 나옵니다.
   <b>열 제목을 누르면</b> 그 열로 오름차순·내림차순 정렬됩니다.
   기본은 <b>개선률·이동거리·최장 작업</b> 같은 핵심 열만 보이고, 나머지는 표 위
-  <b>모든 열 보기</b>로 펼칩니다.</p>
+  <b>모든 열 보기</b>로 펼칩니다. <b>회차를 누르면 그 회차의 작업지시서</b>, 시간 예산을 넘긴
+  최장 작업(⚠)을 누르면 어느 차량이 넘었는지(차량 운용의 배정 이력)로 갑니다.</p>
 
 {% if runs %}
 {# 계획 먼저·최신순, 실험은 다음 줄, 좁은 화면에서는 접는다 — /vehicles와 같은 매크로(1.26.283). #}
@@ -177,7 +280,7 @@
   <table data-sortable class="m-cards" id="kpi-runs-table" data-row-limit="12">
     <thead><tr>
       <th scope="col" class="tight">실행</th>
-      <th scope="col" class="tight"><span class="tip" data-tip="계획한 시간대입니다. 예: _10_15 는 10시~15시.">회차</span></th>
+      <th scope="col" class="tight"><span class="tip" data-tip="계획한 시간대입니다. 칸의 회차 이름을 누르면 그 회차의 작업지시서가 열립니다(열 제목은 정렬입니다).">회차</span></th>
       <th scope="col" class="num col-more"><span class="tip" data-tip="이번 계획에서 손을 댄 대여소 수입니다.">대여소</span></th>
       <th scope="col" class="num col-more"><span class="tip" data-tip="대여소를 가까운 것끼리 묶은 덩어리 수입니다. 차량 한 대가 한 덩어리를 맡습니다.">군집</span></th>
       <th scope="col" class="num"><span class="tip" data-tip="실제로 출동한 차량 수입니다.">차량</span></th>
@@ -197,7 +300,13 @@
     {% for r in rows %}
     <tr>
       <td class="muted tight" data-label="">{{ r.run_label }}</td>
-      <td class="tight" data-label="회차"><b>{{ r.duration }}</b></td>
+      {# 회차는 사람 이름이고(칩·지시서·/vehicles와 같은 `duration_labels`), 정렬은 코드로 한다
+         (`data-sort` — 하루 순서). 누르면 **그 회차의 지시서**다 — 예전에는 글자뿐이라 ⚠ 행의
+         경로를 보려면 /orders에서 칩을 다시 찾아야 했다(1.26.284). 실행 칸은 링크로 만들지
+         않는다 — 위 칩과 겹치고, `.muted` 칸이라 72행 전부에 밑줄이 선다. #}
+      <td class="tight" data-label="회차" data-sort="{{ r.duration or '' }}">
+        {%- if r.duration %}<a href="/orders?run_label={{ r.run_label | urlencode }}&duration={{ r.duration | urlencode }}" title="이 회차의 작업지시서">{{ duration_labels.get(r.duration, r.duration) }}</a>
+        {%- else %}—{% endif %}</td>
       <td class="num muted col-more" data-label="대여소">{{ whole(r.stations, "") }}</td>
       <td class="num muted col-more" data-label="군집">{{ whole(r.clusters, "") }}</td>
       <td class="num muted" data-label="차량">{{ whole(r.vehicles_used, "") }}</td>
@@ -209,8 +318,10 @@
       <td class="num muted" data-label="이동거리">{{ whole(r.total_distance_km, " km") }}</td>
       {% set over = r.time_budget_minutes and r.max_cluster_minutes
                     and r.max_cluster_minutes > r.time_budget_minutes %}
+      {# 지표 행에는 차량 ID가 없다 — 넘긴 차량은 /vehicles 배정 이력의 붉은 행이다(1.26.284). #}
       <td class="num{% if over %} over-budget{% endif %}" data-label="최장 작업">
-        {{ whole(r.max_cluster_minutes, "분") }}{% if over %} ⚠{% endif %}
+        {% if over %}<a href="/vehicles?run_label={{ r.run_label | urlencode }}#assignments" title="어느 차량이 시간 예산을 넘었는지 — 차량 운용의 배정 이력">{{ whole(r.max_cluster_minutes, "분") }} ⚠</a>
+        {%- else %}{{ whole(r.max_cluster_minutes, "분") }}{% endif %}
       </td>
       <td class="num col-more" data-label="예산 준수">{{ fmt(r.time_budget_met, "pct") }}</td>
       <td class="num col-more" data-label="km당 개선">{{ fmt(r.improvement_per_km, "num") }}</td>
@@ -224,6 +335,15 @@
     </tbody>
   </table>
   </div>
+  {% elif selected_run %}
+  {# 필터 때문에 빈 자리는 `/run`이 아니라 필터를 푸는 링크다(DESIGN.md '빈 상태', 1.26.284) —
+     예전에는 없는 라벨·지표 없는 실행을 골라도 '계획을 끝까지 실행하면 쌓입니다'였다.
+     DB에 없는 라벨(오타)이면 까닭을 짐작하지 않고 그런 실행이 없다고 말한다 — `/maps`·`/data`와
+     같은 판정(`known_run`, 1.26.284 검토). #}
+  <p class="empty">
+    {%- if not known_run %}기록된 실행이 아닙니다: <b>{{ selected_run }}</b>.
+    {%- else %}<b>{{ selected_run }}</b>에는 성과 지표 기록이 없습니다 — 계획이 아닌 실행이거나
+    끝까지 가지 않은 실행입니다.{% endif %} <a href="/kpi">전체 실행 보기</a></p>
   {% else %}
   <p class="empty">기록된 지표가 없습니다.
     <a href="/run#run">계획을 끝까지 실행</a>하면 여기에 쌓입니다.</p>
@@ -271,7 +391,8 @@
     <tbody>
     {% for r in forecast.summary %}
     <tr class="{% if r.gain is not none and r.gain <= 0 %}over-budget{% endif %}">
-      <td data-label=""><b>{{ r.duration }}</b></td>
+      {# 회차 이름은 위 표·산점도와 같은 한 벌(`kpi_view.duration_name`), 정렬은 코드(1.26.284). #}
+      <td data-label="" data-sort="{{ r.duration }}"><b>{{ r.duration_name }}</b></td>
       <td class="num muted" data-label="월쌍">{{ r.pairs }}</td>
       <td class="num" data-label="예측 오차">{{ r.mae | round(2) if r.mae is not none else "—" }}대</td>
       <td class="num muted" data-label="기준선">{{ r.baseline | round(2) if r.baseline is not none else "—" }}대</td>

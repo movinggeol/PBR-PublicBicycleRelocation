@@ -276,13 +276,20 @@
   <a href="/run#run">계획을 끝까지 실행</a>하면 여기에 나타납니다.{% endif %}</p></div>
 {% endif %}
 
+{# 이 회차의 지도(군집·경로·불균형)로 — 예전에는 지시서에서 지도로 가는 길이 0개였고, 맨
+   `/maps`는 다른 계획의 경로를 띄울 수 있었다(1.26.284). 지도가 없는 회차면 그 화면이
+   없다고 말한다(다른 실행으로 물러서지 않는다).
+   ⚠️ 히어로의 단추 줄에 두었다가 **이 제목 옆 작은 글 링크로 옮겼다**(1.26.284 검토) — 390px에서
+   단추가 셋이면 두 줄이 되어 첫 지시서가 약 61px 밀렸다. 기사가 쓰는 폭은 폰이다. 제목 줄은
+   이미 있는 줄이라 어느 폭에서도 첫 지시서를 밀지 않는다(.hint라 차례에도 안 들어간다). #}
+{% set map_link %}<span class="hint no-print"><a href="/maps?run_label={{ run_label | urlencode }}{% if duration %}&duration={{ duration | urlencode }}{% endif %}">이 회차 지도</a></span>{% endset %}
 {# ───────────────────────── 실시간 재고 대조 ───────────────────────── #}
 {% if live_error %}
 <div class="alert bad"><span>{{ live_error }}</span></div>
 {% endif %}
 
 {% if compared_sheets %}
-<h2>지금 재고와 대조 <span class="hint">{{ checked_at }} 조회</span></h2>
+<h2>지금 재고와 대조 <span class="hint">{{ checked_at }} 조회</span> {{ map_link }}</h2>
 <div class="actions no-print" style="margin-bottom:var(--sp-sm)">
   <a class="btn ghost" href="/orders/live?run_label={{ run_label | urlencode }}{% if duration %}&duration={{ duration | urlencode }}{% endif %}{% if selected_vehicle %}&vehicle={{ selected_vehicle | urlencode }}{% endif %}">
     다시 조회</a>
@@ -389,7 +396,7 @@
    평소에는 h1 다음이 h3가 되어 제목 계층이 한 단 건너뛴다 — 화면 낭독기가
    중간 단계를 잃는다. 목록의 제목을 항상 두어 h1 → h2 → h3로 잇는다.
    종이에는 차량 한 대가 한 장이라 이 제목이 필요 없다(no-print). #}
-{% if sheets %}<h2 class="no-print">차량별 지시서</h2>{% endif %}
+{% if sheets %}<h2 class="no-print">차량별 지시서 {{ map_link }}</h2>{% endif %}
 <div class="data-grid">
 {% for sheet in sheets %}
 <div class="card sheet">
