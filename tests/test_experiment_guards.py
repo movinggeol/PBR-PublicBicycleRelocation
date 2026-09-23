@@ -1230,3 +1230,41 @@ def test_같은_시각_판정에는_창이_차고_출발이_맞은_날만_넣는
     assert got["days"] == 2                               # 24 · 25일
     assert got["복원"] == pytest.approx(1.0)              # 빠진 날의 9.0이 섞이지 않았다
     assert "보류" in got["verdict"]
+
+
+def test_출발_재고는_계획표에서_읽어_물려받은_실행도_잰다(obs):
+    """`--skip-api`로 스냅샷을 물려받은 실행은 `station_stock`에 자기 행이 없다 — 그래서
+    1.26.278은 평일 다섯 자리의 출발 재고를 재지 못했다. 계획이 **실제로 쓴** 재고는
+    `rebalance_plan.stock`에 회차마다 남는다(1.26.286)."""
+    import db
+    with db.session() as conn:
+        conn.executemany(
+            "INSERT INTO rebalance_plan (run_label, duration, station_id, stock, rebal_qty)"
+            " VALUES (?, ?, ?, ?, ?)",
+            [("물려받음", "_05_10", "A", 0, 5), ("물려받음", "_05_10", "B", 3, -4),
+             ("물려받음", "_05_10", "C", 0, 1), ("물려받음", "_10_15", "A", 7, 5)])
+        conn.commit()
+        assert conn.execute("SELECT COUNT(*) FROM station_stock"
+                            " WHERE run_label = '물려받음'").fetchone()[0] == 0
+
+    own = obs.target_stations("물려받음", "_05_10")
+    assert own == {"A", "B"}                               # C는 |1| ≤ 2라 대상이 아니다
+    assert obs.start_empty_share("물려받음", "_05_10", own) == pytest.approx(50.0)
+    assert obs.start_empty_share("물려받음", "_10_15", {"A"}) == pytest.approx(0.0)
+
+
+def test_실제_출발은_회차_시작_시각의_첫_틱이다(obs):
+    """05시 회차의 '실제 빈 곳'은 05:00 틱이다 — 05:10 틱이 섞이면 회차가 시작된 뒤의
+    재고가 들어간다. 날마다 비율을 내고 나서 평균한다."""
+    at = pd.to_datetime
+    frame = pd.DataFrame({
+        "station_id": ["A", "B", "A", "B", "A", "B"],
+        "관측": at(["2026-09-24 05:00", "2026-09-24 05:00", "2026-09-24 05:10",
+                    "2026-09-24 05:10", "2026-09-25 05:01", "2026-09-25 05:01"]),
+        "stock": [0, 3, 5, 0, 0, 0],
+    })
+    frame["날짜"] = frame["관측"].dt.strftime("%Y-%m-%d")
+    frame["시각"] = frame["관측"].dt.hour
+
+    got = obs.real_start_empty(frame, ["2026-09-24", "2026-09-25"], 5, {"A", "B"})
+    assert got == pytest.approx((50.0 + 100.0) / 2)       # 24일 05:10 틱은 세지 않는다

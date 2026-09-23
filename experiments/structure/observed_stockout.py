@@ -238,6 +238,38 @@ def target_stations(run_label: str, duration: str = None) -> set:
     return set(plan.loc[plan["rebal_qty"].abs() > REBAL_MIN_QTY, "station_id"])
 
 
+def plan_start_stock(run_label: str, duration: str) -> pd.Series:
+    """그 계획이 **실제로 쓴** 출발 재고(대여소별) — `rebalance_plan.stock`에서 읽는다 (1.26.286).
+
+    `station_stock`이 아니다. `--skip-api`로 스냅샷을 물려받은 실행은 그 표에 **자기 행이
+    없어서**, 1.26.278이 여덟 칸 가운데 평일 다섯 자리의 출발 재고를 재지 못했다. 계획표에는
+    그 계획이 쓴 재고가 회차마다 남는다 — 두 표를 맞대 보니 스냅샷을 직접 뜬 실행에서 한 행도
+    다르지 않았다(2026-09-23, `2026-09-22 휴일 전회차` 5,376행 중 0).
+    """
+    with db.session() as conn:
+        plan = pd.read_sql("SELECT station_id, stock FROM rebalance_plan"
+                           " WHERE run_label = ? AND duration = ?",
+                           conn, params=[run_label, duration])
+    return plan.drop_duplicates("station_id").set_index("station_id")["stock"]
+
+
+def start_empty_share(run_label: str, duration: str, own: set) -> float:
+    """계획의 출발점에서 작업 대상 가운데 빈 곳(재고 ≤ 0)의 비율(%)."""
+    stock = plan_start_stock(run_label, duration)
+    stock = stock[stock.index.isin(own)]
+    return float((stock <= 0).mean() * 100) if len(stock) else float("nan")
+
+
+def real_start_empty(frame: pd.DataFrame, days: list, hour: int, own: set) -> float:
+    """그 날들의 **회차 시작 시각 첫 틱**에 작업 대상 가운데 빈 곳의 비율(%) — 날마다 재고 평균."""
+    part = frame[frame["날짜"].isin(days) & (frame["시각"] == hour)
+                 & frame["station_id"].isin(own)]
+    if part.empty:
+        return float("nan")
+    first = part[part["관측"] == part.groupby("날짜")["관측"].transform("min")]
+    return float(((first["stock"] <= 0).groupby(first["날짜"]).mean() * 100).mean())
+
+
 def latest_plan_targets(day_type: str, duration: str) -> set:
     """그 요일 구분으로 **계획**한 가장 최근 실행의 작업 대상.
 
@@ -327,7 +359,7 @@ def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
         print("\n(복원 대비 비교: 이 요일 구분으로 계획한 실행이 DB에 없습니다 —"
               " 먼저 `python run_pipeline.py --day-type ...`을 돌리십시오)")
         return []
-    rows = []
+    rows, starts = [], []
     for duration in durations:
         hours = duration_hours(duration)
         overlap = [h for h in hours if h in window]
@@ -361,6 +393,8 @@ def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
                       f" 온전히 관측된 곳이 없어 건너뜁니다")
                 continue
             paired.append((label, float(sim), float(sub.mean()), len(sub)))
+            starts.append((duration, label, start_empty_share(label, duration, own),
+                           real_start_empty(frame, ok_days, hours[0], own)))
         if not paired:
             continue
         n_runs = len(paired)
@@ -388,6 +422,13 @@ def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
                 one_gap = (one_obs / one_sim - 1) * 100 if one_sim else float("nan")
                 print(f"      · {label}: 복원 {one_sim:.2f} · 실측 {one_obs:.2f}"
                       f" ({one_gap:+.0f}%) · {n_st:,}곳")
+    if starts:
+        # 복원은 계획을 세운 시각의 재고에서 출발한다(EXPERIMENTS 32장) — 출발이 실제보다
+        # 비어 있으면 복원이 결품 쪽으로 기운다. 실행마다 찍는다(1.26.286).
+        print("\n출발 재고 — 작업 대상 가운데 빈 곳: 계획이 쓴 재고 vs 그 날들의 회차 시작 첫 틱")
+        print(f"{'시간대':8} {'출발 빈곳':>9} {'실제 빈곳':>9} {'차':>8}   실행")
+        for duration, label, snap, real in starts:
+            print(f"{duration:8} {snap:8.1f}% {real:8.1f}% {snap - real:+7.1f}%p   {label}")
     print("  → 실측이 크면 **복원이 결품을 낮춰 잡고 있었다**는 뜻입니다"
           "(0에서 잘라 못 빌린 수요가 사라지므로 예상된 방향입니다).")
     print("  ⚠️ 다만 실측에는 **공사가 실제로 돌린 재배치**가 이미 반영돼 있어")
@@ -576,8 +617,6 @@ def compare_same_day(day_type: str, run_label: str = None) -> list:
         with db.session() as conn:
             obs = db.load_stock_history(conn, start=start.strftime("%Y-%m-%d"),
                                         end=(start + timedelta(days=2)).strftime("%Y-%m-%d"))
-            snap = pd.read_sql("SELECT station_id, stock FROM station_stock"
-                               " WHERE run_label = ?", conn, params=[run.run_label])
         own = target_stations(run.run_label, run.duration)
         if obs.empty or not own:
             continue
@@ -588,14 +627,13 @@ def compare_same_day(day_type: str, run_label: str = None) -> list:
         mine = window[window["station_id"].isin(own)]
         empty = (mine["stock"] <= 0).groupby(mine["station_id"]).sum() * TICK_MINUTES / 60
         first = mine[mine["관측"] == mine["관측"].min()] if not mine.empty else mine
-        snap_own = snap[snap["station_id"].isin(own)]
         rows.append({
             "run_label": run.run_label, "duration": run.duration, "date": start.date(),
             "late_min": run.late_min, "복원": float(run.복원),
             "관측": float(empty.mean()) if len(empty) else float("nan"),
             "stations": int(len(empty)), "ticks": ticks,
             "expected": len(hours) * per_hour, "complete": ticks >= need,
-            "snap_empty": (snap_own["stock"] <= 0).mean() * 100 if len(snap_own) else float("nan"),
+            "snap_empty": start_empty_share(run.run_label, run.duration, own),
             "real_empty": (first["stock"] <= 0).mean() * 100 if len(first) else float("nan"),
         })
 

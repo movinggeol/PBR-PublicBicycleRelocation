@@ -31,7 +31,7 @@ description: PBR 프로젝트의 앱을 실제로 띄우고 조작해 변경이 
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-**테스트 1090개 수집 · 실패 0이 기준선이다**(이 숫자는 `tools/check_consistency.py`가 대조한다). cbcbox 미설치·산출물 없음 같은 환경 차이로
+**테스트 1092개 수집 · 실패 0이 기준선이다**(이 숫자는 `tools/check_consistency.py`가 대조한다). cbcbox 미설치·산출물 없음 같은 환경 차이로
 몇 개는 skip된다. 여기서 깨지면 아래로 내려가지 마라.
 
 ---
