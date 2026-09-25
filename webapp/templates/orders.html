@@ -54,8 +54,8 @@
   .tally { display: flex; gap: var(--sp-lg); flex-wrap: wrap; margin: var(--sp-sm) 0 0; }
   .tally div { font-size: var(--fs-ui); color: var(--ink-3); }
   .tally b { color: var(--ink); font-size: var(--fs-h3); }
-  /* 싣기·내리기는 **범주**다. 예전에는 각각 `--good-ink`(상태 전용)와
-     `--blue`(상호작용 전용)를 빌려 썼는데, 지도는 파랑이 싣기라 같은
+  /* 수거·배송은 **범주**다. 예전에는 각각 `--good-ink`(상태 전용)와
+     `--blue`(상호작용 전용)를 빌려 썼는데, 지도는 파랑이 수거라 같은
      파랑이 두 화면에서 반대 작업을 뜻했다(1.26.107). 이제 지도와 같은
      한 벌을 쓴다 — 정의는 base.html, 지도 쪽은 mapviz.py. */
   td.pick { color: var(--pick-ink); font-weight: 600; }
@@ -313,7 +313,7 @@
 <div class="note no-print">
   <b>차고지는 {{ depot_name }}</b>이고, 적재 용량은 한 대에 {{ capacity }}대입니다.
   "싣고 남는 수"가 0이면 그 시점에 차가 비어 있다는 뜻입니다.<br>
-  판정 기준: <b>싣기</b>는 지금 재고만큼만 가능하고, <b>내리기</b>는 거치대 수의
+  판정 기준: <b>수거</b>는 지금 재고만큼만 가능하고, <b>배송</b>는 거치대 수의
   {{ upper_ratio }}배까지만 받습니다(계획이 목표 재고를 자른 것과 같은 기준).
   작업량이 {{ min_qty }}대 이하인 대여소는 애초에 계획에 들어오지 않습니다.
 </div>

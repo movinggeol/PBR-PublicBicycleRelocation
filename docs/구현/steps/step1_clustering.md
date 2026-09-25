@@ -16,7 +16,7 @@
 2. **클러스터링** `make_clustering()`
    - K-Medoids (`kmedoids` 패키지, `method='fasterpam'`, `metric='manhattan'`, `random_state=42`)
    - `K = min(wanted_vehicles(작업량), VEHICLES_PER_ROUND)` — 군집 1개 = 차량 1대.
-     필요 대수는 **처리 대수 × (싣기+내리기) + 대여소 수 × 12.5분**을
+     필요 대수는 **처리 대수 × (수거+배송) + 대여소 수 × 12.5분**을
      불균형 여유(1.4)만큼 늘려 시간 예산으로 나눈 값이다(1.19.1).
      그전에는 `ceil(대상 수 / 7)`이었고 늘 상한 10에 걸렸다
    - 좌표는 스케일링하지 않는다 (위경도 자체가 거리 단위)

@@ -1103,7 +1103,7 @@ def test_여유_안내는_지시량이_아니라_지금_재고에서_나온다()
     from project_config import TARGET_QTY_UPPER_RATIO
     from webapp import orders
 
-    ceiling = int(20 * TARGET_QTY_UPPER_RATIO)     # 거치대 20대의 내리기 상한
+    ceiling = int(20 * TARGET_QTY_UPPER_RATIO)     # 거치대 20대의 배송 상한
     planned = pd.DataFrame([
         {"station_id": "A", "station_name": "A소", "cluster": 1, "seq": 1,
          "parking_lot": 20, "stock": 5, "need": 5, "action": "pick"},
@@ -2201,10 +2201,10 @@ def test_문장_속_링크는_색만으로_말하지_않는다():
     assert "text-decoration: underline" in rule
 
 
-# ───────────────────── 싣기·내리기 색 (1.26.107) ─────────────────────
+# ───────────────────── 수거·배송 색 (1.26.107) ─────────────────────
 
-def test_싣기_내리기_색이_두_테마_모두에서_읽힌다():
-    """싣기·내리기는 **범주색**이고, 표의 글자를 칠하므로 본문 4.5:1이 필요하다.
+def test_수거_배송_색이_두_테마_모두에서_읽힌다():
+    """수거·배송은 **범주색**이고, 표의 글자를 칠하므로 본문 4.5:1이 필요하다.
 
     두 바탕을 다 재는 이유는 대조 표가 판정에 따라 행 배경을 바꾸기 때문이다
     (`tr.bad`=--critical-soft, `tr.warn`=--warning-soft). 흰 바탕만 보면
@@ -2225,22 +2225,22 @@ def test_싣기_내리기_색이_두_테마_모두에서_읽힌다():
                     f"{ratio:.2f}:1 — 4.5:1이 필요하다")
 
 
-def test_싣기_내리기에_예약된_색을_빌려_쓰지_않는다():
+def test_수거_배송에_예약된_색을_빌려_쓰지_않는다():
     """`--good-ink`는 상태 전용이고 `--blue`는 상호작용 전용이다
     (docs/구현/DESIGN.md). 범주를 그 색으로 칠하면 두 가지가 어긋난다 —
-    규약이 깨지고, 무엇보다 **지도는 파랑이 싣기**라 같은 파랑이 두 화면에서
+    규약이 깨지고, 무엇보다 **지도는 파랑이 수거**라 같은 파랑이 두 화면에서
     반대 작업을 뜻하게 된다(1.26.107에서 실제로 그랬다)."""
     css = _css("orders.html")
-    assert "td.pick { color: var(--pick-ink)" in css, "싣기가 범주색을 안 쓴다"
-    assert "td.drop { color: var(--drop-ink)" in css, "내리기가 범주색을 안 쓴다"
-    assert "td.drop { color: var(--blue)" not in css, "내리기가 상호작용색을 빌려 쓴다"
-    assert "td.pick { color: var(--good-ink)" not in css, "싣기가 상태색을 빌려 쓴다"
+    assert "td.pick { color: var(--pick-ink)" in css, "수거가 범주색을 안 쓴다"
+    assert "td.drop { color: var(--drop-ink)" in css, "배송이 범주색을 안 쓴다"
+    assert "td.drop { color: var(--blue)" not in css, "배송이 상호작용색을 빌려 쓴다"
+    assert "td.pick { color: var(--good-ink)" not in css, "수거가 상태색을 빌려 쓴다"
 
 
-def test_지도와_웹이_싣기_내리기를_같은_색상으로_칠한다():
+def test_지도와_웹이_수거_배송을_같은_색상으로_칠한다():
     """색 값 자체는 다르다 — 지도는 **채운 원**이라 순색을 쓰고 웹은 **글자**라
     명암비를 맞춘 값을 쓴다. 같아야 하는 것은 **어느 쪽이 따뜻한 색인가**다.
-    지도에서 싣기가 파랑인데 웹에서 내리기가 파랑이면 기사가 반대로 간다."""
+    지도에서 수거가 파랑인데 웹에서 배송이 파랑이면 기사가 반대로 간다."""
     import mapviz
 
     css = _css()
@@ -2251,10 +2251,10 @@ def test_지도와_웹이_싣기_내리기를_같은_색상으로_칠한다():
         r, _, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
         return r > b
 
-    assert _hue_is_warm(mapviz.DROP_COLOR), "지도의 내리기가 따뜻한 색이 아니다"
-    assert not _hue_is_warm(mapviz.PICK_COLOR), "지도의 싣기가 차가운 색이 아니다"
-    assert _hue_is_warm(light["drop-ink"]), "웹의 내리기가 지도와 반대 계열이다"
-    assert not _hue_is_warm(light["pick-ink"]), "웹의 싣기가 지도와 반대 계열이다"
+    assert _hue_is_warm(mapviz.DROP_COLOR), "지도의 배송이 따뜻한 색이 아니다"
+    assert not _hue_is_warm(mapviz.PICK_COLOR), "지도의 수거가 차가운 색이 아니다"
+    assert _hue_is_warm(light["drop-ink"]), "웹의 배송이 지도와 반대 계열이다"
+    assert not _hue_is_warm(light["pick-ink"]), "웹의 수거가 지도와 반대 계열이다"
 
 
 def test_불균형_지도가_색을_직접_박지_않는다():

@@ -145,7 +145,7 @@ def build_nodes(cluster_plan: pd.DataFrame, points: dict) -> dict:
 def route_minutes(rows: list, road_factor: float) -> float:
     """경로 한 벌의 소요시간(분). **배율은 이동 부분에만 곱한다.**
 
-    작업시간(싣기·내리기)은 도로 사정과 무관하므로 곱하면 안 된다. `cum_sec`을
+    작업시간(수거·배송)은 도로 사정과 무관하므로 곱하면 안 된다. `cum_sec`을
     통째로 곱하는 것이 흔한 실수인데, 그러면 작업시간까지 부풀려진다.
     """
     if not rows:

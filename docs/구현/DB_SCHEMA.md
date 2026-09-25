@@ -476,7 +476,7 @@ UPDATE vehicle SET active = 0, note = '정비 입고' WHERE vehicle_id = 'V07';
 
 > `bikes`를 pick 기준으로 세는 이유: 한 대는 실리고 내려지므로 pick·drop의 `qty`를
 > 모두 더하면 2배가 되어 ILP 계획 대수와 어긋납니다. 반면 `minutes`에 들어가는
-> 작업시간은 싣기·내리기가 **각각 드는 게 맞으므로** 두 동작을 모두 반영합니다.
+> 작업시간은 수거·배송이 **각각 드는 게 맞으므로** 두 동작을 모두 반영합니다.
 
 인덱스: `idx_assignment_vehicle(vehicle_id)` — 차량 1대의 전체 이력 조회용.
 PK 선두가 `run_label`이라 차량으로 거는 조회는 PK 인덱스를 못 씁니다.

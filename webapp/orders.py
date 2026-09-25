@@ -39,7 +39,7 @@ def _float(value, default: float = 0.0) -> float:
         return default
 
 # 화면에 그대로 쓰는 말. pick/drop은 현장 용어가 아니다.
-ACTION_LABELS = {"pick": "싣기", "drop": "내리기", "return": "차고지 복귀"}
+ACTION_LABELS = {"pick": "수거", "drop": "배송", "return": "차고지 복귀"}
 
 
 def load_frames(run_label: Optional[str], duration: Optional[str]) -> dict:
@@ -156,7 +156,7 @@ def planned_work(run_label: Optional[str] = None,
     ILP가 수급을 맞추느라 요구량보다 적게 배정할 수 있고, 기사가 손에 드는
     지시서는 후자다. 둘이 다르면 대조 화면과 지시서가 어긋난다.
 
-    같은 대여소가 싣기·내리기 양쪽에 나올 수 있으므로 행이 둘이 된다
+    같은 대여소가 수거·배송 양쪽에 나올 수 있으므로 행이 둘이 된다
     (VRP의 노드 키가 (대여소, 동작)인 것과 같은 이유).
     """
     frames = frames or load_frames(run_label, duration)
@@ -204,9 +204,9 @@ def compare_stock(planned: pd.DataFrame, live: pd.DataFrame) -> pd.DataFrame:
 
     판정 규칙(계획을 세울 때 쓴 기준과 같은 값을 쓴다):
 
-    - **싣기**: 지금 재고만큼만 실을 수 있다.
+    - **수거**: 지금 재고만큼만 실을 수 있다.
       재고가 0이면 **불가**, 지시량보다 적으면 **부족**.
-    - **내리기**: 거치대 x TARGET_QTY_UPPER_RATIO를 넘기면 **넘침**.
+    - **배송**: 거치대 x TARGET_QTY_UPPER_RATIO를 넘기면 **넘침**.
       계획이 목표 재고를 그 선에서 잘랐으므로 집행 기준도 같아야 한다.
     - 그 밖에는 **가능**. 재고가 계획과 달라졌어도 작업 자체는 성립한다.
 
@@ -369,8 +369,8 @@ def _spare(row: dict) -> int:
     만들 수 없는 상태로 검사한 것이다.
 
     여유는 지시량이 아니라 **지금 재고**에서 나온다.
-      · 싣기:   지금 재고 − 지시량        (남는 자전거)
-      · 내리기: 상한 − 지금 재고 − 지시량  (남는 자리, 상한은 계획과 같은 기준)
+      · 수거:   지금 재고 − 지시량        (남는 자전거)
+      · 배송: 상한 − 지금 재고 − 지시량  (남는 자리, 상한은 계획과 같은 기준)
     재고를 못 읽은 곳(`확인 불가`)은 여유를 모르므로 0이다.
     """
     now = row.get("live_stock")

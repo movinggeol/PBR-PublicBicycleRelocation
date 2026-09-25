@@ -441,7 +441,7 @@ def step4():
 
 
 def test_executed_delta_signs_pick_negative_and_drop_positive(step4):
-    """싣기(pick)는 재고를 줄이고 내리기(drop)는 늘린다. depot 복귀는 무시한다."""
+    """수거(pick)는 재고를 줄이고 배송(drop)은 늘린다. depot 복귀는 무시한다."""
     routes = pd.DataFrame([
         {"to_id": "A", "action": "pick", "qty": 5},
         {"to_id": "B", "action": "drop", "qty": 3},
@@ -794,7 +794,7 @@ def test_vehicle_count_follows_the_workload(step1):
     1.19.1 이전에는 `ceil(대상 수 / 7)`이었고, 7에 근거가 없었을뿐더러 실데이터에서는
     늘 회차당 상한(10)에 걸려 **사실상 10대 고정**이었다(실측 3회차 모두 희망 12~13).
 
-    추정식은 시간이다: 처리 대수 × (싣기+내리기) + 대여소 수 × 이동계수,
+    추정식은 시간이다: 처리 대수 × (수거+배송) + 대여소 수 × 이동계수,
     거기에 불균형 여유를 곱해 시간 예산으로 나눈다.
     """
     import project_config
@@ -996,9 +996,9 @@ def test_route_extras_counts_empty_running_and_returns(step4, tmp_path, monkeypa
     세면 첫 구간이 '실은 채로 달렸다'가 되어 비율이 낮게 나온다.
     """
     routes = pd.DataFrame([
-        # depot -> A(싣기 5): 빈 차로 10km
+        # depot -> A(수거 5): 빈 차로 10km
         (0, "pick", 5, 10.0, 600.0, 150.0, 750.0),
-        # A -> B(내리기 5): 실은 채로 4km
+        # A -> B(배송 5): 실은 채로 4km
         (0, "drop", 5, 4.0, 240.0, 150.0, 1140.0),
         # B -> depot: 빈 차로 6km
         (0, "return", 0, 6.0, 360.0, 0.0, 1500.0),

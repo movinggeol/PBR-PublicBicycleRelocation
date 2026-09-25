@@ -76,8 +76,8 @@ def make_clustered_map(durations: list):
         # 색이 많아 군집이 겹치면 구분이 어려웠다(1.26.75 조사 → 1.26.80).
         unique_clusters = sorted(pick_drop['cluster'].unique())
         
-        # 군집 × (내리기·싣기) 그룹. 이름은 한글로 둔다 — 지시서는
-        # 싣기/내리기인데 여기만 Pick/Drop이면 한 개념에 용어가 두 벌이다
+        # 군집 × (배송·수거) 그룹. 이름은 한글로 둔다 — 지시서는
+        # 수거/배송인데 여기만 Pick/Drop이면 한 개념에 용어가 두 벌이다
         # (1.26.107). 레이어 컨트롤은 지도 위에 겹쳐 뜨므로 이름이 짧아야
         # 한다 — 군집 19개면 줄이 38개다.
         layer_dict = {}
@@ -85,13 +85,13 @@ def make_clustered_map(durations: list):
         # cluster별 Layer 생성
         for c in unique_clusters:
             drop_layer = folium.FeatureGroup(
-                name=f"군집 {c} · 내리기",
+                name=f"군집 {c} · 배송",
                 show=True
             )
             drop_layer.add_to(m)
 
             pick_layer = folium.FeatureGroup(
-                name=f"군집 {c} · 싣기",
+                name=f"군집 {c} · 수거",
                 show=True
             )
             pick_layer.add_to(m)

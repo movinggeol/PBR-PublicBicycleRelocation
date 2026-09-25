@@ -64,7 +64,7 @@ def test_order_sheet_follows_the_visit_order(planned):
 
     assert [s["vehicle_id"] for s in sheets] == ["V01", "V02"]
     first = sheets[0]
-    assert [stop["action_label"] for stop in first["stops"]] == ["싣기", "내리기", "차고지 복귀"]
+    assert [stop["action_label"] for stop in first["stops"]] == ["수거", "배송", "차고지 복귀"]
     assert [stop["load_after"] for stop in first["stops"]] == [6, 0, 0]
     assert first["stations"] == 2, "차고지 복귀는 들른 곳으로 세지 않는다"
     assert first["bikes"] == 6, "옮긴 대수는 pick 기준이다(pick+drop이면 2배가 된다)"
@@ -106,7 +106,7 @@ def _live(**stock):
 
 
 def test_pick_is_limited_by_what_is_actually_there(planned):
-    """싣기는 지금 있는 만큼만 된다. 0대면 불가, 모자라면 부족."""
+    """수거는 지금 있는 만큼만 된다. 0대면 불가, 모자라면 부족."""
     work = orders.planned_work("R", "_05_10")
 
     empty = orders.compare_stock(work, _live(ST0010=0, ST0020=1, ST0030=15))
@@ -120,7 +120,7 @@ def test_pick_is_limited_by_what_is_actually_there(planned):
 
 
 def test_drop_is_limited_by_the_same_ceiling_the_plan_used(planned):
-    """내리기 상한은 거치대 × TARGET_QTY_UPPER_RATIO — 목표 재고를 자른 기준과 같다.
+    """배송 상한은 거치대 × TARGET_QTY_UPPER_RATIO — 목표 재고를 자른 기준과 같다.
 
     계획과 집행이 다른 기준을 쓰면 현장에서 어긋난다.
     """
@@ -248,7 +248,7 @@ def test_대조_한_번에_두_표를_한_번씩만_읽는다(client, monkeypatc
     assert "지금 재고와 대조" in res.text, "대조 결과가 지시서에 얹히지 않았다"
 
 
-def test_거치대_수를_모르면_내리기_상한을_짐작하지_않는다(monkeypatch):
+def test_거치대_수를_모르면_배송_상한을_짐작하지_않는다(monkeypatch):
     """거치대 0대 = 상한 0대라 *"이미 N대로 상한(0대 x 1.5 = 0대)을 넘었습니다"*
     가 나왔다 (1.26.262). 모르는 것은 '불가'가 아니라 '확인 불가'다."""
     work = pd.DataFrame([
@@ -263,7 +263,7 @@ def test_거치대_수를_모르면_내리기_상한을_짐작하지_않는다(m
     assert drop["status"] == "확인 불가" and pd.isna(drop["possible"])
     assert "거치대" in drop["note"]
     assert drop["advice"] == "현장에서 직접 확인하세요"
-    # 싣기는 거치대 수와 무관하다 — 그대로 판정한다.
+    # 수거는 거치대 수와 무관하다 — 그대로 판정한다.
     pick = compared[compared.station_id == "ST0010"].iloc[0]
     assert pick["status"] == "가능"
     assert orders.summarize(compared)["unknown"] == 1

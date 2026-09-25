@@ -35,7 +35,7 @@
 | $0$ | depot (타슈 관제센터 ST0001) | `DEPOT_ID` |
 | $\theta$ | 작업 대상 임계 = **2대** | `REBAL_MIN_QTY` |
 | $N$ | Pick·Drop 각각 상위 컷 = **50곳** ⚠️ **관행값 — 결품·예산 준수의 맞바꿈 위에 있다, 유지 결정됨(3장)** | `TOP_STATION_LIMIT` |
-| $s_{\text{pick}},\, s_{\text{drop}}$ | 자전거 1대 싣기·내리기 = **각 30초** | `PICK_TIME_SEC`, `DROP_TIME_SEC` |
+| $s_{\text{pick}},\, s_{\text{drop}}$ | 자전거 1대 수거·배송 = **각 30초** | `PICK_TIME_SEC`, `DROP_TIME_SEC` |
 | $c_{\text{tr}}$ | 대여소 하나당 이동 시간 = **12.5분** (실측) | `TRAVEL_MIN_PER_STATION` |
 | $\rho$ | 군집 불균형 여유 = **1.4** (최장/평균 실측) | `CLUSTER_IMBALANCE_ALLOWANCE` |
 
@@ -159,7 +159,7 @@ P' = \{\, i \in P : |\text{cumsum}(r)_i| \le \Lambda \,\},\quad
 G' = \{\, i \in G : \text{cumsum}(r)_i \le \Lambda \,\}
 $$
 
-받아 줄 곳이 없는데 싣기만 하는 계획을 막는 장치다.
+받아 줄 곳이 없는데 수거만 하는 계획을 막는 장치다.
 **$P' \cup G'$가 비면 step1이 그 회차를 건너뛴다.** 한쪽만 남는 경우(작은 쪽 총량이
 반대쪽의 가장 큰 단일 작업량보다 작을 때)에는 step1이 군집을 저장하지만 ILP 계획이
 비어 step2에서 건너뛴다 — 어느 쪽이든 재배치는 일어나지 않는다.
@@ -349,7 +349,7 @@ $$
 **소요시간**
 
 $$
-\tau = \sum \left( \frac{\text{거리}}{v} \times 3600 \right) + 30 \times (\text{싣기} + \text{내리기 대수})
+\tau = \sum \left( \frac{\text{거리}}{v} \times 3600 \right) + 30 \times (\text{수거} + \text{배송 대수})
 $$
 
 **시간 예산**

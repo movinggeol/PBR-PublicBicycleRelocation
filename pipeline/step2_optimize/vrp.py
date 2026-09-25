@@ -324,7 +324,7 @@ def cluster_workload(vrp_result: pd.DataFrame) -> pd.DataFrame:
 
     `bikes`는 **실제로 옮긴 자전거 수**다. 한 대는 한 번 실리고 한 번 내려지므로
     pick과 drop의 qty를 모두 더하면 2배가 된다(ILP 계획 대수와 어긋남).
-    그래서 pick만 센다. 반면 작업시간은 싣기·내리기가 각각 드는 게 맞으므로
+    그래서 pick만 센다. 반면 작업시간은 수거·배송이 각각 드는 게 맞으므로
     `work_sec`는 두 동작을 모두 반영한다.
     """
     if vrp_result.empty:

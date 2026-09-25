@@ -636,7 +636,7 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
 
         for _, row in cluster_df.iterrows():
             
-            # 싣기/내리기 색은 mapviz.py 한 벌에서 온다 — 예전에는 여기
+            # 수거/배송 색은 mapviz.py 한 벌에서 온다 — 예전에는 여기
             # 'red'/'blue'를 직접 박아 두어, 웹 작업지시서와 **파랑이 서로
             # 반대 작업**을 뜻했다(1.26.107). 용어도 한글로 통일한다.
             if row['rebal_qty'] > 0:
@@ -697,7 +697,7 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
                 opacity=1.0,
                 # 악화된 대여소는 하한(3)에 걸려 크기로는 구분이 안 되므로
                 # 점선 테두리로 표시한다. 색은 그대로 둔다 — 색은 이미
-                # 싣기/내리기를 뜻하고 있어서 뜻을 겹쳐 실을 수 없다.
+                # 수거/배송을 뜻하고 있어서 뜻을 겹쳐 실을 수 없다.
                 dash_array='4,3' if worsened else None,
 
                 fill=True,

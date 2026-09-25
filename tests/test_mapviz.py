@@ -183,7 +183,7 @@ def test_크기_눈금은_하한을_감추지_않는다():
 
 
 def test_점선_배지는_테두리로만_말한다():
-    """색은 이미 싣기/내리기를 뜻한다 — 뜻을 하나 더 실을 수 없어
+    """색은 이미 수거/배송을 뜻한다 — 뜻을 하나 더 실을 수 없어
     모양(점선)으로 가른다."""
     badge = mapviz.swatch_circle_dashed()
     assert "dashed" in badge
@@ -201,7 +201,7 @@ def test_세_지도가_같은_낱말을_쓴다():
                  if not l.lstrip().startswith("#")]
         body = "\n".join(lines)
         assert 'action_txt = "Pick' not in body, f"{step}에 영어 낱말이 남아 있다"
-        assert "status = '싣기'" not in body, f"{step}이 낱말을 따로 박아 두었다"
+        assert "status = '수거'" not in body, f"{step}이 낱말을 따로 박아 두었다"
 
 
 def test_쓰지_않는_색_변수를_두지_않는다():
@@ -219,7 +219,7 @@ def test_범례에_그린_코드의_지문이_찍힌다():
     """지도의 범례·팔레트는 코드에 있고 산출물은 디스크에 있다.
 
     코드를 고쳐도 이미 그려 둔 HTML은 낡은 채로 남는데, 사람이 보는 것은
-    디스크의 HTML이다. 실제로 두 번 갈렸고(1.26.80 팔레트·1.26.107 싣기/내리기
+    디스크의 HTML이다. 실제로 두 번 갈렸고(1.26.80 팔레트·1.26.107 수거/배송
     색) **두 번 다 사람이 눈으로 발견했다.**
     """
     html = mapviz.legend_html("시험", [(mapviz.swatch_circle("#000"), "가")])
@@ -365,7 +365,7 @@ def test_원_크기가_수량을_따라_실제로_변한다():
     assert radii == sorted(radii), "수량이 늘어도 원이 커지지 않는다"
     assert radii[0] >= mapviz.QTY_RADIUS_MIN, "가장 작은 원이 사라질 만큼 작다"
 
-    # 부호는 크기가 아니라 색이 말한다 — 싣기(음수)와 내리기(양수)의
+    # 부호는 크기가 아니라 색이 말한다 — 수거(음수)와 배송(양수)의
     # 같은 대수는 같은 크기여야 한다.
     assert mapviz.qty_radius(-7, capacity) == mapviz.qty_radius(7, capacity)
 

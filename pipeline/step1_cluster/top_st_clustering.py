@@ -255,7 +255,7 @@ def wanted_vehicles(pick_drop: pd.DataFrame, geo: bool = None) -> int:
 
     한 대가 감당할 수 있는 양을 시간으로 따진다.
 
-      작업시간 = 처리 대수 × (싣기 + 내리기)        — 정확히 계산된다
+      작업시간 = 처리 대수 × (수거 + 배송)        — 정확히 계산된다
       이동시간 = 대여소 수 × TRAVEL_MIN_PER_STATION  — 실측 계수
       필요 대수 = ceil((작업 + 이동) × 불균형 여유 / 시간 예산)
 
@@ -291,7 +291,7 @@ def wanted_vehicles(pick_drop: pd.DataFrame, geo: bool = None) -> int:
 def _wanted_vehicles_geo(pick_drop: pd.DataFrame) -> int:
     """`wanted_vehicles()`의 거리 인지 버전 — 차량 1대의 시간을 직접 예산과 견준다.
 
-      차량 1대 시간 = [ 처리 대수 ÷ K × (싣기+내리기)
+      차량 1대 시간 = [ 처리 대수 ÷ K × (수거+배송)
                       + travel_seconds(순회거리 ÷ K + depot 왕복) ] × 불균형 여유
 
     순회거리(`_estimate_travel_km_per_vehicle`)는 K가 늘어도 거의 안 변한다는
