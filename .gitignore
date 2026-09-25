@@ -77,6 +77,8 @@ docs/연구/references/**/*.hwp
 # 경진대회 포스터 양식과 채운 포스터 — 채운 쪽에 학번이 들어간다 (2026-09-21).
 docs/연구/references/**/*.pptx
 docs/연구/references/**/작품 포스터*
+# 작년 학술제 우수 포스터 전시 사진 — 다른 학생들의 이름·학번이 찍혀 있다 (2026-09-25).
+docs/연구/references/학술제 포스터 모음/
 docs/연구/references/**/*.jfif
 docs/연구/references/아이디어/
 
