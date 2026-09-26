@@ -176,14 +176,21 @@
            data-collect="{{ run_estimate.collect }}"
            data-preprocess="{{ run_estimate.preprocess }}"
            data-per-duration="{{ run_estimate.per_duration }}"
+           data-collect-hi="{{ run_estimate.collect_hi }}"
+           data-preprocess-hi="{{ run_estimate.preprocess_hi }}"
+           data-per-duration-hi="{{ run_estimate.per_duration_hi }}"
+           {% if run_estimate.eda is not none %}data-eda="{{ run_estimate.eda }}"
+           data-eda-hi="{{ run_estimate.eda_hi }}"{% endif %}
            data-samples="{{ run_estimate.samples }}"
            {% endif %}
            data-default-durations="{{ defaults.duration.split(',') | length }}">
           <span data-estimate-text role="status">
             {%- if run_estimate -%}
+            {%- set _n = defaults.duration.split(',') | length -%}
             예상 <b>{{ ((run_estimate.collect + run_estimate.preprocess
-                        + run_estimate.per_duration
-                          * (defaults.duration.split(',') | length)) / 60) | round(1) }}분</b>
+                        + run_estimate.per_duration * _n) / 60) | round(1) }}~{{
+                     ((run_estimate.collect_hi + run_estimate.preprocess_hi
+                        + run_estimate.per_duration_hi * _n) / 60) | round(1) }}분</b>
             {%- else -%}
             기록이 쌓이면 예상 시간이 여기 나옵니다
             {%- endif -%}
@@ -191,7 +198,7 @@
           걸립니다. 대여소를 묶는 단계가 대부분이라, <b>시간대를 하나 더 고를 때마다</b>
           그만큼 늘어납니다.
           {% if run_estimate %}<span class="muted">(지난 실행 {{ run_estimate.samples }}번의
-          단계별 기록에서 뽑았습니다. 그날 처음 돌리면 더 걸릴 수 있습니다.)</span>{% endif %}
+          단계별 기록에서 뽑았습니다 — 앞은 보통, 뒤는 그중 가장 오래 걸린 쪽입니다.)</span>{% endif %}
           누르면 진행 상황 화면으로 넘어갑니다.</p>
       </div>
     </form>
@@ -490,11 +497,21 @@
     var box = document.querySelector("[data-run-estimate]");
     if (!box) return;
     var out = box.querySelector("[data-estimate-text]");
-    var collect = parseFloat(box.dataset.collect);
-    var preprocess = parseFloat(box.dataset.preprocess);
-    var per = parseFloat(box.dataset.perDuration);
+    function 수(name, fallback) {
+      var v = parseFloat(box.dataset[name]);
+      return isNaN(v) ? fallback : v;
+    }
+    var collect = 수("collect", 0);
+    var preprocess = 수("preprocess", NaN);
+    var per = 수("perDuration", NaN);
     if (!out || isNaN(per) || isNaN(preprocess)) return;   /* 기록 없음 — 손대지 않는다 */
-    if (isNaN(collect)) collect = 0;
+    /* 보수적인 끝(창 안의 최댓값, 1.26.294). 없으면 보통 값으로 물러선다. */
+    var collectHi = 수("collectHi", collect);
+    var preprocessHi = 수("preprocessHi", preprocess);
+    var perHi = 수("perDurationHi", per);
+    /* EDA는 켠 실행이 있어야 계수가 생긴다. 없으면 NaN — 지어내지 않는다. */
+    var eda = 수("eda", NaN);
+    var edaHi = 수("edaHi", eda);
 
     var fallback = parseInt(box.dataset.defaultDurations, 10) || 1;
     var form = box.closest("form");
@@ -513,11 +530,18 @@
       var n = 고른것 || fallback;
       var skipApi = form.querySelector("input[name=skip_api]");
       var skipEda = form.querySelector("input[name=skip_eda]");
-      var seconds = preprocess + per * n + ((skipApi && skipApi.checked) ? 0 : collect);
-      var 글 = "예상 <b>" + 분(seconds) + "</b>";
+      var api = !(skipApi && skipApi.checked);
+      var edaOn = skipEda && !skipEda.checked;
+      var lo = preprocess + per * n + (api ? collect : 0);
+      var hi = preprocessHi + perHi * n + (api ? collectHi : 0);
+      if (edaOn && !isNaN(eda)) { lo += eda; hi += edaHi; }
+      var a = 분(lo), b = 분(Math.max(hi, lo));
+      var 글 = "예상 <b>" + (a === b ? a : a.replace(/분$/, "") + "~" + b) + "</b>";
       if (고른것 === 0) 글 += " <span class=\"muted\">(기본 " + n + "개 기준)</span>";
-      /* EDA를 켠 실행은 기록이 없다 — 모르는 몫을 숫자로 지어내지 않고 그렇게 말한다. */
-      if (skipEda && !skipEda.checked) 글 += " <span class=\"muted\">+ EDA(기록 없음)</span>";
+      /* EDA를 켰는데 켠 실행의 기록이 없으면 — 모르는 몫을 지어내지 않고 그렇게 말한다.
+         기록이 있으면 위 합계에 이미 들어 있다(09-26 실측 5분 28초). */
+      if (edaOn && isNaN(eda)) 글 += " <span class=\"muted\">+ EDA(기록 없음)</span>";
+      else if (edaOn) 글 += " <span class=\"muted\">(EDA " + 분(eda) + " 포함)</span>";
       out.innerHTML = 글;
     }
 

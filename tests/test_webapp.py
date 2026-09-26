@@ -489,6 +489,11 @@ def test_시간대마다_되풀이되는_단계_목록이_코드와_맞는다():
              for key in ("fetch", "api") for p in run_pipeline.STAGES[key]}
     assert 걷히는것 == set(jobs.API_STAGE)
 
+    # 'EDA 생략'이 걷어 내는 단계도 같아야 한다(1.26.294) — 갈리면 EDA 몫이
+    # 전처리로 새어 **켠 실행 하나가 전처리를 30배로** 부풀린다.
+    eda = {f"{p.parent.name}/{p.name}" for p in run_pipeline.STAGES["eda"]}
+    assert eda == set(jobs.EDA_STAGE)
+
 
 def test_감시_스레드가_사용자의_실행_이력에_쓰지_않는다(monkeypatch):
     """테스트가 사용자 데이터를 건드리면 안 된다 (1.26.149).
@@ -3849,3 +3854,123 @@ def test_실행으로_좁힌_데이터는_나중에_다시_쓰인_기간_파일�
     assert html.count("data-rewritten") == 1 and "이 실행 뒤에 다시 쓰임" in html
     shown[1]["entries"][0]["mtime_raw"] = 5.0
     assert "data-rewritten" not in client.get("/data", params={"run_label": run}).text
+
+
+
+# ───────── 예상 소요: EDA · 보수적인 끝 · 시작할 때 굳히기 (1.26.294) ─────────
+
+def _작업(tmp_path, job_id, 단계, *, 시간대=("_05_10",), eda=False, status="success"):
+    """단계별 소요 표가 붙은 가짜 작업. EDA를 안 켜면 `--skip-eda`를 붙인다(폼 기본값)."""
+    args = ["--duration", ",".join(시간대)] + ([] if eda else ["--skip-eda"])
+    (tmp_path / f"run_{job_id}.log").write_text(_가짜_로그(단계), encoding="utf-8")
+    return jobs.Job(id=job_id, status=status, args=args,
+                    started_at="2026-09-26 11:24:32", finished_at="2026-09-26 11:33:14")
+
+
+def test_EDA는_전처리에_섞이지_않고_따로_센다(monkeypatch, tmp_path):
+    """🔴 09-26 실행은 EDA를 켠 채 시간대 넷을 돌았고 **8.7분**이 걸렸다. 진행 화면은
+    "(예상 6.3분)"이었다 — 1.26.214까지 EDA를 켠 기록이 없어 그 몫이 계수에 없었고,
+    그 사정은 **폼에만** 적혀 있었다. EDA 두 단계가 5분 28초(전체의 64%)였다.
+
+    그 실행이 기록에 들어오자 이번에는 반대로 **전처리가 10초 → 339초**로 부풀었다
+    (EDA가 '나머지 고정 부분'으로 새었다). 따로 떼어 따로 세야 둘 다 맞는다.
+    """
+    monkeypatch.setattr(jobs, "LOG_DIR", tmp_path)
+    jobs.reset_estimate_cache()
+    기본 = {"step0_collect/tashu_api.py": 19.0, "step0_collect/raw_to_net.py": 10.6,
+          "step1_cluster/top_st_clustering.py": 80.0}
+    켠것 = dict(기본, **{"step0_eda/concat_1year_file.py": 174.0,
+                        "step0_eda/EDA.py": 154.0})
+    이력 = [_작업(tmp_path, "3", 켠것, eda=True),
+          _작업(tmp_path, "2", 기본), _작업(tmp_path, "1", 기본)]
+    monkeypatch.setattr(jobs, "list_jobs", lambda: 이력)
+
+    model = jobs.estimate_model()
+    assert model["수집"] == 19.0, "수집 단계를 못 읽었다(경로 표기)"
+    assert model["전처리"] == 10.6, "EDA가 전처리로 새었다"
+    assert model["EDA"] == 328.0, "켠 실행이 있는데 EDA 계수가 없다"
+
+    생략 = jobs.estimate_seconds(model, 4)                      # 폼 기본값: EDA 생략
+    켬 = jobs.estimate_seconds(model, 4, skip_eda=False)
+    assert 켬 - 생략 == 328.0, "EDA를 켜도 예상이 그대로다"
+    assert not jobs.eda_unknown(model, skip_eda=False)
+
+
+def test_EDA_기록이_없으면_지어내지_않고_빠졌다고_말한다(monkeypatch, tmp_path):
+    """EDA를 켠 실행이 하나도 없으면 그 몫을 **숫자로 지어내지 않는다.** 대신 진행
+    화면까지 그렇다고 말해야 한다 — 폼에만 적고 진행 화면은 숫자만 보여 주던 것이
+    09-26의 "예상 6.3분인데 8.7분"이었다."""
+    monkeypatch.setattr(jobs, "LOG_DIR", tmp_path)
+    jobs.reset_estimate_cache()
+    기본 = {"step0_collect/raw_to_net.py": 10.0, "step1_cluster/top_st_clustering.py": 80.0}
+    monkeypatch.setattr(jobs, "list_jobs", lambda: [_작업(tmp_path, "1", 기본)])
+
+    model = jobs.estimate_model()
+    assert model["EDA"] is None
+    assert jobs.eda_unknown(model, skip_eda=False)
+    assert jobs.estimate_seconds(model, 1, skip_eda=False) == 90.0, "모르는 몫을 지어냈다"
+
+    새작업 = jobs.Job(id="9", args=["--duration", "_05_10"])         # EDA 켬
+    새작업.estimate = jobs.job_estimate(새작업, model)
+    assert app_module._estimate_note(새작업), "진행 화면이 EDA가 빠졌다고 말하지 않는다"
+
+    생략작업 = jobs.Job(id="8", args=["--duration", "_05_10", "--skip-eda"])
+    생략작업.estimate = jobs.job_estimate(생략작업, model)
+    assert app_module._estimate_note(생략작업) is None, "생략했는데 EDA 이야기를 한다"
+
+
+def test_보수적인_끝은_창_안의_최댓값이다(monkeypatch, tmp_path):
+    """🔴 같은 설정도 42초~119초로 흔들린다 — 중앙값 하나만 적으면 **절반은 넘긴다**
+    (사용자 요청 "보수적으로", 1.26.294). 부풀림 배수를 사람이 고르지 않는다 —
+    배수는 코드가 빨라져도 그대로 남지만, 최댓값은 기록과 함께 바뀐다."""
+    monkeypatch.setattr(jobs, "LOG_DIR", tmp_path)
+    jobs.reset_estimate_cache()
+    이력 = [_작업(tmp_path, str(i), {"step0_collect/raw_to_net.py": 10.0,
+                                   "step1_cluster/top_st_clustering.py": 초})
+          for i, 초 in enumerate((20.0, 60.0, 40.0))]
+    monkeypatch.setattr(jobs, "list_jobs", lambda: 이력)
+
+    model = jobs.estimate_model()
+    assert model["시간대당"] == 40.0 and model["높음"]["시간대당"] == 60.0
+    assert jobs.estimate_seconds(model, 2, high=True) == 10.0 + 60.0 * 2
+    assert jobs.estimate_seconds(model, 2, high=True) >= jobs.estimate_seconds(model, 2)
+
+    # 화면 글은 "보통~길면" 범위다. 같으면 하나만.
+    assert app_module._span_text(120.0, 180.0) == "2.0~3.0"
+    assert app_module._span_text(120.0, 121.0) == "2.0"
+    assert app_module._span_text(None, 180.0) is None
+
+    # 옛 꼴의 계수('높음' 없음)도 받는다 — 보통 값으로 물러선다.
+    옛것 = {"수집": 0.0, "전처리": 10.0, "시간대당": 40.0, "표본": 3}
+    assert jobs.estimate_seconds(옛것, 1, high=True) == 50.0
+
+
+def test_끝난_작업의_예상은_시작할_때_굳힌_값이다(monkeypatch, tmp_path):
+    """🔴 09-26 실행은 도는 동안 "(예상 6.3분)"이었다가 **끝나자 "(예상 5.5분)"**이
+    됐다. 화면이 그때그때 지금 계수로 다시 셈했는데, 끝난 그 작업이 계수의 표본에
+    들어가 계수를 끌어내렸다. 예상은 시작할 때 한 약속이라 나중에 바뀌면 맞았는지
+    볼 수 없다."""
+    약속 = {"수집": 18.4, "전처리": 11.4, "시간대당": 86.5, "EDA": None, "표본": 3,
+          "높음": {"수집": 19.0, "전처리": 13.4, "시간대당": 115.9, "EDA": None}}
+    작업 = jobs.Job(id="20260926-112432-604",
+                  args=["--duration", "_05_10,_10_15,_15_20,_20_05", "--skip-eda"])
+    작업.estimate = jobs.job_estimate(작업, 약속)
+    처음 = app_module._running_estimate_minutes(작업)
+    assert 처음 == "6.3~8.3"
+
+    # 작업이 끝나 계수가 바뀌어도 그 작업의 예상은 그대로다.
+    monkeypatch.setattr(jobs, "estimate_model", lambda limit=3: {
+        "수집": 19.0, "전처리": 10.6, "시간대당": 39.3, "EDA": None, "표본": 3})
+    assert app_module._running_estimate_minutes(작업) == 처음, "끝난 작업의 예상이 바뀌었다"
+
+    # 굳힌 값이 없는 옛 기록은 **지금 계수로 다시 셈하지 않는다** — 같은 거짓말이 된다.
+    assert app_module._running_estimate_minutes(jobs.Job(id="옛것", args=[])) is None
+
+
+def test_진행_화면은_범위_예상을_숫자로_바꾸지_않는다(client):
+    """예상이 "5.5~6.3" 같은 글이 되면서, 3초마다 고쳐 그리는 스크립트가 `Number()`로
+    바꾸면 **NaN**을 찍는다. 서버가 다듬은 글을 그대로 써야 한다."""
+    body = (Path(__file__).resolve().parents[1] / "webapp" / "templates"
+            / "run_detail.html").read_text(encoding="utf-8")
+    assert "m(d.estimate_minutes)" not in body, "범위 예상을 숫자로 바꾼다 — NaN이 된다"
+    assert "d.estimate_note" in body, "갱신된 화면이 EDA가 빠졌다는 말을 잃는다"

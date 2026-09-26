@@ -137,8 +137,8 @@
          어긋남이 눈에 보여야 한다(1.26.214). #}
       <tr><th scope="row">걸린 시간</th><td data-run-elapsed>
         {%- if elapsed_minutes is not none %}{{ elapsed_minutes }}분{% if job.is_running %} 경과{% endif %}
-          {%- if estimate_minutes is not none %} <span class="muted">(예상 {{ estimate_minutes }}분)</span>{% endif %}
-        {%- elif estimate_minutes is not none %}<span class="muted">예상 {{ estimate_minutes }}분</span>
+          {%- if estimate_minutes is not none %} <span class="muted">(예상 {{ estimate_minutes }}분{% if estimate_note %} · {{ estimate_note }}{% endif %})</span>{% endif %}
+        {%- elif estimate_minutes is not none %}<span class="muted">예상 {{ estimate_minutes }}분{% if estimate_note %} · {{ estimate_note }}{% endif %}</span>
         {%- else %}—{% endif %}</td></tr>
       <tr><th scope="row"><span class="tip" data-tip="0이면 정상 종료입니다. 그 밖의 값은 어딘가에서 오류가 났다는 뜻입니다.">종료 코드</span></th>
           <td>{{ job.returncode if job.returncode is not none else "—" }}</td></tr>
@@ -200,11 +200,17 @@
       /* 서버는 소수 한 자리(1.0)로 적는다 — JS의 1.0은 "1"이 되어 3초 뒤 글자가 바뀌므로 맞춘다 */
       function m(v) { return Number(v).toFixed(1); }
       var text;
+      /* 예상은 서버가 이미 다듬어 준 글이다("5.5~6.3") — 범위라 숫자로 바꾸면
+         NaN이 된다(1.26.294). 그대로 쓴다. */
+      var est = null;
+      if (d.estimate_minutes !== null && d.estimate_minutes !== undefined) {
+        est = d.estimate_minutes + "분" + (d.estimate_note ? " · " + d.estimate_note : "");
+      }
       if (d.elapsed_minutes !== null && d.elapsed_minutes !== undefined) {
         text = m(d.elapsed_minutes) + "분 경과";
-        if (d.estimate_minutes !== null && d.estimate_minutes !== undefined) text += " (예상 " + m(d.estimate_minutes) + "분)";
-      } else if (d.estimate_minutes !== null && d.estimate_minutes !== undefined) {
-        text = "예상 " + m(d.estimate_minutes) + "분";
+        if (est) text += " (예상 " + est + ")";
+      } else if (est) {
+        text = "예상 " + est;
       } else {
         text = "—";
       }

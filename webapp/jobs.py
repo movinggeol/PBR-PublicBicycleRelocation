@@ -48,6 +48,9 @@ class Job:
     started_at: str = ""
     finished_at: str = ""
     cancelled: bool = False
+    # 시작하는 순간 굳힌 예상 소요 {low, high, eda_unknown} (1.26.294) —
+    # `job_estimate()` 참고. 이 칸이 없는 옛 기록은 None이고 예상을 적지 않는다.
+    estimate: Optional[Dict[str, object]] = None
 
     @property
     def log_path(self) -> Path:
@@ -193,6 +196,19 @@ API_STAGE = frozenset({
     "step0_collect/api_to_info.py",
 })
 
+# 'EDA 생략'(`--skip-eda`)이 걷어 내는 단계. run_pipeline.STAGES의 eda와
+# 같아야 한다 — 시험이 대조한다.
+#
+# 🔴 **예상에서 가장 크게 빠져 있던 몫이다(1.26.294).** 1.26.214까지는 EDA를 켠
+# 실행이 하나도 없어 계수가 없었고, 화면은 실행 폼에서만 "+ EDA(기록 없음)"이라
+# 적고 **진행 화면에서는 그 말 없이 숫자만** 보여 줬다. 09-26 11:24 실행은 EDA를
+# 켠 채 시간대 넷을 돌았는데, 이 두 단계가 **5분 28초**로 전체 8분 35초의
+# 64%였다 — 화면은 "(예상 6.3분)"이라 적고 있었다.
+EDA_STAGE = frozenset({
+    "step0_eda/concat_1year_file.py",
+    "step0_eda/EDA.py",
+})
+
 # 로그 끝의 단계별 소요 표를 읽는다. "1.5초" 와 "5분 58초" 두 꼴이 모두 나온다.
 _TIMING_RE = re.compile(r"^\s*(?:(\d+)분\s+)?([\d.]+)초\s\s+(\S+)\s*$")
 
@@ -237,10 +253,15 @@ def step_timings(log_text: str) -> Dict[str, float]:
 def run_shape(job: "Job") -> Optional[Dict[str, float]]:
     """한 실행을 **고정 비용과 시간대당 비용으로** 가른다. 못 읽으면 None.
 
-    돌려주는 값은 초 단위 셋이다.
+    돌려주는 값은 초 단위 넷이다.
       · `수집`     — 'API 수집 생략'으로 빠지는 부분
+      · `EDA`      — 'EDA 생략'으로 빠지는 부분 (생략한 실행은 0)
       · `전처리`   — 늘 드는 나머지 고정 부분(순수요 계산 등)
       · `시간대당` — 시간대 하나를 더 고를 때마다 늘어나는 몫
+
+    ⚠️ EDA를 `전처리`에 섞으면 **켠 실행 하나가 전처리를 30배로 부풀린다**
+    (10초 → 339초, 09-26 실측). 중앙값이 걸러 주기는 하지만, 그 대가로 EDA의
+    몫이 어디에도 안 남는다 — 따로 떼어 따로 센다.
     """
     durations = job_durations(job)
     if not durations:
@@ -258,8 +279,10 @@ def run_shape(job: "Job") -> Optional[Dict[str, float]]:
         return None
     return {
         "수집": sum(v for k, v in timings.items() if k in API_STAGE),
+        "EDA": sum(v for k, v in timings.items() if k in EDA_STAGE),
         "전처리": sum(v for k, v in timings.items()
-                   if k not in API_STAGE and k not in DURATION_SCALED),
+                   if k not in API_STAGE and k not in EDA_STAGE
+                   and k not in DURATION_SCALED),
         "시간대당": scaled / len(durations),
     }
 
@@ -354,11 +377,39 @@ def estimate_model(limit: int = ESTIMATE_WINDOW) -> Optional[Dict[str, float]]:
     model = None
     if shapes:
         수집표본 = [s["수집"] for s in shapes if s["수집"] > 0]
+        전처리표본 = [s["전처리"] for s in shapes]
+        시간대표본 = [s["시간대당"] for s in shapes]
+        # EDA는 **켠 실행이 드물다**(폼 기본값이 생략). 같은 좁은 창에서 찾으면
+        # 거의 늘 비므로, 이력 전체에서 켠 실행을 따로 최근 `limit`건 모은다.
+        # 이 단계는 코드가 거의 바뀌지 않아(1년치 파일 합치기·그래프) 시대가
+        # 섞일 위험이 시간대당 몫보다 훨씬 작다.
+        EDA표본 = []
+        for job in history:
+            if job.status != "success" or "--skip-eda" in (job.args or ()):
+                continue
+            shape = run_shape(job)
+            if shape and shape.get("EDA", 0) > 0:
+                EDA표본.append(shape["EDA"])
+            if len(EDA표본) >= limit:
+                break
         model = {
             "수집": _median(수집표본) if 수집표본 else 0.0,
-            "전처리": _median([s["전처리"] for s in shapes]),
-            "시간대당": _median([s["시간대당"] for s in shapes]),
+            "전처리": _median(전처리표본),
+            "시간대당": _median(시간대표본),
+            "EDA": _median(EDA표본) if EDA표본 else None,
+            # 🔴 **보수적인 끝**(1.26.294, 사용자 요청). 같은 설정도 42초~119초로
+            # 흔들린다(1.26.214 실측) — 중앙값 하나만 적으면 절반은 넘긴다.
+            # 창 안의 **최댓값**으로 위쪽 끝을 낸다. 따로 부풀림 배수를 정하지
+            # 않은 것은, 배수는 사람이 고른 숫자라 코드가 빨라져도 그대로 남기
+            # 때문이다 — 최댓값은 기록이 바뀌면 같이 바뀐다.
+            "높음": {
+                "수집": max(수집표본) if 수집표본 else 0.0,
+                "전처리": max(전처리표본),
+                "시간대당": max(시간대표본),
+                "EDA": max(EDA표본) if EDA표본 else None,
+            },
             "표본": len(shapes),
+            "EDA표본": len(EDA표본),
         }
     _ESTIMATE_CACHE.update(key=key, value=model)
     return model
@@ -370,19 +421,53 @@ def reset_estimate_cache() -> None:
 
 
 def estimate_seconds(model: Optional[Dict[str, float]], durations: int,
-                     skip_api: bool = False) -> Optional[float]:
+                     skip_api: bool = False, skip_eda: bool = True,
+                     high: bool = False) -> Optional[float]:
     """고른 시간대 수로 예상 초를 낸다. 계수가 없으면 None.
 
-    `고정 + 시간대당 x 개수`다. 2026-09-14 실측으로 검증했다 — 계수(고정 13초 +
-    시간대당 28초)로 시간대 둘을 예측하면 69초인데 실제도 69초였다.
+    `고정 + 시간대당 x 개수 (+ EDA)`다. 2026-09-14 실측으로 검증했다 — 계수(고정
+    13초 + 시간대당 28초)로 시간대 둘을 예측하면 69초인데 실제도 69초였다.
 
-    ⚠️ **EDA를 켠 실행은 기록이 없다.** 그래서 그 몫은 더하지 않는다 — 모르는
-    것을 숫자로 지어내는 대신 화면이 '더 걸린다'고 말한다.
+    high: 창 안의 최댓값으로 셈한 **보수적인 끝**. 계수에 그 값이 없으면(옛 꼴의
+      계수) 중앙값으로 물러선다.
+    skip_eda: 기본은 True — 폼의 기본값이 'EDA 생략'이다. False인데 EDA 기록이
+      없으면 그 몫은 더하지 않는다. 모르는 것을 지어내는 대신 `eda_unknown()`으로
+      화면이 '더 걸린다'고 말하게 한다.
     """
     if not model or durations <= 0:
         return None
-    고정 = model["전처리"] + (0.0 if skip_api else model["수집"])
-    return 고정 + model["시간대당"] * durations
+    쪽 = model.get("높음") if high and model.get("높음") else model
+    고정 = 쪽["전처리"] + (0.0 if skip_api else 쪽["수집"])
+    if not skip_eda and 쪽.get("EDA") is not None:
+        고정 += 쪽["EDA"]
+    return 고정 + 쪽["시간대당"] * durations
+
+
+def eda_unknown(model: Optional[Dict[str, float]], skip_eda: bool) -> bool:
+    """EDA를 켰는데 계수가 없어 예상에 못 넣었는가."""
+    return (not skip_eda) and bool(model) and model.get("EDA") is None
+
+
+def job_estimate(job: "Job", model: Optional[Dict[str, float]]) -> Optional[Dict[str, object]]:
+    """한 작업의 예상을 **시작하는 순간의 계수로** 낸다 (1.26.294).
+
+    🔴 **화면이 예상을 그때그때 다시 셈하면 끝난 작업의 예상이 바뀐다.** 09-26
+    실행은 도는 동안 "(예상 6.3분)"이었다가 끝나자 "(예상 5.5분)"이 됐다 — 끝난
+    그 작업이 계수의 표본에 들어가 계수를 끌어내렸기 때문이다. 예상은 **그 작업을
+    시작할 때 한 약속**이라 나중에 고치면 맞았는지 볼 수 없다. 그래서 시작할 때
+    굳혀 작업에 붙여 둔다.
+    """
+    durations = len(job_durations(job)) or 1
+    args = job.args or ()
+    skip_api = "--skip-api" in args
+    skip_eda = "--skip-eda" in args
+    low = estimate_seconds(model, durations, skip_api=skip_api, skip_eda=skip_eda)
+    if low is None:
+        return None
+    high = estimate_seconds(model, durations, skip_api=skip_api, skip_eda=skip_eda,
+                            high=True)
+    return {"low": round(low, 1), "high": round(max(high or low, low), 1),
+            "eda_unknown": eda_unknown(model, skip_eda)}
 
 
 def get_job(job_id: str) -> Optional[Job]:
@@ -533,6 +618,13 @@ def start_job(pipeline_args: List[str]) -> Job:
             args=list(pipeline_args),
             started_at=_now_str(),
         )
+        # 예상은 **지금** 굳힌다 — 이 작업이 끝나면 계수의 표본이 되어 계수가
+        # 바뀌므로, 나중에 다시 셈하면 약속이 슬며시 바뀐다(`job_estimate` 참고).
+        # 예상을 못 내도 실행은 막지 않는다 — 안내일 뿐이다.
+        try:
+            job.estimate = job_estimate(job, estimate_model())
+        except Exception as err:          # noqa: BLE001
+            print(f"[경고] 예상 소요를 내지 못했습니다: {type(err).__name__}: {err}")
 
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         log_file = open(job.log_path, "w", encoding="utf-8")

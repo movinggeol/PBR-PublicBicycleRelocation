@@ -278,32 +278,71 @@ def _run_estimate() -> Optional[dict]:
     model = jobs.estimate_model()
     if not model:
         return None
+    높음 = model.get("높음") or model
+
+    def 초(v):
+        return None if v is None else round(v, 1)
+
+    # 중앙값(보통)과 최댓값(길면) 두 벌을 넘긴다 — 폼이 둘 다 셈해 범위로 적는다.
     return {
-        "collect": round(model["수집"], 1),
-        "preprocess": round(model["전처리"], 1),
-        "per_duration": round(model["시간대당"], 1),
+        "collect": 초(model["수집"]),
+        "preprocess": 초(model["전처리"]),
+        "per_duration": 초(model["시간대당"]),
+        "eda": 초(model.get("EDA")),
+        "collect_hi": 초(높음["수집"]),
+        "preprocess_hi": 초(높음["전처리"]),
+        "per_duration_hi": 초(높음["시간대당"]),
+        "eda_hi": 초(높음.get("EDA")),
         "samples": int(model["표본"]),
     }
 
 
-def _estimate_minutes(durations: int = 1, skip_api: bool = False) -> Optional[float]:
-    """시간대 `durations`개를 골랐을 때의 예상 분. 기록이 없으면 None."""
-    return _minutes(jobs.estimate_seconds(jobs.estimate_model(), durations,
-                                          skip_api=skip_api))
+def _span_text(low: Optional[float], high: Optional[float]) -> Optional[str]:
+    """초 두 개 → "5.5~6.3" 같은 분 글. 한 자리로 반올림해 같으면 하나만 적는다.
 
-
-def _running_estimate_minutes(job) -> Optional[float]:
-    """**지금 돌고 있는 그 작업**의 예상 분. 그 작업이 고른 시간대 수로 센다.
-
-    화면 위쪽 띠에 "보통 N분"이라고 적는 자리인데, 예전에는 시간대 수와 상관
-    없는 한 숫자였다 — 네 개를 골라 돌리는 사람에게도 하나짜리 숫자를 보여
-    주고 있었다(1.26.214).
+    🔴 **범위로 적는 이유**(1.26.294, 사용자 요청 "보수적으로"). 같은 설정도
+    42초~119초로 흔들린다 — 중앙값 하나만 적으면 절반은 넘긴다. 앞은 창 안의
+    중앙값(보통), 뒤는 최댓값(길면)이다.
     """
-    if job is None:
+    if low is None:
         return None
-    durations = len(jobs.job_durations(job)) or 1
-    skip_api = "--skip-api" in (job.args or ())
-    return _estimate_minutes(durations, skip_api=skip_api)
+    lo = f"{low / 60:.1f}"
+    hi = f"{max(high if high is not None else low, low) / 60:.1f}"
+    return lo if lo == hi else f"{lo}~{hi}"
+
+
+def _estimate_minutes(durations: int = 1, skip_api: bool = False) -> Optional[str]:
+    """시간대 `durations`개(EDA 생략)를 골랐을 때의 예상 분 글. 기록이 없으면 None."""
+    model = jobs.estimate_model()
+    return _span_text(
+        jobs.estimate_seconds(model, durations, skip_api=skip_api),
+        jobs.estimate_seconds(model, durations, skip_api=skip_api, high=True))
+
+
+def _running_estimate_minutes(job) -> Optional[str]:
+    """**그 작업**의 예상 분 글 — 시작할 때 굳힌 값이다 (1.26.294).
+
+    예전에는 화면을 그릴 때마다 지금 계수로 다시 셈했다. 그러면 작업이 끝나
+    계수의 표본에 들어간 순간 그 작업의 예상이 바뀐다 — 09-26 실행이 도는 동안
+    "(예상 6.3분)"이었다가 끝나자 "(예상 5.5분)"이 됐다. 굳힌 값이 없는 옛
+    기록은 예상을 적지 않는다(지금 계수로 다시 셈하면 같은 거짓말이 된다).
+
+    EDA를 켰는데 EDA 기록이 없어 못 넣은 사정은 `_estimate_note()`가 따로 말한다.
+    """
+    if job is None or not getattr(job, "estimate", None):
+        return None
+    return _span_text(job.estimate.get("low"), job.estimate.get("high"))
+
+
+def _estimate_note(job) -> Optional[str]:
+    """예상에 **못 넣은 몫**이 있으면 그 말. 없으면 None.
+
+    폼만 "+ EDA(기록 없음)"이라 하고 진행 화면은 숫자만 보여 주던 것이, 09-26에
+    "(예상 6.3분)인데 8.7분"을 낳았다 — EDA 두 단계가 5분 28초였다.
+    """
+    if job is None or not getattr(job, "estimate", None):
+        return None
+    return "EDA는 기록이 없어 빠졌습니다" if job.estimate.get("eda_unknown") else None
 
 
 def _typical_vehicles() -> Optional[int]:
@@ -884,6 +923,7 @@ def _run_view(job) -> dict:
         # 아무도 모르고, 틀린 채로 남는다 — 다음 예상이 여기서 나오므로
         # 어긋남이 보여야 고칠 생각도 든다(1.26.214).
         "estimate_minutes": _running_estimate_minutes(job),
+        "estimate_note": _estimate_note(job),
         "elapsed_minutes": _minutes(jobs.elapsed_seconds(job)),
         # 이 작업이 만든 실행 이름(`--now`). 화면 제목과 완료 안내의 링크가 쓰고, 상태 API도
         # 같은 값을 준다(1.26.284). `--now` 없이 띄운 옛 작업은 None — 짐작하지 않는다.
