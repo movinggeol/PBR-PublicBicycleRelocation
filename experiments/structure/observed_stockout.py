@@ -49,7 +49,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd
 
 import db
-from project_config import DURATIONS, REBAL_MIN_QTY, duration_hours, is_holiday
+from project_config import (DURATIONS, REBAL_MIN_QTY, duration_hours, is_holiday,
+                            select_day_type)
 
 # 수집 간격(분). 한 틱이 대표하는 시간이 곧 결품 시간의 단위다.
 TICK_MINUTES = 10
@@ -290,7 +291,43 @@ def latest_plan_targets(day_type: str, duration: str) -> set:
     return set()
 
 
-def simulated_stockout(day_type: str) -> pd.DataFrame:
+def recomputed_recon(run_label: str, duration: str, day_type: str) -> float:
+    """그 실행의 출발 재고·작업 대상은 그대로 두고 **지금 DB의 순수요로** 복원을 다시 낸다.
+
+    `kpi_summary.stockout_hours_before`는 계획을 세운 날의 순수요로 계산해 **저장한 값**
+    이다. 그래서 순수요를 다시 만들어도 따라 바뀌지 않는다 — 2026-09-26 대여이력을 IQR로
+    깎이지 않은 원본으로 갈아 끼웠을 때(1.26.293) 비교의 한쪽만 옛 자료에 남을 뻔했다.
+
+    step4 `stockout_simulation()`의 '재배치 전' 계산을 그대로 옮긴다 — 같은 궤적 함수
+    (`_simulate_stock`), 같은 거치대 폴백(`stock × 2 + 1`), 같은 분모(대여소 수 × 날짜 수).
+    바꾸는 것은 순수요 하나뿐이라 **자료 교체의 몫만** 갈라 낸다. 옛 DB에서 돌리면
+    저장값과 같아야 한다(검증).
+    """
+    # step4 모듈은 import할 때 실행 설정을 읽는다 — 이 옵션을 쓸 때만 올린다.
+    from pipeline.step4_metrics import imbalance as kpi_mod
+
+    with db.session() as conn:
+        row = conn.execute("SELECT period FROM runs WHERE run_label = ?",
+                           (run_label,)).fetchone()
+        stations = db.load_frame(conn, "pick_drop", run_label=run_label, duration=duration)
+        net = (db.load_frame(conn, "net_demand", period=row[0])
+               if row and row[0] else pd.DataFrame())
+    if stations.empty or net.empty:
+        return float("nan")
+
+    net = select_day_type(net.rename(columns={"date": "날짜"}), "날짜", day_type)
+    stations = stations[["station_id", "stock", "parking_lot"]].copy()
+    stations["parking_lot"] = stations["parking_lot"].fillna(stations["stock"] * 2 + 1)
+    merged = net.merge(stations, on="station_id", how="inner")
+    if merged.empty:
+        return float("nan")
+    sim = kpi_mod._simulate_stock(merged, merged["stock"], merged["parking_lot"],
+                                  duration_hours(duration))
+    denominator = max(merged["station_id"].nunique() * merged["날짜"].nunique(), 1)
+    return float(sim["stockout"].sum() / denominator)
+
+
+def simulated_stockout(day_type: str, recompute: bool = False) -> pd.DataFrame:
     """step4가 남긴 **복원** 결품(재배치 전). 실측과 맞대어 볼 상대다.
 
     🔴 **요일 구분과 실행 종류를 가린다** (1.26.270). 예전에는 `kpi_summary`를
@@ -332,11 +369,19 @@ def simulated_stockout(day_type: str) -> pd.DataFrame:
     labels = sorted(frame["run_label"].unique())
     print(f"\n복원 기준 — 요일 {day_type} · 계획 실행 {len(labels)}건: "
           f"{', '.join(labels)}")
+    if recompute:
+        stored = frame["복원"].copy()
+        frame["복원"] = [recomputed_recon(label, duration, day_type)
+                        for label, duration in zip(frame["run_label"], frame["duration"])]
+        print("  ↳ 복원을 **지금 DB의 순수요로 다시 계산했다**(--recompute-recon). 저장값 → 다시 계산:")
+        for (label, duration), old, new in zip(
+                zip(frame["run_label"], frame["duration"]), stored, frame["복원"]):
+            print(f"     {label} {duration}  {old:.4f} → {new:.4f}")
     return frame[["run_label", "duration", "복원"]].reset_index(drop=True)
 
 
 def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
-                            day_type: str) -> list:
+                            day_type: str, recompute: bool = False) -> list:
     """복원과 실측을 나란히 놓는다 — **시간대가 온전히 겹칠 때만.**
 
     좁은 창(09~17시)에서는 `_05_10`이 09시 한 시각만, `_15_20`이 15시 한 시각만
@@ -354,7 +399,7 @@ def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
     두 편향이 상쇄돼 우연히 비슷해 보일 수도 있다. **가른 뒤에야 정확한 비교가
     된다**(TODO 17-B 3단계).
     """
-    simulated = simulated_stockout(day_type)
+    simulated = simulated_stockout(day_type, recompute)
     if simulated.empty:
         print("\n(복원 대비 비교: 이 요일 구분으로 계획한 실행이 DB에 없습니다 —"
               " 먼저 `python run_pipeline.py --day-type ...`을 돌리십시오)")
@@ -674,6 +719,9 @@ def main() -> int:
                              "(출발 재고를 맞춘 비교, 1.26.278)")
     parser.add_argument("--run-label",
                         help="실행 하나만 같은 시각 비교로 본다(늦음·요일을 가리지 않는다)")
+    parser.add_argument("--recompute-recon", action="store_true",
+                        help="복원을 저장값 대신 지금 DB의 순수요로 다시 계산한다 "
+                             "(순수요를 다시 만든 뒤 — 1.26.293)")
     args = parser.parse_args()
 
     if args.same_day or args.run_label:
@@ -755,7 +803,8 @@ def main() -> int:
         print(f"  수집 창({hours[0]:02d}~{hours[-1]:02d}시)과 겹치는 시간대가 없습니다.")
         return 1
 
-    rows = compare_with_simulation(frame, durations, window, args.day_type)
+    rows = compare_with_simulation(frame, durations, window, args.day_type,
+                                   args.recompute_recon)
 
     if args.save:
         _save_calibration(rows, args.day_type, window)

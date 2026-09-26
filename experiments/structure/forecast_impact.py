@@ -135,6 +135,7 @@ def station_level_forecast(conn, table: pd.DataFrame, duration: str, day_type: s
     """`weather_impact.station_level()`과 판정 규칙이 완전히 같다 — 배율 모형만 예보로 바꿨다."""
     periods = sorted({r[0] for r in conn.execute(
         "SELECT DISTINCT period FROM net_demand")}, key=demand_model.month_index)
+    periods = weather.covered_periods(periods)   # 관측 기준과 같은 달로 맞댄다
     net = {p: select_day_type(db.load_frame(conn, "net_demand", period=p),
                               "date", day_type) for p in periods}
     demand = {p: demand_model.window_demand(frame, duration)
@@ -223,6 +224,8 @@ def main() -> int:
     with db.session() as conn:
         periods = [r[0] for r in conn.execute(
             "SELECT DISTINCT period FROM net_demand ORDER BY period")]
+    # 관측 날씨가 없는 달은 관측 기준(wi.station_level)에서 빠지므로 예보도 부르지 않는다
+    periods = wi.report_uncovered(periods, weather.load_hourly())
 
     print(f"대상 {len(periods)}개월: {', '.join(periods)}")
     forecast = load_all_forecasts(periods)

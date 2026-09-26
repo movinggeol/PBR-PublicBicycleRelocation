@@ -169,6 +169,19 @@ def test_빈_자료로_창을_접어도_죽지_않는다():
     assert "rain" in folded.columns
 
 
+def test_날씨가_덮지_못하는_달은_날씨_실험에서_뺀다():
+    """날씨 실험은 날씨 없는 날의 배율을 1.0으로 채운다 — 그런 달이 섞이면 '개선 0'으로
+    평균을 희석한다(2026-09-26, 대여이력이 날씨보다 다섯 달 앞서 시작한다)."""
+    hours = list(pd.date_range("2025-01-01", "2025-01-31 23:00", freq="h"))
+    hours += list(pd.date_range("2025-02-01", "2025-02-10 23:00", freq="h"))   # 2월은 열흘뿐
+    hourly = pd.DataFrame({"time": hours, "rain": 0.0})
+
+    kept = weather.covered_periods(["24년 12월", "25년 01월", "25년 02월"], hourly)
+
+    assert kept == ["25년 01월"]
+    assert weather.covered_periods(["25년 01월"], hourly.iloc[0:0]) == []
+
+
 class FakeResponse:
     def __init__(self, text, status_code=200):
         self.text = text

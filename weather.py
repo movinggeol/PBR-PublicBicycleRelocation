@@ -253,6 +253,32 @@ def window_frame(hourly: pd.DataFrame, duration: str) -> pd.DataFrame:
     return folded
 
 
+def covered_periods(periods, hourly: pd.DataFrame | None = None,
+                    min_share: float = 0.9) -> list:
+    """관측 날씨가 그 달 날짜의 `min_share` 이상을 덮는 기간('25년 11월')만 순서대로 남긴다.
+
+    🔴 날씨 실험(`weather_impact`·`forecast_impact`·`forecast_grid_impact`)은 날씨가 없는
+    날의 배율을 1.0으로 채운다. 날씨가 없는 달이 섞이면 **개선 0인 달**로 평균을 희석한다
+    — 2026-09-26 대여이력을 24년 08월까지 넓히자 관측 날씨(25년 01월~)가 못 덮는 다섯
+    달이 그렇게 들어올 뻔했다. 포털에서 그 해 CSV를 받아 `data/raw_data/날씨`에 두면
+    저절로 포함된다.
+    """
+    if hourly is None:
+        hourly = load_hourly()
+    if hourly.empty:
+        return []
+    observed = set(pd.to_datetime(hourly["time"]).dt.normalize())
+    kept = []
+    for period in periods:
+        year, month = period.split("년")
+        start = pd.Timestamp(year=2000 + int(year.strip()),
+                             month=int(month.replace("월", "").strip()), day=1)
+        days = pd.date_range(start, start + pd.offsets.MonthEnd(0), freq="D")
+        if sum(day in observed for day in days) >= min_share * len(days):
+            kept.append(period)
+    return kept
+
+
 # ------------------------------------------------------------------- API(apihub)
 
 def _api_key() -> str:

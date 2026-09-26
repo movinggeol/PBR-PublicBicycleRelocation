@@ -43,6 +43,11 @@ param(
 
     [switch]$DryRun,
 
+    # gate = 게이트 A 24개(이동시간에 기대는 장). thesis = 그 24개 + 부록 A(원고 수치 전부)의
+    # 나머지 — 대여이력을 원본으로 갈아 끼운 뒤(1.26.293) 원고 수치를 전부 다시 잴 때 쓴다.
+    [ValidateSet('gate', 'thesis')]
+    [string]$Suite = 'gate',
+
     # 작업 이름(아래 목록의 Name)으로 일부만 돌린다.
     [string[]]$Only = @(),
 
@@ -60,7 +65,8 @@ $Expect = @{ Fixed = 320.4; Speed = 32.11 }   # road_time_model.py 2026-09-15 �
 if (-not (Test-Path $Py)) { throw "가상환경이 없습니다: $Py" }
 Set-Location $Root
 
-$O = 'data\gate_a_rerun\{0}_{1}' -f $Mode, (Get-Date -Format 'yyyyMMdd_HHmm')   # 인자에 넣는 상대 경로
+$Prefix = if ($Suite -eq 'thesis') { "thesis_$Mode" } else { $Mode }
+$O = 'data\gate_a_rerun\{0}_{1}' -f $Prefix, (Get-Date -Format 'yyyyMMdd_HHmm')   # 인자에 넣는 상대 경로
 $OutDir = Join-Path $Root $O
 
 # --- 작업 목록: 장 · 스크립트 · 인자 (EXPERIMENTS '재현' 줄에서 라벨만 정본으로) ---
@@ -117,6 +123,62 @@ $Jobs = @(
        Args = @('--period', '26년 03월', '--run-label', $Label, '--out', "$O\gamma_recheck.csv") }
 )
 
+# --- thesis: 부록 A의 나머지 (게이트 A 목록에 없는 원고 수치) ---
+# 거의 전부 순수요를 거친다. 기간을 인자로 받지 않는 스크립트는 DB에 있는 달을 전부 쓴다 —
+# 대여이력을 넓히면 저절로 따라 넓어진다(날씨 실험 셋은 관측 날씨가 덮는 달만, weather.covered_periods).
+# 'tools\'로 시작하는 Script는 experiments\ 아래가 아니다.
+$Months19 = '24년 08월,24년 09월,24년 10월,24년 11월,24년 12월,25년 01월,25년 02월,25년 03월,25년 04월,25년 05월,25년 06월,25년 07월,25년 08월,25년 09월,25년 10월,25년 11월,26년 01월,26년 02월,26년 03월'
+$ThesisJobs = @(
+    @{ Name = 'repeat_eval_19m'; Ch = '6.4'; Script = 'baseline\repeat_eval.py'
+       Args = @('--run-label', $Label, '--periods', $Months19, '--seeds', '42,7,13', '--methods', 'P,B0,B1', '--day-type', 'weekday', '--out', "$O\repeat_eval_19m.csv") }
+    @{ Name = 'z_sweep_weekday'; Ch = '5.2.1·5.2.3'; Script = 'params\z_sweep.py'
+       Args = @('--day-type', 'weekday', '--run-label', $Label) }
+    @{ Name = 'z_sweep_holiday'; Ch = '5.2.1'; Script = 'params\z_sweep.py'
+       Args = @('--day-type', 'holiday', '--run-label', $Label) }
+    @{ Name = 'z_sweep_weekday_10d'; Ch = '5.2.2'; Script = 'params\z_sweep.py'
+       Args = @('--day-type', 'weekday', '--sample-days', '10', '--run-label', $Label) }
+    @{ Name = 'backtest_all'; Ch = '5.3'; Script = 'tools\backtest_demand.py'
+       Args = @('--day-type', 'weekday') }
+    @{ Name = 'backtest_md2'; Ch = '5.3·5.4'; Script = 'tools\backtest_demand.py'
+       Args = @('--day-type', 'weekday', '--min-demand', '2') }
+    @{ Name = 'backtest_w14'; Ch = '5.4'; Script = 'tools\backtest_demand.py'
+       Args = @('--day-type', 'weekday', '--warmup-days', '14') }
+    @{ Name = 'backtest_w14_md2'; Ch = '5.4'; Script = 'tools\backtest_demand.py'
+       Args = @('--day-type', 'weekday', '--min-demand', '2', '--warmup-days', '14') }
+    @{ Name = 'backtest_w7_md2'; Ch = '5.4'; Script = 'tools\backtest_demand.py'
+       Args = @('--day-type', 'weekday', '--min-demand', '2', '--warmup-days', '7') }
+    @{ Name = 'limit_fixedpop_100'; Ch = '5.7'; Script = 'params\limit_fixedpop_grid.py'
+       Args = @('--period', '25년 11월', '--run-label', $Label, '--limits', '50,100', '--out', "$O\limit_fixedpop_100.csv") }
+    @{ Name = 'one_sided_clusters'; Ch = '3.5.2·39'; Script = 'structure\one_sided_clusters.py'
+       Args = @('--periods', '25년 11월,26년 03월', '--run-label', $Label) }
+    @{ Name = 'multi_cluster_route_3'; Ch = '7.5'; Script = 'structure\multi_cluster_route.py'
+       Args = @('--period', '25년 11월', '--chain-size', '3', '--run-label', $Label, '--out', "$O\multi_cluster_route_3.csv") }
+    @{ Name = 'fleet_outage_fig'; Ch = '4.5'; Script = 'structure\fleet_outage_stress.py'
+       Args = @('--outages', '0,1,3,5,6,7,9') }
+    @{ Name = 'park2024_compare'; Ch = '2.5'; Script = 'structure\park2024_compare.py'; Args = @() }
+    @{ Name = 'survey_crosscheck'; Ch = '1.1·8.4.2'; Script = 'diagnostic\survey_crosscheck.py'; Args = @() }
+    @{ Name = 'dockless_usage'; Ch = '1.3·8.6'; Script = 'structure\dockless_hub.py'; Args = @() }
+    @{ Name = 'dockless_demand'; Ch = '8.6'; Script = 'structure\dockless_hub.py'
+       Args = @('--criterion', 'demand') }
+    @{ Name = 'dockless_demand_ex2511'; Ch = '8.6'; Script = 'structure\dockless_hub.py'
+       Args = @('--criterion', 'demand', '--exclude-period', '25년 11월') }
+    @{ Name = 'stock_nowcast_signal'; Ch = '8.3·38'; Script = 'structure\stock_nowcast_signal.py'; Args = @() }
+    @{ Name = 'stage_timing'; Ch = '3.1·37'; Script = 'diagnostic\stage_timing.py'
+       Args = @('--period', '25년 11월', '--repeat', '5', '--run-label', $Label, '--out', "$O\stage_timing.csv") }
+    @{ Name = 'weather_impact'; Ch = '8.5'; Script = 'structure\weather_impact.py'; Args = @() }
+    @{ Name = 'forecast_impact'; Ch = '8.5'; Script = 'structure\forecast_impact.py'; Args = @() }
+    # 가장 긴 두 작업은 끝에 둔다 — 하나가 멈춰도 앞의 것은 다 남는다.
+    @{ Name = 'ortools_gap_2511_300'; Ch = '3.7.2'; Script = 'baseline\ortools_gap.py'
+       Args = @('--period', '25년 11월', '--duration', '_05_10', '--limit-sec', '300', '--run-label', $Label, '--out', "$O\ortools_gap_2511_300.csv") }
+    @{ Name = 'forecast_grid_impact'; Ch = '8.5'; Script = 'structure\forecast_grid_impact.py'; Args = @() }   # 기상청 격자 5,000회 넘게 호출
+)
+if ($Suite -eq 'thesis') { $Jobs = @($Jobs) + $ThesisJobs }
+
+function Script-Path([string]$s) {
+    if ($s -like 'tools\*') { return $s }
+    return "experiments\$s"
+}
+
 if ($Only.Count -gt 0) {
     $unknown = $Only | Where-Object { $n = $_; -not ($Jobs | Where-Object { $_.Name -eq $n }) }
     if ($unknown) { throw "목록에 없는 작업: $($unknown -join ', ')" }
@@ -162,7 +224,7 @@ if ($freeGB -lt 3) { Write-Warning "여유 메모리가 3GB 미만입니다. 브
 
 Write-Host "[작업] $($Jobs.Count)개 → $O"
 foreach ($j in $Jobs) {
-    $argLine = (@("experiments\$($j.Script)") + ($j.Args | ForEach-Object { Quote-Arg $_ })) -join ' '
+    $argLine = (@(Script-Path $j.Script) + ($j.Args | ForEach-Object { Quote-Arg $_ })) -join ' '
     $envNote = if ($j.Env) { "  (PBR_RUN_LABEL=$Label)" } else { '' }
     Write-Host ("  {0,-8} {1,-26} python {2}{3}" -f $j.Ch, $j.Name, $argLine, $envNote)
 }
@@ -199,7 +261,7 @@ $summary = Join-Path $OutDir '_요약.csv'
 $i = 0
 foreach ($j in $Jobs) {
     $i++
-    $argLine = (@("experiments\$($j.Script)") + ($j.Args | ForEach-Object { Quote-Arg $_ })) -join ' '
+    $argLine = (@(Script-Path $j.Script) + ($j.Args | ForEach-Object { Quote-Arg $_ })) -join ' '
     $t0 = Get-Date
     Write-Host ("[{0}/{1}] {2} ({3}장) 시작 {4:HH:mm}" -f $i, $Jobs.Count, $j.Name, $j.Ch, $t0)
     # 🔴 -Wait로 기다리지 않는다 (1.26.235). CBC가 멈추면 프로세스가 끝나지 않는다 — WinError 8로

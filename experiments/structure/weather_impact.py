@@ -256,6 +256,8 @@ def station_level(conn, hourly, duration: str, day_type: str) -> list:
     """
     periods = sorted({r[0] for r in conn.execute(
         "SELECT DISTINCT period FROM net_demand")}, key=demand_model.month_index)
+    # 관측 날씨가 없는 달은 배율이 1.0으로 남아 개선을 희석한다(weather.covered_periods)
+    periods = weather.covered_periods(periods, hourly)
     net = {p: select_day_type(db.load_frame(conn, "net_demand", period=p),
                               "date", day_type) for p in periods}
     demand = {p: demand_model.window_demand(frame, duration)
@@ -315,6 +317,16 @@ def station_level(conn, hourly, duration: str, day_type: str) -> list:
     return rows
 
 
+def report_uncovered(periods, hourly) -> list:
+    """순수요는 있는데 관측 날씨가 없는 달을 알린다 — 그 달은 판정에서 빠진다."""
+    covered = weather.covered_periods(periods, hourly)
+    missing = [p for p in periods if p not in covered]
+    if missing:
+        print(f"⚠️ 관측 날씨가 없어 뺀 달 {len(missing)}개: {', '.join(missing)} "
+              f"— 포털 CSV를 data/raw_data/날씨에 두면 들어간다\n")
+    return covered
+
+
 def main() -> int:
     hourly = weather.load_hourly()
     if hourly.empty:
@@ -326,6 +338,7 @@ def main() -> int:
     with db.session() as conn:
         periods = [r[0] for r in conn.execute(
             "SELECT DISTINCT period FROM net_demand ORDER BY period")]
+        report_uncovered(periods, hourly)
         rows = []
         for duration in WINDOWS:
             table = build_table(conn, periods, duration, hourly)

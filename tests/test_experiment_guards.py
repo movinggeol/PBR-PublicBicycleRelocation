@@ -393,7 +393,7 @@ def test_비교표는_실행마다_그_실행의_대상으로_잰다(obs, monkey
     """
     frame = _obs_frame()
     window = frame["시각"].unique()
-    monkeypatch.setattr(obs, "simulated_stockout", lambda day_type: pd.DataFrame(
+    monkeypatch.setattr(obs, "simulated_stockout", lambda day_type, recompute=False: pd.DataFrame(
         [{"run_label": "A", "duration": "_10_15", "복원": 1.0},
          {"run_label": "B", "duration": "_10_15", "복원": 1.0}]))
     monkeypatch.setattr(obs, "target_stations",
@@ -409,6 +409,33 @@ def test_비교표는_실행마다_그_실행의_대상으로_잰다(obs, monkey
     assert observed == pytest.approx(2.5), "실행별로 짝지어 재지 않았다"
     assert observed != pytest.approx(2.0), "집합 하나로 재는 옛 동작으로 돌아갔다"
     assert stations == 2                       # 1곳과 2곳의 평균
+
+
+def test_복원을_지금_순수요로_다시_계산한다(obs):
+    """저장된 복원(`kpi_summary`)은 계획한 날의 순수요로 낸 값이라, 순수요를 다시 만들어도
+    따라 바뀌지 않는다(2026-09-26 대여이력 원본 교체). `--recompute-recon`은 그 실행의
+    출발 재고·대상을 그대로 두고 **지금 순수요로, 계획과 같은 요일만** 다시 낸다.
+
+    ST0001은 재고 1대에 10시·11시 순유출 1대씩이라 10~14시 다섯 시간 내내 비고,
+    ST0002는 평일에 움직임이 없다 → (5 + 0) / (2곳 × 평일 1일) = 2.5시간.
+    토요일(휴일)의 ST0002 유출을 섞으면 (5 + 1) / (2곳 × 2일) = 1.5시간이 된다.
+    """
+    db = obs.db
+    pick = pd.DataFrame({"station_id": ["ST0001", "ST0002"], "stock": [1, 5],
+                         "parking_lot": [10, None], "rebal_qty": [3, -2]})
+    db.save_output("pick_drop", pick, run_label="R", period="26년 03월",
+                   duration="_10_15", day_type="weekday")
+    net = pd.DataFrame({"날짜": ["2026-03-04", "2026-03-04", "2026-03-07", "2026-03-07"],
+                        "station_id": ["ST0001", "ST0002", "ST0001", "ST0002"]})
+    for hour in range(24):
+        net[f"net_{hour:02d}"] = 0.0
+    net.loc[0, ["net_10", "net_11"]] = 1.0          # 수요일 ST0001 (3-2 월은 대체공휴일이다)
+    net.loc[3, "net_14"] = 100.0                    # 토요일 ST0002 — 평일 계획이면 빠져야 한다
+    db.save_output("net_demand", net, period="26년 03월")
+
+    assert obs.recomputed_recon("R", "_10_15", "weekday") == pytest.approx(2.5)
+    assert obs.recomputed_recon("없는실행", "_10_15", "weekday") != obs.recomputed_recon(
+        "없는실행", "_10_15", "weekday")          # 자료가 없으면 NaN(0으로 속이지 않는다)
 
 
 def test_보정_계수에_짝지은_실행_수가_남는다(obs, monkeypatch):
