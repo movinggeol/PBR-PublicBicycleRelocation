@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 
 import db
+from project_config import DURATIONS
 
 # CSV_FALLBACK은 1.26.165에서 지웠다 — 위 설명 참고. 파일 목록·내려받기는
 # `catalog.py`가 계속 담당한다(그쪽은 "무슨 파일이 있나"를 묻는 자리라 성격이
@@ -61,14 +62,99 @@ def load(table: str, run_label: Optional[str] = None,
     return pd.DataFrame(), "none"
 
 
+def duration_rank(duration) -> int:
+    """회차의 하루 안 순서 — `project_config.DURATIONS`의 순번. 모르는 회차는 맨 뒤.
+
+    문자열 정렬에 기대지 않는다. 지금 네 창은 사전순과 하루 순서가 우연히 같지만
+    (`_05_10 < _10_15 < _15_20 < _20_05`), 창을 바꾸면 조용히 갈린다 — 순서는
+    설정에서 읽는다(점검 기록 4장 "설정은 코드에서 읽어 온다").
+    """
+    try:
+        return DURATIONS.index(duration)
+    except ValueError:
+        return len(DURATIONS)
+
+
+def _run_created_at(conn=None) -> dict:
+    """실행마다 `runs.created_at` — `{run_label: 시각}`. 읽지 못하면 빈 dict."""
+    try:
+        if conn is not None:
+            pairs = conn.execute("SELECT run_label, created_at FROM runs").fetchall()
+        else:
+            with db.session() as own:
+                pairs = own.execute("SELECT run_label, created_at FROM runs").fetchall()
+    except Exception as err:
+        print(f"[경고] 실행 시각 조회 실패: {type(err).__name__}: {err}")
+        return {}
+    return {label: at for label, at in pairs}
+
+
+def kpi_run_order(rows: pd.DataFrame, created: Optional[dict] = None) -> list:
+    """지표 행의 실행 라벨을 **최신순**으로 — 웹 전체와 같은 `runs.created_at` 기준.
+
+    `run_label`은 사람이 `--now`에 적는 이름이라 정렬 기준이 못 된다(1.26.146).
+    이 한 함수를 `/kpi` 표·`/api/kpi`(`kpi()`), 헤드라인(`app._runs_newest_first`),
+    추세 그래프(`kpi_view._runs_in_order`)가 함께 쓴다 — 예전에는 헤드라인만 시각순이고
+    표는 사전 역순이라 한 화면에 '최신'이 둘이었다(1.26.283).
+
+    🔴 **기준은 `kpi_summary.computed_at`이 아니라 `runs.created_at`이다** (1.26.283 검토).
+    실행 칩(`plan_runs`)·지시서 기본값(`plan_targets`)·'최근 작업'·`db.latest_label()`이
+    모두 `runs.created_at`을 쓴다. 같은 라벨을 다시 돌리면 둘이 갈린다 — `ensure_run`은
+    `INSERT OR IGNORE`라 `created_at`이 처음 시각으로 남고, `save_kpi`는 `computed_at`을
+    지금으로 덮는다. 그러면 `/kpi` 한 화면에서 표 첫 행과 첫 칩이 다른 실행을 가리켰다
+    (웹 폼의 기본 라벨이 'YYYY-MM-DD HH'라 한 시간 안에 두 번 돌리면 실제로 생긴다).
+
+    순서: `runs.created_at` 내림차순 → 실행별 `computed_at` 최댓값 내림차순 → 라벨 사전
+    역순. `runs`에 없는 옛 라벨은 `db.latest_label()`처럼 가장 오래된 것으로 치고, 그들
+    끼리는 `computed_at`으로 가린다(1.26.146의 순서가 그대로 남는다). `created`는
+    `{run_label: created_at}` — 주지 않으면 여기서 읽는다.
+    """
+    if rows.empty or "run_label" not in rows:
+        return []
+    if created is None:
+        created = _run_created_at()
+    order = pd.DataFrame({"run_label": rows["run_label"].drop_duplicates().to_numpy()})
+    order["created"] = order["run_label"].map(created)
+    if "computed_at" in rows:
+        order["computed"] = order["run_label"].map(
+            rows.groupby("run_label")["computed_at"].max())
+    else:
+        order["computed"] = None
+    # 안정 정렬을 뒤 키부터 — 앞 키가 같을 때만 뒤 키가 남는다.
+    order = order.sort_values("run_label", ascending=False, kind="stable")
+    order = order.sort_values("computed", ascending=False, kind="stable", na_position="last")
+    order = order.sort_values("created", ascending=False, kind="stable", na_position="last")
+    return order["run_label"].tolist()
+
+
+def _kpi_newest_first(rows: pd.DataFrame, created: Optional[dict] = None) -> pd.DataFrame:
+    """지표 행을 **최근 실행이 위, 한 실행 안에서는 하루 순서대로** 세운다(1.26.283)."""
+    if rows.empty or "run_label" not in rows:
+        return rows
+    order = {label: i for i, label in enumerate(kpi_run_order(rows, created))}
+    keys = pd.DataFrame({
+        "run": rows["run_label"].map(order),
+        "dur": rows["duration"].map(duration_rank) if "duration" in rows else 0,
+    }, index=rows.index)
+    index = keys.sort_values(["run", "dur"], kind="stable").index
+    return rows.loc[index].reset_index(drop=True)
+
+
 def kpi(run_label: Optional[str] = None, duration: Optional[str] = None) -> pd.DataFrame:
-    """실행별 성과 지표 (docs/분석/KPI.md의 kpi_summary)."""
+    """실행별 성과 지표 (docs/분석/KPI.md의 kpi_summary) — **최근 실행이 위**.
+
+    `db.load_kpi`는 `run_label` 사전 역순이라 `/kpi` 표가 `sweep-21`부터 시작하고
+    최신 계획의 첫 행이 72행 중 40번째였다(390px에서 약 9,300px 아래, 1.26.283
+    실측). 순서를 여기서 세워 `/kpi`와 `/api/kpi`가 같은 순서를 받게 한다.
+    """
     try:
         with db.session() as conn:
-            return db.load_kpi(conn, run_label=run_label, duration=duration)
+            rows = db.load_kpi(conn, run_label=run_label, duration=duration)
+            created = _run_created_at(conn)
     except Exception as err:
         print(f"[경고] KPI 조회 실패: {type(err).__name__}: {err}")
         return pd.DataFrame()
+    return _kpi_newest_first(rows, created)
 
 
 def stockout_calibration(day_type: str = "weekday") -> list:
@@ -89,14 +175,58 @@ def stockout_calibration(day_type: str = "weekday") -> list:
 
 
 def vehicle_workload() -> pd.DataFrame:
-    """차량별 누적 작업량(로테이션 형평성 확인용)."""
+    """차량별 누적 작업량(로테이션 형평성 확인용).
+
+    `last_run`·`last_duration`은 **기록에 실제로 있는 한 배정**이다(1.26.283) —
+    `db.vehicle_workload`는 두 칸을 각각 사전순 `MAX`로 뽑아 붙여, 21대가 전부
+    `sweep-21 _20_05`였는데 `sweep-21`에는 `_20_05` 회차가 없었다(실측). 기록에
+    없는 조합을 '최근'이라 적은 것이다. 여기서 `_latest_assignments()`로 덮는다.
+    `last_kind`는 그 배정이 속한 실행의 종류다(화면이 실험이면 밝힌다).
+    `/vehicles`와 `/api/vehicles`가 둘 다 이 함수를 쓰므로 한 곳에서 맞는다.
+    """
     try:
         with db.session() as conn:
             db.ensure_fleet(conn)
-            return db.vehicle_workload(conn)
+            workload = db.vehicle_workload(conn)
+            latest = _latest_assignments(conn)
     except Exception as err:
         print(f"[경고] 차량 부하 조회 실패: {type(err).__name__}: {err}")
         return pd.DataFrame()
+    if workload.empty:
+        return workload
+    base = workload.drop(columns=["last_run", "last_duration"], errors="ignore")
+    return base.merge(latest, on="vehicle_id", how="left")
+
+
+def _latest_assignments(conn) -> pd.DataFrame:
+    """차량마다 **가장 최근 배정 한 행**의 (실행, 회차, 종류).
+
+    최근의 기준은 `db.latest_label()`과 같다 — `runs.created_at` 내림차순이고,
+    `runs`에 없는 옛 라벨은 시각을 모르니 가장 오래된 것으로 친다(`COALESCE(…,'')`).
+    동률은 라벨 사전 역순, 한 실행 안에서는 하루의 늦은 회차가 최근이다
+    (`project_config.DURATIONS` 순번 — 문자열 정렬에 기대지 않는다).
+
+    종류로 거르지 않는다. 표 전체가 '전체 실행 합계'(실험 포함)라 이 칸만 계획으로
+    좁히면 한 표 안에서 기준이 갈린다 — 대신 `last_kind`로 실험임을 밝힌다.
+    """
+    cases = " ".join(f"WHEN ? THEN {i}" for i in range(len(DURATIONS)))
+    frame = pd.read_sql(
+        "SELECT vehicle_id, run_label AS last_run, duration AS last_duration,"
+        "       kind AS last_kind"
+        "  FROM (SELECT a.vehicle_id, a.run_label, a.duration, r.kind,"
+        "               ROW_NUMBER() OVER ("
+        "                 PARTITION BY a.vehicle_id"
+        "                 ORDER BY COALESCE(r.created_at, '') DESC, a.run_label DESC,"
+        f"                         CASE a.duration {cases} ELSE -1 END DESC) AS rn"
+        "          FROM vehicle_assignment a"
+        "          LEFT JOIN runs r ON r.run_label = a.run_label)"
+        " WHERE rn = 1",
+        conn, params=list(DURATIONS))
+    if frame.empty:
+        return pd.DataFrame(columns=["vehicle_id", "last_run", "last_duration", "last_kind"])
+    # 저장된 종류가 없으면 짐작한다 — 규칙은 `db.classify_run_label()` 하나다.
+    guessed = frame["last_run"].map(db.classify_run_label)
+    return frame.assign(last_kind=frame["last_kind"].where(frame["last_kind"].notna(), guessed))
 
 
 def vehicle_assignments(vehicle_id: Optional[str] = None,
@@ -125,13 +255,28 @@ def vehicle_assignment_count(vehicle_id: Optional[str] = None,
 
 
 def run_labels() -> pd.DataFrame:
-    """DB에 기록된 실행 이력(최신순). DB가 없으면 빈 DataFrame."""
+    """DB에 기록된 실행 이력 — **최신순**(`runs.created_at` 내림차순). DB가 없으면 빈 DataFrame.
+
+    `db.list_runs()`는 `run_label` 사전 역순이다(그쪽 docstring이 *"최신순이
+    아니다"* 라고 밝힌다). 이 docstring은 1.26.283까지 *"(최신순)"* 이라 적고 그
+    순서를 그대로 넘겨, `/run` '저장된 실행'의 앞 10행이 전부 `sweep-*`·
+    `roadprobe-*`·`brokenmix4-*`이고 계획은 0건이었다(실측). 여기서 다시 세운다.
+
+    **안정 정렬**이라 같은 시각이면 `list_runs()`의 순서(라벨 사전 역순)가 남는다.
+    종류로 묶지 않는다 — `/run` '저장된 실행'은 **종류를 바로잡는 표**라, 계획을
+    먼저 묶으면 실험으로 잘못 매겨진 계획이 아래로 가라앉는다. 계획 먼저는
+    `plan_runs()`(`/kpi`·`/vehicles` 칩)에서만 한다. `db.py`는 건드리지 않는다.
+    """
     try:
         with db.session() as conn:
-            return db.list_runs(conn)
+            frame = db.list_runs(conn)
     except Exception as err:
         print(f"[경고] 실행 이력 조회 실패: {type(err).__name__}: {err}")
         return pd.DataFrame()
+    if frame.empty or "created_at" not in frame:
+        return frame
+    return frame.sort_values("created_at", ascending=False, kind="stable",
+                             na_position="last").reset_index(drop=True)
 
 
 # 실행 종류(plan/experiment/probe) 판정·확정. `webapp/`에서 `db.py`를
@@ -178,11 +323,18 @@ def plan_runs() -> pd.DataFrame:
 
     실험(`experiment`)은 **남긴다** — 계획 모양이고 실제로 견줘 볼 값이
     들어 있다. 빼야 하는 것은 애초에 계획이 아닌 것뿐이다.
+
+    **계획을 앞에, 그 안에서는 최신순**이다(1.26.283). 예전에는 `list_runs()`의
+    사전 역순 그대로라 칩 앞 12개가 실험이고 최신 계획은 14번째였다(실측).
+    `plan_targets()`와 같은 규약(1.26.125)이다 — 실험을 지우지 않고 뒤로 보낸다.
     """
     runs = run_labels()
     if runs.empty or "kind" not in runs:
         return runs
-    return runs[runs["kind"] != "probe"]
+    runs = runs[runs["kind"] != "probe"]
+    # 안정 정렬이라 계획끼리·실험끼리는 `run_labels()`의 최신순이 그대로 남는다.
+    order = (runs["kind"] != "plan").astype(int).sort_values(kind="stable").index
+    return runs.loc[order].reset_index(drop=True)
 
 
 def plan_targets() -> pd.DataFrame:
@@ -195,6 +347,21 @@ def plan_targets() -> pd.DataFrame:
     쓰는데, 실험이 계획보다 나중에 돌면 그것이 **현장 지시서**가 됐다 — 실측에서
     `obs-cmp-1520`(실험)이 기본값이었다. 목록에서 **지우지는 않는다**: 실험 회차의
     지시서를 열어 보는 것은 정당한 용도이고, 지우면 그 길이 막힌다.
+
+    🔴 **`runs`는 실행(`run_label`)으로만 붙인다** (1.26.283). `runs`의 기본 키는
+    `run_label`이고 `duration` 칸에는 **첫 회차 하나**만 남는다(`ensure_run`의
+    COALESCE). 1.19.2부터 `AND r.duration = v.duration`으로 붙여 와서, 첫 회차가
+    아닌 행은 `created_at`·`kind`가 비었다 — 실측 72행 중 46행. 그 결과
+    `brokenmix4-2603`(실험으로 못박힘, 라벨 짐작은 '계획')의 뒤 세 회차가 계획으로
+    짐작돼 목록 8~22번에 끼고, 최신 계획의 회차는 0번과 23~25번으로 갈렸다.
+    회차 없이 `/orders?run_label=brokenmix4-2603`로 들어오면 `_05_10`이 아니라
+    `_10_15`가 골라졌다(1.26.262 폴백의 "목록 순서 = 시간대 순" 전제가 깨짐).
+    실행으로만 붙이면 한 실행의 모든 회차가 같은 시각·종류를 받아 한데 붙어 나온다.
+
+    **한 실행 안의 회차는 `DURATIONS`의 하루 순서다**(`duration_rank`). SQL의
+    `v.duration ASC`는 문자열 순서라 지금 네 창에서만 하루 순서와 우연히 같다 —
+    그 우연에 기대면 `targets[0]`(기본값)과 `app._run_groups`(칩·폴백)가 '첫 회차'를
+    서로 다르게 고를 수 있다(1.26.283 검토). 아래에서 다시 세운다.
     """
     try:
         with db.session() as conn:
@@ -204,8 +371,7 @@ def plan_targets() -> pd.DataFrame:
                 "       MAX(r.created_at) AS created_at,"
                 "       MAX(r.kind) AS kind"
                 "  FROM vrp_plan v"
-                "  LEFT JOIN runs r"
-                "    ON r.run_label = v.run_label AND r.duration = v.duration"
+                "  LEFT JOIN runs r ON r.run_label = v.run_label"
                 " GROUP BY v.run_label, v.duration"
                 " ORDER BY created_at DESC, v.run_label DESC, v.duration ASC",
                 conn)
@@ -223,9 +389,65 @@ def plan_targets() -> pd.DataFrame:
         lambda row: row["kind"] if pd.notna(row["kind"])
         else db.classify_run_label(row["run_label"]), axis=1)
     frame = frame.assign(kind=kind)
+    # 계획 먼저 → SQL이 준 실행 순서(시각 → 라벨) → 한 실행 안은 하루 순서.
     # 안정 정렬이라 계획끼리·실험끼리는 위의 시각 순서가 그대로 남는다.
-    order = (kind != "plan").astype(int).sort_values(kind="stable").index
+    runs = frame["run_label"].drop_duplicates()
+    keys = pd.DataFrame({
+        "plan": (kind != "plan").astype(int),
+        "run": frame["run_label"].map({label: i for i, label in enumerate(runs)}),
+        "dur": frame["duration"].map(duration_rank),
+    }, index=frame.index)
+    order = keys.sort_values(["plan", "run", "dur"], kind="stable").index
     return frame.loc[order].reset_index(drop=True)
+
+
+def run_durations() -> dict:
+    """실행마다 **경로가 있는 회차**(`vrp_plan`) — `{run_label: [회차, ...]}`, 하루 순서.
+
+    `runs.duration`에는 첫 회차 하나만 남으므로(`ensure_run`의 COALESCE) 네 회차
+    실행도 `_05_10` 하나로 보였다. `/run` '저장된 실행'의 시간대 칸과
+    `/api/pipeline-runs`가 이 한 벌을 쓴다(`saved_runs`, 1.26.283).
+    """
+    try:
+        with db.session() as conn:
+            pairs = conn.execute(
+                "SELECT DISTINCT run_label, duration FROM vrp_plan").fetchall()
+    except Exception as err:
+        print(f"[경고] 회차 목록 조회 실패: {type(err).__name__}: {err}")
+        return {}
+    found: dict = {}
+    for label, duration in pairs:
+        if duration:
+            found.setdefault(label, []).append(duration)
+    # 설정에 없는 옛 코드는 맨 뒤, 그들끼리는 글자순(`DISTINCT`의 순서는 정해져 있지 않다)
+    return {label: sorted(ds, key=lambda d: (duration_rank(d), d))
+            for label, ds in found.items()}
+
+
+def saved_runs() -> pd.DataFrame:
+    """`run_labels()`(최신순 전부)에 `durations` 열을 더한 것 — 화면과 API가 같이 쓴다.
+
+    `durations`는 경로가 있는 회차(`run_durations`)이고, 없으면 `runs.duration`
+    하나, 그것도 없으면 빈 목록이다 — 기록에서 읽은 값만 쓴다. `/run` '저장된 실행'
+    표(`app._saved_runs`)와 `/api/pipeline-runs`가 이 함수 하나를 거친다(점검 기록
+    4장 "화면과 API는 같은 계산", 1.26.283 검토 — 예전에는 화면만 목록을 계산했다).
+    """
+    runs = run_labels()
+    if runs.empty:
+        return runs
+    rounds = run_durations()
+
+    def durations_of(row: dict) -> list:
+        known = rounds.get(row["run_label"])
+        if known:
+            return list(known)
+        first = row.get("duration")
+        return [first] if isinstance(first, str) and first else []
+
+    # 칸마다 목록이 든다 — `pd.Series(dtype=object)`로 만들어야 길이가 같은 목록들이
+    # 2차원 배열로 펴지지 않는다.
+    values = [durations_of(row) for row in runs.to_dict("records")]
+    return runs.assign(durations=pd.Series(values, index=runs.index, dtype=object))
 
 
 def records(frame: pd.DataFrame) -> list:

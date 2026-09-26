@@ -298,7 +298,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 
-python -m pytest              # 1021개 통과 확인 (약 100초)
+python -m pytest              # 1092개 통과 확인 (약 100초)
 python tools/reproduce.py     # 합성 데이터 생성 → step0~step4 → 결과 표 (약 20초)
 ```
 
@@ -331,14 +331,14 @@ $env:PBR_DB_PATH = "data/재현.db"; python -m webapp   # http://127.0.0.1:8000
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest                 # 1021개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 1092개, 약 100초 (tests/ 만 수집)
 ```
 
 - `tests/test_pipeline.py` (62) — 합성 데이터로 step0→step1→step2→step4를
   **subprocess로 실제 실행**한 뒤 산출물 존재·스키마·ILP 공급 제약·개선량을 검증.
   실행마다 고유 라벨(`smoketest-{PID}`)을 써서 실데이터를 건드리지 않고,
   끝나면 그 라벨 파일만 정리합니다.
-- `tests/test_webapp.py` (219) — 라우트·경로 탈출 차단·실행 폼 입력 검증,
+- `tests/test_webapp.py` (229) — 라우트·경로 탈출 차단·실행 폼 입력 검증,
   그리고 **화면이 실제로 무엇을 보여 주는가** — 명암비·400% 확대·인쇄·빈 상태,
   화면이 말하는 범위와 실제로 센 범위가 같은지
 - `tests/test_calculations.py` (82) — **계산 단위 테스트**: 목표재고 공식(`μ + zσ`,
@@ -368,7 +368,7 @@ python -m webapp        # http://127.0.0.1:8000
   (비가 오면 "실제 재배치 필요량은 평소의 40~55% 수준"을 알립니다 — 계획을 바꾸지는 않습니다)
 - `/guide` 사용 안내 — 시작 순서·입력 항목·지표 읽는 법·문제 해결·용어
 - `/runs/{id}` 실행 상태·진행 단계·로그 (실행 중단 포함)
-- `/kpi` 실행별 성과 지표와 직전 실행 대비 증감, **그래프 3종**
+- `/kpi` 실행별 성과 지표와 **같은 조건(종류·요일 구분·회차 구성)의 앞선 실행** 대비 증감, **그래프 3종**
   (실행 추세 꺾은선 · 효과·비용 산점도 · 요일 × 시간 수요 히트맵)과
   **수요 예측 정확도**(월쌍 백테스트)
 - `/vehicles` 차량별 누적 작업량·회차 배정 이력 (로테이션 형평성)
@@ -445,7 +445,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/연구/RELATED_WORK.md](docs/연구/RELATED_WORK.md) | **관련 연구** — 문제의 갈래와 본 연구의 위치 |
 | [docs/연구/LITERATURE.md](docs/연구/LITERATURE.md) | **문헌 분석** — 논문 24편 한 편씩 분석·비교표·인용 지도 |
 | [docs/분석/EXPERIMENTS.md](docs/분석/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
-| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 1021개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
+| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 1092개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/구현/PROJECT_PIPELINE.md](docs/구현/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/구현/WEBAPP.md](docs/구현/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/구현/DESIGN.md](docs/구현/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |

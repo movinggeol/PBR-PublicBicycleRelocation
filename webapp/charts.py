@@ -406,6 +406,18 @@ def _overlaps(a: tuple, b: tuple) -> bool:
     return not (a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1])
 
 
+def _label_width(label) -> float:
+    """점 옆 글자(11px 굵게)의 폭 어림 — 한글은 라틴 글자의 거의 두 배다 (1.26.284).
+
+    예전에는 글자 수 × 6.6px 하나였다. 이름표가 `_05_10` 같은 코드일 때는 맞았는데,
+    회차를 사람 이름('05~10시 (출근)')으로 바꾸자 한글 두 자가 13px로 잡혀 실제(약 22px)보다
+    좁았다 — 좁게 잡으면 '안 겹친다'고 놓고 실제로는 겹친다. 한글·한자 같은 전각 글자는
+    11px로 센다.
+    """
+    wide = sum(1 for ch in str(label) if ord(ch) >= 0x1100)
+    return (len(str(label)) - wide) * 6.6 + wide * 11 + 2
+
+
 def _label_spot(label: str, cx: float, cy: float, taken: list,
                 width: int, pad_l: int, pad_r: int):
     """점 옆 글자를 **비어 있는 자리에** 놓는다. 없으면 놓지 않는다.
@@ -420,7 +432,7 @@ def _label_spot(label: str, cx: float, cy: float, taken: list,
     """
     # 글꼴이 11px 굵은 글씨다. 폭은 정확히 잴 수 없으므로 넉넉히 잡는다 —
     # 좁게 잡으면 '안 겹친다'고 판단해 놓고 실제로는 겹친다.
-    w, h = len(str(label)) * 6.6 + 2, 12
+    w, h = _label_width(label), 12
     for dx, dy, anchor in ((0, -11, "middle"), (0, 15, "middle"),
                            (9, 4, "start"), (-9, 4, "end")):
         lx, ly = cx + dx, cy + dy

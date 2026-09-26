@@ -264,13 +264,36 @@ def run_shape(job: "Job") -> Optional[Dict[str, float]]:
     }
 
 
+def _arg_value(job: "Job", flag: str) -> str:
+    """작업 인자에서 `flag` 바로 다음 값. 플래그가 없거나 값이 빠졌으면 빈 문자열.
+
+    `job_durations`와 `job_label`이 **같은 파싱**을 쓴다(1.26.284) — 둘을 따로 적으면
+    끝에 걸린 플래그(`[..., "--now"]`) 같은 가장자리에서 한쪽만 죽는다.
+    """
+    args = list(job.args or ())
+    if flag not in args:
+        return ""
+    at = args.index(flag) + 1
+    return str(args[at]) if at < len(args) else ""
+
+
 def job_durations(job: "Job") -> List[str]:
     """그 실행이 고른 시간대 목록. 인자에 없으면 빈 목록."""
-    args = list(job.args or ())
-    if "--duration" not in args:
-        return []
-    value = args[args.index("--duration") + 1] if len(args) > args.index("--duration") + 1 else ""
+    value = _arg_value(job, "--duration")
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def job_label(job: "Job") -> Optional[str]:
+    """그 작업이 만든 **실행 이름**(`--now` 값 = DB의 `run_label`). 모르면 `None` (1.26.284).
+
+    완료 화면이 그 실행의 지시서·지표로 곧장 보내려고 쓴다 — 예전에는 제목이 작업 ID였고
+    실행 이름은 '인자' 칸의 CLI 문자열 속에만 있었다. 웹 폼은 이름 칸을 미리 채워 두므로
+    거의 늘 있지만, `--now` 없이 띄운 옛 작업(`args=[]`)은 파이프라인이 기본값을 골랐다.
+    ⚠️ 그때 `DEFAULT_NOW`로 **짐작하지 않는다** — 환경변수·판에 따라 다른 값이라 틀린 실행으로
+    보낼 수 있다. 모르면 화면은 예전 안내(맨 주소)를 그대로 둔다.
+    """
+    value = _arg_value(job, "--now").strip()
+    return value or None
 
 
 def _median(values: List[float]) -> float:

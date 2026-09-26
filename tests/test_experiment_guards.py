@@ -422,6 +422,62 @@ def test_보정_계수에_짝지은_실행_수가_남는다(obs, monkeypatch):
     assert "계획 실행 2건" in saved["payload"][0]["note"]
 
 
+def _seed_same_day(label, created_at, duration="_05_10", day_type="holiday",
+                   kind="plan", restored=1.5):
+    """`same_day_runs()`가 읽는 두 표(`runs`·`kpi_summary`)에 실행 하나를 심는다."""
+    import db
+    with db.session() as conn:
+        conn.execute("INSERT INTO runs (run_label, day_type, kind, created_at)"
+                     " VALUES (?, ?, ?, ?)", (label, day_type, kind, created_at))
+        conn.execute("INSERT INTO kpi_summary (run_label, duration, computed_at,"
+                     " stockout_hours_before) VALUES (?, ?, ?, ?)",
+                     (label, duration, created_at, restored))
+        conn.commit()
+
+
+def test_같은_시각_비교는_회차_시작에_세운_휴일_계획만_고른다(obs):
+    """🔴 **1.26.278의 전제다.** 복원은 계획을 세운 시각의 재고에서 출발하므로,
+    오후에 세운 계획으로 새벽 회차를 복원하면 출발부터 어긋난다(EXPERIMENTS 32장:
+    휴일 `_05_10` 작업 대상의 빈 곳이 출발점 45.7% · 실제 05시 22.0%).
+
+    그래서 `--same-day`는 **회차 시작 30분 안에 · 그 요일 구분의 날에 · 계획으로**
+    세운 실행만 남긴다. 셋 가운데 하나라도 어기면 출발 재고의 몫이 다시 섞인다.
+    """
+    _seed_same_day("추석 05시", "2026-09-25 05:03:10")              # 남는다
+    _seed_same_day("오후에 세움", "2026-09-22 15:06:39")            # 606분 늦다
+    _seed_same_day("평일에 세움", "2026-09-23 05:03:00")            # 그날은 평일이다
+    _seed_same_day("실험", "2026-09-25 05:04:00", kind="experiment")  # 계획이 아니다
+    _seed_same_day("평일 계획", "2026-09-25 05:03:00", day_type="weekday")
+
+    got = obs.same_day_runs("holiday")
+
+    assert list(got["run_label"]) == ["추석 05시"]
+    assert got["late_min"].iloc[0] == pytest.approx(3 + 10 / 60)
+
+
+def test_실행을_지정하면_늦어도_보여_준다(obs):
+    """점검용이다 — 늦음과 요일을 가리지 않되, 늦은 만큼을 **표에 함께 싣는다.**"""
+    _seed_same_day("오후에 세움", "2026-09-22 15:06:39")
+
+    got = obs.same_day_runs("holiday", run_label="오후에 세움")
+
+    assert list(got["run_label"]) == ["오후에 세움"]
+    assert got["late_min"].iloc[0] > 600                 # 05시 회차를 15시에 세웠다
+
+
+def test_밤_회차의_관측_창은_다음_날_새벽에_닫힌다(obs):
+    """`_20_05`를 달력 날짜로 자르면 **두 밤이 섞인다** — 그날 새벽 00~05시는
+    전날 밤의 것이다. 같은 시각 비교는 회차 시작부터 회차 길이만큼을 잰다.
+    """
+    from datetime import datetime
+
+    start, end = obs.same_day_window(datetime(2026, 9, 27, 20), "_20_05")
+    assert end == datetime(2026, 9, 28, 5)               # 휴일 밤이 평일 새벽으로 넘어간다
+
+    start, end = obs.same_day_window(datetime(2026, 9, 25, 5), "_05_10")
+    assert end == datetime(2026, 9, 25, 10)
+
+
 def test_촘촘한_날은_창의_넓이를_묻지_않는다(obs):
     """`dense_days()`가 답하는 것은 *"그 창을 촘촘히 채웠나"* 뿐이다.
 
@@ -1073,3 +1129,142 @@ def test_출력을_파일로_넘겨도_cp949_한_글자에_죽지_않는다(tmp_
         "cp949로 못 쓰는 글자를 출력하는데 함수 밖에서 UTF-8 가드를 안 거친다 — 출력을 파일로 "
         "넘기면 그 print에서 죽는다. 최상단에서 `import project_config`를 거치게 하라"
         "(cluster_time_term.py 참고):\n  " + "\n  ".join(위반))
+
+
+# ---------------------------------------------------------------------------
+# step 모듈이 import 시점에 argv를 읽는 것 — **실험의 통로다. 막지 마라** (1.26.281)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("relpath", [
+    "pipeline/step1_cluster/top_st_clustering.py",
+    "pipeline/step2_optimize/ilp.py",
+    "pipeline/step2_optimize/vrp.py",
+    "pipeline/step4_metrics/imbalance.py",
+])
+def test_실험의_요일_구분은_import한_step_모듈까지_argv로_흐른다(monkeypatch, relpath):
+    """TODO에 *"import 시점에 argv를 판다"* 를 고칠 거리로 올려 두었는데(1.26.129), 재 보니
+    **그것이 실험의 `--day-type`이 이동시간 계수까지 닿는 유일한 길**이었다.
+
+    `baseline_compare.py --day-type holiday`는 순수요를 자기 인자로 읽지만, ILP·VRP의
+    이동시간(`travel_seconds(day_type=config.day_type)`)은 그 모듈의 `config`를 본다.
+    import 시점의 해석을 없애면 그 `config`는 **오늘 달력**을 따르게 되고, 휴일 계수를
+    채우는 날 휴일 실험이 평일 계수로 조용히 돈다. 모르는 인자(`--methods`)는 흘려보낸다.
+    """
+    monkeypatch.setattr(sys, "argv", ["baseline_compare.py", "--methods", "P",
+                                      "--period", "25년 11월", "--day-type", "holiday"])
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    spec = importlib.util.spec_from_file_location(
+        f"_argv_{Path(relpath).stem}", PROJECT_ROOT / relpath)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert module.config.day_type == "holiday"
+    assert module.config.period == "25년 11월"
+
+
+def test_한쪽짜리_군집은_짝이_될_가장_가까운_대여소의_군집으로_붙인다():
+    """`one_sided_clusters.py`(1.26.282)의 붙이는 규칙 — 군집 중심이 아니라 **부호가 반대인**
+    가장 가까운 대여소를 본다. 같은 쪽 대여소 곁으로 보내면 ILP가 여전히 짝을 못 짓는다."""
+    for path in (PROJECT_ROOT, PROJECT_ROOT / "experiments" / "baseline"):
+        if str(path) not in sys.path:
+            sys.path.insert(0, str(path))
+    spec = importlib.util.spec_from_file_location(
+        "one_sided_clusters", PROJECT_ROOT / "experiments" / "structure" / "one_sided_clusters.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    frame = pd.DataFrame({
+        "station_id": ["A", "B", "C", "D", "E"],
+        "rebal_qty": [3, -4, 5, -2, 6],
+        "cluster": [0, 0, 1, 2, 2],
+        # C(배송만, 군집 1)에 가장 가까운 것은 E(군집 2)지만 E도 배송이다 — 짝은 B(군집 0)다
+        "lat": [36.40, 36.302, 36.300, 36.50, 36.3005],
+        "lon": [127.40, 127.302, 127.300, 127.50, 127.3005],
+    })
+
+    assert module.one_sided(frame) == [1]
+    merged = module.merge_one_sided(frame)
+    assert merged.loc[merged["station_id"] == "C", "cluster"].item() == 0
+    assert module.one_sided(merged) == []
+    assert merged.drop(index=2).equals(frame.drop(index=2)), "다른 대여소는 그대로다"
+
+
+# ---------------------------------------------------------------------------
+# 같은 시각 비교의 판정 — 자료를 보기 전에 정한 규칙 (1.26.285)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("day_type, duration, gap, days, expect", [
+    ("holiday", "_05_10", -40, 4, "설명되지 않는다"),     # 출발을 맞춰도 그대로
+    ("holiday", "_05_10", -10, 4, "주 원인"),             # −35 → −10: 절반 넘게 줄었다
+    ("holiday", "_05_10", 5, 4, "뒤집혔다"),              # 부호가 바뀌었다
+    ("weekday", "_15_20", 30, 5, "방향 유지"),
+    ("weekday", "_15_20", -3, 5, "거둔다"),               # 일곱 칸의 서술이 이 칸에서 무너진다
+    ("holiday", "_05_10", -40, 2, "보류"),                # 날이 모자라면 판정하지 않는다
+])
+def test_같은_시각_판정은_미리_정한_규칙을_따른다(obs, day_type, duration, gap, days, expect):
+    """🔴 **문턱을 결과 보고 옮기지 마라.** 이 표는 첫 동시각 계획이 서기 전에 적었다 —
+    결과가 문턱 근처면 날을 더 모으는 것이 답이다(EXPERIMENTS 32장 '사전 등록')."""
+    assert expect in obs.same_day_verdict(day_type, duration, gap, days)
+
+
+def test_같은_시각_판정에는_창이_차고_출발이_맞은_날만_넣는다(obs):
+    """출발이 어긋난 날을 넣으면 이 실험이 떼려던 **출발 재고의 몫이 다시 섞인다.**
+    같은 날 다시 세운 계획은 날 수를 부풀리지 않는다."""
+    from datetime import date
+
+    def row(day, snap, real, restored=1.0, seen=1.5, complete=True):
+        return {"duration": "_05_10", "date": date(2026, 9, day), "복원": restored,
+                "관측": seen, "complete": complete, "snap_empty": snap, "real_empty": real}
+
+    rows = [row(24, 22.0, 21.0), row(25, 23.0, 22.5), row(25, 23.5, 22.5),   # 25일은 두 번
+            row(26, 45.7, 22.0, restored=9.0),          # 출발이 23.7%p 어긋났다 → 뺀다
+            row(27, 22.0, 22.0, restored=9.0, complete=False),               # 창이 덜 찼다
+            row(28, float("nan"), 20.0, restored=9.0)]  # 스냅샷이 없다 → 뺀다
+
+    assert "어긋났다" in obs.same_day_usable(rows[3])
+    assert obs.same_day_usable(rows[4]) == "창이 덜 찼다"
+    assert "확인할 수 없다" in obs.same_day_usable(rows[5])
+
+    (got,) = obs.summarize_same_day(rows, "holiday")
+    assert got["days"] == 2                               # 24 · 25일
+    assert got["복원"] == pytest.approx(1.0)              # 빠진 날의 9.0이 섞이지 않았다
+    assert "보류" in got["verdict"]
+
+
+def test_출발_재고는_계획표에서_읽어_물려받은_실행도_잰다(obs):
+    """`--skip-api`로 스냅샷을 물려받은 실행은 `station_stock`에 자기 행이 없다 — 그래서
+    1.26.278은 평일 다섯 자리의 출발 재고를 재지 못했다. 계획이 **실제로 쓴** 재고는
+    `rebalance_plan.stock`에 회차마다 남는다(1.26.286)."""
+    import db
+    with db.session() as conn:
+        conn.executemany(
+            "INSERT INTO rebalance_plan (run_label, duration, station_id, stock, rebal_qty)"
+            " VALUES (?, ?, ?, ?, ?)",
+            [("물려받음", "_05_10", "A", 0, 5), ("물려받음", "_05_10", "B", 3, -4),
+             ("물려받음", "_05_10", "C", 0, 1), ("물려받음", "_10_15", "A", 7, 5)])
+        conn.commit()
+        assert conn.execute("SELECT COUNT(*) FROM station_stock"
+                            " WHERE run_label = '물려받음'").fetchone()[0] == 0
+
+    own = obs.target_stations("물려받음", "_05_10")
+    assert own == {"A", "B"}                               # C는 |1| ≤ 2라 대상이 아니다
+    assert obs.start_empty_share("물려받음", "_05_10", own) == pytest.approx(50.0)
+    assert obs.start_empty_share("물려받음", "_10_15", {"A"}) == pytest.approx(0.0)
+
+
+def test_실제_출발은_회차_시작_시각의_첫_틱이다(obs):
+    """05시 회차의 '실제 빈 곳'은 05:00 틱이다 — 05:10 틱이 섞이면 회차가 시작된 뒤의
+    재고가 들어간다. 날마다 비율을 내고 나서 평균한다."""
+    at = pd.to_datetime
+    frame = pd.DataFrame({
+        "station_id": ["A", "B", "A", "B", "A", "B"],
+        "관측": at(["2026-09-24 05:00", "2026-09-24 05:00", "2026-09-24 05:10",
+                    "2026-09-24 05:10", "2026-09-25 05:01", "2026-09-25 05:01"]),
+        "stock": [0, 3, 5, 0, 0, 0],
+    })
+    frame["날짜"] = frame["관측"].dt.strftime("%Y-%m-%d")
+    frame["시각"] = frame["관측"].dt.hour
+
+    got = obs.real_start_empty(frame, ["2026-09-24", "2026-09-25"], 5, {"A", "B"})
+    assert got == pytest.approx((50.0 + 100.0) / 2)       # 24일 05:10 틱은 세지 않는다

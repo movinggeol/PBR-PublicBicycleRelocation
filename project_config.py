@@ -6,7 +6,7 @@ import argparse
 import os
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -799,6 +799,24 @@ def get_runtime_config(argv: Optional[list[str]] = None) -> RuntimeConfig:
         warmup_days=(args.warmup_days if args.warmup_days is not None
                      else DEFAULT_WARMUP_DAYS),
     )
+
+
+def align_day_type(day_type: str, *modules) -> str:
+    """import한 step 모듈들의 `config.day_type`을 **실험이 다루는 요일 구분**으로 맞춘다 (1.26.281).
+
+    step 모듈은 import 시점에 `get_runtime_config()`로 argv를 읽는다. 실험에 `--day-type`을
+    주면 그 값이 모듈까지 흘러가지만(그 통로는 `tests/test_experiment_guards.py`가 지킨다),
+    **안 주면 `auto` → 오늘 달력**이다. `baseline_compare.py`는 자기 인자의 기본값(평일)으로
+    순수요를 읽는데 ILP·VRP의 이동시간은 모듈의 `config.day_type`을 보므로, 추석에 돌리면
+    수요는 평일·이동시간은 휴일 계수가 된다. step4는 같은 부류를 1.26.127에서
+    `imbalance.use_run_day_type()`으로 막았고, 이것은 step1·step2 쪽의 짝이다.
+
+    ⚠️ 지금은 휴일 이동 계수가 평일 계수로 폴백해 있어(`ROAD_*_HOLIDAY`) 값이 달라지지
+    않는다 — **휴일 계수를 채우는 날 드러난다.** 그 전에 막아 둔다.
+    """
+    for module in modules:
+        module.config = replace(module.config, day_type=day_type)
+    return day_type
 
 
 def exit_if_help(description: Optional[str] = None,

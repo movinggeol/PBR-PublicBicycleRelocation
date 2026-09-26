@@ -8,6 +8,15 @@
   <h1>지도</h1>
   <p class="lead">계산 결과를 대전 지도 위에 올린 것입니다. 어느 대여소가 한 덩어리로 묶였는지,
     차량이 어떤 순서로 도는지, 재고가 어디에 몰려 있는지를 눈으로 확인합니다.</p>
+  {# 한 실행(과 회차)으로 좁힌 상태를 먼저 말한다 (1.26.284). 좁히면 **다른 실행으로 물러서지
+     않는다** — 그 실행에 없는 분류는 비어 있다고 말한다. 이유(--skip-map·TMAP 한도 등)는 DB에
+     기록이 없어 짐작하지 않는다. #}
+  {% if selected_run %}
+  <p class="lead" data-file-scope>{% if known_run %}실행 <b>{{ selected_run }}</b>{% if selected_duration %} ·
+    {{ duration_labels.get(selected_duration, selected_duration) }}{% endif %}의 지도만 보고 있습니다.
+    {%- else %}기록된 실행이 아닙니다: <b>{{ selected_run }}</b>.{% endif %}
+    <a href="/maps">전체 실행 보기</a></p>
+  {% endif %}
 </section>
 
 {# 실행을 거듭하면 분류마다 지도가 쌓인다. 분류당 5건씩 끊어 보여준다 —
@@ -55,8 +64,12 @@
   <iframe class="map-frame" data-map-frame loading="lazy"
           src="/files/{{ newest.relpath | urlencode }}"
           title="{{ newest.name }}"></iframe>
+  {# '가장 최근'은 **그린 시각**이다 — 가장 최근 계획의 지도라는 뜻이 아니다. 최신 계획에 경로
+     지도가 없으면 하루 전 다른 계획의 경로가 이 자리에 뜨므로, 어느 실행의 것인지 밝힌다(1.26.284). #}
   <figcaption class="hint">
-    가장 최근 <b>{{ newest.name }}</b> · {{ newest.mtime }}
+    {% if selected_run %}이 실행의 <b>{{ newest.name }}</b>
+    {%- else %}가장 최근에 그린 <b>{{ newest.name }}</b>{% if newest.run_label %} · 실행 <a href="/maps?run_label={{ newest.run_label | urlencode }}">{{ newest.run_label }}</a>{% endif %}{% endif %}
+    · {{ newest.mtime }}
     · <a href="/view/{{ newest.relpath | urlencode }}">크게 보기</a>
     · <a href="/files/{{ newest.relpath | urlencode }}" target="_blank">새 창 ↗</a>
   </figcaption>
@@ -88,6 +101,10 @@
     </tbody>
   </table>
   </div>
+  {% elif selected_run %}
+  {# 필터 때문에 빈 자리는 필터를 푸는 링크다(DESIGN.md '빈 상태'). #}
+  <p class="empty">이 실행{% if selected_duration %}·회차{% endif %}의 {{ group.title }} 파일이 없습니다.
+    <a href="/maps">전체 실행 보기</a></p>
   {% else %}
   <p class="empty">아직 없습니다. <a href="/run#run">계획을 실행</a>하면 만들어집니다.</p>
   {% endif %}

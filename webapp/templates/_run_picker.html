@@ -1,0 +1,52 @@
+{# 실행 고르기 — /kpi·/vehicles 공용 (1.26.283).
+
+   예전에는 두 화면이 실행 칩 28개를 한 줄에 사전 역순으로 늘어놓아 앞 12개가
+   실험이고 최신 계획은 14번째였다. 폰에서도 접히지 않아 390px에서 칩만 716px였다.
+
+   - **계획을 앞에, 실험은 다음 줄에** 둔다. 순서는 `store.plan_runs()`가 정한다
+     (계획 먼저·최신순). 실험은 **지우지 않는다**(1.26.125) — 여기서는 접지도
+     않는다. 두 화면은 실험끼리 견주는 것이 본래 용도라, 넓은 화면에서 실험을
+     접는 것은 /orders(현장 지시서)에만 한다.
+   - 좁은 화면에서는 묶음 전체를 `m-fold`로 접는다(DESIGN.md 모바일 모드 ②).
+     요약에 지금 고른 것을 적어, 접힌 채로도 무엇을 보는지 안다.
+   - `kind`가 없는 행(옛 자료)은 계획이 아닌 쪽으로 간다 — 짐작해서 계획이라
+     하지 않는다. 종류는 `db.list_runs()`가 한 번 채워 주므로 대개 비지 않는다.
+   - **줄마다 이름표가 맨 앞에 선다** — `실행 [전체]` · `계획 …` · `실험 …`. 처음에는
+     `[전체] 계획 …`이라 '계획' 이름표가 전체 칩 뒤로 밀려 '실험'과 줄이 안 맞고,
+     390px에서는 '전체 계획'이 한 말처럼 읽혔다(1.26.283 검토). '전체'는 두 종류를
+     다 보는 것이라 계획 줄에 넣지 않고 제 줄에 둔다.
+
+   base: 칩 주소의 앞부분(`/kpi` · `/vehicles`).
+   keep: 실행을 바꿔도 **이어 갈 다른 조건**의 쿼리 조각(이미 인코딩된 `vehicle_id=V03`) —
+     `/vehicles`에서 차량 하나를 보던 중 실행을 바꾸면 그 차량이 풀리지 않게 한다(1.26.284).
+     비우면 예전 주소 그대로다. 부르는 쪽이 `urlencode`로 만든 값만 넘긴다(그래서 `safe`). #}
+{% macro run_picker(runs, selected_run, base, keep="") -%}
+{% set plans = runs | selectattr("kind", "equalto", "plan") | list %}
+{% set others = runs | rejectattr("kind", "equalto", "plan") | list %}
+{% set tail = ("&" ~ keep) if keep else "" %}
+<details class="m-fold no-print" open>
+  <summary>실행 고르기 <span class="hint">· {{ selected_run or "전체" }} ({{ runs | length }}개)</span></summary>
+  <div class="filterbar">
+    <span class="label">실행</span>
+    <a class="chip" href="{{ base }}{% if keep %}?{{ keep | safe }}{% endif %}" {% if not selected_run %}aria-current="true"{% endif %}>전체</a>
+  </div>
+  {% if plans %}
+  <div class="filterbar">
+    <span class="label">계획</span>
+    {% for r in plans %}
+    <a class="chip" href="{{ base }}?run_label={{ r.run_label | urlencode }}{{ tail | safe }}"
+       {% if selected_run == r.run_label %}aria-current="true"{% endif %}>{{ r.run_label }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if others %}
+  <div class="filterbar">
+    <span class="label">실험</span>
+    {% for r in others %}
+    <a class="chip" href="{{ base }}?run_label={{ r.run_label | urlencode }}{{ tail | safe }}"
+       {% if selected_run == r.run_label %}aria-current="true"{% endif %}>{{ r.run_label }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</details>
+{%- endmacro %}

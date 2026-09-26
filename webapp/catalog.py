@@ -8,14 +8,14 @@ import hashlib
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import mapviz
 # ⚠️ 여기서 다시 정의하지 마라 — 정본은 `project_config`다. 예전에는 이 파일이
 #    자기 `DATA_ROOT`를 따로 만들어서, 경로를 재정의해도 화면만 옛 폴더를 봤다.
-from project_config import DATA_ROOT, PP_ROOT, PROJECT_ROOT
+from project_config import DATA_ROOT, DURATIONS, PP_ROOT, PROJECT_ROOT
 
 ALLOWED_SUFFIXES = {".html", ".csv"}
 
@@ -174,6 +174,97 @@ def list_maps() -> List[Dict]:
 
 def list_csvs() -> List[Dict]:
     return _scan(CSV_CATEGORIES)
+
+
+# ---------------- 실행으로 좁히기 (1.26.284) ----------------
+#
+# 파일 이름 규약은 `<접두>{duration} ({now}).<확장자>`다(pbr-pipeline 스킬). `{now}`가 DB의
+# `run_label`이므로 **이름 꼬리만으로** 실행을 가를 수 있다 — DB를 바꿀 필요가 없다.
+#
+# ⚠️ **정규식으로 쪼개지 않는다.** 라벨에 괄호·공백이 들어갈 수 있다(`check_run_label`은
+#    `\/:*?"<>|`만 막는다). `(\([^)]*\))$` 같은 식은 `A (B)`를 `B)`로 읽는다. 대신 **알려진
+#    라벨** 가운데 ` ({라벨}){확장자}`로 끝나는 **가장 긴** 것에 파일을 배정한다 — 여는 괄호와
+#    확장자까지 붙여 맞추므로 `16 웹점검`과 `2026-09-21 16 웹점검`도 서로 걸리지 않는다.
+
+
+def run_of(name: str, labels: Iterable[str]) -> Optional[str]:
+    """파일 이름의 `({now})` 꼬리가 가리키는 실행 — 알려진 라벨 중 **가장 긴** 것. 없으면 None."""
+    suffix = Path(name).suffix
+    best: Optional[str] = None
+    for label in labels:
+        if label and name.endswith(f" ({label}){suffix}") and (best is None or len(label) > len(best)):
+            best = label
+    return best
+
+
+def _round_of(name: str, label: str) -> Optional[str]:
+    """꼬리 ` ({label}).ext` 앞의 줄기가 끝나는 회차 코드(`project_config.DURATIONS`). 없으면 None.
+
+    스냅샷(`대여소별_자전거대수 (X).csv`)처럼 회차가 없는 파일은 None — 회차로 좁혀도 남긴다
+    (그 실행의 모든 회차가 쓰는 입력이다).
+    """
+    stem = name[: -len(f" ({label}){Path(name).suffix}")]
+    return next((d for d in DURATIONS if stem.endswith(d)), None)
+
+
+def for_run(groups: List[Dict], run_label: str, labels: Iterable[str], *,
+            duration: Optional[str] = None, period: Optional[str] = None) -> List[Dict]:
+    """`list_maps()`·`list_csvs()`의 결과를 **한 실행(과 회차)** 으로 좁힌 새 목록.
+
+    - 파일은 `run_of()`로 실행에 배정한다. 고른 라벨도 후보에 넣는다 — DB에 없는 라벨이어도
+      제 파일은 찾는다.
+    - `period`를 주면 **어느 실행에도 배정되지 않은** 파일 가운데 ` ({period}).ext`로 끝나는
+      것도 남긴다 — 순수요(`st_net_daily (26년 03월).csv`)는 실행이 아니라 기간으로 붙는다.
+    - `duration`을 주면 회차가 있는 파일은 그 회차만, 회차가 없는 파일(스냅샷·순수요)은 남긴다.
+    - **다른 실행으로 물러서지 않는다.** 분류가 비면 빈 목록이다 — 화면이 '이 실행의 파일이
+      없습니다'라고 말한다(`/maps`가 '가장 최근'이라며 다른 계획의 경로를 띄운 것이 계기).
+    - 지도 분류의 `stale_count`·`unknown_count`는 좁힌 항목으로 다시 센다.
+    - 기간으로 붙인 파일에는 `rewritten_after_run`을 단다 (1.26.284 검토). 기간 파일은 실행이
+      아니라 기간의 이름이라, 같은 달로 **나중에 돈 다른 실행이 덮어쓴다**(실측: 09-21 16:25 실행의
+      순수요로 09-23 11:00에 다시 쓰인 파일이 붙었다 — 다른 파일은 모두 16:24~16:27). 짐작하지
+      않고 시각만 견준다: 그 실행 **자기 파일 가운데 가장 늦은 것**보다 늦게 쓰였으면 `True`,
+      견줄 자기 파일이 없으면 `None`(모름). 실행 시각(`runs.created_at`)과 견주지 않는 것은,
+      그 실행의 순수요 단계가 실행 행이 생긴 **뒤에** 파일을 쓰므로 제 파일도 늦게 나오기 때문이다.
+    """
+    known = set(labels) | {run_label}
+    own_times = [entry.get("mtime_raw") for group in groups for entry in group.get("entries", [])
+                 if entry.get("mtime_raw") is not None and run_of(entry["name"], known) == run_label]
+    own_newest = max(own_times) if own_times else None
+    narrowed = []
+    for group in groups:
+        kept = []
+        for entry in group.get("entries", []):
+            name = entry["name"]
+            owner = run_of(name, known)
+            if owner == run_label:
+                code = _round_of(name, run_label)
+                if duration and code is not None and code != duration:
+                    continue
+                kept.append(entry)
+            elif owner is None and period and name.endswith(f" ({period}){Path(name).suffix}"):
+                later = (None if own_newest is None or entry.get("mtime_raw") is None
+                         else entry["mtime_raw"] > own_newest)
+                kept.append({**entry, "rewritten_after_run": later})
+        new = {**group, "entries": kept}
+        if "stale_count" in group:
+            new["stale_count"] = sum(1 for e in kept if e.get("stale"))
+            new["unknown_count"] = sum(1 for e in kept if e.get("stale") is None)
+        narrowed.append(new)
+    return narrowed
+
+
+def tag_runs(groups: List[Dict], labels: Iterable[str]) -> List[Dict]:
+    """항목마다 `run_label`(그 파일의 실행, 모르면 None)을 단다 — 거르지 않는다.
+
+    인자 없는 `/maps`의 미리보기가 **어느 실행의 지도인지** 캡션에 밝히는 데 쓴다(1.26.284).
+    예전에는 '가장 최근'이라고만 적어, 최신 계획에 경로 지도가 없을 때 하루 전 다른 계획의
+    경로가 그 이름으로 떴다(실측 — 그 사실은 캡션의 파일 이름으로만 드러났다).
+    """
+    known = list(labels)
+    for group in groups:
+        for entry in group.get("entries", []):
+            entry["run_label"] = run_of(entry["name"], known)
+    return groups
 
 
 def latest_outputs(limit_per_category: int = 2) -> List[Dict]:

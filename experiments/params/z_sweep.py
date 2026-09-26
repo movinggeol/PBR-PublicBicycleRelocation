@@ -161,8 +161,9 @@ def main() -> int:
     day_type = normalize_day_type(args.day_type)
 
     with db.session() as conn:
-        run_label = args.run_label or conn.execute(
-            "SELECT MAX(run_label) FROM station_info").fetchone()[0]
+        # 기본은 가장 최근 **계획**이다 — 예전의 `MAX(run_label)`은 문자열 최대라 08-24의
+        # 스윕 실행 `sweep-10`을 골랐다(1.26.281). 1장 표는 `--run-label "2026-08-11 real"`.
+        run_label = args.run_label or db.latest_label(conn, "station_info", kinds=("plan",))
         periods = [r[0] for r in conn.execute("SELECT DISTINCT period FROM net_demand").fetchall()]
         net = {p: select_day_type(db.load_frame(conn, "net_demand", period=p),
                                   "date", day_type)

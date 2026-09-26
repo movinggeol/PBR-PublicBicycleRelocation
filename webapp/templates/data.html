@@ -6,6 +6,16 @@
   <h1>데이터</h1>
   <p class="lead">계산 단계마다 남긴 CSV 원본입니다. 숫자를 직접 확인하거나 엑셀로 가져갈 때 씁니다.
     미리보기는 앞 200행만 읽습니다.</p>
+  {# 한 실행의 원자료를 모으는 길 (1.26.284). 예전에는 536개가 분류당 5건씩 쪽으로 나뉘어 한
+     실행의 회차별 파일이 흩어져 있었다. 순수요는 실행이 아니라 그 실행의 **기간**으로 붙는다. #}
+  {% if selected_run %}
+  <p class="lead" data-file-scope>{% if known_run %}실행 <b>{{ selected_run }}</b>{% if selected_duration %} ·
+    {{ duration_labels.get(selected_duration, selected_duration) }}{% endif %}의 파일만 보고 있습니다
+    (순수요는 그 실행의 기간으로 <b>지금 폴더에 있는</b> 파일입니다 — 그 실행의 파일보다 늦게
+    쓰였으면 “이 실행 뒤에 다시 쓰임”이라 표시합니다).
+    {%- else %}기록된 실행이 아닙니다: <b>{{ selected_run }}</b>.{% endif %}
+    <a href="/data">전체 실행 보기</a></p>
+  {% endif %}
 </section>
 
 {# 한 분류에 파일이 15개까지 쌓인다. 분류마다 5건씩 끊어 보여준다 —
@@ -25,7 +35,11 @@
     {% for e in group.entries %}
     <tr data-page-item="{{ loop.index0 }}">
       <td class="wrap" data-label="">{{ e.name }}</td>
-      <td class="muted" data-label="수정 시각">{{ e.mtime }}</td>
+      {# 기간으로 붙인 파일이 그 실행의 파일보다 늦게 쓰였으면 밝힌다(`catalog.for_run`, 1.26.284 검토) —
+         실행을 골라 보는 사람은 그 실행이 쓴 순수요인 줄 안다. 시각만 견주고 짐작하지 않는다.
+         모양은 /maps의 '· 낡음'과 같다. 시각과 표시를 `.row-value` 하나로 감싼다 — 390px 카드 모드에서
+         둘이 따로 flex 항목이 되어 '쓰/임'처럼 음절 사이가 갈렸다(base.html `.row-links`와 같은 까닭). #}
+      <td class="muted" data-label="수정 시각"><span class="row-value">{{ e.mtime }}{% if e.rewritten_after_run %} <span class="hint" data-rewritten title="고른 실행의 파일 가운데 가장 늦은 것보다 나중에 쓰였습니다 — 같은 달로 나중에 돈 실행이 덮어썼을 수 있습니다">· 이 실행 뒤에 다시 쓰임</span>{% endif %}</span></td>
       <td class="num muted" data-label="크기">{{ e.size_kb }} KB</td>
       <td data-label="열기">
         <a href="/preview/{{ e.relpath | urlencode }}">미리보기</a> ·
@@ -36,6 +50,9 @@
     </tbody>
   </table>
   </div>
+  {% elif selected_run %}
+  <p class="empty">이 실행{% if selected_duration %}·회차{% endif %}의 파일이 없습니다.
+    <a href="/data">전체 실행 보기</a></p>
   {% else %}
   <p class="empty">아직 없습니다. <a href="/run#run">계획을 실행</a>하면 만들어집니다.</p>
   {% endif %}

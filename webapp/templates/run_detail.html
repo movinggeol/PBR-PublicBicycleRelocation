@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}실행 {{ job.id }} — PBR 대시보드{% endblock %}
+{% block title %}{{ run_label or ("실행 " ~ job.id) }} — PBR 대시보드{% endblock %}
 
 {% block head_extra %}
 {# 진행 중이면 3초마다 /api/runs/{id}를 받아 **바뀐 칸만** 고친다(아래 스크립트,
@@ -11,10 +11,15 @@
 
 {% block content %}
 
+{# 제목은 **실행 이름**(`--now` = DB의 run_label)이다 (1.26.284). 예전에는 작업 ID
+   `20260921-162530-676`이 제목이고 이름은 아래 '인자' 칸의 CLI 문자열 속에만 있었다 —
+   결과 화면의 칩·지시서가 부르는 이름과 맞춰 볼 길이 없었다. 이름을 모르는 옛 작업은
+   예전처럼 작업 ID를 제목으로 둔다(짐작하지 않는다). #}
 <section class="hero" style="padding-bottom:var(--sp-md)">
   <div class="row" style="gap:var(--sp-sm)">
-    <h1 style="font-size:var(--fs-h2); margin:0">실행 {{ job.id }}</h1>
+    <h1 style="font-size:var(--fs-h2); margin:0">{{ run_label or ("실행 " ~ job.id) }}</h1>
     <span class="badge {{ job.status }}" data-run-badge>{{ job_labels.get(job.status, job.status) }}</span>
+    {% if run_label %}<span class="hint">작업 {{ job.id }}</span>{% endif %}
   </div>
 </section>
 
@@ -47,9 +52,33 @@
   </form>
 </div>
 {% elif job.status == "success" %}
+{# 완료 안내는 **이 실행의** 결과로 보낸다 (1.26.284). 예전에는 `/kpi`·`/maps`·`/data` 맨 주소뿐이고
+   작업지시서 링크가 없어, 방금 돌린 계획의 `_15_20` 지시서까지 세 번 누르고 칩 72개 중
+   29번째를 찾아야 했다(실측). 옛 작업의 상세에서 '성과 지표'를 누르면 그 작업이 아니라
+   가장 최근 실행이 열렸다.
+   - 지시서는 **회차마다** 링크다 — 경로가 있는 회차만(`_run_result_links`, /orders 칩과 같은
+     `_run_groups`). 회차를 템플릿에서 다시 계산하지 않는다. 요청했는데 경로 기록이 없는 회차는
+     글로 적는다(1.26.284 검토 — 처음에는 말없이 빠졌다).
+   - 경로 기록을 하나도 못 찾았을 때 **까닭을 단정하지 않는다** — `store.plan_targets()`는 DB를
+     못 읽어도 빈 목록을 돌려주므로 '경로가 없다'와 '못 읽었다'를 여기서 가를 수 없다(점검 기록 4장).
+   - 성과 지표는 `?run_label=`로 좁혀도 증감이 남는다 — 같은 조건의 앞선 실행과 견준다(1.26.284).
+   - 실행 이름을 모르는 옛 작업은 예전 안내 그대로다(짐작하지 않는다). #}
 <div class="alert ok">
+  {% if run_label %}
+  {% set q = run_label | urlencode %}
+  <span><b>계획이 완성되었습니다.</b>
+    {% if result_links and result_links.durations %}작업지시서:
+    {% for d in result_links.durations %}<a href="/orders?run_label={{ q }}&duration={{ d.value | urlencode }}">{{ d.label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}.
+    {% if result_links.missing %}{% for d in result_links.missing %}{{ d.label }}{% if not loop.last %} · {% endif %}{% endfor %}은
+    경로 기록이 없습니다.{% endif %}
+    {% else %}이 실행의 경로 기록을 찾지 못해 작업지시서로 바로 가는 길을 낼 수 없습니다.
+    {% endif %}
+    이 실행의 <a href="/kpi?run_label={{ q }}">성과 지표</a> · <a href="/vehicles?run_label={{ q }}">차량 운용</a> ·
+    <a href="/maps?run_label={{ q }}">지도</a> · <a href="/data?run_label={{ q }}">데이터</a>에서 결과를 확인하세요.</span>
+  {% else %}
   <span><b>계획이 완성되었습니다.</b>
     <a href="/kpi">성과 지표</a> · <a href="/maps">지도</a> · <a href="/data">데이터</a>에서 결과를 확인하세요.</span>
+  {% endif %}
 </div>
 {% elif job.status == "failed" %}
 <div class="alert bad"><span><b>실패했습니다.</b> 아래 단계 표에서 붉게 표시된 곳을 찾고,

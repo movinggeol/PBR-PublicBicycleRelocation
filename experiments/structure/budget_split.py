@@ -65,7 +65,7 @@ sys.path.insert(0, str(ROOT))
 import db                                          # noqa: E402
 from pipeline.step2_optimize import vrp as vrp_mod                     # noqa: E402  (step2)
 from project_config import (                       # noqa: E402
-    TIME_BUDGET_MINUTES, VEHICLES_PER_ROUND,
+    TIME_BUDGET_MINUTES, VEHICLES_PER_ROUND, align_day_type,
 )
 
 WINDOWS = ("_05_10", "_10_15", "_15_20")
@@ -97,8 +97,8 @@ def station_points(run_label: str) -> dict:
             conn, params=[run_label])
         if info.empty:
             info = pd.read_sql(
-                "SELECT station_id, lat, lon FROM station_info"
-                " WHERE run_label = (SELECT MAX(run_label) FROM station_info)", conn)
+                "SELECT station_id, lat, lon FROM station_info WHERE run_label = ?",
+                conn, params=[db.latest_label(conn, "station_info")])   # 사전순 MAX 아님(1.26.281)
     return {r.station_id: (r.lat, r.lon) for r in info.itertuples()}
 
 
@@ -386,15 +386,17 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    label = args.run_label
-    if not label:
-        with db.session() as conn:
-            got = pd.read_sql("SELECT MAX(run_label) AS m FROM ilp_plan", conn)
-        label = got["m"][0]
+    with db.session() as conn:
+        # 사전순 MAX를 쓰지 않는다 — 2026-09-23에 그것은 08-24의 스윕 실행 `sweep-21`이었다
+        # (1.26.281). 실험 라벨이 날짜 라벨을 이긴다(1.26.127과 같은 부류).
+        label = args.run_label or db.latest_label(conn, "ilp_plan", kinds=("plan",))
+        day_type = db.run_day_type(conn, label) if label else None
     if not label:
         print("ilp_plan이 비어 있습니다. 파이프라인을 한 번 돌리십시오.")
         return 1
-    print(f"[실행] run_label = '{label}'")
+    if day_type:
+        align_day_type(day_type, vrp_mod)       # 이동시간 계수를 그 실행의 요일로(오늘 달력 말고)
+    print(f"[실행] run_label = '{label}' · 요일 구분 {day_type or '기록 없음 — 지금 설정'}")
 
     durations = [d.strip() for d in args.duration.split(",") if d.strip()]
     rows = [measure(label, d, args.road_factor, args.budget, args.seed)

@@ -449,11 +449,19 @@
        1.26.126 스캔이 라이트만 봐서 못 잡았다. --blue를 바꾸지 않는 이유는 다크
        토큰의 주석(채움색·글자색 역할이 부딪친다)에 있다.
        단추 모양 링크(.btn)는 뺀다 — 지금 세 구역 안에 단추는 없지만(2026-09-15 재스캔),
-       구역 단위 규칙이라 넣는 순간 단추에도 밑줄이 붙는다. */
-    .muted a, .hint a, .empty a,
+       구역 단위 규칙이라 넣는 순간 단추에도 밑줄이 붙는다.
+       **.hero .lead를 더했다 (1.26.284)** — /kpi·/maps·/data의 히어로가 '고른 실행 X만
+       봅니다 · 전체 실행 보기'처럼 문장 속에 푸는 링크를 두게 되어, axe가 네 화면 × 라이트·
+       다크 × 1400·375에서 link-in-text-block 20건을 냈다. */
+    .muted a, .hint a, .empty a, .hero .lead a:not(.btn),
     .alert a:not(.btn), .card-foot a:not(.btn), .section-lead a:not(.btn) {
       text-decoration: underline; text-underline-offset: 2px;
     }
+    /* 짧은 링크 묶음('전체 실행 보기 · 다른 실행 고르기', '지표 · 지시서 · 지도')은 **링크 글자 안에서
+       줄을 바꾸지 않는다** — 줄은 ' · ' 사이에서만 바뀐다 (1.26.284 검토). /kpi 히어로에서
+       1300px에 '한 실행만 보'/'기'로 쪼개져 한 글자가 다음 줄 맨 앞에 홀로 남았다.
+       `.row-links`는 표 칸 안의 묶음이다 — 아래 카드 모드 규칙 참고. */
+    .keep-links a, .row-links a { white-space: nowrap; }
 
     /* ════════ 카드 — 1px 헤어라인만. 그림자 없음 ════════ */
     .card {
@@ -606,6 +614,10 @@
     tr.over-budget td { background: var(--critical-soft); }
     tr.over-budget td:first-child { box-shadow: inset 3px 0 0 var(--critical); }
     td.over-budget, .over { color: var(--critical-ink); font-weight: 600; }
+    /* 예산을 넘긴 칸이 **링크**여도 경고 색을 잃지 않는다 (1.26.284). `/kpi` 표의 최장 작업 ⚠가
+       차량 운용의 배정 이력으로 가는 링크가 되자 파랑으로 칠해져, 넘긴 칸과 안 넘긴 칸이
+       색으로 갈리지 않았다. 색은 상태가 가지고, 누를 수 있다는 것은 밑줄이 말한다. */
+    td.over-budget a, .over a { color: inherit; text-decoration: underline; }
     /* 붉은 바탕 위에서는 흐린 회색이 4.42:1로 미달이다(--ink-3 on --critical-soft).
        바탕을 밝혀 맞출 수도 있지만 그러면 경고 색이 흐려진다 — 반대로 간다.
        **예산을 넘긴 행은 읽어야 하는 행**이라 애초에 흐리게 둘 이유가 없다.
@@ -1379,6 +1391,16 @@
     }
     [data-narrow] table.m-cards td[data-label=""] { display: block; }
     [data-narrow] table.m-cards td[data-label=""]::before { content: none; }
+    /* 여러 링크가 든 칸은 링크를 `.row-links` 하나로 감싼다 (1.26.284 검토). 감싸지 않으면
+       링크 다섯과 ' · ' 넷이 **각각 flex 항목**이 되어 항목마다 gap이 붙고, 한글 링크가
+       min-content까지 줄어 '지/표'·'지/시/서'처럼 음절마다 세로로 쪼개졌다 — `/run` 저장된
+       실행 29행 전부, 390·360px(실측). 'JSON'은 카드 밖으로 밀려 잘렸는데, 카드가 넘친 부분을
+       잘라 문서 가로 넘침 검사에는 걸리지 않았다. 감싸면 칸의 항목은 머리글과 값 둘이다. */
+    [data-narrow] table.m-cards td > .row-links,
+    [data-narrow] table.m-cards td > .row-value { text-align: right; min-width: 0; }
+    /* 값 묶음(`.row-value` — 시각 + '· 이 실행 뒤에 다시 쓰임')은 낱말 안에서 줄을 바꾸지 않는다.
+       한글은 기본값에서 음절마다 끊겨 '쓰/임'이 됐다. */
+    .row-value { word-break: keep-all; }
     [data-narrow] table.m-cards td.num { font-variant-numeric: tabular-nums; }
     /* 표를 눕히면 가로 스크롤 상자가 필요 없다 — 남겨 두면 카드가 그 안에서
        잘린다. */
@@ -1588,16 +1610,25 @@
 </nav>
 
 {% if group == 'result' %}
+{# 결과 묶음 안에서는 **고른 실행을 싣고 다닌다** (1.26.284). 예전에는 href가 고정이라
+   `/kpi?run_label=X`에서 '지도'나 '작업지시서'를 누르면 필터가 풀렸다 — 한 계획을 지표 → 지도
+   → 지시서로 따라가던 사람이 매번 다시 골라야 했다. 라우트마다 변수를 넘기지 않고 위의
+   `path`처럼 요청에서 읽는다. 회차는 받는 화면(/maps·/orders)에만 싣는다. 전역 내비·하단
+   탭은 싣지 않는다 — 결과 묶음 밖으로 나가는 길은 늘 맨 주소다. #}
+{% set carry_run = request.query_params.get('run_label') %}
+{% set carry_dur = request.query_params.get('duration') if carry_run else none %}
+{% set q_run = ('?run_label=' ~ (carry_run | urlencode)) if carry_run else '' %}
+{% set q_round = q_run ~ (('&duration=' ~ (carry_dur | urlencode)) if carry_dur else '') %}
 <nav class="group-nav" aria-label="결과 보기">
   <div class="group-nav-inner">
-    <a href="/kpi" {% if path.startswith('/kpi') %}aria-current="page"{% endif %}
+    <a href="/kpi{{ q_run }}" {% if path.startswith('/kpi') %}aria-current="page"{% endif %}
        data-tip="계획 달성률·목표 도달·이동거리·결품 시간을 실행별로 비교합니다.">성과 지표</a>
-    <a href="/vehicles" {% if path.startswith('/vehicles') %}aria-current="page"{% endif %}
+    <a href="/vehicles{{ q_run }}" {% if path.startswith('/vehicles') %}aria-current="page"{% endif %}
        {# 보유 대수는 실행마다 바뀐다 — 내비 풍선에 숫자를 박지 않는다. #}
        data-tip="차량마다 일이 고르게 나뉘었는지, 시간 예산을 지켰는지 봅니다.">차량 운용</a>
-    <a href="/maps" {% if path.startswith('/maps') or path.startswith('/view') %}aria-current="page"{% endif %}
+    <a href="/maps{{ q_round }}" {% if path.startswith('/maps') or path.startswith('/view') %}aria-current="page"{% endif %}
        data-tip="군집·경로·재고 현황을 지도 위에서 확인합니다.">지도</a>
-    <a href="/orders" {% if path.startswith('/orders') %}aria-current="page"{% endif %}
+    <a href="/orders{{ q_round }}" {% if path.startswith('/orders') %}aria-current="page"{% endif %}
        data-tip="차량마다 어디를 어떤 순서로 들러 몇 대를 싣고 내리는지. 인쇄해서 현장에 냅니다.">작업지시서</a>
   </div>
 </nav>
@@ -1702,6 +1733,15 @@
         e.target.dataset.touched = "1";
       }
     }, true);
+    /* 접힌 묶음으로 가는 앵커는 **펴고** 간다 (1.26.284 검토). /kpi 히어로의 '다른 실행 고르기'가
+       390px에서 표 제목에만 닿고 실행 고르기는 접힌 채라, 칩을 보려면 한 번 더 눌러야 했다.
+       링크가 `data-open-fold`에 펼 `<details>`의 선택자를 적는다 — 이동은 브라우저가 한다. */
+    document.addEventListener("click", function (e) {
+      var link = e.target.closest && e.target.closest("a[data-open-fold]");
+      if (!link) return;
+      var fold = document.querySelector(link.getAttribute("data-open-fold"));
+      if (fold && fold.tagName === "DETAILS") fold.open = true;
+    });
     /* 창 크기가 바뀌면 다시 판정한다 — 단, 사람이 고른 값이 있으면 그게 이긴다. */
     if (NARROW.addEventListener) NARROW.addEventListener("change", apply);
     else if (NARROW.addListener) NARROW.addListener(apply);
@@ -1932,6 +1972,15 @@
       var next = nav.querySelector("[data-page-next]");
       var status = nav.querySelector(".pager-status");
       var page = 0;
+
+      /* 서버가 표식을 단 덩어리(`data-pager-focus`)가 있으면 그것이 든 쪽에서 시작한다.
+         `/run` 저장된 실행에서 2쪽 이후 행의 종류를 바꾸면 되돌아온 화면이 1쪽이라
+         방금 고친 행이 숨어 있었다(1.26.283). 표식이 없으면 예전처럼 첫 쪽이다. */
+      var focus = box.querySelector("[data-page-item][data-pager-focus]");
+      if (focus) {
+        var at = keys.indexOf(focus.dataset.pageItem);
+        if (at >= 0) page = Math.floor(at / size);
+      }
 
       function render() {
         var shown = keys.slice(page * size, page * size + size);

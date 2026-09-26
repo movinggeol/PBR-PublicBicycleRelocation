@@ -2450,11 +2450,15 @@ def test_있는_차량으로_고르면_그_한_장만_남는다(monkeypatch):
 
 
 class _FakeRequest:
-    """템플릿의 `request.url.path`만 읽는 최소 스텁."""
+    """템플릿의 `request.url.path`와 `request.query_params`만 읽는 최소 스텁.
+
+    1.26.284부터 base.html의 결과 묶음 내비가 `query_params`의 `run_label`을 싣고 다닌다 —
+    쿼리가 없는 요청과 같게 빈 사전을 둔다."""
     class _URL:
         path = "/orders"
     url = _URL()
     headers = {}
+    query_params = {}
 
 
 def test_배정_이력_쪽_넘기기가_전부에_닿는다(client, monkeypatch):
@@ -2623,12 +2627,11 @@ def test_kpi의_최신은_라벨이_아니라_시각으로_고른다():
     맨 위였다. 같은 함정을 `_runs_newest_first()`는 이미 알고 `computed_at`을
     쓰는데 `/kpi`만 안 쓰고 있었다.
 
-    ⚠️ **지금 자료에서는 두 순서가 우연히 같다** — 그래서 화면은 맞게
-    보인다. 하지만 `2026-05-21 18`은 라벨이 5월인데 실제 계산은 08-25로,
-    **라벨과 시각이 갈리는 자료가 이미 있다.** 라벨이 `sweep-`으로 시작하면
-    숫자 라벨보다 위로 가서 옛 실험이 헤드라인에 오른다.
-
-    여기서 잡는 것은 그 경우다 — 우연에 기대지 않게 만든다.
+    ⚠️ 1.26.146에는 *"지금 자료에서는 두 순서가 우연히 같다"* 고 적었다. 2026-09-23
+    자료에서는 **갈린다** — 사전순 1행은 `sweep-21`(08-24)이고 가장 최근 실행은
+    `2026-09-22 휴일 전회차`다. 라벨이 `sweep-`으로 시작하면 숫자 라벨보다 위로
+    가서 옛 실험이 헤드라인에 오른다. 표의 행 순서도 같은 규칙(`store.kpi_run_order`)을
+    쓴다(1.26.283, `test_webapp_db.py`의 지표 표 시험).
     """
     import pandas as pd
     from webapp import app as app_module
@@ -3495,7 +3498,8 @@ def test_기사와_사용자에게_버전_번호와_날_JSON을_들이대지_않
     assert "1.19.1" not in orders_tpl
     vehicles_tpl = Path("webapp/templates/vehicles.html").read_text(encoding="utf-8")
     assert '>보기</a>' not in vehicles_tpl and 'title="이 차량의 배정 이력 원자료(JSON)">JSON</a>' in vehicles_tpl
-    assert "a.minutes is not none and a.minutes > time_budget" in vehicles_tpl
+    # 결측 가드는 그대로다 — 비교 대상만 행별 예산으로 바뀌었다(1.26.284 검토)
+    assert "a.minutes is not none and a.minutes > (a.budget_minutes or time_budget)" in vehicles_tpl
 
 
 # ── 웹 대시보드 6차 점검 — 내구성 묶음 (1.26.273) ───────────────────────────
@@ -3607,3 +3611,241 @@ def test_예산_준수는_그_회차가_계획될_때의_예산으로_센다(cli
     html = client.get("/vehicles").text
     assert "2회차 중 1회차가" in " ".join(html.split()), "A는 90분 예산을 넘었는데 상수 120분으로 통과시켰다"
     assert "각 실행의 시간 예산 안에" in html
+
+
+# ── 실행을 따라가는 길 — /maps·/data를 실행으로 좁히기 (1.26.284) ─────────────────
+
+def _file_groups(names_by_title: dict) -> list:
+    """`catalog.list_*()`와 같은 모양의 분류 목록 — 파일 이름만 다르다."""
+    return [{"title": title, "entries": [
+        {"name": n, "relpath": f"x/{n}", "mtime": "2026-09-22 15:07", "mtime_raw": i,
+         "size_kb": 1, "stale": False} for i, n in enumerate(names)]}
+        for title, names in names_by_title.items()]
+
+
+def test_파일_이름의_실행은_가장_긴_라벨로_가른다():
+    """파일 이름 규약은 `<접두>{duration} ({now}).ext`다 — 꼬리만으로 실행을 가를 수 있다 (1.26.284).
+
+    ⚠️ 라벨에 괄호·공백이 든다(`check_run_label`은 `\\/:*?"<>|`만 막는다). 정규식으로 마지막
+    괄호를 떼면 `A (B)`가 `B)`로 읽힌다. 알려진 라벨 가운데 ` (라벨).ext`로 끝나는 **가장 긴**
+    것에 배정하고, 여는 괄호까지 붙여 맞추므로 `16 웹점검`이 `2026-09-21 16 웹점검`에 걸리지 않는다.
+    """
+    from webapp import catalog
+
+    # 짧은 라벨을 **앞에** 둔다 — 처음 맞는 것을 고르면 `A (B)`의 파일이 `B)`로 간다
+    labels = ["B)", "16 웹점검", "2026-09-21 16 웹점검", "2026-09-21 16 웹점검 휴일", "A (B)"]
+    assert catalog.run_of("vrp_map_10_15 (2026-09-21 16 웹점검).html", labels) == "2026-09-21 16 웹점검"
+    assert catalog.run_of("vrp_map_15_20 (2026-09-21 16 웹점검 휴일).html", labels) \
+        == "2026-09-21 16 웹점검 휴일"
+    assert catalog.run_of("top_05_10 (A (B)).csv", labels) == "A (B)", "괄호가 든 라벨을 잘랐다"
+    assert catalog.run_of("top_05_10 (B)).csv", labels) == "B)"
+    assert catalog.run_of("st_net_daily (26년 03월).csv", labels) is None
+    assert catalog.run_of("vrp_map_10_15 (16 웹점검).csv", labels) == "16 웹점검"
+
+
+def test_실행으로_좁힌_목록은_다른_실행으로_물러서지_않는다():
+    """`/maps`는 분류마다 파일 수정 시각이 가장 늦은 한 장을 '가장 최근'으로 띄웠다 — 최신 계획에
+    경로 지도가 0장이면 하루 전 **다른 계획**의 경로가 떴다(1.26.284 실측). 좁히면 그 실행의
+    파일만 남고, 없으면 빈 분류다. 회차로 좁혀도 회차가 없는 파일(스냅샷)은 남고, 순수요는
+    실행이 아니라 그 실행의 **기간**으로 붙는다."""
+    from webapp import catalog
+
+    run, other = "2026-09-22 휴일 전회차", "2026-09-21 16 웹점검 전회차"
+    groups = _file_groups({
+        "경로": [f"vrp_map_10_15 ({other}).html"],
+        "재고": [f"대여소별_자전거대수 ({run}).csv", f"대여소별_자전거대수 ({other}).csv"],
+        "순수요": ["st_net_daily (26년 03월).csv", "st_net_daily (25년 11월).csv"],
+        "계획": [f"VRP_plan{d} ({run}).csv" for d in DURATIONS] + [f"VRP_plan_05_10 ({other}).csv"],
+    })
+    narrowed = {g["title"]: [e["name"] for e in g["entries"]]
+                for g in catalog.for_run(groups, run, [run, other],
+                                         duration=DURATIONS[0], period="26년 03월")}
+    assert narrowed["경로"] == [], "그 실행에 없는 분류를 다른 실행으로 채웠다"
+    assert narrowed["재고"] == [f"대여소별_자전거대수 ({run}).csv"], "회차 없는 스냅샷은 남아야 한다"
+    assert narrowed["순수요"] == ["st_net_daily (26년 03월).csv"]
+    assert narrowed["계획"] == [f"VRP_plan{DURATIONS[0]} ({run}).csv"]
+    # 낡음 수는 좁힌 항목으로 다시 센다
+    stale = [{"title": "지도", "stale_count": 2, "unknown_count": 0, "entries": [
+        {"name": f"a_05_10 ({run}).html", "stale": True},
+        {"name": f"a_05_10 ({other}).html", "stale": True}]}]
+    assert catalog.for_run(stale, run, [run, other])[0]["stale_count"] == 1
+
+
+@pytest.mark.parametrize("path, scanner", [("/maps", "list_maps"), ("/data", "list_csvs")])
+def test_지도와_데이터는_실행으로_좁히고_푸는_길을_준다(client, monkeypatch, path, scanner):
+    """`/maps`·`/data`가 인자를 받지 않았다 (1.26.284). 좁힌 상태를 먼저 말하고, 빈 분류는 필터를
+    푸는 링크다(DESIGN.md '빈 상태' — `/run`이 아니다). 목록 스캔은 그대로 `catalog.list_*()`이고
+    파일은 여전히 `safe_resolve()`를 거친 `/files`·`/view`·`/preview`로만 연다."""
+    run, other = "2026-09-22 휴일 전회차", "2026-09-21 16 웹점검 전회차"
+    ext = ".html" if path == "/maps" else ".csv"
+    groups = _file_groups({"하나": [f"a_05_10 ({run}){ext}", f"a_05_10 ({other}){ext}"],
+                           "둘": [f"b_05_10 ({other}){ext}"]})
+    monkeypatch.setattr(app_module.catalog, scanner, lambda: groups)
+    monkeypatch.setattr(app_module.store, "run_labels",
+                        lambda: pd.DataFrame({"run_label": [run, other], "period": ["26년 03월"] * 2}))
+
+    html = client.get(path, params={"run_label": run}).text
+    assert f"a_05_10 ({run}){ext}" in html and other not in html.split("</section>", 1)[1], \
+        "다른 실행의 파일이 섞였다"
+    scope = html[html.index("data-file-scope"):]
+    assert f'href="{path}"' in scope[:scope.index("</p>")], "좁힌 상태를 푸는 길이 없다"
+    empty = html[html.index('<p class="empty">이 실행'):]
+    assert f'href="{path}"' in empty[:empty.index("</p>")] and "/run#run" not in empty[:empty.index("</p>")]
+    # 인자가 없으면 예전과 같은 목록이다
+    assert len(re.findall(r'<tr data-page-item="\d+">', client.get(path).text)) == 3
+
+
+def test_지도_미리보기는_어느_실행의_것인지_밝힌다(client, monkeypatch):
+    """인자 없는 `/maps`의 미리보기 캡션이 '가장 최근'뿐이라, 최신 계획의 경로 지도가 없을 때 다른
+    계획의 경로가 그 이름으로 떴다(1.26.284 실측). '가장 최근에 **그린**' 것임과 그 실행을 밝힌다."""
+    run = "2026-09-21 16 웹점검 전회차"
+    monkeypatch.setattr(app_module.catalog, "list_maps",
+                        lambda: _file_groups({"경로": [f"vrp_map_10_15 ({run}).html"]}))
+    monkeypatch.setattr(app_module.store, "run_labels",
+                        lambda: pd.DataFrame({"run_label": [run], "period": ["26년 03월"]}))
+    caption = client.get("/maps").text.split("<figcaption", 1)[1].split("</figcaption>", 1)[0]
+    assert "가장 최근에 그린" in caption and f">{run}</a>" in caption, caption
+
+
+def test_결과_묶음_내비가_고른_실행을_싣고_다닌다(client):
+    """`/kpi?run_label=X`에서 '지도'·'작업지시서'를 누르면 필터가 풀렸다 — href가 고정이었다
+    (1.26.284). 결과 묶음 안에서만 싣고(전역 내비·하단 탭은 맨 주소), 회차는 받는 화면
+    (`/maps`·`/orders`)에만 싣는다."""
+    from html import unescape
+    from urllib.parse import quote
+
+    run = "A (B) 전회차"
+    html = unescape(client.get("/orders", params={"run_label": run, "duration": DURATIONS[1]}).text)
+    nav = html.split('<nav class="group-nav"', 1)[1].split("</nav>", 1)[0]
+    q = quote(run)
+    assert f'href="/kpi?run_label={q}"' in nav and f'href="/vehicles?run_label={q}"' in nav
+    assert f'href="/maps?run_label={q}&duration={DURATIONS[1]}"' in nav
+    assert f'href="/orders?run_label={q}&duration={DURATIONS[1]}"' in nav
+    tabbar = html.split('<nav class="tabbar"', 1)[1].split("</nav>", 1)[0]
+    assert "run_label" not in tabbar, "결과 묶음 밖으로 나가는 길에 실행을 실었다"
+    # 고르지 않았으면 맨 주소 그대로
+    nav = client.get("/kpi").text.split('<nav class="group-nav"', 1)[1].split("</nav>", 1)[0]
+    assert "run_label" not in nav
+
+
+def test_지표_표의_회차는_이름이고_누르면_지시서다(client, monkeypatch):
+    """`/kpi` 표의 회차가 `_05_10` 코드인 채 글자뿐이었다 (1.26.284 — 1.26.283이 칩·지시서를 이름으로
+    바꾸고 이 표만 남겼다). 이름으로 적고 그 회차 지시서로 잇되, 정렬은 코드로 한다(`data-sort`).
+    회차가 비면 링크를 만들지 않는다(1.26.263이 고친 부류). 예산을 넘긴 ⚠ 칸은 어느 차량이 넘었는지
+    (차량 운용 배정 이력)로 가고, 링크여도 경고 색을 지킨다."""
+    from webapp import store
+
+    rows = _kpi_rows()
+    rows.loc[1, "duration"] = None
+    monkeypatch.setattr(store, "kpi", lambda *a, **k: rows)
+    html = client.get("/kpi").text
+    table = html[html.index('id="kpi-runs-table"'):html.index("</table>", html.index('id="kpi-runs-table"'))]
+    name = project_config.DURATION_LABELS["_10_15"]
+    assert ('data-label="회차" data-sort="_10_15"><a href="/orders?run_label=2026-08-27%2023'
+            '&duration=_10_15" title="이 회차의 작업지시서">' + name + "</a>") in table
+    assert 'data-label="회차" data-sort="">—</td>' in table, "회차가 비었는데 링크를 만들었다"
+    assert ">_10_15<" not in table, "표에 회차 코드가 남았다"
+    # 136분 > 예산 120분 — ⚠ 칸만 링크다
+    assert 'href="/vehicles?run_label=2026-08-27%2023#assignments"' in table
+    assert table.count("#assignments") == 1
+    assert "td.over-budget a, .over a { color: inherit; text-decoration: underline; }" in html
+
+
+def test_없는_실행을_고르면_필터를_푸는_길을_준다(client, monkeypatch):
+    """지표가 없는 라벨을 고르면 히어로는 아무 말이 없고, 표의 빈 상태는 '계획을 끝까지 실행하면
+    쌓입니다'(`/run`)였다 (1.26.284). 필터 때문에 빈 자리는 필터를 푸는 링크다(DESIGN.md)."""
+    html = client.get("/kpi", params={"run_label": "없는 실행"}).text
+    hero = html.split('<section class="hero">', 1)[1].split("</section>", 1)[0]
+    # DB에 없는 라벨(오타)이면 까닭을 짐작하지 않고 그런 실행이 없다고 말한다 — `/maps`·`/data`와
+    # 같은 판정이다(1.26.284 검토: 처음에는 '계획이 아닌 실행이거나 끝까지 가지 않은 실행'이라 했다)
+    assert "기록된 실행이 아닙니다" in hero and 'href="/kpi"' in hero
+    table_empty = html.split('<div class="card flush">', 1)[1].split("</div>", 1)[0]
+    assert 'href="/kpi"' in table_empty and "/run#run" not in table_empty
+    assert "기록된 실행이 아닙니다" in table_empty and "계획이 아닌 실행이거나" not in table_empty
+
+    # 기록은 있는데 지표가 없는 실행이면 그때만 까닭(계획이 아니거나 끝까지 가지 않음)을 적는다
+    monkeypatch.setattr(app_module.store, "run_labels", lambda: pd.DataFrame(
+        {"run_label": ["지표 없는 수집"], "kind": ["probe"], "created_at": ["2026-09-02 08:00:00"]}))
+    html = client.get("/kpi", params={"run_label": "지표 없는 수집"}).text
+    hero = html.split('<section class="hero">', 1)[1].split("</section>", 1)[0]
+    assert "성과 지표 기록이 없습니다" in hero and "기록된 실행이 아닙니다" not in hero
+    table_empty = html.split('<div class="card flush">', 1)[1].split("</div>", 1)[0]
+    assert "계획이 아닌 실행이거나" in table_empty
+    # 히어로 문장 속 푸는 링크는 색만으로 가르지 않는다 — axe link-in-text-block이 /kpi·/maps·/data
+    # 네 화면 × 라이트·다크 × 1400·375에서 20건을 냈다(1.26.284 브라우저 확인)
+    rule = html[html.index(".muted a, .hint a, .empty a"):]
+    assert ".hero .lead a:not(.btn)" in rule[:rule.index("{")], "히어로 문장 속 링크에 밑줄이 없다"
+
+# ── 1.26.284 검토에서 고친 것 — /kpi 회차 이름 · /data 기간 파일 ─────────────────
+
+
+def test_지표_화면의_수요_예측과_보정_문장도_회차_이름이다(client, monkeypatch):
+    """`/kpi`의 회차 이름을 한 벌로 맞추면서(1.26.284) 수요 예측 표·그래프 제목·결품 보정 문장을 막는
+    시험이 없었다 — 검토가 두 자리를 코드로 되돌려도 340개가 전부 통과했다. 되돌리면 한 화면에서
+    `_05_10`과 '05~10시 (출근)'이 다시 섞인다. 값은 `store.backtest`·`stockout_calibration`만 바꿔
+    `kpi_view.forecast_accuracy`는 실제로 돈다(계산이 낼 수 있는 값 — 오차 < 기준선, 비율 0~1)."""
+    from webapp import store
+
+    names = project_config.DURATION_LABELS
+    backtest = pd.DataFrame([
+        {"duration": d, "test_period": period, "mae": 3.1 + i, "mae_zero": 4.0 + i,
+         "mae_global": 3.8 + i, "coverage": 0.93, "bias": 0.2, "z_for_95": 2.1}
+        for i, d in enumerate(DURATIONS[:2]) for period in ("26년 02월", "26년 03월")])
+    monkeypatch.setattr(store, "backtest", lambda *a, **k: backtest)
+    monkeypatch.setattr(store, "stockout_calibration", lambda *a, **k: [
+        {"duration": DURATIONS[0], "ratio": 1.31, "days": 7, "measured_at": "2026-09-20",
+         "note": "관측 재고"}])
+    monkeypatch.setattr(store, "kpi", lambda *a, **k: _kpi_rows())
+    html = client.get("/kpi").text
+
+    forecast = html[html.index("<h2>수요 예측은 얼마나 맞나</h2>"):]
+    for d in DURATIONS[:2]:
+        assert f'data-sort="{d}"><b>{names[d]}</b></td>' in forecast, f"수요 예측 표의 {d}가 이름이 아니다"
+        assert f"<h3>{names[d]} 예측 오차</h3>" in forecast, f"수요 예측 그래프 제목의 {d}가 이름이 아니다"
+        assert f"<b>{d}</b>" not in forecast and f"{d} 예측 오차" not in forecast
+    sentence = html[html.index("관측으로 맞대어 본 결과"):]
+    sentence = " ".join(sentence[:sentence.index("였습니다")].split())
+    assert f"{names[DURATIONS[0]]}에서 실측이 복원의" in sentence, sentence
+    assert f"{DURATIONS[0]}에서" not in sentence
+
+
+def test_실행으로_좁힌_데이터는_나중에_다시_쓰인_기간_파일을_밝힌다(client, monkeypatch):
+    """순수요는 실행이 아니라 **기간**의 이름이라 같은 달로 나중에 돈 실행이 덮어쓴다 (1.26.284 검토 —
+    실측: 09-21 16:25 실행의 순수요로 09-23 11:00에 다시 쓰인 파일이 아무 표시 없이 붙었다). 그 실행
+    **자기 파일 가운데 가장 늦은 것**보다 늦으면 밝히고, 견줄 자기 파일이 없으면 모른다(`None`)."""
+    from webapp import catalog
+
+    run, other = "2026-09-21 16 웹점검 전회차", "2026-09-22 휴일 전회차"
+    groups = [
+        {"title": "계획", "entries": [
+            {"name": f"VRP_plan{DURATIONS[0]} ({run}).csv", "mtime_raw": 100.0},
+            {"name": f"VRP_plan{DURATIONS[1]} ({run}).csv", "mtime_raw": 130.0}]},
+        {"title": "순수요", "entries": [
+            {"name": "st_net_daily (26년 03월).csv", "mtime_raw": 200.0},
+            {"name": "st_net_daily (25년 11월).csv", "mtime_raw": 50.0}]},
+    ]
+    narrowed = catalog.for_run(groups, run, [run, other], duration=DURATIONS[0], period="26년 03월")
+    net = narrowed[1]["entries"]
+    assert [e["name"] for e in net] == ["st_net_daily (26년 03월).csv"]
+    assert net[0]["rewritten_after_run"] is True, "그 실행의 마지막 파일(130)보다 늦게(200) 쓰였다"
+    # 회차로 좁혀도 '자기 파일 가운데 가장 늦은 것'은 그 실행 전체에서 센다(130, 100이 아니다)
+    groups[1]["entries"][0]["mtime_raw"] = 120.0
+    assert catalog.for_run(groups, run, [run], duration=DURATIONS[0],
+                           period="26년 03월")[1]["entries"][0]["rewritten_after_run"] is False
+    # 자기 파일이 하나도 없으면 견줄 것이 없다 — 모른다
+    assert catalog.for_run(groups, other, [run, other], period="26년 03월")[1]["entries"][0][
+        "rewritten_after_run"] is None
+    assert "rewritten_after_run" not in groups[1]["entries"][0], "스캔 결과를 제자리에서 고쳤다"
+
+    # 화면: 늦게 쓰인 기간 파일에만 표시가 붙는다
+    shown = _file_groups({"계획": [f"VRP_plan{DURATIONS[0]} ({run}).csv"],
+                          "순수요": ["st_net_daily (26년 03월).csv"]})
+    shown[0]["entries"][0]["mtime_raw"] = 10.0
+    shown[1]["entries"][0]["mtime_raw"] = 20.0
+    monkeypatch.setattr(app_module.catalog, "list_csvs", lambda: shown)
+    monkeypatch.setattr(app_module.store, "run_labels",
+                        lambda: pd.DataFrame({"run_label": [run], "period": ["26년 03월"]}))
+    html = client.get("/data", params={"run_label": run}).text
+    assert html.count("data-rewritten") == 1 and "이 실행 뒤에 다시 쓰임" in html
+    shown[1]["entries"][0]["mtime_raw"] = 5.0
+    assert "data-rewritten" not in client.get("/data", params={"run_label": run}).text

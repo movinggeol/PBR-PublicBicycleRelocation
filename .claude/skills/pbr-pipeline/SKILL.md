@@ -18,7 +18,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 1021개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 1092개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -153,6 +153,12 @@ pipeline/step4_metrics  : imbalance
    파일로 넘기면 윈도우는 cp949로 쓰는데, `main()` 안의 늦은 import에 기대면 그 앞
    print에서 죽는다 — `ortools_gap_seeds.py`는 씨앗 계산을 다 마친 뒤 죽었다(1.26.194,
    같은 부류 다섯 번째). `tests/test_experiment_guards.py`가 구문 트리로 지킨다.
+   🔴 **실험이 ILP·VRP·군집 모듈을 import해 계획을 다시 풀면 `align_day_type(요일, 모듈…)`로
+   요일을 맞춰라**(1.26.281). 모듈의 `config.day_type`은 실험에 `--day-type`을 주면 argv로
+   따라오지만(이 통로를 막지 마라 — 테스트가 지킨다), 안 주면 **오늘 달력**이다. 채점 쪽은
+   `imbalance.use_run_day_type()`(1.26.127)이 같은 일을 한다. 실험의 기본 실행은
+   `db.latest_label(conn, 표, kinds=("plan",))`로 고르고, **출발 재고는 그 계획의 스냅샷**을 써라 —
+   `MAX(run_label)`은 스윕 실행(`sweep-10`)을 고른다.
 8. **가상환경은 `.venv`** (검증 환경: Python 3.14.7). 명령은 `.\.venv\Scripts\python.exe ...`로
    실행하라 — 시스템 `python`에는 의존성이 없다.
 9. **K-Medoids는 `kmedoids` 패키지**(FasterPAM)다. `sklearn_extra`는 아카이브되어
@@ -204,6 +210,7 @@ python tools/rebuild_net_demand.py            # 전 기간 순수요 재계산(�
 python -m webapp                          # 웹 대시보드 (http://127.0.0.1:8000)
 .\scripts\collector.ps1 install -Window 00:00-23:50 -IncludeHolidays  # 재고 수집 (매일 24시간, 10분 — 인자를 빼면 평일 09~17시로 등록된다)
 python tools/collect_stock.py --status    # 수집 현황
+python tools/sameday_plan.py status      # 회차 시작 시각 계획(추석 등)의 예약·실행 현황 (1.26.278)
 python tools/merge_stock.py <경로> --dry-run  # 다른 PC 수집분 합치기 (COLLECTOR.md 11장)
 python tools/crawl_webapp.py              # 웹 모든 GET 주소를 실데이터로 순회 — 500·새는 None/NaN 검사 (템플릿·라우트를 고친 뒤)
 .\scripts\road_collector.ps1 install      # TMAP 실도로 소요시간 수집 (매일 09/12/15/18/21시 + 로그온, 모자란 회차만)
@@ -347,7 +354,7 @@ python tools/gate_a_compare.py <off 폴더> <on 폴더>  # 끈/켠 결과 장별
 ## 테스트
 
 ```powershell
-python -m pytest                 # 1021개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 1092개, 약 100초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

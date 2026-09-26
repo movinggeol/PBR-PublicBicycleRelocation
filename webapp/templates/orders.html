@@ -22,6 +22,27 @@
 </span>
 {%- endmacro %}
 
+{# 실행 칩 하나 (1.26.283). 계획 줄과 접어 둔 실험 줄이 **같은 것**을 쓴다 — 따로 적으면
+   한쪽만 회차를 빠뜨린다. 회차는 그 실행의 첫 회차(하루 순서)를 늘 함께 넘긴다. #}
+{% macro run_chip(group, current) -%}
+<a class="chip" href="/orders?run_label={{ group.run_label | urlencode }}{% if group.durations %}&duration={{ group.durations[0].value | urlencode }}{% endif %}"
+   {% if group.run_label == current %}aria-current="true"{% endif %}>{{ group.run_label }}</a>
+{%- endmacro %}
+
+{# 고른 실행의 회차 줄 (1.26.283). **그 실행 칩이 선 줄 바로 아래** 한 자리에서만 부른다 —
+   예전에는 늘 '계획 줄 → 접은 실험 → 회차 줄' 순서라, 계획을 고른 채 실험을 펴면
+   계획 칩과 그 회차 칩 사이에 실험 칩 18개가 끼어 회차 줄이 실험에 딸린 것처럼
+   읽혔다(768px에서 회차 줄 y=546 → 700, 검토 실측). #}
+{% macro round_row(group, run_label, duration) -%}
+<div class="filterbar">
+  <span class="label">회차</span>
+  {% for d in group.durations %}
+  <a class="chip" href="/orders?run_label={{ run_label | urlencode }}&duration={{ d.value | urlencode }}"
+     {% if d.value == duration %}aria-current="true"{% endif %}>{{ d.label }}</a>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
 {% block head_extra %}
 <style>
   /* 인쇄용. 화면에서 쓰는 내비·필터·버튼은 종이에 필요 없다.
@@ -141,6 +162,19 @@
      대여소명의 max-width: 10em도 마찬가지 — 카드에서는 한 줄을 다 쓴다. */
   [data-narrow] .sheet table.cmp-table { table-layout: auto; width: auto; }
   [data-narrow] .sheet td.station .station-name { max-width: none; word-break: keep-all; }
+
+  /* 접어 둔 실험 묶음 (1.26.283). 요약은 **모든 폭에서** 보이는 칩 모양 단추다 —
+     `.m-fold`의 요약은 넓은 화면에서 숨으므로 여기 쓰면 안 된다. 색·모서리는
+     `.chip`을 그대로 물려받고(새 색 없음), 좁은 화면의 44px도 `.chip`이 준다.
+     펴고 접힘은 색이 아니라 화살표로 말한다(DESIGN.md 규칙 5). */
+  details.run-more { margin-bottom: var(--sp-sm); }
+  details.run-more > summary {
+    display: inline-flex; align-items: center; cursor: pointer; list-style: none;
+    color: var(--blue); margin-bottom: var(--sp-sm);
+  }
+  details.run-more > summary::-webkit-details-marker { display: none; }
+  details.run-more > summary::after { content: " ▾"; white-space: pre; color: var(--ink-4); }
+  details.run-more[open] > summary::after { content: " ▴"; }
 </style>
 {% endblock %}
 
@@ -167,17 +201,43 @@
 {% if targets %}
 {# 계획이 39개까지 쌓이면 칩만 1029px이라, 좁은 화면에서 첫 지시서가 1546px
    아래로 밀렸다(실측). 기사는 대개 지금 계획만 보므로 접어 둔다. <details>라
-   스크립트가 없어도 열리고, 넓은 화면에서는 스크립트가 펴 둔다. #}
+   스크립트가 없어도 열리고, 넓은 화면에서는 스크립트가 펴 둔다.
+
+   **실행 → 회차 두 단이다** (1.26.283). 칩이 (실행, 회차)마다 하나라 72개까지
+   늘었고, 넓은 화면에서는 늘 펴져 1400px에서 488px — 첫 지시서가 y=1011로 첫
+   화면 밖이었다. 같은 계획의 회차는 흩어져 있었고 이름은 `_05_10` 같은 코드였다.
+   실행 칩은 **늘 회차를 함께** 넘긴다(그 실행의 첫 회차 — 1.26.262 주석의 "칩은
+   늘 둘을 함께 넘긴다"). 차량은 넘기지 않는다(회차마다 차량이 다르다).
+   회차 칩은 대조 중이어도 `/orders`로 보낸다 — 다른 회차의 대조는 새 판단이고
+   외부 API 호출이라 '지금 재고와 대조하기' 단추로만 부른다(WEBAPP.md). #}
 <details class="m-fold no-print" open>
-  <summary>계획 고르기 <span class="hint">({{ targets | length }}개)</span></summary>
+  <summary>계획 고르기 <span class="hint">· {{ run_label }}{% if duration_label %} · {{ duration_label }}{% endif %}</span></summary>
+  {% set rounds_of = current_group.kind if current_group and current_group.durations else none %}
+  {% if plan_groups %}
   <div class="filterbar">
     <span class="label">계획</span>
-    {% for t in targets %}
-    <a class="chip" href="/orders?run_label={{ t.run_label | urlencode }}&duration={{ t.duration | urlencode }}"
-       {% if t.run_label == run_label and t.duration == duration %}aria-current="true"{% endif %}>
-      {{ t.run_label }} · {{ t.duration }}</a>
-    {% endfor %}
+    {% for g in plan_groups %}{{ run_chip(g, run_label) }}{% endfor %}
   </div>
+  {% endif %}
+  {% if rounds_of == "plan" %}{{ round_row(current_group, run_label, duration) }}{% endif %}
+  {# 실험은 **지우지 않고 접는다**(1.26.125 — 실험 회차의 지시서를 여는 것은 정당한
+     용도다). ⚠️ `m-fold`가 아닌 **평범한 `<details>`** 여야 한다: base.html의 스크립트가
+     넓은 화면에서 `details.m-fold`를 전부 강제로 펴고 요약까지 숨긴다. 고른 것이
+     계획이 아니면 펴 둔다 — 안 그러면 지금 보는 실행이 칩 줄에서 사라진다.
+     줄은 **종류마다** 따로 선다(`kind_labels` 이름) — 경로가 있는 수집 실행을 '실험'
+     줄에 세우면 판정하지 않은 것을 실험이라 부르게 된다(1.26.283 검토). #}
+  {% if folded_kinds %}
+  <details class="run-more"{% if current_group and current_group.kind != "plan" %} open{% endif %}>
+    <summary class="chip">{% for f in folded_kinds %}{{ f.label }} {{ f.groups | length }}개{% if not loop.last %} · {% endif %}{% endfor %}</summary>
+    {% for f in folded_kinds %}
+    <div class="filterbar">
+      <span class="label">{{ f.label }}</span>
+      {% for g in f.groups %}{{ run_chip(g, run_label) }}{% endfor %}
+    </div>
+    {% if rounds_of == f.kind %}{{ round_row(current_group, run_label, duration) }}{% endif %}
+    {% endfor %}
+  </details>
+  {% endif %}
 </details>
 {% endif %}
 
@@ -216,13 +276,20 @@
   <a href="/run#run">계획을 끝까지 실행</a>하면 여기에 나타납니다.{% endif %}</p></div>
 {% endif %}
 
+{# 이 회차의 지도(군집·경로·불균형)로 — 예전에는 지시서에서 지도로 가는 길이 0개였고, 맨
+   `/maps`는 다른 계획의 경로를 띄울 수 있었다(1.26.284). 지도가 없는 회차면 그 화면이
+   없다고 말한다(다른 실행으로 물러서지 않는다).
+   ⚠️ 히어로의 단추 줄에 두었다가 **이 제목 옆 작은 글 링크로 옮겼다**(1.26.284 검토) — 390px에서
+   단추가 셋이면 두 줄이 되어 첫 지시서가 약 61px 밀렸다. 기사가 쓰는 폭은 폰이다. 제목 줄은
+   이미 있는 줄이라 어느 폭에서도 첫 지시서를 밀지 않는다(.hint라 차례에도 안 들어간다). #}
+{% set map_link %}<span class="hint no-print"><a href="/maps?run_label={{ run_label | urlencode }}{% if duration %}&duration={{ duration | urlencode }}{% endif %}">이 회차 지도</a></span>{% endset %}
 {# ───────────────────────── 실시간 재고 대조 ───────────────────────── #}
 {% if live_error %}
 <div class="alert bad"><span>{{ live_error }}</span></div>
 {% endif %}
 
 {% if compared_sheets %}
-<h2>지금 재고와 대조 <span class="hint">{{ checked_at }} 조회</span></h2>
+<h2>지금 재고와 대조 <span class="hint">{{ checked_at }} 조회</span> {{ map_link }}</h2>
 <div class="actions no-print" style="margin-bottom:var(--sp-sm)">
   <a class="btn ghost" href="/orders/live?run_label={{ run_label | urlencode }}{% if duration %}&duration={{ duration | urlencode }}{% endif %}{% if selected_vehicle %}&vehicle={{ selected_vehicle | urlencode }}{% endif %}">
     다시 조회</a>
@@ -251,7 +318,7 @@
 <div class="card sheet">
   <div class="sheet-head">
     <h3>{% if cs.vehicle_id %}{{ cs.vehicle_id }}{% else %}군집 {{ cs.cluster }}{% endif %}
-      <span class="hint">군집 {{ cs.cluster }} · {{ run_label }} · {{ duration }}</span></h3>
+      <span class="hint">군집 {{ cs.cluster }} · {{ run_label }} · {{ duration_label }}</span></h3>
     <div class="sheet-facts">
       들를 곳 <b>{{ cs.stations }}</b>곳 ·
       옮길 자전거 <b>{{ cs.bikes }}</b>대 ·
@@ -329,13 +396,13 @@
    평소에는 h1 다음이 h3가 되어 제목 계층이 한 단 건너뛴다 — 화면 낭독기가
    중간 단계를 잃는다. 목록의 제목을 항상 두어 h1 → h2 → h3로 잇는다.
    종이에는 차량 한 대가 한 장이라 이 제목이 필요 없다(no-print). #}
-{% if sheets %}<h2 class="no-print">차량별 지시서</h2>{% endif %}
+{% if sheets %}<h2 class="no-print">차량별 지시서 {{ map_link }}</h2>{% endif %}
 <div class="data-grid">
 {% for sheet in sheets %}
 <div class="card sheet">
   <div class="sheet-head">
     <h3>{% if sheet.vehicle_id %}{{ sheet.vehicle_id }}{% else %}군집 {{ sheet.cluster }}{% endif %}
-      <span class="hint">군집 {{ sheet.cluster }} · {{ run_label }} · {{ duration }}</span></h3>
+      <span class="hint">군집 {{ sheet.cluster }} · {{ run_label }} · {{ duration_label }}</span></h3>
     <div class="sheet-facts">
       들를 곳 <b>{{ sheet.stations }}</b>곳 ·
       옮길 자전거 <b>{{ sheet.bikes }}</b>대 ·

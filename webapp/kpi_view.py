@@ -2,7 +2,8 @@
 
 화면은 [KPI.md](../docs/분석/KPI.md) 5장의 3단 구성을 따른다.
 
-1. 헤드라인 몇 개 — 이번 실행 값 + 직전 실행 대비 증감
+1. 헤드라인 몇 개 — 이번 실행 값 + **같은 조건의 앞선 실행** 대비 증감
+   (`comparable_previous` — 종류·요일 구분·회차 구성이 같은 것, 1.26.284)
 2. **추세** — 실행 축의 꺾은선. 조건을 바꿨을 때 효과를 눈으로 본다
 3. 실행 비교 표
 
@@ -25,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd
 
+from project_config import DURATION_LABELS
 from webapp import store
 
 # 실행 축 꺾은선으로 낼 지표. (컬럼, 제목, 단위, 배수, 가중치 컬럼, 낮은 쪽이 좋은가)
@@ -101,13 +103,160 @@ def _weighted(frame: pd.DataFrame, column: str,
 weighted_mean = _weighted
 
 
+def duration_name(duration, short: bool = False) -> str:
+    """회차 코드의 사람 이름 — `project_config.DURATION_LABELS` 한 벌 (1.26.284).
+
+    `/kpi`의 표·산점도(점 이름표·풍선·표 보기)·수요 예측·보정 계수가 같은 이름을 쓴다.
+    1.26.283이 칩·지시서·`/vehicles`를 이름으로 바꾸고 `/kpi`만 코드로 남겨, 한 화면에서
+    `_05_10`과 '05~10시 (출근)'이 섞일 수 있었다. 모르는 코드는 짐작하지 않고 그대로 둔다.
+
+    `short=True`는 **괄호 앞까지**('05~10시') — 산점도 점 옆 글자만 쓴다(1.26.284 검토).
+    전체 이름('05~10시 (출근)')을 점 옆에 붙였더니 글자가 넓어 빈자리를 찾은 점이 72개 중
+    17개에서 9개로 줄었다(실측) — 괄호 앞까지면 코드와 같은 17개다. 풍선·표 보기는 전체
+    이름이다. 짧은 형태를 이 한 곳에서만 만든다 — 템플릿마다 자르면 규칙이 갈린다.
+    """
+    if duration is None or (isinstance(duration, float) and pd.isna(duration)):
+        return ""
+    name = DURATION_LABELS.get(str(duration), str(duration))
+    return name.split(" (")[0] if short else name
+
+
+def stockout_cut_pct(before, after) -> Optional[float]:
+    """재배치 **전** 대비 결품이 준 비율(%) — 첫 화면과 `/kpi`가 같은 값을 쓴다 (1.26.284).
+
+    두 값을 먼저 화면에 찍히는 자릿수(소수 둘째)로 반올림하고 잰다 — 첫 화면이 그렇게
+    셌다. `/kpi`가 반올림 전 값으로 따로 세면 같은 실행이 72.9%와 73.0%로 갈린다.
+    재배치 전 값이 없거나 0이면 `None`(지어내지 않는다). **음수면 결품이 늘었다는 뜻**이다 —
+    화면은 부호에 따라 '감소'·'증가'로 말한다(예전 `/kpi` 타일은 늘어도 초록 ▼였다).
+    """
+    if before is None or after is None or pd.isna(before) or pd.isna(after):
+        return None
+    before, after = round(float(before), 2), round(float(after), 2)
+    if before == 0:
+        return None
+    return round((1 - after / before) * 100, 1)
+
+
+# 증감의 짝을 가르는 조건. `period`(수요 기간)는 `run_conditions`가 함께 싣지만 **여기에는
+# 넣지 않는다** — 반박자 조정안(C05)이다. 달이 다른 실행끼리도 견주되, 히어로가 두 기간을
+# 적어 읽는 사람이 보게 한다(1.26.284 검토 — 처음에는 적지 않아 '같은 조건'이 기간까지
+# 같다는 뜻으로 읽혔다. 실측 `brokenmix4-2506`(25년 06월)의 짝이 `brokenmix4-2603`(26년 03월)).
+COMPARE_KEYS = ("kind", "day_type", "durations")
+
+
+def run_conditions(rows: pd.DataFrame, runs: pd.DataFrame,
+                   labels: Optional[list] = None) -> dict:
+    """실행마다 **견줄 수 있게 하는 조건** — `{라벨: {kind, day_type, durations, period}}` (1.26.284).
+
+    - `kind`: `runs.kind`(못박힌 종류 — `db.list_runs`가 비면 라벨 짐작으로 채워 둔다), 행이
+      없으면 `store.classify_run_label` 짐작 — `store.run_kind()`와 같은 규칙이다.
+    - `day_type`: `runs.day_type`. 기록이 없으면 `None`(모름) — 짐작하지 않는다.
+    - `durations`: 이 실행의 지표 행에 있는 회차, 하루 순서(`store.duration_rank`).
+    - `period`: `runs.period`(수요 기간) — **표시용**이다. 짝을 가르는 데는 쓰지 않는다(`COMPARE_KEYS`).
+
+    ⚠️ 표를 **한 번에** 만든다 (1.26.284 검토). 처음에는 실행 하나마다 `rows`·`runs` 전체에
+    불리언 필터를 세 번씩 걸어, 짝을 찾으며 앞선 실행을 훑으면 O(실행 수 × 행 수)였다 —
+    실측 `/kpi` 한 번에 약 110ms(페이지 시간의 +75%), 실행이 하나 늘 때마다 3~4ms씩 늘었다.
+    `labels`를 주지 않으면 `rows`에 있는 모든 실행이다.
+    """
+    if labels is None:
+        labels = (list(dict.fromkeys(rows["run_label"].astype(str)))
+                  if not rows.empty and "run_label" in rows else [])
+
+    def column(name: str) -> dict:
+        if runs.empty or "run_label" not in runs or name not in runs:
+            return {}
+        return {str(label): str(value) for label, value in zip(runs["run_label"], runs[name])
+                if pd.notna(value) and str(value)}
+
+    kinds, day_types, periods = column("kind"), column("day_type"), column("period")
+    durations: dict = {}
+    if not rows.empty and "duration" in rows and "run_label" in rows:
+        present = rows.loc[rows["duration"].notna(), ["run_label", "duration"]]
+        for label, codes in present.groupby(present["run_label"].astype(str))["duration"]:
+            durations[label] = tuple(sorted(set(codes.astype(str)),
+                                            key=lambda d: (store.duration_rank(d), d)))
+    return {str(label): {"kind": kinds.get(str(label)) or store.classify_run_label(str(label)),
+                         "day_type": day_types.get(str(label)),
+                         "durations": durations.get(str(label), ()),
+                         "period": periods.get(str(label))}
+            for label in labels}
+
+
+def run_condition(rows: pd.DataFrame, runs: pd.DataFrame, label: str) -> dict:
+    """실행 하나의 조건 — `run_conditions`의 한 칸(같은 규칙 한 벌)."""
+    return run_conditions(rows, runs, [label])[str(label)]
+
+
+def _compare_key(condition: dict) -> tuple:
+    return tuple(condition[key] for key in COMPARE_KEYS)
+
+
+def comparable_previous(rows: pd.DataFrame, runs: pd.DataFrame, label: str) -> dict:
+    """헤드라인 증감을 견줄 **같은 조건의 앞선 실행** (1.26.284).
+
+    예전 `/kpi`는 '직전'을 기록 시각만으로 골랐다 — 휴일 계획을 평일 계획과 견줘
+    *"시간 예산 준수 ▼18%"* 를 붉게 띄웠다(실측). 평일과 휴일은 이 프로젝트가 **절대 섞지
+    않는** 축이고, 실험이 계획 뒤에 돌면 실험과도 견줬다. 거꾸로 칩으로 한 실행을 고르면
+    행이 그 실행뿐이라 증감이 통째로 사라졌다.
+
+    고르는 규칙 — `rows`는 **전체** 지표(필터 전), 순서는 `store.kpi_run_order()` 한 벌:
+      1. `label`보다 앞선(오래된) 실행 가운데
+      2. 종류(`kind`)가 같고
+      3. 요일 구분(`day_type`)이 같으며 **기록이 있고** — 모르면 짝짓지 않는다
+      4. 회차 구성(`durations`)이 **같은** 것 — 헤드라인은 회차 가중평균이라, 네 회차 평균을
+         한 회차 값과 견주면 그것도 조건 섞기다(실측: 네 회차 80% 대 한 회차 0%)
+      5. 그중 가장 최근 것.
+
+    **수요 기간(`period`)은 가르지 않는다**(`COMPARE_KEYS`) — 두 실행의 기간은 조건에 실어
+    히어로가 적는다. 달이 다르면 증감에 달의 차이도 섞인다는 것을 읽는 사람이 보게 한다.
+
+    반환: `{"label": 비교 실행 또는 None, "condition": 이 실행의 조건,
+    "baseline_condition": 짝의 조건 또는 None, "reason": None | "day_type_unknown" | "no_match"}`.
+    짝이 없으면 화면은 증감을 비우고 **왜 비었는지** 말한다(점검 기록 4장 — 판정할 수 없으면
+    모른다고 한다). 조건표는 한 번에 만든다(`run_conditions` — 실행마다 다시 거르지 않는다).
+    """
+    created = {}
+    if not runs.empty and "created_at" in runs:
+        created = dict(zip(runs["run_label"], runs["created_at"]))
+    order = store.kpi_run_order(rows, created)
+    conditions = run_conditions(rows, runs, list(dict.fromkeys([label, *order])))
+    condition = conditions[str(label)]
+    result = {"label": None, "condition": condition, "baseline_condition": None, "reason": None}
+    if condition["day_type"] is None:
+        result["reason"] = "day_type_unknown"
+        return result
+    key = _compare_key(condition)
+    later = order[order.index(label) + 1:] if label in order else []
+    for other in later:
+        if _compare_key(conditions[str(other)]) == key:
+            result["label"] = other
+            result["baseline_condition"] = conditions[str(other)]
+            return result
+    result["reason"] = "no_match"
+    return result
+
+
+def lower_is_better(column: str) -> bool:
+    """그 지표가 **낮을수록 좋은가** — `TRENDS`의 마지막 칸 한 벌 (1.26.284 검토).
+
+    `/kpi` 타일의 증감 색(good/bad)이 쓴다. 처음에는 결품 타일에 `true`를 템플릿에 박고 네
+    카드는 라우트에 `False`를 적어, 방향을 `TRENDS`와 두 곳이 따로 쥐었다. `TRENDS`에 없는
+    지표(한 번에 닿는 범위·시간 예산 준수)는 높을수록 좋은 비율이라 `False`다.
+    """
+    return next((flag for name, *_rest, flag in TRENDS if name == column), False)
+
+
 def _runs_in_order(rows: pd.DataFrame) -> list:
-    """실행 라벨을 **오래된 것부터**. 라벨은 사람이 붙인 이름이라 사전순은 뜻이 없다."""
+    """실행 라벨을 **오래된 것부터**. 라벨은 사람이 붙인 이름이라 사전순은 뜻이 없다.
+
+    `/kpi` 표·헤드라인과 같은 `store.kpi_run_order()`를 거꾸로 쓴다(1.26.283 검토) —
+    예전에는 여기만 `computed_at`으로 따로 세워, 같은 라벨을 다시 돌리면 그래프의
+    맨 오른쪽 점과 표의 첫 행이 서로 다른 실행이 될 수 있었다.
+    """
     if rows.empty:
         return []
-    order = "computed_at" if "computed_at" in rows else "run_label"
-    seen = rows.sort_values(order)["run_label"].drop_duplicates().tolist()
-    return seen
+    return list(reversed(store.kpi_run_order(rows)))
 
 
 def trends(rows: pd.DataFrame, limit: int = 12) -> list:
@@ -168,10 +317,15 @@ def cost_benefit(rows: pd.DataFrame) -> dict:
             y = float(rate) * 100
             y_text = f"개선률 {y:.0f}%"
 
+        # 점 이름표·풍선·표 보기는 회차의 **사람 이름**이다(1.26.284) — 같은 화면의 표·칩과
+        # 표기를 맞춘다. 점 옆 글자만 괄호 앞까지(`short`) — 전체 이름은 넓어서 이름표를 붙인
+        # 점이 17 → 9개로 줄었다(1.26.284 검토 실측). 코드(`duration`)는 따로 싣는다(정렬·주소).
+        name = duration_name(row["duration"])
         points.append({
             "x": float(distance), "y": y,
-            "label": str(row["duration"]),
-            "tip": f"{row['run_label']} {row['duration']} · "
+            "label": duration_name(row["duration"], short=True),
+            "name": name,
+            "tip": f"{row['run_label']} · {name} · "
                    f"이동 {float(distance):.0f}km · {y_text}",
             # 표 보기가 쓸 값. 점 옆 글자는 회차뿐이라 같은 회차가 여러 번
             # 나오면 어느 실행인지 구분되지 않는다 — 표에는 실행까지 적는다.
@@ -184,7 +338,7 @@ def cost_benefit(rows: pd.DataFrame) -> dict:
         note = f"값이 없는 {skipped}건은 빼고 그렸습니다."
     # 커서만으로 값을 읽게 두지 않는다 — 다른 그래프는 전부 표 보기를 함께
     # 내는데 이 산점도만 없었다(1.26.107). 인쇄·터치에서는 풍선이 안 뜬다.
-    table = [(f"{p['run_label']} {p['duration']}", p["x"], p["y"])
+    table = [(f"{p['run_label']} · {p['name']}", p["x"], p["y"])
              for p in sorted(points, key=lambda q: q["y"], reverse=True)]
     return {
         "points": points,
@@ -218,6 +372,7 @@ def forecast_accuracy(day_type: str = "weekday") -> dict:
                        float(group["mae_global"].mean()))
         summary.append({
             "duration": duration,
+            "duration_name": duration_name(duration),
             "pairs": int(len(group)),
             "mae": mae,
             "baseline": baseline,
@@ -228,7 +383,7 @@ def forecast_accuracy(day_type: str = "weekday") -> dict:
         })
         ordered = group.sort_values("test_period")
         series.append({
-            "title": f"{duration} 예측 오차",
+            "title": f"{duration_name(duration)} 예측 오차",
             "unit": "대",
             "labels": ordered["test_period"].tolist(),
             "values": [float(v) for v in ordered["mae"]],

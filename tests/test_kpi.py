@@ -219,8 +219,10 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "kpi_api.db"))
 
     with db.session() as conn:
-        db.record_run(conn, OLD, period="25년 10월", duration="_05_10")
-        db.record_run(conn, NEW, period="25년 11월", duration="_05_10")
+        # 요일 구분을 적는다 — 1.26.284부터 /kpi는 종류·요일 구분·회차 구성이 같은
+        # 앞선 실행과만 견준다. 요일 구분이 NULL이면 증감을 내지 않는다.
+        db.record_run(conn, OLD, period="25년 10월", duration="_05_10", day_type="weekday")
+        db.record_run(conn, NEW, period="25년 11월", duration="_05_10", day_type="weekday")
         db.save_kpi(conn, OLD, "_05_10", _metrics(
             0.60, target_met_ratio=0.03,
             stockout_hours_before=2.50, stockout_hours_after=0.90))
@@ -251,9 +253,33 @@ def test_kpi_page_shows_stockout(client):
 
 
 def test_kpi_page_shows_delta(client):
-    """직전 실행 대비 증감이 보인다 — 설정을 바꿔가며 비교하는 게 목적이다."""
+    """같은 조건의 앞선 실행 대비 증감이 **타일 안에** 보인다.
+
+    예전 단정(`"▲" in html or "▼" in html`)은 base.html의 CSS 주석·정렬 스크립트에 든
+    ▲▼ 때문에 늘 참이었다 — 증감을 통째로 지워도 통과했다(1.26.284 검토). 증감
+    딱지의 클래스로 본다.
+    """
     html = client.get("/kpi").text
-    assert "▲" in html or "▼" in html
+    assert 'class="delta' in html, "헤드라인 타일에 증감 딱지가 없다"
+    assert f"{OLD}</b>" in html or OLD in html, "무엇과 견줬는지 말하지 않는다"
+
+
+def test_kpi_page_says_why_no_delta_without_day_type(tmp_path, monkeypatch):
+    """요일 구분 기록이 없으면 짝짓지 않고 **까닭을 말한다** (1.26.284).
+
+    옛 산출물은 `runs.day_type`이 비어 있다. 평일인지 휴일인지 모르는 두 실행을
+    견주면 휴일 계획을 평일 계획과 비교하던 결함(1.26.284 전)이 되살아난다.
+    """
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "kpi_null_day.db"))
+    with db.session() as conn:
+        db.record_run(conn, OLD, period="25년 10월", duration="_05_10")
+        db.record_run(conn, NEW, period="25년 11월", duration="_05_10")
+        db.save_kpi(conn, OLD, "_05_10", _metrics(0.60))
+        db.save_kpi(conn, NEW, "_05_10", _metrics(0.65))
+    with TestClient(app) as c:
+        html = c.get("/kpi").text
+    assert "요일 구분(평일·휴일) 기록이 없는" in html
+    assert 'class="delta' not in html, "요일을 모르는데 증감을 냈다"
 
 
 def test_kpi_api(client):

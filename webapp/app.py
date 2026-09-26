@@ -21,6 +21,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
+from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -156,6 +157,9 @@ JOB_STATUS_LABELS = {
     "interrupted": "추적 끊김",
 }
 templates.env.globals["job_labels"] = JOB_STATUS_LABELS
+# 작업이 만든 실행 이름(`--now`) — `/run` 작업 이력이 작업 ID 아래에 적는다(1.26.284).
+# 파싱은 `jobs.job_durations`와 한 벌(`jobs._arg_value`)이다.
+templates.env.globals["job_run_label"] = jobs.job_label
 
 # 실행 종류도 같은 방식으로 둔다. 예전에는 이 세 낱말을 index.html 안에
 # **두 번**(고르는 목록과 설명 풍선) 적어 뒀는데, `db.RUN_KINDS`와 갈리면
@@ -166,6 +170,13 @@ RUN_KIND_LABELS = {
     "probe": "수집",
 }
 templates.env.globals["kind_labels"] = RUN_KIND_LABELS
+
+# 회차(시간대)의 사람 이름도 같은 방식이다 — `project_config.DURATION_LABELS` 한 벌.
+# 칩·지시서 머리가 `_05_10` 같은 코드를 그대로 찍고 있었다(1.26.283). 템플릿은
+# `duration_labels.get(d, d)`로 쓴다 — 모르는 코드는 짐작하지 않고 그대로 둔다.
+templates.env.globals["duration_labels"] = DURATION_LABELS
+# 요일 구분의 사람 이름도 한 벌 — `/kpi` 히어로가 비교 조건('휴일 · 운영 계획')을 적는다(1.26.284).
+templates.env.globals["day_type_labels"] = DAY_TYPE_LABELS
 
 # 배정 이력 한 쪽에 실을 건수. 실행 1건이 평균 17.2행이므로(실측, 1.26.116)
 # 50이면 대략 3회 실행분이 한 쪽에 들어온다.
@@ -371,7 +382,9 @@ def _year_ago_period(periods) -> Optional[str]:
     return want if want in set(periods) else None
 
 
-def _index_context(error: Optional[str] = None) -> dict:
+def _index_context(error: Optional[str] = None,
+                   kind_changed: Optional[str] = None) -> dict:
+    # `kind_changed`: 방금 종류를 바꾼 실행 — '저장된 실행' 표가 그 행이 든 쪽을 연다.
     # 기간·시간대는 **요청마다 다시 읽는다.** 서버를 띄워 둔 채 새 달치 순수요를
     # 계산해도 곧바로 선택지에 나와야 하기 때문이다(project_config의 상수는
     # import 시점에 굳는다).
@@ -413,9 +426,60 @@ def _index_context(error: Optional[str] = None) -> dict:
         "running": jobs.running_job(),
         "jobs": jobs.list_jobs()[:15],
         "latest": catalog.latest_outputs(),
-        "pipeline_runs": store.records(store.run_labels().head(10)),
+        "pipeline_runs": _saved_runs(),
+        # 종류를 바꾸고 돌아오면 쪽 넘기기가 1쪽에서 시작해 방금 고친 행이 숨었다
+        # (1.26.283 검토 — 표를 10행씩 끊으면서 생겼다). 그 행에 표식을 달면
+        # base.html의 쪽 넘기기가 그 행이 든 쪽을 연다.
+        "kind_changed": kind_changed,
         "error": error,
     }
+
+
+def _run_groups(targets: list) -> list:
+    """(실행, 회차) 목록을 **실행 단위로** 묶는다 (1.26.283).
+
+    반환: `[{run_label, kind, created_at, durations: [{value, label}]}]`. 실행의 순서는
+    `targets`에 처음 나온 순서(= `store.plan_targets()`의 계획 먼저·최신순)이고,
+    회차는 `project_config.DURATIONS`의 하루 순서, 이름은 `DURATION_LABELS`다.
+    `targets`는 `store.records(store.plan_targets())` 모양의 dict 목록이다.
+    """
+    groups: dict = {}
+    for target in targets:
+        label = target["run_label"]
+        group = groups.setdefault(label, {
+            "run_label": label,
+            "kind": target.get("kind"),
+            "created_at": target.get("created_at"),
+            "durations": [],
+        })
+        if target.get("duration") and target["duration"] not in group["durations"]:
+            group["durations"].append(target["duration"])
+    for group in groups.values():
+        group["durations"] = [
+            {"value": d, "label": DURATION_LABELS.get(d, d)}
+            for d in sorted(group["durations"], key=store.duration_rank)]
+    return list(groups.values())
+
+
+def _saved_runs() -> list:
+    """`/run` '저장된 실행' 표의 행 — **최신순 전부**와 실행별 회차 목록 (1.26.283).
+
+    예전에는 `run_labels().head(10)`이라 29개 중 19개에 닿을 길이 없었고(계획 8건이
+    모두 거기 들었다), 앞 10행은 사전 역순이라 전부 실험·수집이었다. 이 표는 종류를
+    **여기서 고치라고** 둔 표다(설명문) — 전부 내려보내고 화면이 쪽으로 끊는다.
+
+    '시간대' 칸은 `runs.duration`(첫 회차 하나)만 보여 네 회차 실행을 `_05_10`으로
+    적었다. 경로가 있는 회차(`vrp_plan`)를 모아 적고, 없으면 `runs.duration`, 그것도
+    없으면 빈 목록(화면은 '—')이다 — 기록에서 읽은 값만 쓴다.
+
+    목록 계산은 `store.saved_runs()` 한 벌이고 `/api/pipeline-runs`도 그것을 준다
+    (화면과 API는 같은 계산). 여기서는 코드에 사람 이름만 붙인다.
+    """
+    runs = store.records(store.saved_runs())
+    for run in runs:
+        run["durations"] = [{"value": d, "label": DURATION_LABELS.get(d, d)}
+                            for d in (run.get("durations") or [])]
+    return runs
 
 
 def _run_kind(run_label: str) -> str:
@@ -485,9 +549,9 @@ def _home_context() -> dict:
             # 오늘 날짜와 빼기를 해야 하고, 실제로 12일 된 계획이 아무 말 없이
             # 헤드라인에 올라와 있었다(2026-09-08 실측).
             last["age"] = store.age_note(last["computed_at"])
-            if last["stockout_before"] and last["stockout_after"] is not None:
-                last["cut_pct"] = round(
-                    (1 - last["stockout_after"] / last["stockout_before"]) * 100, 1)
+            # `/kpi` 결품 타일과 **같은 함수**다(1.26.284) — 따로 세면 반올림 순서로 두 화면의
+            # 숫자가 갈린다. 음수(결품이 늘었다)면 화면이 '증가'라고 말한다.
+            last["cut_pct"] = kpi_view.stockout_cut_pct(stockout_before, stockout_after)
 
     running = jobs.running_job()
     return {
@@ -503,13 +567,14 @@ def _home_context() -> dict:
 
 
 def _runs_newest_first(rows) -> list:
-    """실행 라벨을 최신순으로. computed_at이 있으면 그것으로, 없으면 라벨순."""
-    if "computed_at" in rows:
-        order = (rows.groupby("run_label")["computed_at"].max()
-                 .sort_values(ascending=False).index.tolist())
-    else:
-        order = sorted(rows["run_label"].unique(), reverse=True)
-    return order
+    """실행 라벨을 최신순으로 — `runs.created_at`, 옛 라벨은 `computed_at`, 그다음 라벨순.
+
+    규칙은 `store.kpi_run_order()` 한 벌이다 — `/kpi` 표·`/api/kpi`의 행 순서도
+    같은 함수로 세우므로, 헤드라인의 '최신'과 표의 첫 행이 갈리지 않는다(1.26.283).
+    기준이 `runs.created_at`인 것은 실행 칩·지시서 기본값과 같은 '최신'을 쓰기
+    위해서다 — 같은 라벨을 다시 돌렸을 때 `computed_at`만 새로워진다.
+    """
+    return store.kpi_run_order(rows)
 
 
 def _kpi_labels_newest_first(rows) -> list:
@@ -524,9 +589,12 @@ def _kpi_labels_newest_first(rows) -> list:
     /kpi만 안 쓰고 있었다 — 화면마다 다른 기준으로 '최신'을 고르면 화면마다
     다른 답이 나온다.
 
-    📌 지금 자료에서는 두 순서가 **우연히 같다.** 그래서 이 값은 눈으로는
-    안 보였다. 다만 `2026-05-21 18`이 실제로는 08-25에 계산된 것처럼 라벨과
-    시각이 갈리는 자료가 이미 있어, 우연에 기대 둘 자리가 아니다.
+    📌 1.26.146에는 이 주석이 *"지금 자료에서는 두 순서가 우연히 같다"* 고 적었다.
+    2026-09-23 자료에서는 **갈린다** — 사전순 1행은 `sweep-21`(08-24)이고 가장 최근
+    실행은 `2026-09-22 휴일 전회차`다. 그런데 표(`db.load_kpi`)는 사전순 그대로라
+    히어로와 표 첫 행이 서로 다른 '최신'을 말했다. 1.26.283부터 `store.kpi()`가 같은
+    규칙(`store.kpi_run_order`)으로 행을 세우고, 그 기준은 실행 칩과 같은
+    `runs.created_at`이다(`runs`에 없는 옛 라벨만 `computed_at`).
     """
     return _runs_newest_first(rows)
 
@@ -551,8 +619,11 @@ def home(request: Request):
 
 
 @app.get("/run")
-def index(request: Request):
-    return templates.TemplateResponse(request, "index.html", _index_context())
+def index(request: Request, kind_changed: Optional[str] = None):
+    # `kind_changed`는 표식을 달 행을 고르는 데만 쓴다 — 없는 라벨이면 아무 행에도
+    # 안 붙어 1쪽이 뜬다(예전 동작). 템플릿이 이스케이프하므로 그대로 넘긴다.
+    return templates.TemplateResponse(request, "index.html",
+                                      _index_context(kind_changed=kind_changed))
 
 
 def _device_frame_path(path: str) -> str:
@@ -748,7 +819,11 @@ def set_run_kind(run_label: str, kind: str = Form(...)):
     except Exception as err:                          # noqa: BLE001
         raise HTTPException(status_code=500,
                             detail=f"실행 종류를 바꾸지 못했습니다: {err}") from err
-    return RedirectResponse(url="/run#saved-runs", status_code=303)
+    # 고친 실행을 주소에 싣는다 — '저장된 실행'이 10행씩 쪽으로 끊겨(1.26.283) 2쪽
+    # 이후 행을 고치면 1쪽으로 돌아와 방금 고친 행이 숨었다. `/run`이 그 행이 든
+    # 쪽을 연다. `quote(safe="")`로 공백·`#`·`&`가 든 라벨도 한 값으로 간다.
+    return RedirectResponse(
+        url=f"/run?kind_changed={quote(run_label, safe='')}#saved-runs", status_code=303)
 
 
 @app.get("/runs/{job_id}")
@@ -756,8 +831,33 @@ def run_detail(request: Request, job_id: str):
     job = jobs.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="해당 실행 이력이 없습니다.")
-    return templates.TemplateResponse(request, "run_detail.html",
-                                      {"job": job, **_run_view(job)})
+    view = _run_view(job)
+    return templates.TemplateResponse(request, "run_detail.html", {
+        "job": job, **view,
+        "result_links": _run_result_links(job, view["run_label"])})
+
+
+def _run_result_links(job, run_label: Optional[str]) -> Optional[dict]:
+    """끝난 작업에서 **그 실행의** 결과로 곧장 가는 길 — 성공이고 이름을 알 때만 (1.26.284).
+
+    완료 안내가 `/kpi`·`/maps`·`/data` 맨 주소뿐이고 지시서 링크가 없었다 — 방금 돌린 계획의
+    `_15_20` 지시서까지 '결과' → '작업지시서' → 칩 72개 중 29번째로 세 번 눌러야 했다(실측).
+    회차별 지시서 링크는 **경로가 있는 회차만** 낸다 — `/orders` 칩·기본값과 같은 묶음
+    (`_run_groups`, 하루 순서)에서 이 실행을 찾는다. DB를 읽으므로 3초 폴링(`_run_view`)이
+    아니라 화면을 그릴 때 한 번만 부른다. 이름을 모르는 옛 작업은 `None` — 짐작하지 않는다.
+    """
+    if job.status != "success" or not run_label:
+        return None
+    group = next((g for g in _run_groups(store.records(store.plan_targets()))
+                  if g["run_label"] == run_label), None)
+    found = group["durations"] if group else []
+    # 요청했는데 경로 기록이 없는 회차는 **글로** 적는다(C01 반박자 조정안, 1.26.284 검토) —
+    # 처음에는 경로가 있는 회차만 돌려줘 빠진 회차가 말없이 사라졌다. 요청 회차는 작업 인자
+    # (`jobs.job_durations`, `job_label`과 같은 파싱)다. 인자에 없으면 견주지 않는다(짐작하지 않는다).
+    have = {d["value"] for d in found}
+    missing = [{"value": d, "label": DURATION_LABELS.get(d, d)}
+               for d in jobs.job_durations(job) if d not in have]
+    return {"durations": found, "missing": missing}
 
 
 def _run_view(job) -> dict:
@@ -785,6 +885,9 @@ def _run_view(job) -> dict:
         # 어긋남이 보여야 고칠 생각도 든다(1.26.214).
         "estimate_minutes": _running_estimate_minutes(job),
         "elapsed_minutes": _minutes(jobs.elapsed_seconds(job)),
+        # 이 작업이 만든 실행 이름(`--now`). 화면 제목과 완료 안내의 링크가 쓰고, 상태 API도
+        # 같은 값을 준다(1.26.284). `--now` 없이 띄운 옛 작업은 None — 짐작하지 않는다.
+        "run_label": jobs.job_label(job),
     }
 
 
@@ -836,19 +939,42 @@ def _orders_context(run_label: Optional[str], duration: Optional[str],
                     vehicle: Optional[str] = None) -> dict:
     """작업지시서 화면의 공통 재료. 고르지 않으면 가장 최근 경로를 쓴다."""
     targets = store.records(store.plan_targets())
-    if targets and not run_label:
-        run_label = targets[0]["run_label"]
-        duration = duration or targets[0]["duration"]
+    groups = _run_groups(targets)
+    if groups and not run_label:
+        # 기본값도 **묶음에서** 고른다 — 실행은 계획 먼저·최신순(1.26.125), 회차는
+        # 그 실행의 첫 회차(하루 순서). 예전에는 `targets[0]["duration"]`, 곧 SQL의
+        # 문자열 순서라 아래 폴백·실행 칩과 '첫 회차'의 정의가 둘이었다(1.26.283 검토).
+        run_label = groups[0]["run_label"]
+        if not duration and groups[0]["durations"]:
+            duration = groups[0]["durations"][0]["value"]
     elif run_label and not duration:
         # 🔴 **라벨만 받고 회차를 비워 두면 안 된다** (1.26.262). 회차 없이
         #    `vrp_plan`을 읽으면 그 실행의 **모든 회차**가 한 표로 오고,
         #    차량별로 묶는 순간 한 장에 두 회차의 정거장이 이어 붙는다 — 차고지
         #    복귀가 두 번, 이동거리 합은 두 배였다(실측 재현). 칩은 늘 둘을
         #    함께 넘기지만 손으로 고친 주소·옛 즐겨찾기는 그렇지 않다.
-        #    그 실행의 첫 회차(목록 순서 = 시간대 순)로 채운다.
-        match = next((t for t in targets if t["run_label"] == run_label), None)
-        if match:
-            duration = match["duration"]
+        #    그 실행의 첫 회차(하루 순서 — `_run_groups`가 `DURATIONS`로 세운다)로
+        #    채운다. 예전에는 '목록에서 처음 나온 것'이었는데, `plan_targets`의 조인
+        #    결함으로 목록이 회차순이 아니어서 `brokenmix4-2603`에 `_10_15`가
+        #    골라졌다(1.26.283).
+        match = next((g for g in groups if g["run_label"] == run_label), None)
+        if match and match["durations"]:
+            duration = match["durations"][0]["value"]
+
+    # 실행 → 회차 두 단으로 고른다 (1.26.283). 칩이 (실행, 회차)마다 하나라 72개였고
+    # (1400px에서 488px — 첫 지시서가 y=1011로 첫 화면 밖), 같은 계획의 회차가
+    # 흩어져 있었다. 실험은 **지우지 않고**(1.26.125) 화면이 접어 둔다.
+    current_group = next((g for g in groups if g["run_label"] == run_label), None)
+    # 접어 둘 묶음은 **종류별로** 나눈다 — 수집(`probe`)에 경로가 있으면 '실험' 줄에
+    # 서서 실험이라 불렸다(1.26.283 검토, 점검 기록 4장 "판정할 수 없으면 모른다고
+    # 한다"). 이름은 `kind_labels` 한 벌, 순서는 그 사전의 순서다.
+    folded = []
+    for kind in [k for k in RUN_KIND_LABELS if k != "plan"] + sorted(
+            {g["kind"] for g in groups} - set(RUN_KIND_LABELS), key=str):
+        members = [g for g in groups if g["kind"] == kind]
+        if members:
+            folded.append({"kind": kind, "label": RUN_KIND_LABELS.get(kind, str(kind)),
+                           "groups": members})
 
     # 두 표를 여기서 한 번 읽어 지시서·대조가 같이 쓴다(1.26.262).
     frames = orders.load_frames(run_label, duration) if run_label else None
@@ -864,9 +990,17 @@ def _orders_context(run_label: Optional[str], duration: Optional[str],
         sheets = [s for s in sheets if _sheet_name(s) == vehicle]
 
     return {
+        # 기본값(`targets[0]`)·시험이 쓰는 평평한 목록 — 칩은 아래 묶음으로 그린다.
         "targets": targets,
+        "plan_groups": [g for g in groups if g["kind"] == "plan"],
+        # 계획이 아닌 실행 — 종류마다 `{kind, label, groups}` 한 줄. 화면은 접어 둔다.
+        "folded_kinds": folded,
+        "current_group": current_group,
         "run_label": run_label,
         "duration": duration,
+        # 지시서 머리·요약에 찍는 회차 이름. 종이에 `_05_10`이 아니라
+        # '05~10시 (출근)'으로 남는다. 모르는 코드는 그대로 둔다.
+        "duration_label": DURATION_LABELS.get(duration, duration) if duration else "",
         "sheets": sheets,
         "sheet_names": names,
         # ⚠️ **유효한 값일 때만 넘기면 안 된다.** `vehicle in names`가 아닐
@@ -936,18 +1070,49 @@ def orders_live(request: Request, run_label: Optional[str] = None,
     return templates.TemplateResponse(request, "orders.html", context)
 
 
+def _file_scope(groups: list, run_label: Optional[str],
+                duration: Optional[str]) -> dict:
+    """`/maps`·`/data`를 한 실행(과 회차)으로 좁힌다 — 파일 이름의 `({now})` 꼬리로 (1.26.284).
+
+    예전에는 둘 다 인자를 받지 않았다. `/maps`는 분류마다 파일 수정 시각이 가장 늦은 한 장을
+    '가장 최근'으로 띄워, 최신 계획(경로 지도 0장)을 보던 사람에게 하루 전 **다른 계획**의
+    경로를 보여 줬다(실측). `/data`는 CSV 536개를 분류당 5건씩 쪽으로 나눠 한 실행의 회차별
+    파일이 흩어져 있었다. 목록 스캔은 그대로(`catalog.list_*()` — 파일 서빙은 여전히
+    `safe_resolve()`만 거친다) 두고 그 결과를 거른다. 순수요는 실행이 아니라 기간으로
+    붙으므로 그 실행의 `runs.period`로 맞춘다. 라벨을 모르면 짐작하지 않는다.
+    """
+    runs = store.run_labels()
+    labels = runs["run_label"].astype(str).tolist() if not runs.empty else []
+    if not run_label:
+        return {"groups": catalog.tag_runs(groups, labels), "selected_run": None,
+                "selected_duration": None, "known_run": True}
+    period = None
+    if not runs.empty and "period" in runs:
+        hit = runs.loc[runs["run_label"] == run_label, "period"]
+        if len(hit) and pd.notna(hit.iloc[0]):
+            period = str(hit.iloc[0])
+    return {
+        "groups": catalog.for_run(groups, run_label, labels,
+                                  duration=duration or None, period=period),
+        "selected_run": run_label,
+        "selected_duration": duration or None,
+        # DB에 기록된 실행인가 — 아니면 '그런 실행이 없습니다'라고 먼저 말한다.
+        "known_run": run_label in set(labels),
+    }
+
+
 @app.get("/maps")
-def maps_page(request: Request):
-    return templates.TemplateResponse(request, "maps.html", {
-        "groups": catalog.list_maps(),
-    })
+def maps_page(request: Request, run_label: Optional[str] = None,
+              duration: Optional[str] = None):
+    return templates.TemplateResponse(
+        request, "maps.html", _file_scope(catalog.list_maps(), run_label, duration))
 
 
 @app.get("/data")
-def data_page(request: Request):
-    return templates.TemplateResponse(request, "data.html", {
-        "groups": catalog.list_csvs(),
-    })
+def data_page(request: Request, run_label: Optional[str] = None,
+              duration: Optional[str] = None):
+    return templates.TemplateResponse(
+        request, "data.html", _file_scope(catalog.list_csvs(), run_label, duration))
 
 
 @app.get("/collect")
@@ -964,16 +1129,31 @@ def collect_page(request: Request):
 @app.get("/kpi")
 def kpi_page(request: Request, run_label: Optional[str] = None):
     """실행별 성과 지표와 실행 간 비교 (docs/분석/KPI.md)."""
-    rows = store.kpi(run_label=run_label)
+    # 전체를 한 번 읽고 고른 실행은 여기서 거른다 (1.26.284). 증감의 비교 대상은 **필터와
+    # 상관없이 전체에서** 고른다 — 예전에는 `store.kpi(run_label=…)`로 읽어 행이 그 실행
+    # 뿐이라, 칩으로 한 실행을 고르면 증감이 통째로 사라졌다.
+    all_rows = store.kpi()
+    rows = all_rows
+    if run_label and not all_rows.empty and "run_label" in all_rows:
+        rows = all_rows[all_rows["run_label"] == run_label].reset_index(drop=True)
+    # 실행 이력은 한 번 읽어 비교 조건과 '기록된 실행인가'에 함께 쓴다(1.26.284 검토).
+    runs_all = store.run_labels()
+    known_labels = set(runs_all["run_label"].astype(str)) if not runs_all.empty else set()
 
     latest = None
     previous = None
+    baseline = None
     if not rows.empty:
         # 라벨 사전순이 아니라 **기록 시각순**이다 — 위 헬퍼의 설명 참고.
         labels = _kpi_labels_newest_first(rows)
         latest = rows[rows["run_label"] == labels[0]]
-        if len(labels) > 1:
-            previous = rows[rows["run_label"] == labels[1]]
+        # 🔴 '직전'은 **같은 조건**의 앞선 실행이다 (1.26.284). 예전에는 labels[1] — 기록
+        #    시각만 보고 골라, 휴일 계획을 평일 계획과 견줘 *"시간 예산 준수 ▼18%"* 를 붉게
+        #    띄웠다(실측). 종류·요일 구분·회차 구성이 같은 것만 짝짓고, 없으면 증감을
+        #    비우고 까닭을 말한다 — `kpi_view.comparable_previous`.
+        baseline = kpi_view.comparable_previous(all_rows, runs_all, labels[0])
+        if baseline["label"]:
+            previous = all_rows[all_rows["run_label"] == baseline["label"]]
 
     def headline(frame, column, weight=None):
         """회차별 값을 하나로 요약한다(가중평균 또는 합계)."""
@@ -986,11 +1166,23 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
         return kpi_view.weighted_mean(frame, column, weight)
 
     stockout = None
-    if latest is not None and not latest["stockout_hours_before"].isna().all():
+    if latest is not None and "stockout_hours_before" in latest \
+            and not latest["stockout_hours_before"].isna().all():
         before = headline(latest, "stockout_hours_before", "stations")
         after = headline(latest, "stockout_hours_after", "stations")
         if before is not None and after is not None:
-            stockout = {"before": before, "after": after, "cut": before - after}
+            # 🔴 타일의 ▲▼는 **직전 대비**다 (1.26.284). 예전에는 이 자리에 같은 실행 안의 재배치
+            #    전후 차이(`before - after`)를 초록 ▼로 찍었다 — 히어로가 *"증감은 직전 X 대비"* 라고
+            #    말한 바로 아래에서 같은 모양이 다른 뜻이었다(실측 '▼ 1.25', 직전 대비 실제는 약
+            #    0.12). 전후 차이는 부제로 옮겨 첫 화면과 같은 비율(`stockout_cut_pct`)로 적고,
+            #    ▲▼는 다른 타일과 같은 비교 대상으로만 낸다. 결품은 낮을수록 좋다(`lower_is_better`).
+            prev_after = (headline(previous, "stockout_hours_after", "stations")
+                          if previous is not None and "stockout_hours_after" in previous else None)
+            stockout = {"before": before, "after": after,
+                        "cut_pct": kpi_view.stockout_cut_pct(before, after),
+                        "delta": (after - prev_after) if prev_after is not None else None,
+                        # 방향은 `kpi_view.TRENDS` 한 벌에서 읽는다 — 템플릿에 박지 않는다.
+                        "lower_is_better": kpi_view.lower_is_better("stockout_hours_after")}
 
     cards = []
     if latest is not None:
@@ -1022,6 +1214,9 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
                 "delta": (now_value - before) if (now_value is not None and before is not None) else None,
                 "fmt": fmt,
                 "tip": tip,
+                # 증감 색의 방향 — `kpi_view.TRENDS` 한 벌에서 읽는다(1.26.284 검토). 처음에는
+                # 여기 `False`, 결품 타일은 템플릿에 `true`를 박아 방향을 두 곳이 쥐었다.
+                "lower_is_better": kpi_view.lower_is_better(column),
             })
 
     # ── 그래프 (docs/구현/DESIGN.md '그래프') ──
@@ -1066,7 +1261,15 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
         "capacity": VEHICLE_CAPACITY,
         "latest_label": latest["run_label"].iloc[0] if latest is not None else None,
         "previous_label": previous["run_label"].iloc[0] if previous is not None else None,
+        # 비교 조건과 짝이 없을 때의 까닭 — 히어로가 '같은 조건(휴일 · 운영 계획 · 회차 4개)'을
+        # 밝히고, 없으면 왜 비었는지 말한다(`kpi_view.comparable_previous`, 1.26.284).
+        "baseline": baseline,
+        # 실행이 둘 이상이어야 추세를 그린다 — 비었을 때 까닭을 가르는 데 쓴다(1.26.284).
+        "runs_total": int(all_rows["run_label"].nunique()) if not all_rows.empty else 0,
         "selected_run": run_label,
+        # DB에 기록된 실행인가 — 오타 라벨에 '계획이 아닌 실행이거나…'라고 까닭을 짐작하지 않고
+        # '기록된 실행이 아닙니다'라고 먼저 말한다(`/maps`·`/data`의 `_file_scope`와 같은 판정, 1.26.284 검토).
+        "known_run": (run_label in known_labels) if run_label else True,
         # 계획이 아닌 실행(도로 수집 등)은 필터에서 뺀다 — 눌러도
         # 빈 표만 나오는 칩이었다(1.26.107).
         "runs": store.records(store.plan_runs()),
@@ -1085,18 +1288,39 @@ def api_kpi(run_label: Optional[str] = None, duration: Optional[str] = None):
     })
 
 
+def _row_budgets(frame: pd.DataFrame, limits: dict) -> pd.Series:
+    """배정 행마다 그 회차가 계획될 때의 시간 예산(분) — 기록이 없으면 지금 상수 (1.26.273).
+
+    `/vehicles`의 예산 타일·알림과 배정 이력 표의 붉은 행이 **같은 값**을 쓴다(1.26.284 검토).
+    `limits`는 `store.time_budgets()` — `(run_label, duration) → 분`.
+    """
+    empty = pd.Series(index=frame.index, dtype=object)
+    keys = zip(frame.get("run_label", empty), frame.get("duration", empty))
+    return pd.Series([limits.get((str(r), str(d)), TIME_BUDGET_MINUTES) for r, d in keys],
+                     index=frame.index, dtype=float)
+
+
 @app.get("/vehicles")
-def vehicles_page(request: Request, run_label: Optional[str] = None, page: int = 1):
-    """차량별 누적 작업량과 회차 배정 이력 (docs/구현/FLEET.md)."""
+def vehicles_page(request: Request, run_label: Optional[str] = None, page: int = 1,
+                  vehicle_id: Optional[str] = None):
+    """차량별 누적 작업량과 회차 배정 이력 (docs/구현/FLEET.md).
+
+    `vehicle_id`는 **배정 이력과 그 요약(예산 타일·붉은 경고)만** 좁힌다(1.26.284) — 누적
+    표의 '이력'이 원자료 JSON으로만 가서, V01 한 대의 45건이 20쪽에 흩어져 있어도 화면 안에서
+    차량 하나의 이력을 볼 길이 없었다. 누적 표·막대·출동 타일은 '전체 실행 합계'라 밝혀 둔
+    자리라 좁히지 않는다(`run_label`과 같은 규칙). 거르기는 `/api/vehicles/assignments`와 같은
+    `store.vehicle_assignments(vehicle_id=…)`다(화면과 API는 같은 계산).
+    """
     workload = store.vehicle_workload()
 
     # 배정 이력은 실행을 거듭할수록 무한히 쌓인다. 한 쪽만 읽고 나머지는
     # 쪽으로 닿게 한다 — 상세는 아래 '쪽 나눔' 주석.
-    assignments_total = store.vehicle_assignment_count(run_label=run_label)
+    assignments_total = store.vehicle_assignment_count(vehicle_id=vehicle_id,
+                                                       run_label=run_label)
     pages = max(1, -(-assignments_total // ASSIGNMENTS_PER_PAGE))   # 올림
     page = min(max(1, page), pages)
     assignments = store.vehicle_assignments(
-        run_label=run_label, limit=ASSIGNMENTS_PER_PAGE,
+        vehicle_id=vehicle_id, run_label=run_label, limit=ASSIGNMENTS_PER_PAGE,
         offset=(page - 1) * ASSIGNMENTS_PER_PAGE)
 
     # ⚠️ 최소·최대·차이는 **출동한 차량끼리** 잰다. 한 번도 안 나간 차량의
@@ -1127,20 +1351,27 @@ def vehicles_page(request: Request, run_label: Optional[str] = None, page: int =
     # ⚠️ 쪽 나눔은 **표**를 위한 것이지 요약을 위한 것이 아니다. 요약은 늘
     #    전체를 봐야 하므로 여기서 한 번 더 읽는다(limit 없이).
     budget = None
-    all_assignments = store.vehicle_assignments(run_label=run_label)
+    all_assignments = store.vehicle_assignments(vehicle_id=vehicle_id, run_label=run_label)
+    # 예산은 실행마다 바뀔 수 있다(`kpi_summary.time_budget_minutes`). 상수 하나로
+    # 과거 회차 전부를 재면 그때 예산이 달랐던 실행이 틀리게 판정된다 — 그 회차가
+    # 계획될 때의 예산으로 재고, 기록이 없는 옛 회차만 지금 상수로 본다(1.26.273).
+    # 🔴 표의 붉은 행도 **같은 예산**으로 가른다(1.26.284 검토). 타일·알림은 실행별 예산으로
+    #    세고 표는 상수(`time_budget`)로 칠해, 예산이 상수보다 작은 실행에서는 알림이 *"1건이
+    #    넘었습니다 · 아래 붉은 행입니다"* 라는데 붉은 행이 0개였다 — `/kpi` 표의 ⚠가 이 화면으로
+    #    보내게 되면서 사람이 바로 부딪혔다. 표의 쪽에도 행별 예산(`budget_minutes`)을 싣는다.
+    limits = store.time_budgets() if not all_assignments.empty else {}
+    if not assignments.empty:
+        assignments = assignments.assign(
+            budget_minutes=_row_budgets(assignments, limits).to_numpy())
     if not all_assignments.empty:
-        # 예산은 실행마다 바뀔 수 있다(`kpi_summary.time_budget_minutes`). 상수 하나로
-        # 과거 회차 전부를 재면 그때 예산이 달랐던 실행이 틀리게 판정된다 — 그 회차가
-        # 계획될 때의 예산으로 재고, 기록이 없는 옛 회차만 지금 상수로 본다(1.26.273).
-        limits = store.time_budgets()
-        keys = zip(all_assignments.get("run_label", pd.Series(index=all_assignments.index, dtype=object)),
-                   all_assignments.get("duration", pd.Series(index=all_assignments.index, dtype=object)))
-        per_row = pd.Series([limits.get((str(r), str(d)), TIME_BUDGET_MINUTES) for r, d in keys],
-                            index=all_assignments.index, dtype=float)
+        per_row = _row_budgets(all_assignments, limits)
         within = int((all_assignments["minutes"] <= per_row).sum())
+        distinct = sorted(set(per_row.tolist()))
         budget = {
-            "limit": TIME_BUDGET_MINUTES,
-            "limits": sorted(set(per_row.tolist())),   # 둘 이상이면 화면이 "각 실행의 예산"이라 말한다
+            # 예산이 하나뿐이면 **그 값**을 적는다 — 예전에는 늘 상수를 적어, 실행 하나를
+            # 고른 화면에서 예산 90분 실행을 *"120분 안에 완료"* 라고 불렀다(1.26.284 검토).
+            "limit": distinct[0] if len(distinct) == 1 else TIME_BUDGET_MINUTES,
+            "limits": distinct,   # 둘 이상이면 화면이 "각 실행의 예산"이라 말한다
             "within": within,
             "total": len(all_assignments),
             "rate": round(within / len(all_assignments) * 100),
@@ -1200,6 +1431,13 @@ def vehicles_page(request: Request, run_label: Optional[str] = None, page: int =
         "balance": balance,
         "budget": budget,
         "selected_run": run_label,
+        "selected_vehicle": vehicle_id,
+        # 쪽 넘기기·실행 칩이 **두 조건을 함께** 싣는다(1.26.284). 템플릿에서 문자열을 이어
+        # 붙이지 않고 여기서 인코딩한다 — `quote(safe="")`로 공백·`&`·`#`이 든 값도 한 값이다.
+        "page_base": "/vehicles?" + "".join(
+            f"{key}={quote(str(value), safe='')}&"
+            for key, value in (("run_label", run_label), ("vehicle_id", vehicle_id)) if value),
+        "keep_vehicle": f"vehicle_id={quote(vehicle_id, safe='')}" if vehicle_id else "",
         # 계획이 아닌 실행(도로 수집 등)은 필터에서 뺀다 — 눌러도
         # 빈 표만 나오는 칩이었다(1.26.107).
         "runs": store.records(store.plan_runs()),
@@ -1399,12 +1637,19 @@ def _envelope(frame: pd.DataFrame, source: str, run_label: Optional[str],
 
 @app.get("/api/pipeline-runs")
 def api_pipeline_runs():
-    """DB에 기록된 파이프라인 실행 이력(최신순).
+    """DB에 기록된 파이프라인 실행 이력 — 최신순(`runs.created_at`, `store.run_labels()`).
+
+    1.26.283 전까지 이 docstring은 *"최신순"* 이라 적었지만 실제로는 라벨 사전
+    역순이었다(`db.list_runs`). 종류로 묶지 않는다 — `/run` '저장된 실행'과 같은 순서다.
+
+    각 행의 `durations`는 경로가 있는 회차 목록(하루 순서)이다 — `duration`은 `runs`에
+    남은 첫 회차 하나뿐이다. `/run` '저장된 실행'의 시간대 칸과 같은
+    `store.saved_runs()`를 쓴다(화면과 API는 같은 계산, 1.26.283).
 
     웹에서 띄운 작업 상태를 보는 /api/runs/{job_id}와는 다른 개념이다.
     이쪽은 산출물이 어느 실행(run_label)에 속하는지를 다룬다.
     """
-    runs = store.run_labels()
+    runs = store.saved_runs()
     return JSONResponse({"count": len(runs), "rows": store.records(runs)})
 
 
