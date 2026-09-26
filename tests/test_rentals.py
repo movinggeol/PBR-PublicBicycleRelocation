@@ -196,3 +196,108 @@ def test_csv_and_db_paths_produce_identical_output(
     from_db = pd.read_csv(target, encoding="utf-8")
 
     pd.testing.assert_frame_equal(from_csv, from_db)
+
+
+# ---------------------------------------------------------------- 월별 원본 (2026-09-26)
+# 공공데이터포털의 월별 원본을 다시 받아 보니 두 가지가 있었다.
+#  ① 달마다 인코딩이 다르다 — 20개 중 10개가 BOM 없는 cp949(적재기는 utf-8-sig 고정)
+#  ② `(25년12월)` 파일 안에 2025년 1월 자료가 들어 있었다 — 이름을 믿으면 1월이 12월로 둔갑한다
+
+def _write_rentals(path, stamps, encoding):
+    frame = pd.DataFrame({
+        "자전거번호": [f"DJ3-{i:04d}" for i in range(len(stamps))],
+        "대여일시": stamps,
+        "대여_대여소ID": ["ST0001"] * len(stamps),
+        "반납일시": stamps,
+        "반납_대여소ID": ["ST0002"] * len(stamps),
+    })
+    frame.to_csv(path, index=False, encoding=encoding)
+    return path
+
+
+def test_sniff_encoding_tells_cp949_from_utf8(tmp_path):
+    utf = _write_rentals(tmp_path / "u.csv", ["2025-01-01 05:00:00"], "utf-8-sig")
+    cp = _write_rentals(tmp_path / "c.csv", ["2025-01-01 05:00:00"], "cp949")
+    assert db.sniff_csv_encoding(utf) == "utf-8-sig"
+    assert db.sniff_csv_encoding(cp) == "cp949"
+
+
+def test_bulk_load_reads_cp949_month(tmp_path):
+    """원본의 절반이 cp949다 — 적재기가 첫 줄에서 죽으면 안 된다."""
+    stamps = [f"2025-01-{d:02d} 08:00:00" for d in range(1, 11)]
+    path = _write_rentals(tmp_path / "cp.csv", stamps, "cp949")
+    loaded = db.bulk_load_rentals(path, period="25년 01월",
+                                  db_path=tmp_path / "cp.db", chunksize=4)
+    assert loaded == {"25년 01월": 10}
+
+
+def test_bulk_load_refuses_file_whose_rows_are_another_month(tmp_path):
+    """이름이 12월인데 내용이 1월이면 거부한다 — **이미 들어 있는 12월을 지우지 않고**."""
+    db_path = tmp_path / "m.db"
+    december = _write_rentals(tmp_path / "dec.csv", ["2025-12-05 08:00:00"] * 3, "utf-8-sig")
+    db.bulk_load_rentals(december, period="25년 12월", db_path=db_path)
+
+    january_named_december = _write_rentals(
+        tmp_path / "bad.csv", ["2025-01-05 08:00:00"] * 5, "cp949")
+    with pytest.raises(ValueError, match="25년 01월"):
+        db.bulk_load_rentals(january_named_december, period="25년 12월", db_path=db_path)
+
+    with db.session(db_path) as conn:
+        assert db.rental_count(conn, "25년 12월") == 3
+
+
+def test_load_directory_skips_mislabeled_file_and_keeps_going(tmp_path):
+    """폴더 적재는 어긋난 파일 하나 때문에 멈추지 않고, 건너뛴 것을 따로 돌려준다."""
+    from tools.load_rentals import load_directory
+
+    folder = tmp_path / "raw"
+    folder.mkdir()
+    _write_rentals(folder / "정보(25년01월).csv", ["2025-01-02 08:00:00"] * 4, "cp949")
+    _write_rentals(folder / "정보(25년12월).csv", ["2025-01-02 08:00:00"] * 4, "cp949")
+    _write_rentals(folder / "정보(26년01월).csv", ["2026-01-02 08:00:00"] * 2, "utf-8-sig")
+
+    loaded, skipped = load_directory(folder, db_path=tmp_path / "d.db")
+
+    assert loaded == {"25년 01월": 4, "26년 01월": 2}
+    assert [name for name, _ in skipped] == ["정보(25년12월).csv"]
+
+
+def test_connection_waits_for_write_lock_instead_of_failing(tmp_path):
+    """재고 수집기는 재시도가 없다 — 잠금에서 5초 만에 죽으면 그 틱을 영영 잃는다.
+
+    2026-09-26 대여이력 재적재 중 11:00 틱이 그렇게 사라졌다.
+    """
+    with db.session(tmp_path / "t.db") as conn:
+        waited_ms = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+    assert waited_ms == db.BUSY_TIMEOUT_SEC * 1000
+    assert db.BUSY_TIMEOUT_SEC >= 30
+
+
+def test_load_directory_keeps_indexes(tmp_path, monkeypatch):
+    """폴더 적재는 인덱스를 **지우지 않는다** — 수백만 행 표에서 달마다 다시 지으면
+    그 한 문장이 쓰기 잠금을 오래 쥔다(재고 수집기가 틱을 잃는다)."""
+    dropped = []
+    real_connect = db.connect
+
+    def spying_connect(*args, **kwargs):
+        conn = real_connect(*args, **kwargs)
+        conn.set_trace_callback(
+            lambda sql: dropped.append(sql) if sql.lstrip().upper().startswith("DROP INDEX") else None)
+        return conn
+
+    monkeypatch.setattr(db, "connect", spying_connect)
+    from tools.load_rentals import load_directory
+
+    folder = tmp_path / "raw"
+    folder.mkdir()
+    _write_rentals(folder / "정보(25년01월).csv", ["2025-01-02 08:00:00"] * 4, "cp949")
+    _write_rentals(folder / "정보(25년12월).csv", ["2025-01-02 08:00:00"] * 4, "cp949")
+    db_path = tmp_path / "i.db"
+
+    load_directory(folder, db_path=db_path)
+
+    assert dropped == [], f"폴더 적재가 인덱스를 지웠다: {dropped}"
+    with db.session(db_path) as conn:
+        names = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='rental_history'")}
+    assert set(db._RENTAL_INDEXES) <= names

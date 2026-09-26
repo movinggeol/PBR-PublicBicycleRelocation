@@ -18,6 +18,7 @@ PostgreSQL 전환 시점에 connect()만 엔진 팩토리로 교체하면 나머
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -480,6 +481,11 @@ def active_db_path(db_path: Optional[Path] = None) -> Path:
     return Path(db_path or os.getenv("PBR_DB_PATH") or DB_PATH)
 
 
+# 쓰기 잠금을 기다리는 최대 시간(초). 긴 쓰기는 이보다 짧게 끊어 커밋해야 한다
+# (bulk_load_rentals가 청크마다 커밋하는 이유).
+BUSY_TIMEOUT_SEC = 60
+
+
 def connect(db_path: Optional[Path] = None) -> sqlite3.Connection:
     """DB에 연결한다. 다른 DB로 옮길 때 교체할 지점은 이 함수 하나다.
 
@@ -489,7 +495,11 @@ def connect(db_path: Optional[Path] = None) -> sqlite3.Connection:
     path = active_db_path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(path)
+    # 🔴 잠금을 만나면 바로 죽지 말고 기다린다(기본 5초 → BUSY_TIMEOUT_SEC).
+    # 재고 수집기는 10분마다 한 번 쓰고 재시도가 없어, 다른 쓰기가 5초 넘게 잠금을
+    # 쥐면 **그 틱을 영영 잃는다** — 2026-09-26 대여이력 재적재 중 11:00 틱이 그렇게
+    # 사라졌다. WAL이라 읽기는 막히지 않으므로 기다리는 것은 쓰기뿐이다.
+    conn = sqlite3.connect(path, timeout=BUSY_TIMEOUT_SEC)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
@@ -1462,9 +1472,66 @@ def month_label(timestamp) -> str:
     return period_label(timestamp)
 
 
+def sniff_csv_encoding(csv_path: Path) -> str:
+    """원천 CSV의 인코딩을 판별한다 — **공공데이터 대여이력은 달마다 다르다.**
+
+    2026-09-26에 받은 월별 원본 20개 중 10개가 BOM 붙은 UTF-8, 10개가 BOM 없는
+    cp949였다(같은 제공처·같은 폴더다). 적재기가 `utf-8-sig`로 고정돼 있어 cp949
+    달은 첫 줄에서 죽었다. 한 달씩 확인하지 않고 파일이 스스로 말하게 한다.
+
+    판별 순서: BOM → UTF-8로 풀리면 UTF-8 → 아니면 cp949. `utf-8-sig`는 BOM이
+    없어도 읽으므로 UTF-8은 늘 그것으로 돌려준다.
+    """
+    with open(csv_path, "rb") as handle:
+        head = handle.read(1 << 16)
+    if head.startswith(b"\xef\xbb\xbf"):
+        return "utf-8-sig"
+    try:
+        head.decode("utf-8")
+        return "utf-8-sig"
+    except UnicodeDecodeError as err:
+        # 64KB 경계에서 멀티바이트 한 글자가 잘렸을 수 있다 — 그건 UTF-8이 맞다.
+        if err.start >= len(head) - 3 and err.reason == "unexpected end of data":
+            return "utf-8-sig"
+        return "cp949"
+
+
+# 기간 라벨이 실제 달('26년 03월')일 때만 파일 내용과 맞춰 본다.
+# 테스트·실험은 'rentaltest-1234' 같은 임의 라벨을 쓴다 — 그건 검사 대상이 아니다.
+_REAL_PERIOD_RE = re.compile(r"^\d{2}년 \d{2}월$")
+
+# 이 비율을 넘게 다른 달이 섞여 있으면 적재를 거부한다. 월말 자정 넘긴 대여가
+# 다음 달로 새는 일은 없지만(대여일시 기준), 여유를 조금 둔다.
+PERIOD_MISMATCH_LIMIT = 0.01
+
+
+def rental_period_mismatch(csv_path: Path, period: str,
+                           encoding: Optional[str] = None) -> Tuple[float, str]:
+    """파일의 대여일시가 정말 `period` 달인지 본다. (어긋난 비율, 가장 많은 달)을 돌려준다.
+
+    🔴 **파일 이름을 믿지 않는다.** 공공데이터포털의 `(25년12월)` 파일 안에는
+    **2025년 1월** 자료가 들어 있었다(행 수 203,545까지 1월 파일과 같다,
+    2026-09-26). 이름대로 적재하면 1월이 12월로 둔갑하고, 월별 분리로 넣으면
+    1월이 두 번 들어간다. **예외가 나지 않아서** 순수요는 그럴듯하게 만들어진다.
+
+    기간 라벨이 실제 달 형식이 아니면(테스트 라벨 등) 검사하지 않고 (0.0, period).
+    """
+    if not period or not _REAL_PERIOD_RE.match(period):
+        return 0.0, period
+    rent = pd.read_csv(csv_path, encoding=encoding or sniff_csv_encoding(csv_path),
+                       usecols=["대여일시"], dtype=str)["대여일시"]
+    parsed = pd.to_datetime(rent, errors="coerce").dropna()
+    if parsed.empty:
+        return 1.0, ""
+    labels = parsed.dt.strftime("%y년 %m월")
+    top = labels.value_counts().idxmax()
+    return float((labels != period).mean()), top
+
+
 def bulk_load_rentals(csv_path: Path, period: Optional[str] = None,
                       db_path: Optional[Path] = None, chunksize: int = 100_000,
-                      split_by_month: bool = False) -> Dict[str, int]:
+                      split_by_month: bool = False,
+                      manage_indexes: bool = True) -> Dict[str, int]:
     """원천 대여이력 CSV를 rental_history에 적재한다.
 
     수백만 행 규모를 염두에 두고 세 가지를 신경 쓴다.
@@ -1472,6 +1539,18 @@ def bulk_load_rentals(csv_path: Path, period: Optional[str] = None,
     2. 적재 전에 인덱스를 지우고 끝난 뒤 다시 만든다
        (인덱스가 걸린 채로 대량 삽입하면 매 행마다 B-Tree를 갱신해 훨씬 느리다).
     3. 같은 period를 다시 적재하면 기존 행을 지우고 넣는다(멱등).
+    4. **청크마다 커밋한다.** 한 달치(60만 행)를 한 트랜잭션으로 넣으면 그동안 쓰기
+       잠금을 몇 분씩 쥐어, 10분마다 쓰는 재고 수집기가 틱을 잃는다(2026-09-26 실제로
+       하나를 잃었다). 대가: 도중에 죽으면 그 달이 일부만 남는다 — 같은 명령을 다시
+       돌리면 그 달을 지우고 처음부터 넣으므로 복구는 재실행 한 번이다.
+
+    ⚠️ **인덱스를 지우는 최적화(2번)는 빈 표나 작은 표에서만 이득이다.** `SCHEMA`에
+    인덱스 DDL이 있어 `init_schema()`가 연결할 때마다 다시 짓는다 — 그래서 이미
+    수백만 행이 든 표에 한 달을 더 넣으면 **짓고 → 지우고 → 넣고 → 다시 짓는**
+    전체 인덱스 두 번이 달마다 붙고, 그 CREATE INDEX 한 문장이 잠금을 오래 쥔다
+    (2026-09-26 월별 재적재가 한 달 5분씩 걸린 원인). 여러 달을 잇달아 넣을 때는
+    `manage_indexes=False`로 불러 **인덱스를 둔 채** 넣는다 — 삽입마다 B-Tree를
+    갱신하지만 청크마다 커밋하므로 잠금이 짧다.
 
     split_by_month=True면 대여일시에서 월을 뽑아 period를 행마다 정한다.
     1년치 병합 파일을 넣고 한 달씩 분석할 때 쓴다 — 계절이 다른 달을 섞어
@@ -1485,13 +1564,24 @@ def bulk_load_rentals(csv_path: Path, period: Optional[str] = None,
     if not split_by_month and not period:
         raise ValueError("period를 지정하거나 split_by_month=True를 쓰세요.")
 
+    encoding = sniff_csv_encoding(csv_path)
+    # 지우기 **전에** 본다 — 잘못된 파일로 멀쩡한 달을 지우면 안 된다.
+    if not split_by_month:
+        mismatch, top = rental_period_mismatch(csv_path, period, encoding)
+        if mismatch > PERIOD_MISMATCH_LIMIT:
+            raise ValueError(
+                f"{csv_path.name}: 기간을 '{period}'로 적재하려 했으나 대여일시의 "
+                f"{mismatch:.1%}가 다른 달이다(가장 많은 달: '{top}'). 파일 이름과 "
+                "내용이 다른 파일이다 — 적재하지 않았다.")
+
     conn = connect(db_path)
     try:
         init_schema(conn)
         _ensure_rental_schema(conn)
 
-        for name in _RENTAL_INDEXES:
-            conn.execute(f"DROP INDEX IF EXISTS {name}")
+        if manage_indexes:
+            for name in _RENTAL_INDEXES:
+                conn.execute(f"DROP INDEX IF EXISTS {name}")
         if not split_by_month:
             conn.execute("DELETE FROM rental_history WHERE period = ?", (period,))
         conn.commit()
@@ -1499,7 +1589,7 @@ def bulk_load_rentals(csv_path: Path, period: Optional[str] = None,
         loaded: Dict[str, int] = {}
         cleared: set = set()
 
-        for chunk in pd.read_csv(csv_path, encoding="utf-8-sig", low_memory=False,
+        for chunk in pd.read_csv(csv_path, encoding=encoding, low_memory=False,
                                  chunksize=chunksize):
             frame = _normalize_rentals(chunk, period, split_by_month)
 
@@ -1511,12 +1601,14 @@ def bulk_load_rentals(csv_path: Path, period: Optional[str] = None,
                         cleared.add(label)
 
             frame.to_sql("rental_history", conn, if_exists="append", index=False)
+            conn.commit()                       # 잠금을 짧게 — 위 4번
             for label, count in frame["period"].value_counts().items():
                 loaded[label] = loaded.get(label, 0) + int(count)
 
-        for statement in _RENTAL_INDEXES.values():
-            conn.execute(statement)
-        conn.commit()
+        if manage_indexes:
+            for statement in _RENTAL_INDEXES.values():
+                conn.execute(statement)
+            conn.commit()
         return loaded
     finally:
         conn.close()
@@ -1604,8 +1696,9 @@ def read_rental_source(period: str, csv_path: Optional[Path] = None,
     if csv_path is None:
         return pd.DataFrame(), "none"
 
-    # utf-8-sig: BOM이 있으면 벗기고, 없으면 일반 utf-8로 읽는다.
-    # 공공데이터 CSV는 BOM이 붙어 오는 경우가 많은데, 그냥 utf-8로 읽으면
-    # 첫 컬럼명에 '﻿'가 붙어 컬럼을 못 찾는다.
-    frame = pd.read_csv(csv_path, encoding="utf-8-sig", low_memory=False, usecols=requested)
+    # 인코딩은 파일마다 판별한다 — 공공데이터 대여이력은 달마다 UTF-8(BOM)과
+    # cp949가 섞여 온다(sniff_csv_encoding). BOM 붙은 UTF-8을 그냥 utf-8로 읽으면
+    # 첫 컬럼명에 BOM 문자가 붙어 컬럼을 못 찾으므로 UTF-8은 utf-8-sig로 읽는다.
+    frame = pd.read_csv(csv_path, encoding=sniff_csv_encoding(csv_path),
+                        low_memory=False, usecols=requested)
     return frame[requested], "csv"      # usecols는 파일 순서를 따르므로 다시 정렬

@@ -35,6 +35,7 @@ CSV로 물러선다(`db.read_step_output`, 1.26.164~167).
 python tools/load_rentals.py                  # 원천 CSV → rental_history
 python tools/load_rentals.py --split-by-month # 여러 달이 든 병합 파일 (월별 분리)
 python tools/load_rentals.py --status         # 기간별 적재 현황
+python tools/load_rentals.py --dir "data/raw_data/대전교통공사_대전시 공영자전거 타슈 대여이력 정보_20260331"  # 월별 원본 (정본)
 ```
 
 **여러 달이 든 파일은 반드시 `--split-by-month`로 넣으세요.** 계절이 다른 달을 섞어
@@ -42,6 +43,16 @@ python tools/load_rentals.py --status         # 기간별 적재 현황
 
 원천 CSV는 utf-8-sig(BOM)로 읽습니다 — 공공데이터 CSV는 BOM이 붙어 오는 경우가 많고,
 그냥 utf-8로 읽으면 첫 컬럼명에 BOM이 붙어 컬럼을 못 찾습니다.
+
+> 🔴 **대여이력의 정본은 월별 원본 폴더다** (2026-09-26부터). 전에는 병합본
+> `타슈 대여이력(25.04~26.03).csv`를 `--split-by-month`로 넣었는데, 그 파일은 IQR 필터가
+> 제자리에 덮어써 **달마다 14~16%가 깎여 있었다**(긴 이용이 빠졌다 — [DECISIONS 6-1](../../분석/DECISIONS.md)).
+> 순수요가 이 DB를 먼저 읽으므로 계획 입력까지 깎여 있었다.
+>
+> `--dir`은 달마다 **인코딩을 판별하고**(원본 20개 중 10개가 cp949) **파일 이름의 달과 내용의
+> 달을 맞춰 본다** — 포털의 `(25년12월)` 파일에는 2025년 1월 자료가 들어 있어 건너뛴다.
+> 25년 02월은 26~28일, 03월은 1~3일이 제공처 시스템 장애로 비어 있다(행이 없을 뿐 0으로
+> 채워지지 않으므로 평균은 있는 날로만 난다).
 
 적재돼 있지 않으면 원천 CSV로 폴백하므로, 적재하지 않아도 파이프라인은 그대로 돕니다.
 1년치를 적재해 두고 한 달씩 분석할 때 DB 쪽이 유리합니다(성능 비교는 [DB_PLAN.md](../DB_PLAN.md) 4단계).
