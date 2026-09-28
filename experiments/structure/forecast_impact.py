@@ -26,6 +26,8 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE))
 
+import time
+
 import numpy as np
 import pandas as pd
 
@@ -51,13 +53,29 @@ def period_bounds(period: str):
     return start, end
 
 
-def load_all_forecasts(periods) -> pd.DataFrame:
-    """net_demand에 있는 달들의 예보 발표문을 전부 받는다(달마다 한 번 호출)."""
+FETCH_TRIES = 3   # 달 하나당 예보 호출 시도 횟수
+
+
+def load_all_forecasts(periods, pause: float = 5.0) -> pd.DataFrame:
+    """net_demand에 있는 달들의 예보 발표문을 전부 받는다(달마다 한 번 호출).
+
+    ⚠️ **달마다 몇 번 다시 부른다.** 기상청 API가 간헐적으로 30초 안에 답하지 않는다 —
+    2026-09-29 14개월 중 25년 02월·04월이 ReadTimeout으로 떨어지고, 곧바로 다시 부르면
+    0.3초 만에 왔다. 한 달만 떨어져도 실험 전체가 죽어 재측정 배치에서 두 번 실패했다.
+    """
     frames = []
     for period in periods:
         start, end = period_bounds(period)
-        got = weather.fetch_forecast(tmfc1=start.strftime("%Y%m%d0000"),
-                                     tmfc2=end.strftime("%Y%m%d2359"))
+        for attempt in range(1, FETCH_TRIES + 1):
+            try:
+                got = weather.fetch_forecast(tmfc1=start.strftime("%Y%m%d0000"),
+                                             tmfc2=end.strftime("%Y%m%d2359"))
+                break
+            except weather.WeatherError as err:
+                if attempt == FETCH_TRIES:
+                    raise
+                print(f"  {period} 예보 호출 실패({attempt}/{FETCH_TRIES}) — 다시 부른다: {err}")
+                time.sleep(pause)
         if not got.empty:
             frames.append(got)
     if not frames:

@@ -1446,3 +1446,57 @@ def test_F2_평가하는_날은_앞선_학습_날이_있는_온전한_평일이�
     assert date(2026, 9, 19) not in days and date(2026, 9, 20) not in days   # 주말
     assert min(days) == date(2026, 9, 21)              # 앞선 날 7일(14~20일)이 5일을 넘는다
     assert all(d.weekday() < 5 for d in days)
+
+
+# ------------------------------------------- 예보 실험: 한 달이 늦어도 죽지 않는다
+
+def load_forecast_impact():
+    """`experiments/structure/forecast_impact.py`를 싣는다."""
+    for path in (PROJECT_ROOT, PROJECT_ROOT / "experiments" / "structure"):
+        if str(path) not in sys.path:
+            sys.path.insert(0, str(path))
+    spec = importlib.util.spec_from_file_location(
+        "forecast_impact",
+        PROJECT_ROOT / "experiments" / "structure" / "forecast_impact.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _forecast_rows():
+    return pd.DataFrame({"issued_at": [pd.Timestamp("2025-11-01 05:00")],
+                         "valid_at": [pd.Timestamp("2025-11-01 12:00")],
+                         "temp": [10.0], "rain_prob": [20], "sky_code": ["DB01"],
+                         "rain_type": ["0"], "text": ["맑음"]})
+
+
+def test_예보_호출이_한_번_늦으면_다시_부른다(monkeypatch):
+    """기상청 API가 간헐적으로 30초 안에 답하지 않는다(2026-09-29, 14개월 중 두 달).
+    곧바로 다시 부르면 왔으므로, 한 달이 한 번 떨어졌다고 실험 전체를 죽이지 않는다."""
+    fi = load_forecast_impact()
+    calls = []
+
+    def flaky(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise fi.weather.WeatherError("ReadTimeout")
+        return _forecast_rows()
+
+    monkeypatch.setattr(fi.weather, "fetch_forecast", flaky)
+
+    got = fi.load_all_forecasts(["25년 11월"], pause=0)
+
+    assert len(calls) == 2 and len(got) == 1
+
+
+def test_예보_호출이_끝내_안_되면_숨기지_않고_알린다(monkeypatch):
+    """재시도는 몇 번으로 끝난다 — 계속 떨어지면 빈 표로 넘어가지 않고 오류를 올린다."""
+    fi = load_forecast_impact()
+
+    def down(**kwargs):
+        raise fi.weather.WeatherError("ReadTimeout")
+
+    monkeypatch.setattr(fi.weather, "fetch_forecast", down)
+
+    with pytest.raises(fi.weather.WeatherError):
+        fi.load_all_forecasts(["25년 11월"], pause=0)
