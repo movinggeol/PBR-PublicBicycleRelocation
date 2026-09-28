@@ -89,6 +89,9 @@ SAME_DAY_OLD_GAPS = {
 }
 # 휴일은 10월 연휴의 마지막 날(10-11)까지 받으면 확정한다. 그 전의 판정(추석 나흘 등)은 잠정이다.
 SAME_DAY_HOLIDAY_FINAL = date(2026, 10, 11)
+# 회사 PC(A) 본 DB의 대여이력을 원본으로 바꾼 시각(2026-09-28 15:24~15:35). 이보다 먼저 세운 동시각
+# 계획은 IQR로 깎인 순수요로, 뒤에 세운 것은 원본으로 섰다 — 판정 아래에 앞뒤를 나눠 찍는다(1.26.299).
+RENTAL_SWAP_AT = datetime(2026, 9, 28, 15, 24)
 
 # 창을 못 읽었을 때의 최소 안전선(틱). 하루에 이만큼도 없으면 어떤 비율이든 볼 것이 없다.
 MIN_TICKS_FLOOR = 12
@@ -571,7 +574,8 @@ def is_same_day_plan(created_at, duration: str, day_type: str) -> bool:
             and is_holiday(start.date()) == (day_type == "holiday"))
 
 
-def same_day_runs(day_type: str, run_label: str = None) -> pd.DataFrame:
+def same_day_runs(day_type: str, run_label: str = None,
+                  recompute: bool = False) -> pd.DataFrame:
     """**회차 시작 시각에 세운** 계획 실행 — 출발 재고가 그날 그 시각의 실제 상태인 것 (1.26.278).
 
     왜 따로 고르나 — 복원은 계획을 세운 시각의 재고에서 출발한다. 오후에 세운 계획으로
@@ -582,6 +586,10 @@ def same_day_runs(day_type: str, run_label: str = None) -> pd.DataFrame:
 
     `run_label`을 주면 그 실행 하나를 **늦음과 요일을 가리지 않고** 돌려준다(점검용).
     늦은 만큼 출발 재고가 어긋난다는 것은 표가 함께 찍는다.
+
+    `recompute=True`면 복원을 저장값 대신 **지금 DB의 순수요로** 다시 낸다(1.26.299) —
+    실험 도중 대여이력이 바뀌어(`RENTAL_SWAP_AT`) 저장값은 앞뒤가 다른 자료에서 나왔다.
+    출발 재고와 작업 대상은 그대로 두므로 입력의 몫만 맞춘다.
     """
     with db.session() as conn:
         frame = pd.read_sql(
@@ -600,8 +608,13 @@ def same_day_runs(day_type: str, run_label: str = None) -> pd.DataFrame:
         start, late = same_day_start(row.created_at, row.duration)
         if not run_label and not is_same_day_plan(row.created_at, row.duration, day_type):
             continue
+        made = pd.Timestamp(row.created_at).to_pydatetime()
+        restored = row.복원
+        if recompute:
+            restored = recomputed_recon(row.run_label, row.duration, row.day_type or day_type)
         keep.append({"run_label": row.run_label, "duration": row.duration,
-                     "복원": row.복원, "start": start, "late_min": late})
+                     "복원": restored, "저장": row.복원, "start": start, "late_min": late,
+                     "입력": "원본" if made >= RENTAL_SWAP_AT else "깎임"})
     return pd.DataFrame(keep)
 
 
@@ -669,7 +682,18 @@ def summarize_same_day(rows: list, day_type: str) -> list:
     return out
 
 
-def compare_same_day(day_type: str, run_label: str = None) -> list:
+def split_by_input(rows: list, day_type: str) -> dict:
+    """입력(깎임/원본)별로 나눠 요약한다. 판정 문구는 쓰지 않는다 — 판정은 전체로만 한다 (1.26.299)."""
+    out = {}
+    for name in ("깎임", "원본"):
+        part = summarize_same_day([r for r in rows if r.get("입력") == name], day_type)
+        if part:
+            out[name] = part
+    return out
+
+
+def compare_same_day(day_type: str, run_label: str = None,
+                     recompute: bool = False) -> list:
     """같은 날·같은 시각에서 출발한 복원과 관측을 맞댄다 (1.26.278).
 
     관측 창은 **그 회차 시작 시각부터 회차 길이만큼**이다 — `_20_05`는 그날 20시부터
@@ -680,7 +704,7 @@ def compare_same_day(day_type: str, run_label: str = None) -> list:
     `실제 빈 곳`은 회차 시작 정각의 관측이다. 둘이 가까워야 이 비교가 뜻이 있다 —
     오후 스냅샷으로 세운 계획에서는 이 차가 3.9~23.7%p였다.
     """
-    runs = same_day_runs(day_type, run_label)
+    runs = same_day_runs(day_type, run_label, recompute)
     if runs.empty:
         what = f"실행 {run_label}" if run_label else (
             f"요일 {day_type} · 회차 시작 {SAME_DAY_TOLERANCE_MIN}분 안에 세운 계획")
@@ -707,7 +731,8 @@ def compare_same_day(day_type: str, run_label: str = None) -> list:
         first = mine[mine["관측"] == mine["관측"].min()] if not mine.empty else mine
         rows.append({
             "run_label": run.run_label, "duration": run.duration, "date": start.date(),
-            "late_min": run.late_min, "복원": float(run.복원),
+            "late_min": run.late_min, "복원": float(run.복원), "저장": float(run.저장),
+            "입력": run.입력,
             "관측": float(empty.mean()) if len(empty) else float("nan"),
             "stations": int(len(empty)), "ticks": ticks,
             "expected": len(hours) * per_hour, "complete": ticks >= need,
@@ -717,15 +742,18 @@ def compare_same_day(day_type: str, run_label: str = None) -> list:
 
     print("")
     print("같은 시각 비교 — 회차 시작에 세운 계획의 복원 vs 그날의 관측 (1.26.278)")
+    if recompute:
+        print("  ↳ 복원을 **지금 DB의 순수요로 다시 계산했다**(--recompute-recon) — 확인용이다."
+              " 주 판정은 저장값이다(1.26.299)")
     print(f"{'날짜':10} {'회차':7} {'늦음':>5} {'복원':>6} {'관측':>6} {'차이':>6} "
-          f"{'대여소':>5} {'틱':>7} {'출발 빈곳':>8} {'실제 빈곳':>8}")
+          f"{'대여소':>5} {'틱':>7} {'출발 빈곳':>8} {'실제 빈곳':>8} {'입력':>4}")
     for r in rows:
         gap = (r["관측"] / r["복원"] - 1) * 100 if r["복원"] else float("nan")
         why = same_day_usable(r)
         mark = f"  ← {why}(판정에서 뺀다)" if why else ""
         print(f"{r['date']!s:10} {r['duration']:7} {r['late_min']:4.0f}분 {r['복원']:6.2f} "
               f"{r['관측']:6.2f} {gap:+5.0f}% {r['stations']:5d} {r['ticks']:3d}/{r['expected']:<3d} "
-              f"{r['snap_empty']:7.1f}% {r['real_empty']:7.1f}%{mark}")
+              f"{r['snap_empty']:7.1f}% {r['real_empty']:7.1f}% {r['입력']:>4}{mark}")
 
     summary = [] if run_label else summarize_same_day(rows, day_type)
     if summary:
@@ -733,6 +761,12 @@ def compare_same_day(day_type: str, run_label: str = None) -> list:
         print(f"{'회차':7} {'복원':>6} {'관측':>6} {'차이':>6} {'날':>3}   판정 (창이 차고 출발이 맞은 날만 · 규칙은 1.26.285에 미리 정함)")
         for g in summary:
             print(f"{g['duration']:7} {g['복원']:6.2f} {g['관측']:6.2f} {g['gap']:+5.0f}% {g['days']:3d}   {g['verdict']}")
+        split = split_by_input(rows, day_type)
+        if len(split) > 1:
+            print("  입력 경계로 나눠 본 차이 — 판정은 위의 전체로만 한다(EXPERIMENTS 32장 '입력 경계')")
+            for name, part in split.items():
+                cells = " · ".join(f"{g['duration']} {g['gap']:+.0f}% ({g['days']}일)" for g in part)
+                print(f"    {name}: {cells}")
         if day_type == "holiday" and max(g["last"] for g in summary) < SAME_DAY_HOLIDAY_FINAL:
             print(f"  ⚠️ 휴일은 잠정이다 — {SAME_DAY_HOLIDAY_FINAL}(10월 연휴 마지막 날)까지 받으면 확정한다.")
     print("  ⚠️ `출발 빈곳`과 `실제 빈곳`이 가까워야 출발 재고의 몫이 빠진 비교다.")
@@ -761,7 +795,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.same_day or args.run_label:
-        compare_same_day(args.day_type, args.run_label)
+        compare_same_day(args.day_type, args.run_label, args.recompute_recon)
         return 0
 
     frame = load(args.day_type)

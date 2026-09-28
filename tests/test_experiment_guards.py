@@ -501,6 +501,35 @@ def test_본_비교는_동시각_계획을_빼고_옛_계획은_남긴다(obs):
     assert list(obs.same_day_runs("holiday")["run_label"]) == ["추석 05시"]
 
 
+def test_동시각_계획은_입력이_바뀐_시각으로_갈리고_다시_계산을_받는다(obs, monkeypatch):
+    """대여이력을 09-28 15:24에 원본으로 바꿨다(1.26.299). 그 앞에 세운 계획은 깎인 순수요로 섰으므로
+    판정 아래에 앞뒤를 **나눠** 찍는다 — 나누려면 행마다 입력이 붙어 있어야 한다.
+    `--recompute-recon`은 저장값을 지우지 않고 곁에 둔다(주 판정은 저장값이다).
+    """
+    _seed_same_day("추석 05시", "2026-09-25 05:03:10", restored=1.5)
+    _seed_same_day("10월 05시", "2026-10-03 05:03:10", restored=2.0)
+    monkeypatch.setattr(obs, "recomputed_recon", lambda label, duration, day_type: 9.0)
+
+    got = obs.same_day_runs("holiday").set_index("run_label")
+    assert got.loc["추석 05시", "입력"] == "깎임"
+    assert got.loc["10월 05시", "입력"] == "원본"
+    assert got.loc["추석 05시", "복원"] == 1.5
+
+    again = obs.same_day_runs("holiday", recompute=True).set_index("run_label")
+    assert list(again["복원"]) == [9.0, 9.0]
+    assert again.loc["추석 05시", "저장"] == 1.5
+
+
+def test_입력별로_나눠도_판정_문구는_붙이지_않는다(obs):
+    """나눈 값에 판정을 붙이면 **두 번 판정하는 셈**이라 사전 등록의 한 번을 흐린다."""
+    rows = [{"duration": "_05_10", "복원": 1.0, "관측": 1.2, "date": d, "complete": True,
+             "snap_empty": 20.0, "real_empty": 21.0, "입력": name}
+            for d, name in [(1, "깎임"), (2, "깎임"), (3, "깎임"), (4, "원본")]]
+    split = obs.split_by_input(rows, "holiday")
+    assert set(split) == {"깎임", "원본"}
+    assert split["깎임"][0]["days"] == 3 and split["원본"][0]["days"] == 1
+
+
 def test_실행을_지정하면_늦어도_보여_준다(obs):
     """점검용이다 — 늦음과 요일을 가리지 않되, 늦은 만큼을 **표에 함께 싣는다.**"""
     _seed_same_day("오후에 세움", "2026-09-22 15:06:39")
