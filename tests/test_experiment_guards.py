@@ -1343,3 +1343,106 @@ def test_실제_출발은_회차_시작_시각의_첫_틱이다(obs):
 
     got = obs.real_start_empty(frame, ["2026-09-24", "2026-09-25"], 5, {"A", "B"})
     assert got == pytest.approx((50.0 + 100.0) / 2)       # 24일 05:10 틱은 세지 않는다
+
+
+# ───────────────────────────── F2 하네스 (1.26.301) — 결품 확률로 작업 대상의 순서를 바꾼다
+
+@pytest.fixture(scope="module")
+def f2():
+    spec = importlib.util.spec_from_file_location(
+        "f2_candidate_priority",
+        PROJECT_ROOT / "experiments" / "structure" / "f2_candidate_priority.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_F2_기본_순서로_자르면_운영_step1과_같다(f2):
+    """🔴 운영 함수는 정렬 기준을 받지 않아 **복사했다.** 둘이 갈라지면 A1·A2와 현행의 차이에
+    '복사가 틀린 몫'이 섞인다 — 순서를 안 바꿨을 때 같은 답인지가 그 몫이 0이라는 증거다."""
+    import io
+
+    step1 = load_step1_module()
+    rebal = _재배치량_프레임([9, 3, 7, 4, 0, -8, -3, -6, -5, 1])
+    info = _대여소정보(10)
+    buffer = io.StringIO()
+    rebal.to_csv(buffer, index=False)
+    buffer.seek(0)
+
+    want = step1.select_top_unbalanced_st(buffer, "_10_15", info)
+    got = f2.select_ordered(rebal, info)
+
+    assert list(got["station_id"]) == list(want["station_id"])
+    assert list(got["rebal_qty"]) == list(want["rebal_qty"])
+
+
+def test_F2_A1은_곧_빌_곳에서_빼_오지_않고_곧_빌_곳부터_채운다(f2):
+    rebal = _재배치량_프레임([9, 3, 7, -8, -3, -6])
+    info = _대여소정보(6)
+    p = pd.Series({"ST0001": 0.1, "ST0002": 0.9, "ST0003": 0.5,
+                   "ST0004": 0.7, "ST0005": 0.0, "ST0006": 0.2})
+
+    got = f2.a1_select(rebal, info, p)
+
+    picks = got[got["rebal_qty"] < 0]["station_id"].tolist()
+    drops = got[got["rebal_qty"] > 0]["station_id"].tolist()
+    assert "ST0004" not in picks                       # P 0.7 ≥ 0.5 — 곧 빈다
+    assert drops[0] == "ST0002"                        # P 0.9가 3대짜리여도 먼저
+
+
+def test_F2_A2는_모자란_양에_빌_확률을_곱해_자른다(f2):
+    rebal = _재배치량_프레임([9, 6, -8, -7])
+    info = _대여소정보(4)
+    p = pd.Series({"ST0001": 0.0, "ST0002": 1.0, "ST0003": 0.0, "ST0004": 0.0})
+
+    got = f2.a2_select(rebal, info, p)
+
+    drops = got[got["rebal_qty"] > 0]["station_id"].tolist()
+    assert drops[0] == "ST0002"                        # 6 × 1.5 = 9.0 > 9 × 0.5 = 4.5
+
+
+def test_F2_대여소별로_나눠도_합은_대조군_비교와_같다(f2):
+    """중립 모집단의 결품을 구간으로 나누려고 대여소별로 쪼갰다 — 합이 `simulate_pair`와 같아야
+    같은 자로 잰 것이다."""
+    import numpy as np
+
+    bc = f2.bc
+    rng = np.random.default_rng(3)
+    ids = [f"ST{i:04d}" for i in range(1, 9)]
+    net = pd.DataFrame([{"날짜": f"2026-03-0{d}", "station_id": s,
+                         **{f"net_{h:02d}": float(rng.integers(-3, 4)) for h in range(10, 15)}}
+                        for d in range(1, 4) for s in ids])
+    population = pd.DataFrame({"station_id": ids, "stock": [0, 1, 2, 3, 5, 8, 1, 0],
+                               "parking_lot": [10] * 8})
+    delta = pd.Series({"ST0001": 3, "ST0006": -3})
+
+    each = f2.per_station(net, population, delta, "_10_15")
+    pair = bc.simulate_pair(net, population, delta, "_10_15")
+
+    assert each["결품"].mean() == pytest.approx(pair["stockout_after"])
+    assert each["포화"].mean() == pytest.approx(pair["saturation_after"])
+
+
+def test_F2_평균이_나아도_한_구간이_나빠지면_통과하지_않는다(f2):
+    """ML 9번의 검사 ④ — 늘 비는 곳만 채워 평균을 끌어내린 것이 아닌지 본다."""
+    pair = pd.DataFrame({"결품_[0.00,0.20)": [0.5], "결품_[0.00,0.20)_현행": [0.4],
+                         "결품_[0.95,1.00)": [1.0], "결품_[0.95,1.00)_현행": [3.0]})
+    names = ["[0.00,0.20)", "[0.95,1.00)"]
+
+    assert not f2.bins_not_worse(pair, names)
+    pair["결품_[0.00,0.20)"] = [0.4]
+    assert f2.bins_not_worse(pair, names)
+
+
+def test_F2_평가하는_날은_앞선_학습_날이_있는_온전한_평일이다(f2):
+    """확률은 그날보다 앞선 날로만 학습한다 — 앞선 날이 모자란 날은 평가하지 않는다."""
+    from datetime import date
+
+    stamps = pd.date_range("2026-09-14", "2026-09-22 23:50", freq="10min")
+    frame = pd.DataFrame({"ts": stamps, "station_id": "ST0001", "stock": 1, "빔": 0})
+
+    days = f2.eval_days(frame)
+
+    assert date(2026, 9, 19) not in days and date(2026, 9, 20) not in days   # 주말
+    assert min(days) == date(2026, 9, 21)              # 앞선 날 7일(14~20일)이 5일을 넘는다
+    assert all(d.weekday() < 5 for d in days)
