@@ -493,7 +493,46 @@ def main():
             print("\n  ⚠️ 표본이 작습니다. 이 표는 '어느 방법이 낫나'의 방향만"
                   " 보고, 크기는 위 표에서 읽으십시오.")
 
+    # ── 옛 달이 '같은 값의 추가 표본'인가 (원고 5.4) ───────────────────
+    corr = mu_correlation(net, periods, durations)
+    print("\n=== 대여소별 mu의 달 간격별 상관 (앞 달 |mu| > %s인 대여소, 시간대·달 쌍 평균) ===" % REBAL_MIN_QTY)
+    for lag in (1, 2, 3):
+        if corr[lag]:
+            print("  %d개월 간격 %.3f (쌍 %d개)" % (lag, np.mean(corr[lag]), len(corr[lag])))
+    if corr[2] or corr[3]:
+        print("  2~3개월 간격 %.3f — 1이 아니면 옛 달은 같은 값이 아니라 조금 다른 값이다"
+              % np.mean(corr[2] + corr[3]))
+
     return 0
+
+
+def mu_correlation(net: dict, periods: list, durations: list) -> dict:
+    """앞 달에 |mu| > REBAL_MIN_QTY였던 대여소의 mu를 뒤 달의 mu와 맞댄 상관 — 달 간격별 목록.
+
+    *"옛 달을 합치면 왜 지는가"* 의 답이다(원고 5.4). 수준을 맞춰 합쳐도 지는 까닭은 대여소마다
+    따로 움직이는 부분이 남기 때문인데, 그 크기가 이 상관이다. 간격은 달력으로 센다(빠진 달을
+    건너뛴 쌍은 실제 간격으로 들어간다). 작업 대상급 대여소만 보는 것은 판정 규칙과 같다 —
+    0 근처 대여소를 넣으면 상관이 잡음에 끌려 내려간다.
+
+    2026-09-29에 이 함수로 옮기기 전의 값(0.974 · 0.924, 2026-08-26)은 정의가 남아 있지 않다.
+    """
+    out = {1: [], 2: [], 3: []}
+    for duration in durations:
+        mus = {p: daily_window_demand(net[p], duration).groupby("station_id")["demand"].mean()
+               for p in periods}
+        for i, first in enumerate(periods):
+            for second in periods[i + 1:]:
+                lag = abs_month(second) - abs_month(first)
+                if lag not in out:
+                    continue
+                x, y = mus[first], mus[second]
+                both = x.index.intersection(y.index)
+                x, y = x[both], y[both]
+                keep = x.abs() > REBAL_MIN_QTY
+                if keep.sum() < 3:
+                    continue
+                out[lag].append(float(np.corrcoef(x[keep], y[keep])[0, 1]))
+    return out
 
 
 if __name__ == "__main__":

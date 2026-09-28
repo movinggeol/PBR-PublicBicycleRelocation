@@ -10,10 +10,10 @@
 그리지 않는다 — 그러면 같은 값이 두 곳에 살아 한쪽이 낡는다.
 
   · 그림 6-1  결품 편익과 포화 **대가를 한 축에** (표 둘을 맞대야 보였다)
-  · 그림 6-2  12개월 반복의 **분포** (표는 평균±표준편차로 줄인다)
+  · 그림 6-2  19개월 반복의 **분포** (표는 평균±표준편차로 줄인다)
   · 그림 6-3  이동거리 대비 편익 — **P가 더 멀리 다닌다**는 사실
   · 그림 5-1  `z` 격자를 **모집단 셋으로** — 모집단이 승자를 정한다
-  · 그림 1-1  평일·휴일 순수요 **부호 반전** (33~37%가 반대다)
+  · 그림 1-1  평일·휴일 순수요 **부호 반전** (32~34%가 반대다 — 26년 03월)
   · 그림 4-1  파이프라인 구조
 
 **원고 자료 자리를 채우는 그림 (2026-09-18~, 1.26.239).** 원고(docs/연구/논문/)의
@@ -81,10 +81,16 @@ STYLE = {
     "P": dict(색="#3182bd", 해치="", 마커="D", 이름="P 제안"),
 }
 DURATIONS = ["_05_10", "_10_15", "_15_20"]
-# 6장 그림 셋의 원천. **채택한 이동시간 식(320.4초 · 32.11km/h)으로 돌린 12개월 반복**이다 —
+# 6장 그림 셋의 원천. **채택한 이동시간 식(320.4초 · 32.11km/h)으로 돌린 19개월 반복**이다 —
 # 옛 `repeat_12month_pinned.csv`는 상수 속도(25km/h)로 잰 것이라, 그 파일로 그리면 그림 6-3이
 # *"km당으로는 대등하다"* 는 **철회된 주장**을 그린다(EXPERIMENTS 33장). 재현은 부록 A에 있다.
-REPEAT_12M = "baseline/repeat_12month_on.csv"
+# 12개월 파일(`repeat_12month_on.csv`)은 IQR로 깎인 대여이력에서 나왔다 — 원본 19개월로
+# 다시 잰 이 파일로 바꿨다(EXPERIMENTS 42장).
+REPEAT = "baseline/repeat_19month_on.csv"
+REPEAT_WHAT = "19개월 반복 결과(채택한 이동시간 식)"
+# 그림 8-2의 작업 대상을 읽는 계획 — 정본 스냅샷을 복사해 지금 코드·원본 19개월로 다시 세운 실행이다.
+# 정본 `2026-08-11 real`의 저장 계획은 옛 코드라 <표 8-3>(`dockless_hub.py --run-label` 같은 값)과 맞지 않는다.
+DOCKLESS_PLAN = "2026-08-11 real raw19"
 # 그림 3-5의 표본 끝 — 게이트 A 판정일. 채택 계수(320.4초 · 32.11km/h)가 이날까지의 패널에서 나왔다.
 ROAD_FIT_TO = "2026-09-15"
 
@@ -124,8 +130,8 @@ def _need(path: Path, what: str) -> pd.DataFrame | None:
 
 # ────────────────────────────────────────────────────────────── 6-2
 def fig_6_2():
-    """12개월 반복의 분포. 표는 이것을 평균±표준편차 한 줄로 줄인다."""
-    frame = _need(EXP / REPEAT_12M, "12개월 반복 결과(채택한 이동시간 식)")
+    """19개월 반복의 분포. 표는 이것을 평균±표준편차 한 줄로 줄인다."""
+    frame = _need(EXP / REPEAT, REPEAT_WHAT)
     if frame is None:
         return
     fig, axes = plt.subplots(1, 3, figsize=(11, 3.6), sharey=True)
@@ -146,16 +152,18 @@ def fig_6_2():
         ax.set_xticklabels([STYLE[m]["이름"] for m in order], fontsize=8)
         ax.set_title(f"{duration}  (각 n={len(data[0])})", fontsize=10)
     axes[0].set_ylabel("재배치 후 결품 시간 (h) — 낮을수록 좋음")
-    fig.suptitle("그림 6-2  12개월 × 씨앗 3개 반복의 결품 시간 분포 "
+    runs = int((frame["method"] == "P").sum() / frame["duration"].nunique())
+    fig.suptitle(f"그림 6-2  {frame['period'].nunique()}개월 × 씨앗 {frame['seed'].nunique()}개 "
+                 "반복의 결품 시간 분포 "
                  "(평일, 스냅샷 2026-08-11 real, 이동시간 식 적용)\n"
-                 "상자는 사분위·수염은 1.5 IQR, 겹친 점이 개별 실행 36개다", fontsize=11, y=1.06)
+                 f"상자는 사분위·수염은 1.5 IQR, 겹친 점이 개별 실행 {runs}개다", fontsize=11, y=1.06)
     save(fig, "그림6-2_결품분포", "반복의 분포 (표는 평균±표준편차로 줄인다)")
 
 
 # ────────────────────────────────────────────────────────────── 6-1
 def fig_6_1():
     """편익과 대가를 한 축에. 표 둘을 맞대야만 보이던 것이다."""
-    frame = _need(EXP / REPEAT_12M, "12개월 반복 결과(채택한 이동시간 식)")
+    frame = _need(EXP / REPEAT, REPEAT_WHAT)
     if frame is None:
         return
     base = (frame[frame["method"] == "B0"]
@@ -193,7 +201,8 @@ def fig_6_1():
     ax.set_ylim(-0.72, 2.05)                     # 값 라벨과 주의 문구가 겹치지 않게
     ax.set_ylabel("무재배치(B0) 대비 변화 (h)")
     ax.set_title("그림 6-1  재배치의 편익과 대가 — 결품은 줄지만 포화는 는다\n"
-                 "(12개월 × 씨앗 3개 평균, 위=편익 · 아래=대가)", fontsize=11)
+                 f"({frame['period'].nunique()}개월 × 씨앗 {frame['seed'].nunique()}개 평균, "
+                 "위=편익 · 아래=대가)", fontsize=11)
     ax.legend(fontsize=8, loc="upper right", ncol=1)
     # ⚠️ 두 막대를 빼서 하나로 합치지 않는다 — 같은 '시간'이라도 무게가 다르다(6.3)
     fig.text(0.5, -0.02, "[주의] 두 값을 빼서 합치지 않는다 - 포화 1시간과 결품 1시간은 무게가 다르다",
@@ -205,11 +214,11 @@ def fig_6_1():
 def fig_6_3():
     """P는 더 멀리 다닌다. **그래도 km당으로 앞선다** — 채택한 식에서 뒤집힌 결론이다.
 
-    상수 속도로 재던 동안에는 100km당 이득이 P 0.360h · B1 0.380h로 대등해 보였고,
+    상수 속도로 재던 동안에는 100km당 이득이 P 0.372h · B1 0.397h로 대등해 보였고,
     그때 이 그림의 오른쪽 패널은 *"km당으로 재면 대등하다"* 를 보여 주고 있었다.
-    채택한 식에서는 0.360h 대 0.310h로 뒤집힌다(EXPERIMENTS 33장).
+    채택한 식에서는 0.372h 대 0.319h로 뒤집힌다(19개월 · EXPERIMENTS 33·42장).
     """
-    frame = _need(EXP / REPEAT_12M, "12개월 반복 결과(채택한 이동시간 식)")
+    frame = _need(EXP / REPEAT, REPEAT_WHAT)
     if frame is None:
         return
     base = (frame[frame["method"] == "B0"]
@@ -334,7 +343,7 @@ def fig_1_1():
     fig.suptitle(f"그림 1-1  같은 대여소인데 평일과 휴일의 순수요 방향이 반대다 ({period}, 전체 대여소 기준)\n"
                  "2·4분면의 붉은 점 — 묶어 평균 내면 서로 상쇄돼 사라진다\n"
                  "(축은 1~99 분위로 잘랐다. 비율은 자르기 전 전체로 셌다)", fontsize=11, y=1.10)
-    save(fig, "그림1-1_평일휴일_부호반전", "1.2의 33~37%를 눈으로")
+    save(fig, "그림1-1_평일휴일_부호반전", "1.2의 32~34%를 눈으로")
 
 
 # ────────────────────────────────────────────────────────────── 4-1
@@ -459,7 +468,7 @@ def fig_4_3():
     ax.set_ylim(0, max(counts.values()) * 1.15)
     handles = [plt.Rectangle((0, 0), 1, 1, color="#3182bd"),
                plt.Rectangle((0, 0), 1, 1, facecolor="#c6dbef", hatch="//", edgecolor="black", lw=0.5)]
-    ax.legend(handles, ["평월", "겨울 달(1·2월)"], fontsize=8.5, loc="upper left")
+    ax.legend(handles, ["평월", "겨울 달(12·1·2월)"], fontsize=8.5, loc="upper left")
     total = sum(counts.values())
     ax.set_title(f"{len(counts)}개월 · 합계 {total:,}건 (막대 위 숫자는 만 건)", fontsize=10)
     save(fig, "그림4-3_월별_대여건수", f"대여이력 {len(counts)}개월 {total:,}건")
@@ -567,7 +576,10 @@ def fig_5_2():
 
 # ────────────────────────────────────────────────────────────── 8-1
 def fig_8_1():
-    """조사 주간의 공식 통계와 공개 대여이력 — 모양은 같고 크기만 다르다 (8.4.2).
+    """조사 주간의 공식 통계와 공개 대여이력 — 모양도 크기도 같다 (8.4.2).
+
+    깎인 병합본으로 그렸을 때는 크기가 82~87%로 모자랐다. 원본으로 다시 적재하니 날마다
+    100.0%다(EXPERIMENTS 42장) — 모자람은 자료가 아니라 IQR 깎기였다.
 
     보고서 값을 여기 다시 옮겨 적지 않는다 — `survey_crosscheck.py`가 쪽 번호와 함께
     옮겨 두었고 옮겨 적기 검산까지 한다. 그 모듈의 상수와 집계 함수를 그대로 쓴다.
@@ -716,7 +728,9 @@ def fig_8_2():
 
     거점 선정은 `experiments/structure/dockless_hub.py`의 함수를 **그대로** 부른다 — 여기서
     다시 구현하면 <표 8-3>과 어긋난다. 예산 K도 같은 규칙(이용량 기준 끝점 80% 지점)으로 구한다.
-    작업 대상은 정본 실행 `2026-08-11 real`(25년 11월 통계)의 05~10시 후보다.
+    작업 대상은 정본 스냅샷을 지금 코드와 원본 19개월로 다시 세운 계획
+    `DOCKLESS_PLAN`(25년 11월 평일 통계)의 05~10시 후보다 — 정본의 **저장된** 계획은
+    08-12의 옛 코드·깎인 자료로 세운 것이라 <표 8-3>과 같은 계획을 쓰려고 옮겼다(EXPERIMENTS 42장).
     좌표는 그 스냅샷의 `station_info`에서 오므로, 좌표가 없는 거점은 수를 밝히고 뺀다.
     """
     import importlib.util
@@ -732,16 +746,16 @@ def fig_8_2():
     with db.session() as conn:
         periods = [r[0] for r in conn.execute(
             "SELECT DISTINCT period FROM rental_history ORDER BY period")]
-        cand = hub.candidates(conn).get("_05_10", set())
+        cand = hub.candidates(conn, DOCKLESS_PLAN).get("_05_10", set())
         if not periods or not cand:
-            print("  건너뜀 - 대여이력이나 정본 실행의 작업 대상이 DB에 없습니다.")
+            print(f"  건너뜀 - 대여이력이나 '{DOCKLESS_PLAN}'의 작업 대상이 DB에 없습니다.")
             return
         counts = hub.endpoint_counts(conn, periods)
         k = hub.k_for(hub.coverage_curve(counts), 0.80)
         orders = {"이용량 기준": list(hub.rank_sites(counts, None).index),
                   "순수요 편향 기준": list(hub.rank_sites(counts, hub.demand_scores(conn, periods)).index)}
         xy = pd.read_sql("SELECT station_id, lat, lon FROM station_info WHERE run_label = ?",
-                         conn, params=(hub.CANON_LABEL,)).set_index("station_id")
+                         conn, params=(DOCKLESS_PLAN,)).set_index("station_id")
 
     fig, axes = plt.subplots(1, 2, figsize=(11.6, 6.0), sharex=True, sharey=True)
     for ax, (name, order) in zip(axes, orders.items()):
@@ -1076,7 +1090,7 @@ def fig_3_4():
     labels: dict = {}
     for i, row in stops.iterrows():
         labels.setdefault(row["to_id"], []).append(str(i + 1))
-    # 차고지는 군집에서 멀어(이 예에서 9km 남짓) 함께 넣으면 군집이 점 하나로 뭉친다 —
+    # 차고지는 군집에서 멀어(이 예에서 10km 안팎) 함께 넣으면 군집이 점 하나로 뭉친다 —
     # 지도를 군집 범위로 자르고 차고지 왕복선은 칸 밖으로 나가게 둔다.
     span_lon = part["lon"].max() - part["lon"].min()
     span_lat = part["lat"].max() - part["lat"].min()

@@ -17,6 +17,10 @@
 - Q1 **집중도**: 지점을 통행 끝점 수(대여 + 반납)로 줄 세우면 상위 K개가 전체의 몇 %를 덮나.
 - Q2 **포함률**: 정본 실행(`2026-08-11 real`)의 회차별 재배치 후보(`|rebal_qty| > 2`)가
   상위 K 거점 안에 얼마나 들어오나. 거점만 다뤄도 지금 하는 일을 덮는지 본다.
+  🔴 정본 실행의 **저장된** 계획은 2026-08-12에 옛 코드·평일/휴일을 섞은 통계·IQR로 깎인
+  대여이력으로 세운 것이다(EXPERIMENTS 42장). 논문 8.6은 같은 스냅샷을 지금 코드와 원본
+  19개월로 다시 세운 `--run-label "2026-08-11 real raw19"`의 후보를 쓴다(후보 310·152·167곳 →
+  381·218·211곳). 인자를 빼면 예전처럼 정본의 저장 계획을 읽는다.
 - Q3 **안정성**: 달마다 상위 K 집합이 얼마나 겹치나(자카드). 거점을 지난 자료로 정해
   다음 달에 그대로 쓸 수 있어야 방식이 성립한다.
 
@@ -207,6 +211,8 @@ def main(argv=None) -> int:
                         help="거점 선정 기준 — usage: 이용량(1차) · demand: 순수요 편향(2차)")
     parser.add_argument("--exclude-period", default=None,
                         help="거점 점수에서 뺄 기간 (①-b 표본 밖 검사: 정본이 쓰는 '25년 11월')")
+    parser.add_argument("--run-label", default=CANON_LABEL,
+                        help="재배치 후보를 읽을 계획 실행 (기본: 정본의 저장 계획)")
     args = parser.parse_args(argv)
 
     with db.session() as conn:
@@ -249,7 +255,8 @@ def main(argv=None) -> int:
                 k = max(int(sites * share), 1)
                 print(f"  상위 {share:>4.0%} ({k:>4}곳) → {frame.loc[k - 1, '누적']:6.1%}")
 
-        cand = candidates(conn)
+        cand = candidates(conn, args.run_label)
+        print(f"  후보를 읽은 계획: '{args.run_label}'")
         print(f"\n[Q2] 포함률 — 거점 {k80:,}곳이 정본 후보를 얼마나 덮나")
         inclusion, need90 = {}, {}
         for duration, sites_set in sorted(cand.items()):

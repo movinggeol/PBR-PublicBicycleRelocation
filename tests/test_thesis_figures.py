@@ -75,7 +75,7 @@ def test_원천이_없어도_죽지_않고_무엇이_없는지_말한다(tool, �
     assert run_cli(tool, monkeypatch, "--only", "6-1,6-2,6-3,5-1") == 0
     out = capsys.readouterr().out
     assert out.count("건너뜀") == 4
-    assert "12개월 반복 결과" in out and "z 격자" in out
+    assert "19개월 반복 결과" in out and "z 격자" in out
     assert list(격리.iterdir()) == []
 
 
