@@ -327,7 +327,8 @@ def recomputed_recon(run_label: str, duration: str, day_type: str) -> float:
     return float(sim["stockout"].sum() / denominator)
 
 
-def simulated_stockout(day_type: str, recompute: bool = False) -> pd.DataFrame:
+def simulated_stockout(day_type: str, recompute: bool = False,
+                       include_same_day: bool = False) -> pd.DataFrame:
     """step4가 남긴 **복원** 결품(재배치 전). 실측과 맞대어 볼 상대다.
 
     🔴 **요일 구분과 실행 종류를 가린다** (1.26.270). 예전에는 `kpi_summary`를
@@ -347,11 +348,16 @@ def simulated_stockout(day_type: str, recompute: bool = False) -> pd.DataFrame:
     🔴 **실행별로 한 행씩 돌려준다**(1.26.274). 예전에는 여기서 회차별로
     평균해 버렸는데, 그러면 복원은 실행 여럿의 평균인데 모집단은 집합 하나가
     되어 **자가 어긋난다.** 짝은 부르는 쪽이 실행 단위로 맞춘다.
+
+    🔴 **회차 시작에 세운 동시각 계획은 뺀다**(1.26.298). 그것도 `kind=plan`이라 09-23
+    15:03부터 여기에 섞여, 원고 8.3의 *"다른 날로 잰 여덟 칸"*(실행 열두 자리)이 다시
+    뽑히지 않았다(09-28에 23건이 섞여 있었다). 그 실행들은 `--same-day`의 몫이다.
+    넣으려면 `include_same_day=True`(`--include-same-day`).
     """
     with db.session() as conn:
         frame = pd.read_sql(
             "SELECT k.run_label, k.duration, k.stockout_hours_before AS 복원,"
-            "       r.kind, r.day_type"
+            "       r.kind, r.day_type, r.created_at"
             "  FROM kpi_summary k JOIN runs r ON r.run_label = k.run_label"
             " WHERE k.stockout_hours_before IS NOT NULL", conn)
     if frame.empty:
@@ -366,9 +372,20 @@ def simulated_stockout(day_type: str, recompute: bool = False) -> pd.DataFrame:
         for k, lab in zip(kind, frame["run_label"])]]
     if frame.empty:
         return frame
+    dropped = 0
+    if not include_same_day:
+        same = [is_same_day_plan(made, duration, day_type)
+                for made, duration in zip(frame["created_at"], frame["duration"])]
+        dropped = frame.loc[same, "run_label"].nunique()
+        frame = frame[[not s for s in same]]
+        if frame.empty:
+            return frame
     labels = sorted(frame["run_label"].unique())
     print(f"\n복원 기준 — 요일 {day_type} · 계획 실행 {len(labels)}건: "
           f"{', '.join(labels)}")
+    if dropped:
+        print(f"  ↳ 회차 시작에 세운 동시각 계획 {dropped}건은 뺐다 — `--same-day`의 몫이다"
+              " (넣으려면 --include-same-day)")
     if recompute:
         stored = frame["복원"].copy()
         frame["복원"] = [recomputed_recon(label, duration, day_type)
@@ -381,7 +398,8 @@ def simulated_stockout(day_type: str, recompute: bool = False) -> pd.DataFrame:
 
 
 def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
-                            day_type: str, recompute: bool = False) -> list:
+                            day_type: str, recompute: bool = False,
+                            include_same_day: bool = False) -> list:
     """복원과 실측을 나란히 놓는다 — **시간대가 온전히 겹칠 때만.**
 
     좁은 창(09~17시)에서는 `_05_10`이 09시 한 시각만, `_15_20`이 15시 한 시각만
@@ -399,7 +417,7 @@ def compare_with_simulation(frame: pd.DataFrame, durations: list, window,
     두 편향이 상쇄돼 우연히 비슷해 보일 수도 있다. **가른 뒤에야 정확한 비교가
     된다**(TODO 17-B 3단계).
     """
-    simulated = simulated_stockout(day_type, recompute)
+    simulated = simulated_stockout(day_type, recompute, include_same_day)
     if simulated.empty:
         print("\n(복원 대비 비교: 이 요일 구분으로 계획한 실행이 DB에 없습니다 —"
               " 먼저 `python run_pipeline.py --day-type ...`을 돌리십시오)")
@@ -533,6 +551,26 @@ def _save_calibration(rows: list, day_type: str, window) -> None:
               f" {thinnest['days']}일입니다. 논문에 인용할 때 함께 적으십시오.")
 
 
+def same_day_start(created_at, duration: str) -> tuple:
+    """계획을 세운 날의 회차 시작 시각과, 그 시각보다 **몇 분 늦게** 세웠는지."""
+    made = pd.Timestamp(created_at).to_pydatetime()
+    start = datetime.combine(made.date(), clock(duration_hours(duration)[0]))
+    return start, (made - start).total_seconds() / 60
+
+
+def is_same_day_plan(created_at, duration: str, day_type: str) -> bool:
+    """회차 시작 `SAME_DAY_TOLERANCE_MIN`분 안에, 요일 구분이 맞는 날 세운 실행인가 (1.26.298).
+
+    **고르는 쪽(`same_day_runs()`)과 빼는 쪽(`simulated_stockout()`)이 이 함수 하나를 쓴다.**
+    두 곳이 기준을 따로 가지면 어느 실행이 양쪽 모두에 들어가거나 어디에도 안 들어간다.
+    """
+    if created_at is None or pd.isna(created_at):
+        return False
+    start, late = same_day_start(created_at, duration)
+    return (0 <= late <= SAME_DAY_TOLERANCE_MIN
+            and is_holiday(start.date()) == (day_type == "holiday"))
+
+
 def same_day_runs(day_type: str, run_label: str = None) -> pd.DataFrame:
     """**회차 시작 시각에 세운** 계획 실행 — 출발 재고가 그날 그 시각의 실제 상태인 것 (1.26.278).
 
@@ -559,14 +597,9 @@ def same_day_runs(day_type: str, run_label: str = None) -> pd.DataFrame:
                        for lab, k in zip(frame["run_label"], frame["kind"])]]
     keep = []
     for row in frame.itertuples(index=False):
-        made = pd.Timestamp(row.created_at).to_pydatetime()
-        start = datetime.combine(made.date(), clock(duration_hours(row.duration)[0]))
-        late = (made - start).total_seconds() / 60
-        if not run_label:
-            if not 0 <= late <= SAME_DAY_TOLERANCE_MIN:
-                continue
-            if is_holiday(start.date()) != (day_type == "holiday"):
-                continue
+        start, late = same_day_start(row.created_at, row.duration)
+        if not run_label and not is_same_day_plan(row.created_at, row.duration, day_type):
+            continue
         keep.append({"run_label": row.run_label, "duration": row.duration,
                      "복원": row.복원, "start": start, "late_min": late})
     return pd.DataFrame(keep)
@@ -722,6 +755,9 @@ def main() -> int:
     parser.add_argument("--recompute-recon", action="store_true",
                         help="복원을 저장값 대신 지금 DB의 순수요로 다시 계산한다 "
                              "(순수요를 다시 만든 뒤 — 1.26.293)")
+    parser.add_argument("--include-same-day", action="store_true",
+                        help="본 비교에 회차 시작에 세운 동시각 계획도 넣는다 "
+                             "(기본은 뺀다 — 1.26.298)")
     args = parser.parse_args()
 
     if args.same_day or args.run_label:
@@ -804,7 +840,7 @@ def main() -> int:
         return 1
 
     rows = compare_with_simulation(frame, durations, window, args.day_type,
-                                   args.recompute_recon)
+                                   args.recompute_recon, args.include_same_day)
 
     if args.save:
         _save_calibration(rows, args.day_type, window)

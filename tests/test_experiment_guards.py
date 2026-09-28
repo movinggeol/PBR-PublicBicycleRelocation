@@ -393,7 +393,7 @@ def test_비교표는_실행마다_그_실행의_대상으로_잰다(obs, monkey
     """
     frame = _obs_frame()
     window = frame["시각"].unique()
-    monkeypatch.setattr(obs, "simulated_stockout", lambda day_type, recompute=False: pd.DataFrame(
+    monkeypatch.setattr(obs, "simulated_stockout", lambda day_type, recompute=False, include_same_day=False: pd.DataFrame(
         [{"run_label": "A", "duration": "_10_15", "복원": 1.0},
          {"run_label": "B", "duration": "_10_15", "복원": 1.0}]))
     monkeypatch.setattr(obs, "target_stations",
@@ -480,6 +480,25 @@ def test_같은_시각_비교는_회차_시작에_세운_휴일_계획만_고른
 
     assert list(got["run_label"]) == ["추석 05시"]
     assert got["late_min"].iloc[0] == pytest.approx(3 + 10 / 60)
+
+
+def test_본_비교는_동시각_계획을_빼고_옛_계획은_남긴다(obs):
+    """🔴 **동시각 계획도 `kind=plan`이다**(1.26.298). 빼지 않으면 09-23 15:03부터 원고 8.3의
+    *"다른 날로 잰 여덟 칸"* 에 섞여, 그 수치가 다시 뽑히지 않는다(09-28에 23건이 섞여 있었다).
+
+    남아야 할 쪽도 본다 — `2026-09-22 휴일 전회차`는 `_15_20` 회차 시작 7분 뒤에 세웠지만
+    **평일에 세운 휴일 계획**이라 동시각이 아니다. 늦음만 보고 빼면 여덟 칸의 한 자리가 사라진다.
+    """
+    _seed_same_day("추석 05시", "2026-09-25 05:03:10")
+    _seed_same_day("휴일 전회차", "2026-09-22 15:06:39", duration="_15_20")
+
+    got = obs.simulated_stockout("holiday")
+    assert list(got["run_label"]) == ["휴일 전회차"]
+
+    both = obs.simulated_stockout("holiday", include_same_day=True)
+    assert sorted(both["run_label"]) == ["추석 05시", "휴일 전회차"]
+    # 고르는 쪽과 빼는 쪽이 같은 기준이다 — 한 실행이 양쪽에 들어가지 않는다
+    assert list(obs.same_day_runs("holiday")["run_label"]) == ["추석 05시"]
 
 
 def test_실행을_지정하면_늦어도_보여_준다(obs):
