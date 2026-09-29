@@ -49,6 +49,10 @@ DEFAULT_TEST_DAYS = 4      # 뒤 4일을 검증으로
 # 뜻이 되어 버린다(WEATHER의 -9와 같은 함정).
 MIN_TICKS_PER_DAY = 30
 
+# 누출 검사 — 라벨을 섞은 학습이 '늘 학습 평균이라 답하기'의 이만큼보다 나으면 누출로 본다.
+# 예전 문턱 0.24는 빔이 절반인 라벨의 무작위 수준 0.25에 이 비율을 곱한 값이었다(1.26.305).
+LEAK_RATIO = 0.96
+
 
 def load_grid(conn) -> pd.DataFrame:
     """관측을 (시각 × 대여소) 격자로 편다.
@@ -343,8 +347,14 @@ def report_by_base_rate(test: pd.DataFrame, prob, actual) -> None:
 def report_leak_checks(train, test, 피처, actual) -> None:
     """🔴 **이겼을 때가 가장 위험하다** — 7번 시도가 그렇게 코드에 들어갔다.
 
-    라벨을 섞어 학습하면 반드시 무작위 수준(≈0.25)이 나와야 한다. 여기서도
-    이기면 피처 어딘가에 타깃이 새고 있다는 뜻이다.
+    라벨을 섞어 학습하면 반드시 무작위 수준이 나와야 한다. 여기서도 이기면 피처
+    어딘가에 타깃이 새고 있다는 뜻이다.
+
+    '무작위 수준'은 **늘 학습 평균이라 답하는 것**의 Brier다 — 0.25로 박아 두면 안 된다
+    (1.26.305). 결품(9번)은 빔이 절반이라 0.25였지만, 포화(11번)처럼 드문 라벨은
+    p(1−p)로 훨씬 낮다. 11번의 첫 실측에서 섞은 학습이 0.0840으로 0.24 문턱에 걸려
+    '누출'이라 찍혔는데, '늘 평균' 0.0841과 같은 값이었다 — 오경보였다. 비율 0.96은
+    예전 문턱(0.24 / 0.25)을 그대로 옮긴 것이라 9번의 판정은 바뀌지 않는다.
     """
     print("\n" + "=" * 62)
     print("누출 검사")
@@ -365,8 +375,9 @@ def report_leak_checks(train, test, 피처, actual) -> None:
                                        max_depth=6, random_state=42)
     m.fit(섞은[피처], 섞은["타깃"])
     b = brier(m.predict_proba(test[피처])[:, 1], actual)
-    판정 = "정상" if b > 0.24 else "🔴 라벨을 섞었는데도 맞힌다 — 누출이다"
-    print(f"  라벨 섞은 학습: Brier {b:.4f}  ({판정})")
+    기준 = brier(np.full(len(actual), train["타깃"].mean()), actual)
+    판정 = "정상" if b > 기준 * LEAK_RATIO else "🔴 라벨을 섞었는데도 맞힌다 — 누출이다"
+    print(f"  라벨 섞은 학습: Brier {b:.4f} · 늘 학습 평균이라 답하면 {기준:.4f}  ({판정})")
 
 
 if __name__ == "__main__":

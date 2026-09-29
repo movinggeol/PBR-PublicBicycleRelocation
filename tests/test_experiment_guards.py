@@ -875,6 +875,28 @@ def test_결품예측이_평소빈도로_갈라_다시_잰다():
         "함수는 있는데 판정 경로에서 부르지 않는다 (주석 처리됐을 수 있다)")
 
 
+def test_누출검사는_드문_라벨에서_오경보를_내지_않는다(capsys):
+    """문턱을 0.24(빔이 절반인 라벨의 무작위 수준 0.25 × 0.96)로 박아 두었더니, 포화(11번)처럼
+    9%뿐인 라벨은 섞어 학습해도 Brier가 0.084라 늘 '누출'이었다 (1.26.305 첫 실측 — '늘 평균'
+    0.0841과 같은 값). 무작위 수준은 **늘 학습 평균이라 답하는 것**의 Brier다."""
+    import numpy as np
+
+    from experiments.structure import stockout_forecast as sf
+
+    rng = np.random.default_rng(0)
+
+    def frame(start):
+        n = 3000
+        return pd.DataFrame({"ts": pd.date_range(start, periods=n, freq="10min"),
+                             "x": rng.random(n), "타깃": (rng.random(n) < 0.1).astype(int)})
+
+    train, test = frame("2026-09-01"), frame("2026-10-01")
+    sf.report_leak_checks(train, test, ["x"], test["타깃"].to_numpy())
+
+    out = capsys.readouterr().out
+    assert "(정상)" in out and "누출이다" not in out, out
+
+
 def test_결품예측_구간검사가_지는_구간을_숨기지_않는다():
     """구간마다 **이겼는지 졌는지**를 표시해야 한다.
 
