@@ -486,7 +486,14 @@
     /* 데이터 화면은 분류가 10개다. 한 줄에 하나씩 놓으면 세로로 4,000px 넘게
        늘어지는데, '파일' 열이 802px을 차지하고 실제로는 206px만 쓴다(실측).
        남는 596px을 없애고 **두 벌씩 가로로** 놓는다(수정안 40). */
-    .data-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--sp-lg); align-items: start; }
+    /* 같은 줄의 두 벌은 **바닥을 맞춘다** (1.26.306). 예전의 `align-items: start`는 카드가
+       제 내용만큼만 높아져, 나란한 지시서의 바닥이 41~489px(1400px 실측 8줄), /data의 분류
+       카드가 20~102px 어긋났다 — 같은 종류의 판이 들쭉날쭉해 지저분했다. 늘인 카드의 남는
+       자리는 아래에 두고, 쪽 넘기기는 바닥 줄에 붙인다(쪽마다 줄 수가 달라도 단추가 안 뛴다). */
+    .data-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--sp-lg); }
+    .data-cell { display: flex; flex-direction: column; }
+    .data-cell > .card { flex: 1 1 auto; display: flex; flex-direction: column; }
+    .data-cell > .card > .pager { margin-top: auto; }
     /* ⚠️ 제목과 표를 **한 칸에 묶어야** 한다. 따로 두면 각자 칸을 차지해
        제목은 왼쪽, 표는 오른쪽으로 갈라진다(실제로 겪음). */
     .data-cell > h2 { margin-top: var(--sp-xl); }
@@ -720,12 +727,24 @@
     .viz-card { padding: var(--sp-md) var(--sp-md) var(--sp-sm); }
     .viz-card h3 { margin: 0 0 2px; font-size: var(--fs-ui); color: var(--ink-2); }
     .viz-card .hint { display: block; margin-bottom: var(--sp-xs); }
-    /* 그리드 항목은 기본이 stretch라, 한 카드에서 '표로 보기'를 펴면 **같은 행의 다른
-       카드가 그 높이만큼 함께 늘어나** 빈 칸이 생긴다. start를 주면 각 카드가 제
-       내용만큼만 높아진다(1.21.1). */
+    /* 같은 줄의 카드는 **바닥과 속 줄을 맞춘다** (1.26.306). 1.21.1에는 '표로 보기'가 카드
+       안에서 펴져 옆 카드까지 늘렸기에 `align-items: start`를 줬다 — 1.21.3부터 표는 떠 있는
+       창이라 그 까닭이 없어졌는데 start만 남아, 설명이 두 줄인 카드('포화 시간')만 그래프가
+       18px 내려앉고 바닥이 들쭉날쭉했다(1400px 실측 18px, 1920px 36px).
+       카드는 제목 · 설명 · 그래프 · 표 보기 네 줄이고, `subgrid`로 **같은 줄 카드끼리 그 네
+       줄의 높이를 나눠 쓴다** — 설명이 한 줄인 카드도 그래프가 같은 y에서 시작한다.
+       subgrid를 모르는 브라우저는 세로 flex로 바닥 줄만 맞춘다. */
     .viz-grid2 {
-      display: grid; gap: var(--sp-sm); align-items: start;
+      display: grid; gap: var(--sp-sm);
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+    .viz-grid2 > .viz-card { display: flex; flex-direction: column; }
+    .viz-grid2 > .viz-card > .viz-table { margin-top: auto; }
+    @supports (grid-template-rows: subgrid) {
+      .viz-grid2 > .viz-card {
+        display: grid; grid-row: span 4; grid-template-rows: subgrid; row-gap: 0;
+      }
+      .viz-grid2 > .viz-card > .viz-table { margin-top: var(--sp-sm); }
     }
     /* 발산 척도 범례. 히트맵과 반드시 함께 낸다 — 색만으로 값을 읽게 두지 않는다. */
     .viz-scale {
@@ -1159,6 +1178,87 @@
     }
     .filterbar .label { font-size: var(--fs-fine); color: var(--ink-4); font-weight: 600; }
 
+    /* ── 고르기 상자 (1.26.306) ──
+       실행 칩을 줄마다 늘어놓았더니 계획 9 · 실험 20이면 1400px에서 칩만 다섯 줄이었고,
+       /orders는 계획 · 실험 · 회차 · 차량 칩이 네 벌이라 첫 지시서가 첫 화면 밖이었다.
+       칩은 '지금 무엇을 골랐나'를 파란 칩 하나로만 말해, 그것을 찾으려면 벽을 훑어야 했다.
+       **한 줄에 `이름 [지금 값 ▾]`** 을 세우고, 누르면 종류별로 나눈 목록이 뜬다.
+
+       - 목록은 `<details>` 안의 **링크**다. `<select>`로 바로 옮기면 키보드 화살표 한 번에
+         화면이 바뀐다(윈도우 크롬은 닫힌 select에서 화살표로 change를 낸다 — WCAG 3.2.2).
+         링크는 누를 때만 간다. 스크립트가 없어도 열린다.
+       - 넷뿐인 회차는 목록에 숨기지 않고 **붙은 단추**(`.seg`)로 다 보인다 — 늘 넷이라 벽이
+         되지 않고, 한 번에 옆 회차로 옮긴다.
+       - 떠 있는 판이라 펴도 아래 본문을 밀지 않는다. 밖을 누르거나 Esc면 닫힌다(아래 스크립트). */
+    .pickbar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-sm) var(--sp-lg);
+      margin-bottom: var(--sp-md); position: relative;
+    }
+    .pick-field { display: inline-flex; align-items: center; gap: var(--sp-sm); min-width: 0; }
+    .pick-field > .label {
+      font-size: var(--fs-fine); color: var(--ink-4); font-weight: 600;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    details.pick { position: relative; }
+    details.pick > summary {
+      list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+      min-width: 12rem; padding: 6px 12px; line-height: 1.4;
+      font-size: var(--fs-ui); color: var(--ink); background: var(--surface);
+      border: 1px solid var(--hairline); border-radius: var(--r-md); white-space: nowrap;
+    }
+    details.pick > summary::-webkit-details-marker { display: none; }
+    details.pick > summary::after { content: "▾"; margin-left: auto; padding-left: 6px; color: var(--ink-4); }
+    details.pick[open] > summary::after { content: "▴"; }
+    details.pick > summary:hover { border-color: var(--ink-4); }
+    details.pick > summary:focus-visible { outline: 2px solid var(--blue-focus); outline-offset: 2px; }
+    .pick-value { font-weight: 600; }
+    .pick-sub { color: var(--ink-4); font-size: var(--fs-fine); }
+    .pick-panel {
+      position: absolute; z-index: 40; top: calc(100% + 6px); left: 0;
+      width: min(40rem, calc(100vw - 2 * var(--sp-md)));
+      max-height: min(60vh, 30rem); overflow: auto; padding: var(--sp-sm);
+      background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-lg);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, .22);
+    }
+    details.pick-sm .pick-panel { width: min(24rem, calc(100vw - 2 * var(--sp-md))); }
+    .pick-group + .pick-group, .pick-all + .pick-group, .pick-all + .pick-items {
+      margin-top: var(--sp-xs); padding-top: var(--sp-xs); border-top: 1px solid var(--divider-soft);
+    }
+    .pick-group > .label {
+      display: inline-block; padding: 4px 10px 2px;
+      font-size: var(--fs-fine); color: var(--ink-4); font-weight: 600;
+    }
+    .pick-count { font-size: var(--fs-fine); color: var(--ink-4); }
+    .pick-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: 2px; }
+    details.pick-sm .pick-items { grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr)); }
+    .pick-item {
+      display: block; padding: 6px 10px; border-radius: var(--r-md);
+      font-size: var(--fs-ui); color: var(--ink-2); overflow-wrap: anywhere;
+    }
+    .pick-item:hover { background: var(--parchment); color: var(--ink); text-decoration: none; }
+    .pick-item[aria-current] { background: var(--blue); color: var(--on-blue); font-weight: 600; }
+    .pick-item[aria-current]:hover { background: var(--blue); color: var(--on-blue); }
+    .seg {
+      display: inline-flex; gap: 1px; background: var(--hairline);
+      border: 1px solid var(--hairline); border-radius: var(--r-md); overflow: hidden;
+    }
+    .seg a {
+      padding: 6px 12px; line-height: 1.4; font-size: var(--fs-ui); color: var(--ink-2);
+      background: var(--surface); white-space: nowrap; text-align: center;
+    }
+    .seg a:hover { background: var(--parchment); color: var(--ink); text-decoration: none; }
+    .seg a[aria-current] { background: var(--blue); color: var(--on-blue); font-weight: 600; }
+    /* 좁은 화면 — 한 줄에 한 칸, 판은 줄 폭 전체로 뜬다(상자 자리에 두면 오른쪽이 잘린다).
+       회차는 2 × 2다: 넷을 한 줄에 두면 390px에서 '05~10시 (출근)'이 세로로 쪼개진다. */
+    [data-narrow] .pickbar { display: grid; grid-template-columns: minmax(0, 1fr); }
+    [data-narrow] .pick-field { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); }
+    [data-narrow] details.pick { position: static; }
+    [data-narrow] details.pick > summary { display: flex; width: 100%; min-height: 44px; }
+    [data-narrow] .pick-panel { left: 0; right: 0; top: auto; width: auto; margin-top: 6px; }
+    [data-narrow] .pick-item { padding: 12px 10px; }
+    [data-narrow] .seg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    [data-narrow] .seg a { min-height: 44px; padding: 12px 8px; }
+
     /* ── 표 열 접기 ──
        열이 많은 표에서 핵심 열만 기본으로 보여준다. 스크립트가 없으면
        부가 열도 그대로 보인다(쪽 넘기기·정렬과 같은 원칙 — 내용이 사라지지 않는다). */
@@ -1517,7 +1617,7 @@
          거는 이유는 `.no-print`를 템플릿마다 붙이게 두면 빠뜨리기 때문이다 —
          실제로 orders.html에만 9개 붙어 있고 나머지 화면은 0개였다. */
       header.global-nav, nav.flow-nav, nav.group-nav, nav.tabbar, footer.site,
-      .filterbar, .pager, .col-toggle-wrap, .row-more-wrap,
+      .filterbar, .pickbar, .pager, .col-toggle-wrap, .row-more-wrap,
       .table-open, .table-panel { display: none !important; }   /* 종이에서 누를 수 없는 '표로 보기'와 그 창 (1.26.272) */
     }
   </style>
@@ -1782,6 +1882,68 @@
     e.preventDefault();
     escLayers[escLayers.length - 1]();
   });
+
+  /* ════════ 고르기 상자 닫기 (1.26.306) ════════
+     판(`.pick-panel`)은 떠 있어 본문을 밀지 않는 대신 스스로 닫히지 않는다 — `<details>`는
+     요약을 다시 눌러야만 닫힌다. 그래서 닫는 길을 넷 둔다: 판 밖을 누르기 · Esc(위 부가 창
+     규약 — 가장 나중에 연 것 하나, 초점은 요약으로) · 초점이 판 밖으로 나가기 · 다른 상자를
+     열기(한 번에 하나만 편다). 열 때는 지금 고른 항목(`aria-current`)을 판 안에서 보이게
+     굴린다 — 실험이 스무 개면 고른 실험이 판 아래로 숨었다.
+     스크립트가 없어도 `<details>`라 열고 닫히며, 항목은 그냥 링크다. */
+  (function () {
+    var closers = [];      /* <details>마다 닫는 함수 하나 — 스택에 넣고 뺄 때 같은 함수여야 한다 */
+    function closerFor(d) {
+      for (var i = 0; i < closers.length; i++) {
+        if (closers[i].d === d) return closers[i].fn;
+      }
+      var fn = function () {          /* 몇 번을 불러도 안전하다 — 이미 닫혔으면 아무것도 안 한다 */
+        if (!d.open) return;
+        d.open = false;               /* 스택에서 빼는 것은 아래 toggle 처리기가 한다 */
+        var s = d.querySelector("summary");
+        if (s) s.focus();
+      };
+      closers.push({ d: d, fn: fn });
+      return fn;
+    }
+    function closeOthers(keep) {
+      document.querySelectorAll("details.pick[open]").forEach(function (d) {
+        if (d !== keep) d.open = false;
+      });
+    }
+    document.addEventListener("toggle", function (e) {
+      var d = e.target;
+      if (!d.matches || !d.matches("details.pick")) return;
+      var fn = closerFor(d);
+      if (!d.open) { popEscLayer(fn); return; }
+      closeOthers(d);
+      pushEscLayer(fn);
+      /* 고른 항목을 **판 안에서만** 굴린다. `scrollIntoView`는 페이지까지 굴려, '다른 실행 고르기'
+         (`#kpi-runs`로 가며 상자를 편다)의 부드러운 앵커 이동을 도중에 끊고 표 제목을 화면 바닥에
+         세웠다(1.26.306 브라우저 확인에서 재현). */
+      var panel = d.querySelector(".pick-panel");
+      var cur = panel && panel.querySelector("[aria-current]");
+      if (cur) {
+        var pr = panel.getBoundingClientRect(), cr = cur.getBoundingClientRect();
+        if (cr.top < pr.top || cr.bottom > pr.bottom) {
+          panel.scrollTop += cr.top - pr.top - (panel.clientHeight - cr.height) / 2;
+        }
+      }
+    }, true);
+    document.addEventListener("click", function (e) {
+      if (!e.target.closest) return;
+      /* '다른 실행 고르기'(`data-open-fold`)는 상자를 **펴러** 누르는 링크다 — 같은 클릭에서
+         '밖을 눌렀다'로 닫으면 편 것이 바로 닫힌다. */
+      if (e.target.closest("a[data-open-fold]")) return;
+      closeOthers(e.target.closest("details.pick"));
+    });
+    document.addEventListener("focusout", function (e) {
+      var d = e.target.closest && e.target.closest("details.pick[open]");
+      /* relatedTarget이 없으면 창 밖(다른 창·주소창)으로 나간 것이다 — 그때는 두고, 판 밖의
+         다른 요소로 옮겨 갈 때만 닫는다. */
+      if (!d || !e.relatedTarget || d.contains(e.relatedTarget)) return;
+      d.open = false;
+    });
+  })();
 
   /* 도움말 풍선.
      풍선을 <body> 바로 아래 하나만 두고 옮겨 쓴다 — 요소마다 ::after로 만들면

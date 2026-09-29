@@ -627,12 +627,13 @@ def test_종류를_바꾼_행이_든_쪽으로_돌아온다(runs_client):
     assert "data-pager-focus" not in _between(plain, 'id="saved-runs"', "<h2>실행 이력</h2>")
 
 
-def test_실행_칩은_계획_먼저_최신순이고_실험은_다음_줄에_남는다(runs_client):
+def test_실행_고르기는_계획_먼저_최신순이고_실험은_다음_묶음에_남는다(runs_client):
     """`/kpi`·`/vehicles` 칩이 사전 역순이라 앞 12개가 실험이고 최신 계획은 14번째였다.
-    폰에서 접히지도 않아 390px에서 칩만 716px였다 (1.26.283).
+    폰에서 접히지도 않아 390px에서 칩만 716px였다 (1.26.283). 두 줄로 나눈 뒤에도 칩은 칩이라
+    계획 9 · 실험 20이면 1400px에서 다섯 줄이었다 — 1.26.306부터 **고르기 상자** 한 줄이다.
 
-    계획 먼저·최신순으로 세우고, 실험은 **지우지 않고**(1.26.125) 다음 줄에 둔다. 두
-    화면은 실험끼리 견주는 것이 본래 용도라 넓은 화면에서 실험을 접지는 않는다.
+    판 안에서 계획 먼저·최신순으로 세우고, 실험은 **지우지 않고**(1.26.125) 다음 묶음에 둔다.
+    두 화면은 실험끼리 견주는 것이 본래 용도다.
     """
     from webapp import store
 
@@ -641,20 +642,23 @@ def test_실행_칩은_계획_먼저_최신순이고_실험은_다음_줄에_남
 
     for path in ("/kpi", "/vehicles"):
         html = runs_client.get(path).text
-        picker = _between(html, '<details class="m-fold no-print" open>', "</details>")
+        picker = _between(html, '<div class="pickbar no-print">', "</details>")
         plans = _between(picker, '<span class="label">계획</span>', "</div>")
         others = _between(picker, '<span class="label">실험</span>', "</div>")
         assert plans.index(PLAN_NEW) < plans.index(PLAN_OLD), f"{path}: 계획이 최신순이 아니다"
-        assert MIXED not in plans and SWEEP not in plans, f"{path}: 계획 줄에 실험이 섞였다"
-        assert MIXED in others and SWEEP in others, f"{path}: 실험 칩이 사라졌다(1.26.125)"
-        assert PROBE not in picker, f"{path}: 수집 실행이 칩으로 떴다(1.26.107)"
-        # 줄마다 이름표가 맨 앞이다 — '[전체] 계획 …'이면 '계획'과 '실험'의 줄이 안 맞고
-        # 좁은 화면에서 '전체 계획'이 한 말로 읽혔다(1.26.283 검토). '전체'는 제 줄에 둔다.
-        for bar in picker.split('<div class="filterbar">')[1:]:
-            assert bar.lstrip().startswith('<span class="label">'), \
-                f"{path}: 이름표가 줄 맨 앞에 없다: {bar[:60]}"
-        assert ">전체</a>" in _between(picker, '<span class="label">실행</span>', "</div>")
-        assert ">전체</a>" not in plans, f"{path}: '전체'가 계획 줄에 섞였다"
+        assert MIXED not in plans and SWEEP not in plans, f"{path}: 계획 묶음에 실험이 섞였다"
+        assert MIXED in others and SWEEP in others, f"{path}: 실험이 사라졌다(1.26.125)"
+        assert PROBE not in picker, f"{path}: 수집 실행이 떴다(1.26.107)"
+        # 묶음마다 이름표가 맨 앞이다 — '[전체] 계획 …'이면 좁은 화면에서 '전체 계획'이 한
+        # 말로 읽혔다(1.26.283 검토). '전체'는 어느 묶음에도 넣지 않고 판 맨 위에 둔다.
+        for group in picker.split('<div class="pick-group">')[1:]:
+            assert group.startswith('<span class="label">'), \
+                f"{path}: 이름표가 묶음 맨 앞에 없다: {group[:60]}"
+        assert ">전체</a>" in _between(picker, '<div class="pick-panel">', '<div class="pick-group">')
+        assert ">전체</a>" not in plans, f"{path}: '전체'가 계획 묶음에 섞였다"
+        # 상자는 지금 무엇을 골랐는지를 한 줄로 말한다 — 안 골랐으면 '전체'와 실행 수
+        summary = _between(picker, "<summary", "</summary>")
+        assert ">전체</span>" in summary and "실행 " in summary, summary
 
 
 def test_지표_표는_최근_실행이_위이고_한_실행_안은_하루_순서다(runs_client):
@@ -718,53 +722,54 @@ def test_같은_라벨을_다시_돌려도_최신은_한_기준이다(runs_clien
         f"한 화면에 '최신'이 둘이다: 표 첫 행 vs 첫 칩 {first_chip}"
 
 
+ROUND_LABEL = '<span class="label" id="round-pick-name">회차</span>'
+
+
 def test_작업지시서는_실행을_고르고_그_실행의_회차를_고른다(runs_client):
     """계획 칩이 (실행, 회차)마다 하나라 실데이터에서 72개였다 (1.26.283).
 
     1400px에서 칩 묶음이 488px라 첫 지시서가 y=1011로 첫 화면 밖이었고, 같은 계획의
     회차가 흩어져 있었으며 칩과 지시서 머리에는 `_05_10` 같은 코드가 찍혔다.
-    실행 → 회차 두 단으로 고르고, 실험은 **지우지 않고** 접는다(고른 것이 실험이면 편다).
+    실행 → 회차 두 단으로 고른다. 1.26.306부터 실행은 **고르기 상자**(판 안에 계획 · 실험 ·
+    수집 묶음), 회차는 늘 넷이라 **붙은 단추**(`.seg`)로 다 보인다. 실험은 지우지 않는다.
     """
     html = runs_client.get("/orders").text
-    picker = _between(html, '<details class="m-fold no-print" open>', "차량별 지시서")
+    picker = _between(html, '<div class="pickbar no-print">', "차량별 지시서")
 
     plans = _between(picker, '<span class="label">계획</span>', "</div>")
     plan_hrefs = re.findall(r'href="([^"]+)"', plans)
-    assert len(plan_hrefs) == 2, f"계획 줄의 칩은 계획 실행 수(2)여야 한다: {plan_hrefs}"
+    assert len(plan_hrefs) == 2, f"계획 묶음의 항목은 계획 실행 수(2)여야 한다: {plan_hrefs}"
     assert all("&duration=" + DURATIONS[0] in h for h in plan_hrefs), \
-        f"실행 칩은 그 실행의 첫 회차를 늘 함께 넘긴다(1.26.262): {plan_hrefs}"
+        f"실행 링크는 그 실행의 첫 회차를 늘 함께 넘긴다(1.26.262): {plan_hrefs}"
     assert all("vehicle=" not in h for h in plan_hrefs), "실행을 바꾸는데 차량을 들고 갔다"
+    others = _between(picker, '<span class="label">실험</span>', "</div>")
+    assert MIXED in others and SWEEP in others, "실험을 목록에서 지우면 안 된다(1.26.125)"
+    # 상자는 고른 실행과 그 종류를 한 줄로 말한다
+    summary = _between(picker, '<summary aria-labelledby="run-pick-name', "</summary>")
+    assert f">{PLAN_NEW}</span>" in summary and '<span class="pick-sub">계획</span>' in summary
 
-    more = _between(picker, '<details class="run-more"', "</details>")
-    assert more.startswith('<details class="run-more">'), "계획을 보는데 실험 묶음이 펴져 있다"
-    assert MIXED in more and SWEEP in more, "실험을 목록에서 지우면 안 된다(1.26.125)"
-
-    rounds = _between(picker, '<span class="label">회차</span>', "</div>")
+    rounds = _between(picker, ROUND_LABEL, "</div>")
     names = re.findall(r">([^<>]+)</a>", rounds)
     assert names == [DURATION_LABELS[d] for d in DURATIONS], f"회차는 사람 이름으로: {names}"
     assert "/orders/live" not in rounds, "회차를 바꾸는 클릭이 외부 API를 부르면 안 된다"
-    # 회차 줄은 고른 실행이 선 줄 **바로 아래**다 — 늘 접은 실험 뒤에 두면, 실험을 폈을 때
-    # 계획 칩과 그 회차 칩 사이에 실험 칩 18개가 끼었다(1.26.283 검토, 768px 실측).
-    at = picker.index('<span class="label">회차</span>')
-    assert picker.index('<span class="label">계획</span>') < at \
-        < picker.index('<details class="run-more"'), "계획을 골랐는데 회차 줄이 실험 뒤에 섰다"
-    assert '<span class="label">회차</span>' not in more
+    assert 'role="group" aria-labelledby="round-pick-name"' in rounds, "회차 단추 묶음에 이름이 없다"
+    assert picker.count(ROUND_LABEL) == 1, "회차는 한 자리에만 선다"
     # 지시서 머리도 코드가 아니라 이름이다 — 종이에 그대로 남는다
     assert f"{PLAN_NEW} · {DURATION_LABELS[DURATIONS[0]]}</span>" in html
     assert f"{PLAN_NEW} · {DURATIONS[0]}</span>" not in html
 
-    # 실험을 고르면 실험 묶음이 펴져 있고 그 실행의 회차가 둘째 줄에 선다
+    # 실험을 고르면 상자가 그 실험과 '실험'을 말하고, 회차 단추는 그 실행의 회차다
     html = runs_client.get("/orders", params={"run_label": MIXED,
                                               "duration": DURATIONS[2]}).text
-    picker = _between(html, '<details class="m-fold no-print" open>', "차량별 지시서")
-    assert '<details class="run-more" open>' in picker, "고른 실험이 접힌 묶음 안에 숨었다"
-    rounds = _between(picker, '<span class="label">회차</span>', "</div>")
+    picker = _between(html, '<div class="pickbar no-print">', "차량별 지시서")
+    summary = _between(picker, '<summary aria-labelledby="run-pick-name', "</summary>")
+    assert f">{MIXED}</span>" in summary and '<span class="pick-sub">실험</span>' in summary, summary
+    others = _between(picker, '<span class="label">실험</span>', "</div>")
+    assert re.search(rf'aria-current="true">{re.escape(MIXED)}</a>', others), "고른 실험이 판에서 표시되지 않는다"
+    rounds = _between(picker, ROUND_LABEL, "</div>")
     current = re.search(r'aria-current="true">([^<]+)</a>', rounds)
     assert current and current.group(1) == DURATION_LABELS[DURATIONS[2]]
-    # 실험을 고르면 회차 줄은 접은 묶음 안, 실험 줄 바로 아래다
-    more = _between(picker, '<details class="run-more"', "</details>")
-    assert more.index('<span class="label">실험</span>') < more.index('<span class="label">회차</span>')
-    assert picker.count('<span class="label">회차</span>') == 1, "회차 줄은 한 자리에만 선다"
+    assert picker.count(ROUND_LABEL) == 1, "회차는 한 자리에만 선다"
 
 
 def test_경로가_있는_수집_실행은_실험이라_부르지_않는다(runs_client):
@@ -788,23 +793,20 @@ def test_경로가_있는_수집_실행은_실험이라_부르지_않는다(runs
     exp_label = f'<span class="label">{RUN_KIND_LABELS["experiment"]}</span>'
     probe_label = f'<span class="label">{RUN_KIND_LABELS["probe"]}</span>'
     picker = _between(runs_client.get("/orders").text,
-                      '<details class="m-fold no-print" open>', "차량별 지시서")
-    more = _between(picker, '<details class="run-more"', "</details>")
-    summary = _between(more, "<summary", "</summary>")
-    assert f"{RUN_KIND_LABELS['experiment']} 2개" in summary, summary
-    assert f"{RUN_KIND_LABELS['probe']} 1개" in summary, summary
-    assert probe not in _between(more, exp_label, "</div>"), "수집 실행이 '실험' 줄에 섰다"
-    assert probe in _between(more, probe_label, "</div>"), "수집 실행이 목록에서 사라졌다"
+                      '<div class="pickbar no-print">', "차량별 지시서")
+    assert f'{exp_label}<span class="pick-count">2개</span>' in picker, "실험 묶음의 개수가 틀렸다"
+    assert f'{probe_label}<span class="pick-count">1개</span>' in picker, "수집 묶음이 따로 서지 않았다"
+    assert probe not in _between(picker, exp_label, "</div>"), "수집 실행이 '실험' 묶음에 섰다"
+    assert probe in _between(picker, probe_label, "</div>"), "수집 실행이 목록에서 사라졌다"
     assert probe not in _between(picker, '<span class="label">계획</span>', "</div>")
 
-    # 고르면 묶음이 펴지고 회차 줄은 그 줄 바로 아래다
+    # 고르면 상자가 그 실행을 '수집'이라 말하고(실험이라 부르지 않는다), 회차 단추가 선다
     picker = _between(runs_client.get("/orders", params={"run_label": probe}).text,
-                      '<details class="m-fold no-print" open>', "차량별 지시서")
-    more = _between(picker, '<details class="run-more"', "</details>")
-    assert '<details class="run-more" open>' in picker
-    after = more.split(probe_label, 1)[1].split("</div>", 1)[1]
-    assert re.match(r'\s*<div class="filterbar">\s*<span class="label">회차</span>', after), \
-        f"회차 줄이 고른 실행의 줄 바로 아래가 아니다: {after[:200]}"
+                      '<div class="pickbar no-print">', "차량별 지시서")
+    summary = _between(picker, '<summary aria-labelledby="run-pick-name', "</summary>")
+    assert f'<span class="pick-sub">{RUN_KIND_LABELS["probe"]}</span>' in summary, summary
+    rounds = _between(picker, ROUND_LABEL, "</div>")
+    assert re.findall(r'aria-current="true">([^<]+)</a>', rounds) == [DURATION_LABELS[DURATIONS[0]]]
 
 
 # ───────────── /vehicles '최근 작업' — 기록에 있는 한 배정 (1.26.283) ─────────────
@@ -1004,10 +1006,11 @@ def test_한_실행을_골라도_증감이_남고_고른_실행이라고_말한�
     assert "80%" in first and 'class="delta good">▲ 25%' in first, f"골라도 증감이 남아야 한다: {first}"
     scope = _between(html, "data-kpi-scope", "</p>")
     assert 'href="/kpi"' in scope, "고른 상태를 푸는 길이 히어로에 없다"
-    # 링크 글자 안에서 줄이 바뀌지 않게 한 덩어리로 두고('한 실행만 보'/'기'), 좁은 화면에서 접힌
-    # 실행 고르기를 펴고 간다(1.26.284 검토 — 제목에만 닿고 칩은 접힌 채였다)
+    # 링크 글자 안에서 줄이 바뀌지 않게 한 덩어리로 두고('한 실행만 보'/'기'), 실행 고르기 상자를
+    # 펴고 간다(1.26.284 검토 — 제목에만 닿고 고르기는 닫힌 채였다 · 상자는 1.26.306)
     assert '<span class="no-print keep-links">' in scope
-    assert 'href="#kpi-runs" data-open-fold="#kpi-runs ~ details.m-fold"' in scope
+    assert 'href="#kpi-runs" data-open-fold="#run-pick"' in scope
+    assert '<details class="pick" id="run-pick">' in html, "펼 상자가 화면에 없다 — 링크가 헛돈다"
     assert 'e.target.closest("a[data-open-fold]")' in html, "펴는 스크립트가 없다"
     assert "⚠️" not in _between(html, '<section class="hero">', "</section>"),         "히어로에 컬러 이모지(VS16)가 남았다 — 표의 '⚠'와 모양·색이 갈린다"
 

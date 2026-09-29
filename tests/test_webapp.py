@@ -1870,8 +1870,28 @@ def test_인쇄하면_화면_골격이_빠진다():
     printed = css[css.index("@media print"):]
 
     for sel in ("header.global-nav", "nav.flow-nav", "nav.group-nav", "nav.tabbar", "footer.site",
-                ".filterbar", ".pager", ".col-toggle-wrap", ".row-more-wrap"):
+                ".filterbar", ".pickbar", ".pager", ".col-toggle-wrap", ".row-more-wrap"):
         assert sel in printed, f"인쇄에서 {sel}를 감추지 않는다"
+
+
+def test_고르기_상자는_밖을_누르거나_Esc로_닫히고_펴는_링크에는_닫히지_않는다():
+    """고르기 상자(1.26.306)의 판은 떠 있어 본문을 밀지 않는 대신 스스로 닫히지 않는다.
+
+    Esc는 **부가 창 규약**(가장 나중에 연 것 하나, 1.26.177)에 올려야 한다 — 따로 keydown을
+    달면 표 창과 한 번에 같이 닫힌다. 그리고 '다른 실행 고르기'(`data-open-fold`)는 상자를
+    펴러 누르는 링크라, 같은 클릭을 '밖을 눌렀다'로 세면 편 것이 바로 닫힌다.
+
+    고른 항목은 **판 안에서만** 굴린다 — `scrollIntoView`는 페이지까지 굴려, 그 링크의 부드러운
+    앵커 이동(`#kpi-runs`)을 도중에 끊고 표 제목을 화면 바닥에 세웠다(브라우저 확인에서 재현)."""
+    js = _css()
+    block = js[js.index("고르기 상자 닫기"):]
+    block = block[:block.index("})();")]
+
+    assert "pushEscLayer(fn)" in block and "popEscLayer(fn)" in block, "Esc를 부가 창 스택에 안 올렸다"
+    assert 'closest("a[data-open-fold]")' in block, "펴는 링크를 누르면 같은 클릭에 도로 닫힌다"
+    assert "relatedTarget" in block, "초점이 판 밖으로 나가도 닫히지 않는다"
+    assert "panel.scrollTop" in block, "고른 항목이 긴 판 아래로 숨는다"
+    assert "scrollIntoView(" not in block, "페이지까지 굴리면 앵커 이동이 끊긴다"
 
 
 # ── 표 팝업이 좁은 화면을 넘지 않는다 ───────────────────────────────

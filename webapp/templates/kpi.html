@@ -62,8 +62,8 @@
   {# 푸는 링크는 종이에 남기지 않는다(`no-print`) — 무엇을 골랐는지 문장만 남는다.
      링크 글자는 한 덩어리로 둔다(`.keep-links`) — 1300px에서 '한 실행만 보'/'기'로 쪼개져
      마지막 글자 하나가 다음 줄 맨 앞에 홀로 남았다(1.26.284 검토). 줄은 ' · ' 사이에서만 바뀐다.
-     '다른 실행 고르기'는 좁은 화면에서 접힌 실행 고르기를 **펴고** 간다(`data-open-fold`) — 제목에만
-     닿고 칩은 접힌 채라 한 번 더 눌러야 했다. #}
+     '다른 실행 고르기'는 실행 고르기 상자를 **펴고** 간다(`data-open-fold="#run-pick"`) — 제목에만
+     닿고 고르기는 닫힌 채라 한 번 더 눌러야 했다(1.26.284 검토 · 상자는 1.26.306). #}
   {% if selected_run %}
   <p class="lead" data-kpi-scope>
     {%- if rows %}고른 실행 <b>{{ selected_run }}</b>({{ condition_text(cond) }})만
@@ -71,10 +71,10 @@
     {%- elif not known_run %}기록된 실행이 아닙니다: <b>{{ selected_run }}</b>.
     {%- else %}고른 실행 <b>{{ selected_run }}</b>에는 성과 지표 기록이 없습니다.{% endif %}
     <span class="no-print keep-links"><a href="/kpi">전체 실행 보기</a> ·
-      <a href="#kpi-runs" data-open-fold="#kpi-runs ~ details.m-fold">다른 실행 고르기</a></span></p>
+      <a href="#kpi-runs" data-open-fold="#run-pick">다른 실행 고르기</a></span></p>
   {% elif latest_label %}
   <p class="lead" data-kpi-scope>가장 최근 실행은 <b>{{ latest_label }}</b>({{ condition_text(cond) }})입니다.
-    <span class="no-print keep-links"><a href="#kpi-runs" data-open-fold="#kpi-runs ~ details.m-fold">한 실행만 보기</a></span></p>
+    <span class="no-print keep-links"><a href="#kpi-runs" data-open-fold="#run-pick">한 실행만 보기</a></span></p>
   {% endif %}
   {# 증감의 짝은 **종류·요일 구분·회차 구성**이 같은 것이다 — '같은 조건'이라고만 쓰면 수요 기간까지
      같다고 읽힌다(1.26.284 검토 실측: `brokenmix4-2506`(25년 06월)의 짝이 26년 03월 실행). 기간이
@@ -262,7 +262,7 @@
   최장 작업(⚠)을 누르면 어느 차량이 넘었는지(차량 운용의 배정 이력)로 갑니다.</p>
 
 {% if runs %}
-{# 계획 먼저·최신순, 실험은 다음 줄, 좁은 화면에서는 접는다 — /vehicles와 같은 매크로(1.26.283). #}
+{# 실행 고르기 상자 — 판을 펴면 전체 · 계획(최신순) · 실험 묶음이 선다. /vehicles와 같은 매크로(1.26.283 → 1.26.306). #}
 {% from "_run_picker.html" import run_picker %}
 {{ run_picker(runs, selected_run, "/kpi") }}
 {% endif %}

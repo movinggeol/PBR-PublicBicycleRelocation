@@ -395,19 +395,28 @@ def test_스크롤되는_표는_머리글이_붙어_있다():
     assert "var(--surface)" in block.group(0)
 
 
-def test_그래프_그리드는_카드를_늘리지_않는다():
-    """'표로 보기'를 편 카드 때문에 **옆 카드에 빈 칸이 생기면 안 된다.**
+def test_그래프_그리드는_표를_펴도_옆_카드를_늘리지_않고_같은_줄은_바닥을_맞춘다():
+    """'표로 보기'를 편 카드 때문에 **옆 카드에 빈 칸이 생기면 안 된다** (1.21.1).
 
-    CSS Grid 항목은 기본이 `stretch`라, 한 카드에서 `<details>`를 펴면 같은 행의
-    다른 카드가 그 높이만큼 함께 늘어난다. 내용은 그대로인데 아래가 텅 빈 채로
-    커지므로 화면이 어수선해진다. `align-items: start`가 그걸 막는다.
+    1.21.1에는 표가 카드 안의 `<details>`로 펴져, CSS Grid의 기본 `stretch` 때문에 같은 행의
+    다른 카드가 그 높이만큼 늘어났다 — 그래서 `.viz-grid2`에 `align-items: start`를 줬다.
+    1.21.3부터 표는 **떠 있는 창**(`.table-panel { position: fixed }`)이라 펴도 카드 높이가
+    변하지 않는다. 지킬 것은 `start`가 아니라 **창이 떠 있다는 것**이다.
+
+    `start`만 남아 있었더니 같은 줄 카드의 바닥과 그래프 윗변이 어긋났다(1.26.306 — 설명이 두 줄인
+    '포화 시간' 카드만 그래프가 18px 내려앉았다, 1400px 실측). 이제 같은 줄 카드는 `subgrid`로
+    제목 · 설명 · 그래프 · 표 보기 네 줄을 나눠 쓴다.
     """
     css = BASE_TEMPLATE.read_text(encoding="utf-8")
-    block = re.search(r"\.viz-grid2\s*\{[^}]*\}", css)
+    panel = re.search(r"\n\s*\.table-panel\s*\{[^}]*\}", css)
+    grid = re.search(r"\.viz-grid2\s*\{[^}]*\}", css)
 
-    assert block, ".viz-grid2 규칙을 찾지 못했다"
-    assert "align-items: start" in block.group(0), (
-        "그래프 그리드에 align-items: start가 없다 — '표로 보기'를 펴면 옆 카드가 늘어난다")
+    assert panel and "position: fixed" in panel.group(0), (
+        "표 창이 떠 있지 않다 — '표로 보기'를 펴면 옆 카드가 늘어난다")
+    assert grid, ".viz-grid2 규칙을 찾지 못했다"
+    assert "align-items: start" not in grid.group(0), (
+        "start가 남으면 같은 줄 카드의 바닥 · 그래프 윗변이 어긋난다(1.26.306)")
+    assert "grid-template-rows: subgrid" in css, "같은 줄 카드가 네 줄의 높이를 나눠 쓰지 않는다"
 
 
 # ── 세로 막대 (1.26.78) ────────────────────────────────────────────────
