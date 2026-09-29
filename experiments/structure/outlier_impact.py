@@ -24,6 +24,13 @@
 **결론(1.20.8): 옮기지 않는다.** ③에서 계획이 13.4% 뒤바뀌었고, ④~⑥에서 잘리는
 것이 오류가 아니라 정상 이용의 상위 4%임이 드러났다(DECISIONS.md 6-1).
 
+**⑤도 걸지 않는다(1.26.304, 원본 19개월).** ⑤의 뒤바뀜(26년 3월 2.2% · 25년 11월 1.4%)은
+**전부 '거리 0인데 다른 대여소'** 에서 나온다. 그 기록은 실제 경과가 중앙 3분이고 61%가 2~60분인
+**실제 이동**이다 — 거리 기록만 빠졌다. 지우면 있었던 이동을 지운다. 걸리는 것의 74%(0분 · 같은
+대여소, 1분 안에 대여하고 제자리 반납)는 한 시간대 안에서 상쇄돼 계획을 하나도 바꾸지 않는다.
+하루 넘은 반납(미반납 처리)은 0~2건, 관제센터가 낀 기록은 0.1%다. 3,445km 같은 거리는 순수요가
+읽지 않는 필드의 오류다. 규칙별 값은 ⑤가 함께 찍는다.
+
 실행:
     python experiments/structure/outlier_impact.py
     python experiments/structure/outlier_impact.py --period "25년 11월"
@@ -225,6 +232,21 @@ def main() -> int:
         print(f"  작업 대상 뒤바뀜 {swapped_sane}곳 / {scope}곳"
               f" = **{swapped_sane / scope * 100:.1f}%**"
               f"  ·  목표재고 평균차 {sane['목표재고 평균차'].mean():.3f}대")
+    # 규칙별로 쪼갠다 — 뒤바뀜이 어느 규칙에서 오는지, 걸리는 것이 실제 이동인지(경과 시간)
+    elapsed = (pd.to_datetime(rentals["반납일시"], errors="coerce")
+               - pd.to_datetime(rentals["대여일시"], errors="coerce")).dt.total_seconds() / 60
+    print(f"  {'규칙':14} {'행':>8} {'경과 중앙(분)':>12} {'뒤바뀜':>8} {'목표재고 평균차':>14}")
+    for name, rule in obvious_error_rules(rentals).items():
+        if not rule.any():
+            print(f"  {name:14} {0:>8}")
+            continue
+        net_rule = net_demand(rentals[~rule])
+        part = pd.DataFrame([x for x in (
+            compare(plan_from(net_all, d, args.day_type),
+                    plan_from(net_rule, d, args.day_type), d) for d in WINDOWS) if x])
+        flipped = int(part["전체만"].sum() + part["제거만"].sum())
+        print(f"  {name:14} {int(rule.sum()):>8,} {elapsed[rule].median():>12.1f} "
+              f"{flipped:>8} {part['목표재고 평균차'].mean():>14.3f}")
 
     print("\n⑥ 순수요가 **실제로 쓰는 네 필드**는 성한가")
     integrity(period)
@@ -285,22 +307,38 @@ def describe_range(rentals: pd.DataFrame) -> None:
               f"  ·  95분위 {values.quantile(0.95):.1f}")
 
 
-def obvious_errors(rentals: pd.DataFrame) -> pd.Series:
-    """**분포가 아니라 뜻으로** 걸러 낸다 — 있을 수 없는 값만.
+def obvious_error_rules(rentals: pd.DataFrame) -> dict:
+    """⑤의 규칙을 하나씩 돌려준다 — 뒤바뀜이 어느 규칙에서 오는지 가르기 위해서다.
 
-    IQR은 "남들과 다르다"를 자르고, 이쪽은 "말이 안 된다"를 자른다. 순수요는 건수만
-    세므로, 지워야 할 것이 있다면 **대여 자체가 성립하지 않는 기록**뿐이다.
+    '0분'은 같은 대여소와 다른 대여소로 나눈다. 같은 대여소에서 1분 안에 대여하고 반납한
+    기록은 한 시간대 안에서 대여 −1 · 반납 +1로 상쇄돼 순수요를 바꾸지 않는다.
     """
     minutes = pd.to_numeric(rentals["이용시간(분)"], errors="coerce")
     km = pd.to_numeric(rentals["이용거리(km)"], errors="coerce")
     same_station = rentals["대여_대여소ID"] == rentals["반납_대여소ID"]
+    return {
+        "0분·같은곳": (minutes <= 0) & same_station,     # 대여하자마자 제자리 반납
+        "0분·다른곳": (minutes <= 0) & ~same_station,    # 1분 안에 다른 대여소
+        "하루 이상": minutes >= 24 * 60,                 # 미반납 처리
+        "거리<0": km < 0,                                # 있을 수 없는 거리
+        "거리0·다른곳": (km == 0) & ~same_station,       # 다른 대여소인데 이동거리가 0
+    }
 
-    return (
-        (minutes <= 0)                      # 시간이 흐르지 않은 대여
-        | (minutes >= 24 * 60)              # 하루를 넘김 = 미반납 처리
-        | (km < 0)                          # 있을 수 없는 거리
-        | ((km == 0) & ~same_station)       # 다른 대여소인데 이동거리가 0
-    )
+
+def obvious_errors(rentals: pd.DataFrame) -> pd.Series:
+    """**분포가 아니라 뜻으로** 걸러 낸다 — 있을 수 없어 보이는 값만.
+
+    IQR은 "남들과 다르다"를 자르고, 이쪽은 "말이 안 된다"를 자른다. 순수요는 건수만
+    세므로, 지워야 할 것이 있다면 **대여 자체가 성립하지 않는 기록**뿐이다.
+
+    ⚠️ 원본으로 재 보니 '거리 0인데 다른 대여소'는 **성립하는 대여**였다 — 경과 중앙 3분의
+    실제 이동이고 거리 기록만 빠졌다(1.26.304). 그래서 이 필터는 계획에 걸지 않는다.
+    """
+    rules = obvious_error_rules(rentals)
+    mask = pd.Series(False, index=rentals.index)
+    for rule in rules.values():
+        mask |= rule
+    return mask
 
 
 if __name__ == "__main__":

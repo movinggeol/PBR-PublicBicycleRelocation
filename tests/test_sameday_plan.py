@@ -29,6 +29,14 @@ def plan():
     return module
 
 
+@pytest.fixture
+def ascii_paths(plan, monkeypatch):
+    """저장소·파이썬 경로를 ASCII로 고정한다 — 경로는 PC마다 달라 고정하지 않으면 한글 경로의
+    PC(집 PC)에서만 거는 테스트가 실패한다(1.26.303에서 발견)."""
+    monkeypatch.setattr(plan, "ROOT", Path(r"C:\pbr"))
+    monkeypatch.setattr(plan.sys, "executable", r"C:\pbr\.venv\Scripts\python.exe")
+
+
 def test_라벨과_작업_이름(plan):
     assert plan.label_for(date(2026, 9, 25), "_05_10", "holiday") == "2026-09-25 05 휴일 동시각"
     assert plan.label_for(date(2026, 9, 23), "_10_15", "weekday", "check") \
@@ -61,9 +69,9 @@ def test_파이프라인_명령은_TMAP을_부르지_않고_스냅샷을_라이�
     assert command[command.index("--day-type") + 1] == "holiday"
 
 
-def test_스케줄러에_넘기는_것은_ASCII다(plan):
+def test_스케줄러에_넘기는_것은_ASCII다(plan, ascii_paths):
     """🔴 한글은 파이썬 안에서만 만든다. 작업 이름·인자에 한글이 섞이면 PowerShell과
-    작업 스케줄러 사이에서 인코딩이 끼어든다."""
+    작업 스케줄러 사이에서 인코딩이 끼어든다. 한글 경로는 아래 테스트가 따로 본다."""
     script = plan.install_script(
         [("PBR-sameday-20260925-05", datetime(2026, 9, 25, 5, 3), "_05_10")], "holiday")
     assert "run --duration _05_10 --day-type holiday" in script
@@ -71,6 +79,19 @@ def test_스케줄러에_넘기는_것은_ASCII다(plan):
     assert script.isascii()
     with pytest.raises(ValueError):
         plan.install_script([], "holiday", extra="--tag 점검")
+
+
+@pytest.mark.parametrize("root, python", [
+    (r"C:\myPython\졸작(4-1,4-2)", r"C:\pbr\.venv\Scripts\python.exe"),
+    (r"C:\pbr", r"C:\Users\이동걸\python.exe"),
+])
+def test_한글_경로에서는_예약을_걸지_않는다(plan, monkeypatch, root, python):
+    """경로도 스케줄러에 넘기는 인자다. 무인으로 도는 날 조용히 실패하느니 거는 자리에서 멈춘다."""
+    monkeypatch.setattr(plan, "ROOT", Path(root))
+    monkeypatch.setattr(plan.sys, "executable", python)
+    with pytest.raises(ValueError, match="ASCII"):
+        plan.install_script(
+            [("PBR-sameday-20260925-05", datetime(2026, 9, 25, 5, 3), "_05_10")], "holiday")
 
 
 class _Clock(datetime):
@@ -124,7 +145,7 @@ def test_평일_계획을_휴일에_세우지_않는다(plan, monkeypatch, tmp_p
     assert "휴일이다" in next(tmp_path.glob("*.log")).read_text(encoding="utf-8")
 
 
-def test_걸_때도_요일_구분이_어긋난_날은_뺀다(plan, monkeypatch):
+def test_걸_때도_요일_구분이_어긋난_날은_뺀다(plan, monkeypatch, ascii_paths):
     """평일로 걸면 10-03(토)·10-05(대체공휴일)는 빠지고, 휴일로 걸면 10-02(금)가 빠진다."""
     monkeypatch.setattr(plan, "datetime", _Clock)            # 2026-09-23 05:03
     scripts = []

@@ -167,6 +167,12 @@ def install_script(entries: list[tuple[str, datetime, str]], day_type: str,
         raise ValueError("스케줄러에 넘기는 인자는 ASCII여야 한다")
     pythonw = Path(sys.executable).with_name("pythonw.exe")
     script = ROOT / "tools" / "sameday_plan.py"
+    # 경로도 인자다 — 저장소나 가상환경이 한글 경로에 있으면(집 PC `졸작(4-1,4-2)`) 걸지 않는다.
+    # 무인으로 도는 날 조용히 실패하느니 거는 자리에서 멈춘다. 회사 PC(A)는 ASCII 경로에서
+    # 62개를 걸어 정시에 돌았다(1.26.304).
+    for what, path in (("파이썬", pythonw), ("저장소", ROOT)):
+        if not str(path).isascii():
+            raise ValueError(f"{what} 경로에 ASCII가 아닌 글자가 있어 예약을 걸지 않는다: {path}")
     lines = [
         "$s = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew "
         "-ExecutionTimeLimit (New-TimeSpan -Minutes 15) -StartWhenAvailable "
@@ -203,7 +209,12 @@ def install(args: argparse.Namespace) -> int:
     if not entries:
         print("걸 작업이 없습니다.")
         return 1
-    result = _powershell(install_script(entries, args.day_type))
+    try:
+        script = install_script(entries, args.day_type)
+    except ValueError as e:
+        print(f"  ❌ {e}")
+        return 1
+    result = _powershell(script)
     if result.returncode != 0:
         print(result.stderr.strip())
         return result.returncode
