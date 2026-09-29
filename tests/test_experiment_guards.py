@@ -1448,6 +1448,215 @@ def test_F2_평가하는_날은_앞선_학습_날이_있는_온전한_평일이�
     assert all(d.weekday() < 5 for d in days)
 
 
+# ───────────────────────────── ML 10번 · F3 하네스 (1.26.305) — 포화 확률로 배송 후보를 거른다
+#
+# 9번(결품 예측)의 거울상이다. 9번에서 지킨 절차 — 날짜 분할 · 미래를 안 보는 피처 · 학습 구간에서만
+# 만든 과거 빈도 · 구간별 검사 — 를 그대로 지키고, 포화만의 함정 하나(거치대에 매여 있다)를 더 본다.
+
+def test_포화예측_라벨은_거치대의_90퍼센트이고_거치대를_모르면_뺀다():
+    """사전 등록 안(ML_후보_10 1번) — 거치대의 90% 이상. 거치대를 모르는 곳을 0칸으로 두면 늘
+    포화가 되고, 비워 두면 비율 피처가 통째로 빠진다 — 그래서 뺀다."""
+    from experiments.structure import saturation_forecast as satf
+
+    frame = pd.DataFrame({"station_id": ["ST0001", "ST0001", "ST0002", "ST0003", "ST0004"],
+                          "stock": [9, 8, 27, 5, 3]})
+    capacity = pd.Series({"ST0001": 10, "ST0002": 30, "ST0003": 0})
+
+    got = satf.label_saturation(frame, capacity)
+
+    assert list(got["station_id"]) == ["ST0001", "ST0001", "ST0002"]   # 0칸 · 모르는 곳은 뺀다
+    assert list(got["포화"]) == [1, 0, 1]                              # 9/10 · 8/10 · 27/30
+
+
+def test_포화예측_피처가_미래를_보지_않고_거치대_비율로_가른다():
+    """🔴 같은 재고 10대라도 10칸은 포화, 30칸은 아니다 — 비율 피처가 그것을 가른다.
+    그리고 9번과 같이, 타깃 말고는 t보다 뒤를 보면 안 된다(계단 앞 구간이 오염되지 않는다)."""
+    from experiments.structure import saturation_forecast as satf
+
+    rows = []
+    for t in range(60):
+        ts = pd.Timestamp("2026-09-01 07:00") + pd.Timedelta(minutes=10 * t)
+        for sid in ("ST0001", "ST0002"):
+            rows.append({"observed_at": str(ts), "station_id": sid, "stock": 2 if t < 30 else 10})
+    frame = pd.DataFrame(rows)
+    frame["ts"] = pd.to_datetime(frame["observed_at"])
+    frame = satf.label_saturation(frame, pd.Series({"ST0001": 10, "ST0002": 30}))
+
+    long = satf.build_features(frame, horizon=6)
+
+    앞 = long[long["ts"] < pd.Timestamp("2026-09-01 12:00")]
+    assert (앞["지금포화"] == 0).all(), "현재 상태가 미래에 오염됐다"
+    assert (앞["최근6틱포화비율"] == 0).all(), "이동평균이 미래를 봤다"
+    assert (long["타깃"] == 1).any(), "타깃이 미래를 전혀 안 본다"
+    뒤 = long[long["ts"] >= pd.Timestamp("2026-09-01 12:30")]
+    assert (뒤.loc[뒤["station_id"] == "ST0001", "재고비율"] == 1.0).all()
+    assert (뒤.loc[뒤["station_id"] == "ST0002", "재고비율"] < satf.SAT_RATIO).all()
+    assert (뒤.loc[뒤["station_id"] == "ST0002", "지금포화"] == 0).all()
+    assert set(satf.FEATURES) - {"대여소시간대포화비율"} <= set(long.columns)
+
+
+def test_포화예측_과거빈도표는_학습구간에서만_만든다():
+    """검증 구간의 값으로 만들면 누출이다 — 9번과 같은 규칙."""
+    from experiments.structure import saturation_forecast as satf
+
+    train = pd.DataFrame({"station_id": ["ST0001"] * 4, "시": [7, 7, 8, 8],
+                          "지금포화": [1.0, 1.0, 0.0, 0.0], "타깃": [1, 1, 0, 0]})
+    test = pd.DataFrame({"station_id": ["ST0001", "ST0001"], "시": [7, 8],
+                         "지금포화": [0.0, 1.0], "타깃": [0, 1]})   # 학습과 정반대로 둔다
+
+    _, te = satf.add_station_history(train, [train, test])
+
+    assert te.loc[te["시"] == 7, "대여소시간대포화비율"].iloc[0] == 1.0, "검증 값이 표에 섞였다"
+    assert te.loc[te["시"] == 8, "대여소시간대포화비율"].iloc[0] == 0.0
+
+
+def test_포화예측_판정_경로가_구간검사를_부르고_지는_구간을_숨기지_않는다():
+    """'늘 차는 곳 부르기'를 성능으로 착각하지 않기 위한 절 — 정의만 있고 안 부르면 소용없다."""
+    import ast
+    import inspect
+
+    from experiments.structure import saturation_forecast as satf
+
+    calls = {node.func.id for node in ast.walk(ast.parse(inspect.getsource(satf.main)))
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+    assert {"report_by_base_rate", "report_by_capacity"} <= calls
+    src = inspect.getsource(satf.report_by_base_rate)
+    assert "진다" in src and "min(" in src, "지는 구간을 두 베이스라인 중 나은 쪽과 겨뤄 찍지 않는다"
+
+
+@pytest.fixture(scope="module")
+def f3():
+    spec = importlib.util.spec_from_file_location(
+        "f3_drop_saturation",
+        PROJECT_ROOT / "experiments" / "structure" / "f3_drop_saturation.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_F3_포화_확률이_모두_낮으면_운영_step1과_같다(f3):
+    """배송 쪽만 바꾸는 선정이라, 확률이 아무것도 거르지 않으면 현행과 **같은 답**이어야 한다 —
+    C1 · C2와 현행의 차이에 '선정 코드가 다른 몫'이 섞이지 않았다는 증거다."""
+    import io
+
+    step1 = load_step1_module()
+    rebal = _재배치량_프레임([9, 3, 7, 4, 0, -8, -3, -6, -5, 1])
+    info = _대여소정보(10)
+    buffer = io.StringIO()
+    rebal.to_csv(buffer, index=False)
+    buffer.seek(0)
+    want = step1.select_top_unbalanced_st(buffer, "_10_15", info)
+    low = pd.Series(0.1, index=info["station_id"])
+
+    for got in (f3.c1_select(rebal, info, low), f3.c2_select(rebal, info, low)):
+        assert list(got["station_id"]) == list(want["station_id"])
+        assert list(got["rebal_qty"]) == list(want["rebal_qty"])
+
+
+def test_F3_C1은_곧_찰_곳을_배송에서_빼고_수거는_확률을_보지_않는다(f3):
+    rebal = _재배치량_프레임([9, 3, 7, -8, -3, -6])
+    info = _대여소정보(6)
+    p = pd.Series({"ST0001": 0.1, "ST0002": 0.8, "ST0003": 0.5,
+                   "ST0004": 0.9, "ST0005": 0.0, "ST0006": 0.2})
+
+    got = f3.c1_select(rebal, info, p)
+
+    drops = got[got["rebal_qty"] > 0]["station_id"].tolist()
+    picks = got[got["rebal_qty"] < 0]["station_id"].tolist()
+    assert drops == ["ST0001"]                         # 0.8 · 0.5 ≥ 0.5는 뺐다
+    assert picks == ["ST0004"]                         # P 0.9여도 수거는 남는다(9대에 맞춰 8대)
+
+
+def test_F3_C2는_곧_찰_곳을_자르는_자리_뒤로_민다(f3):
+    rebal = _재배치량_프레임([9, 6, -8, -7])
+    info = _대여소정보(4)
+    p = pd.Series({"ST0001": 1.0, "ST0002": 0.0, "ST0003": 0.0, "ST0004": 0.0})
+
+    got = f3.c2_select(rebal, info, p)
+
+    drops = got[got["rebal_qty"] > 0]["station_id"].tolist()
+    assert drops[0] == "ST0002"                        # 6 × 1.5 = 9.0 > 9 × 0.5 = 4.5
+
+
+def _f3_rows(arms: dict, days: int = 20) -> list:
+    """방법마다 (포화 시작값, 날마다 기울기, 결품)을 받아 20일 × 씨앗 하나의 가짜 결과를 만든다."""
+    rows = []
+    for day in range(days):
+        for method, (sat, slope, out) in arms.items():
+            rows.append({"day": day, "duration": "_10_15", "method": method, "seed": 42,
+                         "포화": sat + slope * day, "결품": out, "km": 100.0, "vehicles": 10,
+                         "포화_[0.00,0.20)": sat})
+    return rows
+
+
+def test_F3_포화가_줄어도_결품이_5퍼센트_넘게_늘면_통과하지_않고_20일_전에는_보류다(f3):
+    """채택은 *포화 ↓ 이고 결품이 +5% 안* (ML_고도화_계획 3장 F3). 결품을 판 포화 감소는 이득이 아니다."""
+    rows = _f3_rows({"현행": (0.30, 0.001, 1.00), "C1N": (0.30, 0.001, 1.00),
+                     "C1": (0.20, 0.002, 1.06), "C2": (0.20, 0.002, 1.04)})
+
+    got = {v["method"]: v for v in f3.evaluate(rows, day_count=20)}
+    assert got["C1"]["판정"].startswith("❌")          # 결품 +6%
+    assert got["C2"]["판정"].startswith("✅")          # 결품 +4% · 20짝 모두 포화가 줄었다 · C1N보다도
+    assert got["C1N"]["판정"].startswith("❌")         # 현행과 같다 — 줄지 않았다
+    assert all(v["판정"].startswith("보류") for v in f3.evaluate(rows, day_count=19))
+
+
+def test_F3_순수요_누적으로_같은_이득이면_ML을_채택하지_않는다(f3):
+    """🔴 F1의 교훈 — ML의 이득처럼 보이던 것이 파이프라인이 이미 아는 순수요 한 줄이었다.
+    C2가 현행을 이겨도 C1N(비-ML)과 같으면 'ML의 몫'이 아니다. C1N은 비-ML 보정 후보로 적는다."""
+    rows = _f3_rows({"현행": (0.30, 0.001, 1.00), "C1N": (0.20, 0.002, 1.02),
+                     "C2": (0.20, 0.002, 1.02)})
+
+    got = {v["method"]: v for v in f3.evaluate(rows, day_count=20)}
+    assert got["C2"]["판정"].startswith("⚠️") and got["C2"]["ML의몫"] is False
+    assert got["C1N"]["판정"].startswith("✅ 비-ML")
+
+
+def test_F3_C1N은_평균_순유입으로_곧_찰_곳만_뺀다(f3):
+    """C1N의 판정 = (회차 시작 재고 − 창의 평균 순유출) ≥ 거치대 × 0.9. 순수요는 양수가 유출이다."""
+    info = pd.DataFrame({"station_id": ["ST0001", "ST0002", "ST0003"],
+                         "stock": [7, 7, 9], "parking_lot": [10, 10, 10]})
+    mu = pd.DataFrame(0.0, index=["ST0001", "ST0002"], columns=range(24))
+    mu.loc["ST0001", [10, 11]] = -1.0                  # 두 시간 순유입 2대 → 9대, 찬다
+    mu.loc["ST0002", [10, 11]] = +1.0                  # 두 시간 순유출 2대 → 5대
+
+    got = f3.net_full(info, mu, "_10_15")
+
+    assert got.to_dict() == {"ST0001": 1.0, "ST0002": 0.0, "ST0003": 1.0}   # 통계에 없으면 지금 재고로
+
+
+def test_F3_구간이_하나라도_나빠지거나_기준_0에서_늘면_통과하지_않는다(f3):
+    """늘 차는 곳 몇 군데를 비워 평균을 끌어내린 것이 아닌지(9번 검사 ④) — 그리고 기준이 0인
+    비용이 늘었을 때 비를 0으로 두면 '안 늘었다'가 된다."""
+    pair = pd.DataFrame({"포화_[0.00,0.20)": [0.5], "포화_[0.00,0.20)_기준": [0.4],
+                         "포화_[0.95,1.00)": [1.0], "포화_[0.95,1.00)_기준": [3.0]})
+    names = ["[0.00,0.20)", "[0.95,1.00)"]
+
+    assert not f3.bins_not_worse(pair, names)
+    pair["포화_[0.00,0.20)"] = [0.4]
+    assert f3.bins_not_worse(pair, names)
+    assert f3.cost_ratio(0.1, 0.0) == float("inf")
+    assert f3.cost_ratio(0.0, 0.0) == 0.0
+
+
+def test_포화예측_순수요_누적은_유입이면_차고_유출이면_비운다():
+    """베이스라인 ③ — 파이프라인이 이미 아는 시간대 평균 순수요로 k틱 뒤를 민다(F1의 N과 같은 식).
+    한 시간 평균을 여섯 칸에 고르게 나누므로 6틱 = 그 시간 평균 하나다."""
+    from experiments.structure import saturation_forecast as satf
+
+    mu = pd.DataFrame(0.0, index=["ST0001", "ST0002"], columns=range(24))
+    mu.loc["ST0001", 10] = -6.0                        # 10시에 6대 순유입
+    mu.loc["ST0002", 10] = +6.0                        # 10시에 6대 순유출
+    long = pd.DataFrame({"ts": pd.to_datetime(["2026-09-21 10:00", "2026-09-21 10:00",
+                                               "2026-09-21 09:00"]),   # 월요일 — 평일 통계
+                         "station_id": ["ST0001", "ST0002", "ST0001"],
+                         "재고": [5.0, 12.0, 5.0], "거치대": [10.0, 10.0, 10.0]})
+
+    got = satf.net_baseline(long, {False: mu, True: mu.iloc[0:0]}, horizon=6)
+
+    assert list(got) == [1.0, 0.0, 0.0]               # 5+6=11 찬다 · 12−6=6 · 9시대는 움직임 없음 5
+
+
 # ------------------------------------------- 예보 실험: 한 달이 늦어도 죽지 않는다
 
 def load_forecast_impact():
