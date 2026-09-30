@@ -1,0 +1,9 @@
+{# 현장 앱의 빈 상태 — 무엇이 없는지와 어떻게 채우는지를 같이 말한다(웹 빈 상태 규약). #}
+<div class="m-card"><p class="empty">
+{%- if carried.run_label %}<b>{{ run_label }}</b>{% if duration %} {{ duration_label or duration }}{% endif %}에는 경로가 없습니다.
+  <a href="/m">최신 계획 보기</a>
+{%- elif run_label %}최신 계획 <b>{{ run_label }}</b>에 경로가 없습니다.
+  <a href="/run">관제 화면에서 계획을 실행</a>하면 여기에 뜹니다.
+{%- else %}아직 경로가 있는 계획이 없습니다.
+  <a href="/run">관제 화면에서 계획을 실행</a>하면 여기에 오늘 작업이 뜹니다.
+{%- endif %}</p></div>

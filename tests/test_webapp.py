@@ -1751,12 +1751,20 @@ def _tokens(block: str) -> dict:
 
 
 def _css(name: str = "base.html") -> str:
+    """템플릿 원문 — **토큰 조각(`_tokens.html`)은 펼쳐서** 돌려준다 (1.26.307).
+
+    색 토큰은 관제 화면과 현장 앱이 함께 읽도록 조각으로 뗐다. 펼치지 않으면
+    아래 명암비 시험들이 `:root` 블록을 못 찾고, 찾더라도 엉뚱한 규칙을 잰다.
+    Jinja 주석은 화면에 실리지 않으므로 렌더처럼 걷어 낸다."""
     from pathlib import Path
 
     from webapp import app as webapp_app
 
-    return (Path(webapp_app.__file__).parent / "templates" / name).read_text(
-        encoding="utf-8")
+    templates = Path(webapp_app.__file__).parent / "templates"
+    text = (templates / name).read_text(encoding="utf-8")
+    tokens = re.sub(r"\{#.*?#\}", "", (templates / "_tokens.html").read_text(
+        encoding="utf-8"), flags=re.S)
+    return text.replace('{% include "_tokens.html" %}', tokens)
 
 
 def test_흐린_글자색이_라이트_모드에서_읽힌다():

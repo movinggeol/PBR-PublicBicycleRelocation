@@ -1,0 +1,17 @@
+{# 현장 앱 화면 머리 — 지금 어느 계획·회차를 보고 있는지와 회차 고르기 (1.26.307).
+   네 화면이 같은 줄을 쓴다. 실행은 `/orders`와 같은 기본값(최신 계획)이고, 운영 계획이
+   아니면 **먼저 경고한다** — 실험 계획을 들고 현장에 나가면 안 된다(1.26.107의 사고). #}
+{% if run_label and plan.vehicles %}
+<p class="m-sub">{{ duration_label or duration }} · 계획 <span class="num">{{ run_label }}</span>{% if plan.start %} · {{ plan.start }} 시작{% endif %}</p>
+{% if current_group and current_group.kind and current_group.kind != 'plan' %}
+<p class="m-alert warn"><span class="m-badge is-warn">{{ kind_labels.get(current_group.kind, current_group.kind) }}</span>
+  운영 계획이 아닙니다 — 현장에 나가기 전에 <a href="{{ tabs.me }}#plans">계획을 확인</a>하세요.</p>
+{% endif %}
+{% if field_durations | length > 1 %}
+<nav class="m-seg" aria-label="회차">
+  {%- for d in field_durations %}
+  <a href="{{ d.href }}" aria-label="{{ d.label }}"{% if d.value == duration %} aria-current="page"{% endif %}>{{ d.short }}</a>
+  {%- endfor %}
+</nav>
+{% endif %}
+{% endif %}

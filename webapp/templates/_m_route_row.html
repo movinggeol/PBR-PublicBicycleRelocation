@@ -1,0 +1,19 @@
+{# 차량 한 대의 경로 줄 — 오늘 작업 목록. 상태 딱지는 스크립트가 체크로 고친다(없으면 '예정'). #}
+<li data-vehicle="{{ v.id }}">
+  <a class="m-row" href="{{ route_links[v.id] }}">
+    <span class="m-dot" style="--c: {{ v.color }}" aria-hidden="true"></span>
+    <span class="main">
+      <span class="name">{{ v.id }}
+        {%- if v.id == mine %} <span class="m-badge is-mine">내 차량</span>{% endif %}
+        <span class="m-badge is-todo" data-status>예정</span></span>
+      <span class="meta">
+        {%- if v.travel_min is not none and v.work_min is not none -%}
+          이동 {{ hm(v.travel_min) }} · 작업 {{ hm(v.work_min) }}
+        {%- else -%}
+          소요 {{ hm(v.minutes) }}
+        {%- endif %} · {{ v.stations }}곳 · {{ v.bikes }}대<span data-done></span></span>
+      <span class="chain">{{ v.chain[:4] | join(" → ") }}{% if v.chain | length > 4 %} 외 {{ v.chain | length - 4 }}곳{% endif %}</span>
+    </span>
+    <svg class="m-chev" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6"/></svg>
+  </a>
+</li>

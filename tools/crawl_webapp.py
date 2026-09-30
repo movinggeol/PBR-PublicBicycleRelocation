@@ -51,6 +51,9 @@ import project_config  # noqa: F401  — 출력 인코딩을 UTF-8로 못 박는
 FIXED_URLS = [
     "/", "/run", "/kpi", "/vehicles", "/orders", "/maps", "/data", "/collect", "/guide",
     "/device", "/device?path=/kpi",
+    # 현장 앱(1.26.307) — 내 차량 쿠키가 없을 때의 네 화면과 오류 경로
+    "/m", "/m/route", "/m/progress", "/m/me", "/device?path=/m",
+    "/m?run_label=없음", "/m/route?vehicle=없는차",
     "/api/pipeline-runs", "/api/kpi", "/api/vehicles", "/api/vehicles/assignments",
     "/api/stations", "/api/plans/ilp", "/api/plans/vrp", "/api/metrics", "/api/route-summary",
     "/없는페이지", "/files/없음.csv", "/preview/없음.csv", "/view/없음.html",
@@ -80,6 +83,8 @@ def collect_urls(client, store, catalog, previews_per_group: int) -> list:
     for t in targets:
         base = f"/orders?run_label={quote(t['run_label'])}&duration={quote(t['duration'])}"
         urls += [base, f"/orders?run_label={quote(t['run_label'])}"]
+        scope = f"run_label={quote(t['run_label'])}&duration={quote(t['duration'])}"
+        urls += [f"/m?{scope}", f"/m/progress?{scope}"]
     if targets:
         # 차량별 보기는 첫 계획에서만 — 17대 × 39계획을 다 돌 이유가 없다.
         t = targets[0]
@@ -88,6 +93,10 @@ def collect_urls(client, store, catalog, previews_per_group: int) -> list:
         for name in sorted(set(re.findall(r"vehicle=([^\"&]+)", html)))[:3]:
             urls.append(f"{base}&vehicle={name}")
         urls.append(f"{base}&vehicle=없는차")
+        # 현장 앱 경로 안내 — 같은 첫 계획의 차량 셋(`?vehicle=`는 쿠키 없이 그 차를 연다).
+        scope = f"run_label={quote(t['run_label'])}&duration={quote(t['duration'])}"
+        for name in sorted(set(re.findall(r"vehicle=([^\"&]+)", html)))[:3]:
+            urls.append(f"/m/route?{scope}&vehicle={name}")
 
     for group in catalog.list_maps():
         for entry in group["entries"]:

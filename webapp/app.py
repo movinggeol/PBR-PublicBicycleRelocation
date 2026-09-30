@@ -21,7 +21,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -44,8 +44,8 @@ from project_config import (ROAD_FIXED_SEC_WEEKDAY, ROAD_SPEED_KMPH_WEEKDAY, USE
     normalize_fleet_size, normalize_per_round, normalize_period, resolve_day_type,
 )
 import tashu
-from webapp import (catalog, charts, collect_view, jobs, kpi_view, orders, store,
-                    weather_view)
+from webapp import (catalog, charts, collect_view, jobs, kpi_view, mobile_view, orders,
+                    store, weather_view)
 
 app = FastAPI(title="PBR 파이프라인 대시보드", docs_url="/api/docs")
 
@@ -1108,6 +1108,161 @@ def orders_live(request: Request, run_label: Optional[str] = None,
     context["live_summary"] = orders.summarize(compared)
     context["checked_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
     return templates.TemplateResponse(request, "orders.html", context)
+
+
+# ════════ 현장 앱 (/m) — 기사가 폰으로 드는 화면 (1.26.307) ════════
+# 관제 화면과 **독립된** 화면 묶음이다 — `base.html`을 상속하지 않고(`m_base.html`),
+# 관제 화면의 라우트·템플릿을 건드리지 않는다. 계획은 `/orders`와 같은
+# `_orders_context()`로 고른다(기본 실행·회차 규칙이 한 벌). 체크 기록은 이 기기의
+# localStorage에만 남고 서버는 모른다(`mobile_view` 머리말). 서버가 기억하는 것은
+# '내 차량' 쿠키 하나다 — 그래야 첫 화면의 타일과 경로 안내를 서버가 그 차량으로 그린다.
+FIELD_VEHICLE_COOKIE = "pbr_field_vehicle"
+# 차량 이름은 `V07` 모양이다. 쿠키에 한글을 넣으면 브라우저마다 다르게 깨지므로 ASCII만
+# 받는다 — 차량이 없던 옛 산출물의 '군집 N'은 내 차량으로 고를 수 없고 `?vehicle=`로만 본다.
+_FIELD_VEHICLE_RE = re.compile(r"^[A-Za-z0-9_-]{1,24}$")
+# 저장 뒤 돌아갈 곳은 현장 앱 안으로만 — 폼 값을 그대로 넘기면 바깥 주소로 튄다.
+_FIELD_NEXT_RE = re.compile(r"^/m(?:/[a-z]+)?(?:\?[^#\s]*)?$")
+FIELD_TABS = (("today", "/m"), ("route", "/m/route"), ("progress", "/m/progress"), ("me", "/m/me"))
+
+
+def _field_href(path: str, **params) -> str:
+    kept = {k: v for k, v in params.items() if v}
+    return path + ("?" + urlencode(kept) if kept else "")
+
+
+def _field_context(request: Request, run_label: Optional[str], duration: Optional[str],
+                   tab: str) -> dict:
+    """현장 앱 네 화면의 공통 재료."""
+    context = _orders_context(run_label, duration)
+    frames = context.pop("_frames")
+    context.pop("_all_sheets")
+    run_label, duration = context["run_label"], context["duration"]
+    plan = mobile_view.build_plan(
+        context["sheets"], context["sheet_names"],
+        frames["candidates"] if frames else None,
+        mobile_view.route_minutes(run_label, duration), duration)
+
+    mine = request.cookies.get(FIELD_VEHICLE_COOKIE) or ""
+    if not _FIELD_VEHICLE_RE.match(mine):
+        mine = ""
+    # 스크립트가 읽는 한 벌(`<script type="application/json">`). 체크 기록의 열쇠가
+    # (실행, 회차)라 둘을 싣고, 지도 바탕도 여기서 넘긴다(템플릿에 주소를 박지 않는다).
+    plan.update({"run_label": run_label, "duration": duration, "mine": mine,
+                 "tiles": mobile_view.tile_source()})
+    # 탭은 **주소에 있던** 실행·회차만 싣고 다닌다 — base.html 3단 내비와 같은 방식이다.
+    # 고른 값을 늘 박아 두면, 새 계획이 나온 뒤에도 탭을 오가는 동안 옛 계획에 묶인다.
+    carried = {k: request.query_params.get(k) for k in ("run_label", "duration")}
+    here = request.url.path
+    group = context["current_group"]
+    context.update({
+        "plan": plan,
+        "mine": mine,
+        "mine_route": next((v for v in plan["vehicles"] if v["id"] == mine), None),
+        "tab": tab,
+        "tabs": {name: _field_href(path, **carried) for name, path in FIELD_TABS},
+        "carried": {k: v for k, v in carried.items() if v},
+        "field_durations": [
+            {**d, "short": mobile_view.short_name(d["value"]),
+             "href": _field_href(here, run_label=run_label, duration=d["value"],
+                                 vehicle=request.query_params.get("vehicle"))}
+            for d in (group["durations"] if group else [])],
+        # 관제 화면으로 가는 길 — 이 계획·회차를 싣는다. 템플릿에서 조립하면 빈 값이
+        # 'None'으로 주소에 샌다.
+        "links": {
+            "orders": _field_href("/orders", run_label=run_label, duration=duration),
+            "maps": _field_href("/maps", run_label=run_label, duration=duration),
+            "kpi": _field_href("/kpi", run_label=run_label),
+            "live": _field_href("/orders/live", run_label=run_label, duration=duration),
+        },
+        # 차량별 경로 안내. 내 차량은 `?vehicle=` 없이(경로 탭과 같은 주소) 간다.
+        "route_links": {
+            v["id"]: _field_href("/m/route", **carried,
+                                 vehicle=None if v["id"] == mine else v["id"])
+            for v in plan["vehicles"]},
+        "hm": mobile_view.hours_minutes,
+        "hm_parts": mobile_view.hours_minutes_parts,
+        "leaflet_js": mobile_view.LEAFLET_JS,
+        "leaflet_css": mobile_view.LEAFLET_CSS,
+    })
+    return context
+
+
+@app.get("/m")
+def field_today(request: Request, run_label: Optional[str] = None,
+                duration: Optional[str] = None):
+    """현장 앱 — 오늘 작업: 내 차량 요약, 경로 지도, 차량별 경로 목록."""
+    return templates.TemplateResponse(
+        request, "m_today.html", _field_context(request, run_label, duration, "today"))
+
+
+@app.get("/m/route")
+def field_route(request: Request, run_label: Optional[str] = None,
+                duration: Optional[str] = None, vehicle: Optional[str] = None):
+    """현장 앱 — 경로 안내: 한 차량의 방문 순서와 도착 체크.
+
+    `?vehicle=`가 있으면 그 차량(남의 경로를 보되 내 차량은 바꾸지 않는다), 없으면 내 차량.
+    그 차량이 이 회차에 없으면 비우지 않고 **배정된 차량을 늘어놓는다** — `/orders`의
+    `selected_vehicle`과 같은 이유로, 없는 이름을 조용히 버리면 '계획이 없다'로 읽힌다.
+    """
+    context = _field_context(request, run_label, duration, "route")
+    target = vehicle or context["mine"]
+    route = next((v for v in context["plan"]["vehicles"] if v["id"] == target), None)
+    context["target"] = target
+    context["route"] = route
+    if route:
+        run, dur = context["run_label"], context["duration"]
+        context["links"]["orders_vehicle"] = _field_href(
+            "/orders", run_label=run, duration=dur, vehicle=route["id"])
+        first = route["stops"][0] if route["stops"] else None
+        # 스크립트가 없어도 첫 대여소로는 안내가 된다(있으면 스크립트가 체크를 따라 고친다).
+        context["first_nav"] = mobile_view.nav_url(first) if first else None
+    return templates.TemplateResponse(request, "m_route.html", context)
+
+
+@app.get("/m/progress")
+def field_progress(request: Request, run_label: Optional[str] = None,
+                   duration: Optional[str] = None):
+    """현장 앱 — 진행 현황: 이 기기의 체크로 센 진행률과 그 회차의 계획 지표."""
+    context = _field_context(request, run_label, duration, "progress")
+    context["kpi"] = mobile_view.plan_kpi(context["run_label"], context["duration"])
+    return templates.TemplateResponse(request, "m_progress.html", context)
+
+
+@app.get("/m/me")
+def field_me(request: Request, run_label: Optional[str] = None,
+             duration: Optional[str] = None, saved: Optional[str] = None):
+    """현장 앱 — 내 정보: 내 차량 고르기, 적재 현황, 메모, 계획 고르기, 관제 화면으로."""
+    context = _field_context(request, run_label, duration, "me")
+    # 고를 수 있는 차량 = 차량 마스터(조회 경로라 `ensure_fleet` — pbr-pipeline 함정 6)
+    # ∪ 이 회차에 나간 차량. 이 회차에 안 나간 차도 내 차로 고를 수 있어야 한다 —
+    # 로테이션으로 쉬는 회차가 있다.
+    workload = store.vehicle_workload()
+    fleet = set(workload["vehicle_id"].astype(str)) if not workload.empty else set()
+    fleet |= {v["id"] for v in context["plan"]["vehicles"]}
+    context["fleet"] = sorted(v for v in fleet if _FIELD_VEHICLE_RE.match(v))
+    context["capacity"] = VEHICLE_CAPACITY
+    context["saved"] = saved == "1"
+    context["next_url"] = _field_href("/m/me", **context["carried"])
+    return templates.TemplateResponse(request, "m_me.html", context)
+
+
+@app.post("/m/vehicle")
+def field_set_vehicle(vehicle: str = Form(""), next_url: str = Form("/m/me", alias="next")):
+    """내 차량을 이 기기에 저장한다(쿠키). 빈 값이면 지운다."""
+    vehicle = vehicle.strip()
+    if vehicle and not _FIELD_VEHICLE_RE.match(vehicle):
+        raise HTTPException(status_code=400,
+                            detail="차량 이름은 영문·숫자·밑줄·붙임표 24자까지입니다(예: V07).")
+    target = next_url if _FIELD_NEXT_RE.match(next_url or "") else "/m/me"
+    if target.startswith("/m/me"):
+        target += ("&" if "?" in target else "?") + "saved=1"
+    response = RedirectResponse(target, status_code=303)
+    if vehicle:
+        response.set_cookie(FIELD_VEHICLE_COOKIE, vehicle, max_age=400 * 24 * 3600,
+                            path="/m", samesite="lax")
+    else:
+        response.delete_cookie(FIELD_VEHICLE_COOKIE, path="/m")
+    return response
 
 
 def _file_scope(groups: list, run_label: Optional[str],

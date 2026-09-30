@@ -47,6 +47,10 @@ uvicorn webapp.app:app --reload
 | `/collect` | **재고 수집 현황** (1.26.158) — 10분마다 받아 쌓은 **실측** 기록. 날짜별 틱·결측·가동 구간, 마지막 관측이 오래되면 경고. 숫자는 `tools/collect_stock.py`가 내고 화면은 **기준을 밝히기만** 한다 |
 | `/guide` | **사용 안내** — 시작 순서·입력 항목·지표 읽는 법·문제 해결·용어 |
 | `/device` | **모바일 미리보기** (1.26.193) — 크롬 개발자 도구의 기기 모드처럼 폭이 고정된 iframe에 `?path=`의 화면을 띄운다. 넓은 창의 `모바일` 단추가 여기로 온다. **이 사이트 안의 경로만** 받는다 ([DESIGN.md](DESIGN.md) "데스크톱에서 미리 보기") |
+| `/m` | **현장 앱 — 오늘 작업** (1.26.307). 기사가 폰으로 드는 화면이고 관제 화면과 **독립**이다(`m_base.html`, `base.html`을 상속하지 않는다). 내 차량 타일(방문 대여소 · 옮길 자전거 · 소요 시간) 또는 회차 전체, 경로 지도, 차량별 경로 목록을 **진행 중 · 예정 · 완료**로 가른다 — 가르는 기준은 이 기기의 체크 기록이지 시계가 아니다. 계획은 `/orders`와 같은 `_orders_context()`로 고른다(기본 = 최신 계획의 첫 회차). 관제 화면 맨 위 `현장 앱`·현황판 카드가 여기로 오고, 넓은 창이면 `/device?path=/m`으로 연다 ([DESIGN.md](DESIGN.md) '현장 앱') |
+| `/m/route` | **현장 앱 — 경로 안내.** 지금 → 다음 대여소, 번호 표지 지도, **도착 · 완료** 체크와 **안내 시작**(카카오맵 웹 주소로 좌표를 넘긴다). `?vehicle=`면 그 차량(내 차량은 안 바꾼다), 없으면 내 차량. 그 차량이 회차에 없으면 비우지 않고 배정된 차량을 늘어놓는다 |
+| `/m/progress` | **현장 앱 — 진행 현황.** 이 기기의 체크로 센 전체 · 차량별 진행률, 대수 기준 완료율(`min(수거, 배송)`), 그 회차의 계획 지표(`kpi_summary` — 결품 감소율은 `kpi_view.stockout_cut_pct`) |
+| `/m/me` | **현장 앱 — 내 정보.** 내 차량 고르기(쿠키), 트럭 적재 현황(체크 기준), 작업 메모(기기), 운영 요약(`/kpi`) · 내 배정 이력(`/vehicles?vehicle_id=`), 최근 운영 계획 다섯, 화면 테마, 이 회차 체크 지우기, 관제 화면으로 |
 | `/api/docs` | FastAPI 자동 API 문서 (Swagger UI) |
 
 ## JSON API
@@ -76,9 +80,10 @@ uvicorn webapp.app:app --reload
 | `POST /runs` | 실행 폼 제출 → `303 /runs/{id}`. 입력이 틀리면 `400`(폼 화면에 안내), 이미 돌고 있으면 `409`. 실행 이름은 `check_run_label()`(1.26.262), 원천 CSV 경로는 기간이 DB에 없을 때만 검사(1.26.264) |
 | `POST /runs/{id}/cancel` | 실행 중단(프로세스 트리 종료). 막 끝난 작업은 거절한다(1.26.273) |
 | `POST /runs/{run_label}/kind` | 실행 종류(plan·experiment·probe) 못박기. **있는 실행만** 받는다 — 없는 라벨 `404`, 규칙 위반 `400`(1.26.271). `/run?kind_changed=…#saved-runs`로 돌려보내 그 행이 든 쪽을 연다(1.26.283) |
+| `POST /m/vehicle` | 현장 앱의 **내 차량** 저장(1.26.307). 쿠키 `pbr_field_vehicle`(경로 `/m`, 400일)에 둔다 — 서버가 기억하는 것은 이것 하나다(체크 기록은 브라우저 localStorage). 이름은 ASCII 24자까지(`400`), 빈 값이면 지운다. 돌아갈 곳(`next`)은 `/m` 안만 받고 나머지는 `/m/me`로 |
 | `GET /view/{relpath}` · `/preview/{relpath}` · `/files/{relpath}` | `data/` 아래 `.html`(iframe 열람)·`.csv`(표 미리보기 200행, UTF-8→cp949 폴백)·내려받기. `catalog.safe_resolve()`가 경로 탈출·확장자를 거른다 |
 
-화면의 쿼리 인자: `/run?kind_changed=`(표식을 달 행 — 없는 라벨이면 1쪽), `/kpi?run_label=`, `/vehicles?run_label=&vehicle_id=&page=`(1.26.284에 `vehicle_id`), `/orders?run_label=&duration=&vehicle=`(회차를 빼면 그 실행의 첫 회차 — `DURATIONS`의 하루 순서 — 로 채운다, 1.26.262 · 1.26.283), `/orders/live?…`(같은 인자 + 타슈 API 호출), `/maps?run_label=&duration=` · `/data?run_label=&duration=`(1.26.284), `/device?path=`. 결과 묶음(3단) 내비는 지금 주소의 `run_label`을 네 링크에 싣고, `duration`은 `/maps`·`/orders`에만 싣는다(1.26.284).
+화면의 쿼리 인자: `/run?kind_changed=`(표식을 달 행 — 없는 라벨이면 1쪽), `/kpi?run_label=`, `/vehicles?run_label=&vehicle_id=&page=`(1.26.284에 `vehicle_id`), `/orders?run_label=&duration=&vehicle=`(회차를 빼면 그 실행의 첫 회차 — `DURATIONS`의 하루 순서 — 로 채운다, 1.26.262 · 1.26.283), `/orders/live?…`(같은 인자 + 타슈 API 호출), `/maps?run_label=&duration=` · `/data?run_label=&duration=`(1.26.284), `/device?path=`, `/m?run_label=&duration=`(현장 앱 네 화면 공통 — 탭은 **주소에 있던** 두 값만 싣고 다닌다, 3단 내비와 같은 규칙) · `/m/route?vehicle=` · `/m/me?saved=1`(1.26.307). 결과 묶음(3단) 내비는 지금 주소의 `run_label`을 네 링크에 싣고, `duration`은 `/maps`·`/orders`에만 싣는다(1.26.284).
 
 산출물 API는 `?run_label=...&duration=...` 쿼리를 받습니다. 생략하면 **최신 실행분**입니다.
 

@@ -1,0 +1,134 @@
+{% extends "m_base.html" %}
+{# 현장 앱 ① 오늘 작업 (1.26.307) — 사진 시안의 첫 화면.
+   타일 · 지도 · 차량별 경로 목록. 진행 중/예정/완료는 **이 기기의 체크**로 가른다
+   (시계로 가르지 않는다 — mobile_view 머리말). 스크립트가 없으면 가르기 단추는 숨고
+   목록이 전부 보인다. #}
+{% block title %}오늘 작업 · PBR 현장 앱{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="{{ leaflet_css }}" crossorigin="">{% endblock %}
+
+{% block content %}
+<h1 class="m-title">오늘 작업</h1>
+{% include "_m_plan.html" %}
+
+{% if not plan.vehicles %}
+{% include "_m_empty.html" %}
+{% else %}
+{% set me = mine_route %}
+{% if me %}
+<div class="m-tiles" aria-label="내 차량 {{ me.id }}">
+  <div class="m-tile"><div class="label">방문 대여소</div>
+    <div class="value">{{ me.stations }}<small>곳</small></div></div>
+  <div class="m-tile"><div class="label">옮길 자전거</div>
+    <div class="value">{{ me.bikes }}<small>대</small></div></div>
+  <div class="m-tile"><div class="label">소요 시간</div>
+    <div class="value wrap">{% for n, unit in hm_parts(me.minutes) %}{{ n }}<small>{{ unit }}</small>{% if not loop.last %} {% endif %}{% else %}—{% endfor %}</div>
+    {% if me.finish %}<div class="sub">{{ me.finish }} 완료 예정</div>{% endif %}</div>
+</div>
+<p class="m-note" id="mine-progress">내 차량 <b>{{ me.id }}</b> · 작업 {{ me.chain | length }}건</p>
+<p><a class="m-btn block" href="{{ tabs.route }}">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.3"/></svg>
+  내 경로 안내</a></p>
+{% else %}
+<div class="m-tiles" aria-label="이 회차 전체">
+  <div class="m-tile"><div class="label">출동 차량</div>
+    <div class="value">{{ plan.totals.vehicles }}<small>대</small></div></div>
+  <div class="m-tile"><div class="label">방문 대여소</div>
+    <div class="value">{{ plan.totals.stations }}<small>곳</small></div></div>
+  <div class="m-tile"><div class="label">완료 예정</div>
+    <div class="value">{{ plan.finish or "—" }}</div>
+    <div class="sub">가장 늦은 차량</div></div>
+</div>
+<p class="m-note">{% if mine %}내 차량 <b>{{ mine }}</b>은(는) 이 회차에 배정이 없습니다 — 로테이션으로 쉬는
+  회차일 수 있습니다. <a href="{{ tabs.me }}">내 차량 바꾸기</a>{% else %}회차 전체입니다.
+  <a href="{{ tabs.me }}">내 차량을 고르면</a> 내 몫만 봅니다.{% endif %}</p>
+{% endif %}
+
+<div class="m-map" id="today-map" role="region" aria-label="경로 지도 — 차량마다 색이 다릅니다. 차고지 왕복선은 뺐습니다. 같은 내용이 아래 목록에 있습니다.">
+  <p class="m-map-fallback">지도는 스크립트가 그립니다. 아래 목록으로 진행하세요.</p>
+</div>
+
+<div class="m-section-row">
+  <h2 class="m-section" id="routes-h">차량별 경로</h2>
+  <a href="{{ links.orders }}">관제 지시서</a>
+</div>
+{# 사진 시안의 진행중/진행예정/완료 탭. 스크립트가 켠다(없으면 목록이 전부 보인다). #}
+<div class="m-seg" id="status-seg" role="group" aria-label="진행 상태로 거르기" hidden>
+  <button type="button" data-filter="doing" aria-pressed="false">진행 중 <span class="count">0</span></button>
+  <button type="button" data-filter="todo" aria-pressed="false">예정 <span class="count">0</span></button>
+  <button type="button" data-filter="done" aria-pressed="false">완료 <span class="count">0</span></button>
+</div>
+<ul class="m-list" id="routes" aria-labelledby="routes-h">
+  {#- 내 차량을 맨 위로. 나머지는 지시서와 같은 순서(차량 이름순). #}
+  {%- for v in plan.vehicles if v.id == mine %}{% include "_m_route_row.html" %}{% endfor %}
+  {%- for v in plan.vehicles if v.id != mine %}{% include "_m_route_row.html" %}{% endfor %}
+</ul>
+<p class="hint" id="filter-empty" hidden>이 상태의 경로가 없습니다.</p>
+<p class="hint">선은 대여소 사이를 곧게 이은 것이고 차고지 왕복은 뺐습니다 — 실도로 선은
+  <a href="{{ links.maps }}">경로 지도</a>에 있습니다.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if plan.vehicles %}
+<script src="{{ leaflet_js }}" crossorigin=""></script>
+<script>
+  (function () {
+    var F = window.PBRField;
+    var mine = F.plan.mine;
+    var LINKS = {{ route_links | tojson }};
+    F.drawMap(document.getElementById("today-map"), {
+      focus: F.vehicle(mine) ? mine : null,
+      depotLegs: false,
+      link: function (v) { return LINKS[v.id]; }
+    });
+
+    var seg = document.getElementById("status-seg");
+    var rows = Array.prototype.slice.call(document.querySelectorAll("#routes > li"));
+    var empty = document.getElementById("filter-empty");
+    var note = document.getElementById("mine-progress");
+    var chosen = null;
+
+    function render() {
+      var counts = { doing: 0, todo: 0, done: 0 }, mineStatus = null;
+      rows.forEach(function (li) {
+        var v = F.vehicle(li.dataset.vehicle);
+        var p = F.progress(v);
+        li.dataset.status = p.status;
+        counts[p.status] += 1;
+        F.badge(li.querySelector("[data-status]"), p.status);
+        var done = li.querySelector("[data-done]");
+        if (done) done.textContent = p.done ? " · " + p.done + "/" + p.total + "건 끝남" : "";
+        if (v.id === mine) mineStatus = p;
+      });
+      if (!chosen) {
+        chosen = mineStatus ? mineStatus.status
+               : counts.doing ? "doing" : counts.todo ? "todo" : "done";
+      }
+      seg.querySelectorAll("button").forEach(function (b) {
+        b.setAttribute("aria-pressed", b.dataset.filter === chosen ? "true" : "false");
+        b.querySelector(".count").textContent = counts[b.dataset.filter];
+      });
+      var shown = 0;
+      rows.forEach(function (li) {
+        li.hidden = li.dataset.status !== chosen;
+        if (!li.hidden) shown += 1;
+      });
+      empty.hidden = shown > 0;
+      if (note && mineStatus) {
+        note.textContent = "내 차량 " + mine + " · 작업 " + mineStatus.total + "건 중 "
+          + mineStatus.done + "건 끝남 (" + mineStatus.pct + "%)";
+      }
+    }
+    seg.addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-filter]");
+      if (!b) return;
+      chosen = b.dataset.filter;
+      render();
+    });
+    seg.hidden = false;
+    F.onChange(render);
+    render();
+  })();
+</script>
+{% endif %}
+{% endblock %}

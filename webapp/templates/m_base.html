@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  {# 폰 주소창 색을 앱 바탕(--parchment)과 잇는다. 메타 태그는 CSS 변수를 못 읽어 값을
+     적는다 — 토큰을 바꾸면 여기도 바꾼다(_tokens.html의 --parchment 라이트/다크). #}
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
+  <title>{% block title %}PBR 현장 앱{% endblock %}</title>
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+        href="/static/fonts/PretendardVariable.subset.woff2">
+  {% block head_extra %}{% endblock %}
+  <script>
+    // 첫 페인트 전에 테마와 기기 프레임을 확정한다 — base.html과 같은 열쇠(pbr-theme)다.
+    (function () {
+      try {
+        var saved = localStorage.getItem("pbr-theme");
+        if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+      } catch (e) { /* 프라이빗 모드 등 — OS 설정을 따른다 */ }
+      try {
+        var fe = window.frameElement;
+        if (fe && fe.hasAttribute("data-device-frame")) {
+          document.documentElement.setAttribute("data-device", "");
+        }
+      } catch (e) { /* 다른 출처가 감쌌다 — 기기 프레임이 아닌 것으로 본다 */ }
+    })();
+  </script>
+  {# ════════════════════════════════════════════════════════════════
+     현장 앱(/m) — 기사가 폰으로 드는 화면 (1.26.307)
+
+     관제 화면(base.html)과 **독립**이다 — 상속하지 않고 내비·스크립트도 따로다.
+     같은 것은 둘뿐이다: 색·모서리·여백 토큰(`_tokens.html`, 한 벌)과 글꼴.
+     Apple 규칙은 그대로다 — 누를 수 있는 것은 강조색 하나, 그림자는 지도에만,
+     동작은 알약 모서리, 색만으로 뜻을 전하지 않는다(docs/구현/DESIGN.md '현장 앱').
+     ════════════════════════════════════════════════════════════════ #}
+  <style>
+    @font-face {
+      font-family: "Pretendard Variable";
+      src: url("/static/fonts/PretendardVariable.subset.woff2") format("woff2-variations");
+      font-weight: 300 700;
+      font-display: swap;
+    }
+
+    {% include "_tokens.html" %}
+
+    /* ── 앱 색 별칭 — 현장 앱의 규칙은 **이 --m-* 만** 읽는다 ──
+       2026-09-30 사용자 결정: "우선 이대로 만들고 색은 변경 가능성을 남겨 두자."
+       지금은 전부 관제 화면 토큰을 가리킨다. 앱 색만 바꾸려면 이 블록의 오른쪽만
+       고치면 된다 — 관제 화면은 그대로다. 규칙 쪽에 토큰이나 색 값을 직접 쓰지
+       마라(tests/test_mobile.py가 막는다). 다크 모드는 오른쪽 토큰이 바뀌므로
+       저절로 따라온다. */
+    :root {
+      --m-accent: var(--blue);            /* 누를 수 있는 것 · 현재 탭 · 진행 막대 */
+      --m-accent-focus: var(--blue-focus);
+      --m-on-accent: var(--on-blue);      /* 강조색 채움 위의 글자 */
+      --m-bg: var(--parchment);           /* 앱 바탕 */
+      --m-card: var(--surface);           /* 카드 · 목록 */
+      --m-fill: var(--parchment);         /* 분할 컨트롤 바탕 · 빈 지도 */
+      --m-track: var(--hairline);         /* 진행 막대의 빈 칸 */
+      --m-bar: var(--nav-flow);           /* 위 막대 · 탭 막대 */
+      --m-ink: var(--ink);
+      --m-ink-2: var(--ink-2);
+      --m-ink-3: var(--ink-3);
+      --m-ink-4: var(--ink-4);            /* 뜻이 있는 흐린 글자 — AA를 넘긴 값 */
+      --m-line: var(--hairline);          /* 카드 테두리 */
+      --m-line-soft: var(--divider-soft); /* 목록 줄 사이 */
+      --m-good: var(--good-ink);          /* 완료 (상태색 — 글자와 함께만) */
+      --m-good-soft: var(--good-soft);
+      --m-warn: var(--warning-ink);       /* 실험 계획 경고 */
+      --m-warn-soft: var(--warning-soft);
+      --m-danger: var(--critical-ink);    /* 되돌릴 수 없는 동작(기록 지우기) */
+      --m-pick: var(--pick-ink);          /* 수거 (범주색 — 글자와 함께만) */
+      --m-drop: var(--drop-ink);          /* 배송 */
+      --m-shadow-map: var(--shadow-product); /* 시스템에 하나뿐인 그림자 — 지도에만 */
+      --m-bar-h: 56px;                    /* 탭 막대 높이(윗선 1px 별도) */
+    }
+
+    /* ── 기본 ── */
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+    /* 기기 프레임(/device) 안에서는 스크롤바가 폭을 먹지 않게 한다(base.html과 같은 이유). */
+    :root[data-device] { scrollbar-width: none; }
+    :root[data-device]::-webkit-scrollbar { display: none; }
+    body {
+      margin: 0; background: var(--m-bg); color: var(--m-ink);
+      font-family: "Pretendard Variable", -apple-system, BlinkMacSystemFont,
+                   system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      font-size: 17px; line-height: 1.47; letter-spacing: -.374px;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+    }
+    a { color: var(--m-accent); text-decoration: none; }
+    :focus-visible { outline: 2px solid var(--m-accent-focus); outline-offset: 2px; border-radius: 4px; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+    .skip-link {
+      position: absolute; top: -60px; left: 12px; z-index: 300;
+      background: var(--m-ink); color: var(--m-card); padding: 13px 16px;
+      border-radius: var(--r-sm); font-size: 14px;
+    }
+    .skip-link:focus { top: 8px; }
+    .num { font-variant-numeric: tabular-nums; }
+
+    /* ── 위 막대: 앱 이름 + 내 차량 (반투명 + 흐림, 붙들어 둔다) ── */
+    .m-bar {
+      position: sticky; top: 0; z-index: 40;
+      padding-top: env(safe-area-inset-top, 0px);
+      background: color-mix(in srgb, var(--m-bar) 85%, transparent);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      backdrop-filter: saturate(180%) blur(20px);
+      border-bottom: 1px solid var(--m-line-soft);
+    }
+    @supports not (background: color-mix(in srgb, red 50%, transparent)) {
+      .m-bar { background: var(--m-bar); }
+    }
+    .m-bar-inner {
+      max-width: 520px; margin: 0 auto; padding: 0 16px; min-height: 52px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .m-brand {
+      font-size: 17px; font-weight: 700; letter-spacing: -.4px; color: var(--m-ink);
+      padding: 12px 0; margin-right: auto;
+    }
+    .m-chip {
+      display: inline-flex; align-items: center; gap: 6px; min-height: 44px;
+      padding: 0 14px; border-radius: var(--r-pill); border: 1px solid var(--m-line);
+      background: var(--m-card); color: var(--m-ink); font-size: 14px; font-weight: 600;
+      letter-spacing: -.224px; white-space: nowrap;
+    }
+    .m-chip.is-empty { color: var(--m-accent); font-weight: 400; }
+    .m-chip svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8;
+                  stroke-linecap: round; stroke-linejoin: round; }
+
+    /* ── 본문 ── */
+    main {
+      max-width: 520px; margin: 0 auto;
+      padding: 0 16px calc(var(--m-bar-h) + 1px + env(safe-area-inset-bottom, 0px) + 24px);
+    }
+    /* iOS 큰 제목 — 큰 글자일수록 자간을 조인다(Apple 문법). */
+    .m-title { font-size: 32px; font-weight: 700; letter-spacing: -.8px; line-height: 1.15;
+               margin: 20px 0 4px; }
+    .m-sub { font-size: 15px; color: var(--m-ink-3); margin: 0 0 16px; letter-spacing: -.24px; }
+    .m-sub a, .hint a, .empty a, .m-note a, .m-alert a { text-decoration: underline; }
+    .m-section { font-size: 20px; font-weight: 600; letter-spacing: -.4px; margin: 28px 0 10px; }
+    .m-section-row { display: flex; align-items: baseline; gap: 12px; margin: 28px 0 10px; }
+    .m-section-row .m-section { margin: 0 auto 0 0; }
+    .m-section-row a { font-size: 15px; padding: 12px 0; margin: -12px 0; }
+    .hint { font-size: 13px; color: var(--m-ink-4); margin: 8px 0 0; letter-spacing: -.1px; }
+    .m-note { font-size: 13px; color: var(--m-ink-3); margin: 10px 0 12px; }
+    .empty { color: var(--m-ink-3); font-size: 15px; margin: 0; }
+
+    /* ── 카드 · 타일 ── */
+    .m-card {
+      background: var(--m-card); border: 1px solid var(--m-line);
+      border-radius: var(--r-lg); padding: 16px; margin-bottom: 12px;
+    }
+    .m-card > :first-child { margin-top: 0; }
+    .m-card > :last-child { margin-bottom: 0; }
+    .m-card.flush { padding: 0; overflow: hidden; }
+    .m-card-title { font-size: 15px; font-weight: 600; color: var(--m-ink-2); margin: 0 0 10px;
+                    letter-spacing: -.24px; }
+    .m-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+               margin-bottom: 12px; }
+    .m-tile {
+      background: var(--m-card); border: 1px solid var(--m-line); border-radius: var(--r-lg);
+      padding: 12px 12px 13px; min-width: 0;
+    }
+    .m-tile .label { font-size: 13px; color: var(--m-ink-3); letter-spacing: -.1px; }
+    .m-tile .value { font-size: clamp(20px, 6.4vw, 24px); font-weight: 600; letter-spacing: -.5px;
+                     line-height: 1.2; margin-top: 4px; font-variant-numeric: tabular-nums;
+                     white-space: nowrap; }
+    /* 시간 값('2시간 10분')만 접을 수 있다 — 360px부터 한 칸에 안 들어간다(실측 4~17px 넘침).
+       `keep-all`이 있어야 공백에서만 접힌다 — 없으면 한글은 음절 사이도 줄 바꿈 자리라
+       '2시간 10 / 분'으로 숫자와 단위가 갈렸다(360px 스크린샷). */
+    .m-tile .value.wrap { white-space: normal; word-break: keep-all; }
+    .m-tile .value small { font-size: 13px; font-weight: 500; letter-spacing: -.1px;
+                           color: var(--m-ink-2); margin: 0 1px; }
+    .m-tile .sub { font-size: 12px; color: var(--m-ink-4); margin-top: 2px; }
+
+    /* ── 분할 컨트롤 (회차 · 진행 상태) — 누르는 것이라 알약, 그림자 대신 테두리 ── */
+    .m-seg {
+      display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
+      gap: 2px; padding: 2px; border-radius: var(--r-pill); background: var(--m-fill);
+      border: 1px solid var(--m-line-soft); margin: 0 0 12px;
+    }
+    .m-seg a, .m-seg button {
+      display: flex; align-items: center; justify-content: center; gap: 5px;
+      min-height: 44px; padding: 0 8px; border-radius: var(--r-pill);
+      border: 1px solid transparent; background: transparent; color: var(--m-ink-2);
+      font: inherit; font-size: 15px; letter-spacing: -.24px; white-space: nowrap;
+      cursor: pointer; text-decoration: none;
+    }
+    .m-seg [aria-current], .m-seg [aria-pressed="true"] {
+      background: var(--m-card); border-color: var(--m-line); color: var(--m-ink); font-weight: 600;
+    }
+    .m-seg .count { font-size: 13px; color: var(--m-ink-4); font-variant-numeric: tabular-nums; }
+    .m-seg [aria-pressed="true"] .count { color: var(--m-ink-3); }
+
+    /* ── 지도 — 시스템에서 그림자를 받는 유일한 것 ── */
+    .m-map {
+      position: relative; height: 260px; margin-bottom: 12px;
+      border-radius: var(--r-lg); overflow: hidden; background: var(--m-fill);
+      border: 1px solid var(--m-line); box-shadow: var(--m-shadow-map);
+    }
+    .m-map.tall { height: 320px; }
+    .m-map-fallback {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      padding: 24px; text-align: center; font-size: 14px; color: var(--m-ink-3);
+    }
+    .m-map .leaflet-container, .m-map.leaflet-container { font: inherit; background: var(--m-fill); }
+    .leaflet-popup-content-wrapper { border-radius: var(--r-md); background: var(--m-card);
+                                     color: var(--m-ink); }
+    .leaflet-popup-tip { background: var(--m-card); }
+    .leaflet-popup-content { margin: 12px 14px; font-size: 14px; line-height: 1.45; letter-spacing: -.2px; }
+    .leaflet-popup-content .pop-title { font-weight: 600; font-size: 15px; }
+    .leaflet-popup-content .pop-meta { color: var(--m-ink-3); font-size: 13px; }
+    .leaflet-popup-content dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px;
+                                margin: 6px 0 0; }
+    .leaflet-popup-content dt { color: var(--m-ink-3); }
+    .leaflet-popup-content dd { margin: 0; font-variant-numeric: tabular-nums; }
+    .leaflet-popup-content a { display: inline-block; padding: 10px 0 2px; }
+    /* 대여소 표지 — 번호는 잉크, 수거·배송은 **테두리** 색(기존 지도와 같은 두 색).
+       순색 채움 위에 흰 번호를 얹으면 배송(#D55E00)에서 4.5:1을 못 넘는다. */
+    .m-pin {
+      display: flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--m-card); color: var(--m-ink); border: 3px solid var(--c);
+      font-size: 12px; font-weight: 700; letter-spacing: 0; font-variant-numeric: tabular-nums;
+    }
+    /* 지금 갈 곳 — **잉크 채움**. 강조색 테두리로 두었더니 수거 테두리(#0072B2)와 같은
+       파랑이라 3번이 지금인지 수거인지 갈리지 않았다(390px 실측). 크기도 함께 키운다. */
+    .m-pin.is-current { width: 32px; height: 32px; font-size: 14px;
+                        background: var(--m-ink); color: var(--m-card); }
+    .m-pin.is-done { opacity: .45; }
+    .m-depot {
+      display: flex; align-items: center; justify-content: center; height: 22px;
+      padding: 0 7px; border-radius: 6px; background: var(--m-ink); color: var(--m-card);
+      font-size: 11px; font-weight: 600; white-space: nowrap; letter-spacing: -.1px;
+    }
+
+    /* ── 묶음 목록 (iOS 설정 앱의 inset grouped) ── */
+    .m-list { list-style: none; margin: 0 0 12px; padding: 0; background: var(--m-card);
+              border: 1px solid var(--m-line); border-radius: var(--r-lg); overflow: hidden; }
+    .m-list > li + li { border-top: 1px solid var(--m-line-soft); }
+    .m-row {
+      display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
+      gap: 12px; min-height: 56px; padding: 12px 16px; color: inherit; text-decoration: none;
+    }
+    a.m-row:active, button.m-row:active { background: var(--m-fill); }
+    button.m-row { width: 100%; border: 0; background: transparent; font: inherit; text-align: left;
+                   cursor: pointer; }
+    button.m-row:disabled { opacity: .55; cursor: not-allowed; }
+    .m-row .main { min-width: 0; }
+    .m-row .name { font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .m-row .meta, .m-row .chain { display: block; }
+    .m-row .meta { font-size: 14px; color: var(--m-ink-3); letter-spacing: -.2px; }
+    .m-row .chain { font-size: 13px; color: var(--m-ink-4); letter-spacing: -.1px;
+                    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .m-row .end { display: flex; align-items: center; gap: 6px; color: var(--m-ink-3); font-size: 15px; }
+    .m-chev { width: 8px; height: 14px; fill: none; stroke: var(--m-ink-4); stroke-width: 2;
+              stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+    .m-ico { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center;
+             justify-content: center; background: var(--m-fill); color: var(--m-ink-2); }
+    .m-ico svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8;
+                 stroke-linecap: round; stroke-linejoin: round; }
+    .m-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); flex: 0 0 auto; }
+
+    /* ── 딱지 — 색만으로 말하지 않는다: 늘 글자와 함께 ── */
+    .m-badge {
+      display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px;
+      border-radius: var(--r-pill); font-size: 12px; font-weight: 600; letter-spacing: -.1px;
+      line-height: 1.5; white-space: nowrap; border: 1px solid transparent;
+    }
+    .m-badge.is-todo { color: var(--m-ink-3); border-color: var(--m-line); }
+    .m-badge.is-doing { color: var(--m-accent); border-color: currentColor; }
+    .m-badge.is-done { color: var(--m-good); background: var(--m-good-soft); }
+    .m-badge.is-mine { color: var(--m-ink); background: var(--m-fill); border-color: var(--m-line); }
+    .m-badge.is-warn { color: var(--m-warn); background: var(--m-warn-soft); }
+    .pick { color: var(--m-pick); font-weight: 600; }
+    .drop { color: var(--m-drop); font-weight: 600; }
+
+    /* ── 진행 막대 — 계열 하나는 강조색, 차량별은 그 경로 색(점 + 이름 + % 글자와 함께) ── */
+    .m-progress { height: 8px; border-radius: var(--r-pill); background: var(--m-track); overflow: hidden; }
+    .m-progress > span { display: block; height: 100%; width: 0; border-radius: inherit;
+                         background: var(--c, var(--m-accent)); transition: width .25s ease; }
+    .m-big { font-size: 40px; font-weight: 700; letter-spacing: -1px; line-height: 1.1;
+             font-variant-numeric: tabular-nums; }
+    .m-kv { display: flex; justify-content: space-between; gap: 12px; font-size: 14px;
+            color: var(--m-ink-3); margin-top: 8px; }
+    .m-kv b { color: var(--m-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+    /* ── 단추 ── */
+    .m-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      min-height: 50px; padding: 0 20px; border-radius: var(--r-pill);
+      border: 1px solid var(--m-accent); background: var(--m-accent); color: var(--m-on-accent);
+      font: inherit; font-size: 17px; letter-spacing: -.374px; cursor: pointer; text-decoration: none;
+    }
+    .m-btn:active { transform: scale(.97); }
+    .m-btn.ghost { background: var(--m-card); color: var(--m-accent); border-color: var(--m-line); }
+    .m-btn[disabled], .m-btn[aria-disabled="true"] {
+      background: var(--m-fill); color: var(--m-ink-4); border-color: var(--m-line);
+      cursor: not-allowed; transform: none;
+    }
+    .m-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9;
+                 stroke-linecap: round; stroke-linejoin: round; }
+    .m-btn.small { min-height: 44px; font-size: 15px; padding: 0 16px; }
+    .m-btn.block { width: 100%; }
+    .m-btn.danger { color: var(--m-danger); }
+    /* 경로 안내의 두 단추는 엄지 쪽(탭 막대 바로 위)에 붙들어 둔다. */
+    .m-actions {
+      position: sticky; bottom: calc(var(--m-bar-h) + 1px + env(safe-area-inset-bottom, 0px));
+      z-index: 30; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+      gap: 8px; padding: 10px 0; margin: 0 0 4px;
+      background: color-mix(in srgb, var(--m-bg) 88%, transparent);
+      -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+    }
+    @supports not (background: color-mix(in srgb, red 50%, transparent)) {
+      .m-actions { background: var(--m-bg); }
+    }
+
+    /* ── 폼 ── */
+    .m-field { display: block; margin: 0 0 12px; }
+    .m-field.tight { margin: 0; }
+    .m-field > span { display: block; font-size: 14px; color: var(--m-ink-3); margin-bottom: 6px; }
+    /* 17px 미만이면 iOS 사파리가 입력칸을 누를 때 화면을 확대한다. */
+    .m-input {
+      width: 100%; min-height: 48px; padding: 11px 13px; border-radius: var(--r-md);
+      border: 1px solid var(--m-line); background: var(--m-card); color: var(--m-ink);
+      font: inherit; font-size: 17px;
+    }
+    textarea.m-input { min-height: 110px; resize: vertical; line-height: 1.45; }
+    .m-inline { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+
+    /* ── 알림 줄 ── */
+    .m-alert { border-radius: var(--r-md); padding: 10px 12px; font-size: 14px; margin: 0 0 12px; }
+    .m-alert.warn { background: var(--m-warn-soft); color: var(--m-ink); }
+    .m-alert.good { background: var(--m-good-soft); color: var(--m-ink); }
+    .m-alert[hidden] { display: none; }
+
+    /* ── 하단 탭 막대 — 관제 화면 좁은 화면(.tabbar)과 같은 문법:
+       56px, 반투명 + 흐림, 현재 탭 = 색 + 위쪽 2px 막대 + 굵기(색만으로 말하지 않는다). ── */
+    .m-tabs {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      background: color-mix(in srgb, var(--m-bar) 92%, transparent);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      backdrop-filter: saturate(180%) blur(20px);
+      border-top: 1px solid var(--m-line-soft);
+    }
+    @supports not (background: color-mix(in srgb, red 50%, transparent)) {
+      .m-tabs { background: var(--m-bar); }
+    }
+    .m-tabs-inner { max-width: 520px; margin: 0 auto; display: grid;
+                    grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .m-tabs a {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px; min-height: var(--m-bar-h); padding: 6px 2px 5px;
+      color: var(--m-ink-3); font-size: 11px; letter-spacing: -.1px; line-height: 1.2;
+      white-space: nowrap;
+    }
+    .m-tabs svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7;
+                  stroke-linecap: round; stroke-linejoin: round; }
+    .m-tabs a[aria-current] { color: var(--m-accent); font-weight: 600;
+                              box-shadow: inset 0 2px 0 var(--m-accent); }
+    .m-tabs a:focus-visible { outline: 2px solid var(--m-accent-focus); outline-offset: -4px;
+                              border-radius: var(--r-sm); }
+    {% block style_extra %}{% endblock %}
+  </style>
+</head>
+<body>
+<a class="skip-link" href="#main">본문으로 건너뛰기</a>
+
+<header class="m-bar">
+  <div class="m-bar-inner">
+    <a class="m-brand" href="{{ tabs.today }}">PBR</a>
+    {# 사진 시안의 프로필 자리. 로그인이 없으므로 '내 차량'이 신원을 대신한다. #}
+    <a class="m-chip{% if not mine %} is-empty{% endif %}" href="{{ tabs.me }}"
+       aria-label="{% if mine %}내 차량 {{ mine }} — 바꾸기{% else %}내 차량 고르기{% endif %}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16V8.5A1.5 1.5 0 0 1 4.5 7H14v9"/><path d="M14 10h3.6l2.9 3.2V16H14"/><circle cx="7" cy="17" r="1.8"/><circle cx="17" cy="17" r="1.8"/></svg>
+      {% if mine %}{{ mine }}{% else %}차량 고르기{% endif %}</a>
+  </div>
+</header>
+
+<main id="main">
+{# 체크를 저장하지 못하는 브라우저(프라이빗 모드 등)에서만 뜬다 — 공용 스크립트가 켠다. #}
+<p class="m-alert warn" id="m-store-warn" role="status" hidden>이 브라우저는 체크 기록을 저장하지
+  못합니다 — 새로 고치면 사라집니다.</p>
+{% block content %}{% endblock %}
+</main>
+
+{# 탭 넷 — 사진 시안의 네 화면. 아이콘은 인라인 SVG(담아 둔 글꼴 서브셋에 도형 문자가 없다). #}
+<nav class="m-tabs" aria-label="현장 앱">
+  <div class="m-tabs-inner">
+    <a href="{{ tabs.today }}" {% if tab == 'today' %}aria-current="page"{% endif %}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5.5h4V20"/></svg>
+      <span>오늘</span></a>
+    <a href="{{ tabs.route }}" {% if tab == 'route' %}aria-current="page"{% endif %}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8.2 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.8"/></svg>
+      <span>경로</span></a>
+    <a href="{{ tabs.progress }}" {% if tab == 'progress' %}aria-current="page"{% endif %}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M7 16v-5"/><path d="M12 16V7"/><path d="M17 16v-8"/></svg>
+      <span>진행</span></a>
+    <a href="{{ tabs.me }}" {% if tab == 'me' %}aria-current="page"{% endif %}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+      <span>내 정보</span></a>
+  </div>
+</nav>
+
+{# 스크립트가 읽는 계획 한 벌. `tojson`이 <·>·&를 이스케이프하므로 이름에 무엇이 들어도
+   스크립트 밖으로 새지 않는다. #}
+<script type="application/json" id="m-plan">{{ plan | tojson }}</script>
+<script>
+  /* ════════ 현장 앱 공용 — 체크 기록 · 진행률 · 지도 (1.26.307) ════════
+
+     체크 기록은 **이 기기의 localStorage에만** 남는다(사용자 결정 A안). 서버는 모른다.
+     열쇠는 (실행, 회차)이고, 값에 계획 지문(fp)을 함께 둔다 — 같은 라벨로 다시 돌린
+     계획은 정거장이 바뀌므로, 지문이 다르면 옛 체크를 버린다(mobile_view.plan_fingerprint).
+
+     진행률 규칙(화면 셋이 이것 하나를 쓴다):
+       · 대여소 기준  — 차고지 복귀를 뺀 방문지 중 체크한 곳의 비율
+       · 대수 기준    — min(체크한 수거 대수, 체크한 배송 대수). 수거만 세면 실었지만
+                        내리지 못한 자전거가 '옮겼다'로 잡힌다(pbr-pipeline 함정 13)
+       · 상태         — 0곳 = 예정, 일부 = 진행 중, 전부 = 완료. 시계로 가르지 않는다. */
+  window.PBRField = (function () {
+    var plan = null;
+    try { plan = JSON.parse(document.getElementById("m-plan").textContent); } catch (e) { plan = null; }
+    var key = plan && plan.run_label ? "pbr-field:" + plan.run_label + "|" + (plan.duration || "") : null;
+    var stored = true;
+    var listeners = [];
+
+    function read() {
+      var blank = { fp: plan ? plan.fp : null, done: {} };
+      if (!key) return blank;
+      try {
+        var saved = JSON.parse(localStorage.getItem(key) || "null");
+        if (saved && saved.fp === blank.fp && saved.done) return saved;
+      } catch (e) { stored = false; }
+      return blank;
+    }
+    var state = read();
+
+    function write() {
+      if (!key) return;
+      try { localStorage.setItem(key, JSON.stringify(state)); stored = true; }
+      catch (e) { stored = false; }
+      var warn = document.getElementById("m-store-warn");
+      if (warn) warn.hidden = stored;
+    }
+    function notify() { listeners.forEach(function (fn) { fn(); }); }
+    function isDone(vid, no) { return (state.done[vid] || []).indexOf(no) >= 0; }
+    function setDone(vid, no, on) {
+      var list = (state.done[vid] || []).filter(function (n) { return n !== no; });
+      if (on) list.push(no);
+      state.done[vid] = list;
+      write(); notify();
+    }
+    function clearAll() {
+      state = { fp: plan ? plan.fp : null, done: {} };
+      try { if (key) localStorage.removeItem(key); } catch (e) { stored = false; }
+      notify();
+    }
+    function vehicle(id) {
+      if (!plan) return null;
+      for (var i = 0; i < plan.vehicles.length; i++) if (plan.vehicles[i].id === id) return plan.vehicles[i];
+      return null;
+    }
+    function progress(v) {
+      var work = v.stops.filter(function (s) { return s.action !== "return"; });
+      var done = 0, pick = 0, drop = 0, next = null, last = null;
+      work.forEach(function (s) {
+        if (isDone(v.id, s.no)) {
+          done += 1; last = s;
+          if (s.action === "pick") pick += s.qty;
+          if (s.action === "drop") drop += s.qty;
+        } else if (!next) { next = s; }
+      });
+      var home = v.stops.filter(function (s) { return s.action === "return"; })[0] || null;
+      return {
+        total: work.length, done: done,
+        pct: work.length ? Math.round(done / work.length * 100) : 0,
+        status: done === 0 ? "todo" : done === work.length ? "done" : "doing",
+        moved: Math.min(pick, drop), load: pick - drop,
+        next: next || home, last: last, finished: done === work.length
+      };
+    }
+    function overall() {
+      var total = 0, done = 0, moved = 0, planned = 0;
+      (plan ? plan.vehicles : []).forEach(function (v) {
+        var p = progress(v);
+        total += p.total; done += p.done; moved += p.moved; planned += v.moved_plan;
+      });
+      return { total: total, done: done, pct: total ? Math.round(done / total * 100) : 0,
+               moved: moved, planned: planned,
+               movedPct: planned ? Math.round(moved / planned * 100) : 0 };
+    }
+    // 다른 탭(같은 기기)에서 체크하면 이 화면도 따라간다.
+    window.addEventListener("storage", function (e) {
+      if (e.key === key) { state = read(); notify(); }
+    });
+
+    var STATUS = { todo: "예정", doing: "진행 중", done: "완료" };
+    function badge(el, status) {
+      if (!el) return;
+      el.className = "m-badge is-" + status;
+      el.textContent = STATUS[status];
+    }
+
+    /* 길 안내는 지도 앱이 한다 — 좌표를 카카오맵 웹 주소로 넘긴다(앱이 있으면 앱이
+       열린다). 주소 모양: https://map.kakao.com/link/to/이름,위도,경도 . 이름의 쉼표는
+       구분자와 겹치므로 공백으로 바꾼다. */
+    function navUrl(stop) {
+      if (!stop || stop.lat == null || stop.lon == null) return null;
+      var name = String(stop.name || stop.id).replace(/,/g, " ");
+      return "https://map.kakao.com/link/to/" + encodeURIComponent(name) + "," + stop.lat + "," + stop.lon;
+    }
+
+    /* ── 지도 (Leaflet — folium과 같은 판을 같은 CDN에서) ──
+       못 불러오면(인터넷이 끊김 등) 지도 칸에 까닭을 적고 목록만 쓴다. 대여소 이름은
+       API에서 온 글자라 **textContent로만** 넣는다(HTML로 넣지 않는다). */
+    function el(tag, cls, text) {
+      var node = document.createElement(tag);
+      if (cls) node.className = cls;
+      if (text != null) node.textContent = text;
+      return node;
+    }
+    function fallback(box, why) {
+      box.innerHTML = "";
+      box.appendChild(el("p", "m-map-fallback", why));
+    }
+    function stopPopup(v, s, opts) {
+      var root = el("div");
+      root.appendChild(el("div", "pop-title", s.action === "return" ? plan.depot.name : s.no + ". " + s.name));
+      root.appendChild(el("div", "pop-meta", v.id + " · " + s.id));
+      var dl = el("dl");
+      function row(k, val) { if (val == null) return; dl.appendChild(el("dt", null, k)); dl.appendChild(el("dd", null, val)); }
+      if (s.action !== "return") {
+        row("작업", s.label + " " + s.qty + "대");
+        row("작업 뒤 적재", s.load + "대");
+        if (s.stock != null) row("계획 시점 재고", s.stock + (s.lot != null ? " / 거치대 " + s.lot : "") + "대");
+      }
+      if (s.minutes != null) row("출발 후", Math.ceil(s.minutes) + "분");
+      root.appendChild(dl);
+      var href = opts && opts.link ? opts.link(v) : null;
+      if (href) { var a = el("a", null, v.id + " 경로 안내"); a.href = href; root.appendChild(a); }
+      return root;
+    }
+    function drawMap(box, opts) {
+      opts = opts || {};
+      if (!box) return null;
+      if (!plan || !plan.vehicles.length) { fallback(box, "그릴 경로가 없습니다."); return null; }
+      if (!window.L) { fallback(box, "지도를 불러오지 못했습니다 — 인터넷 연결이 필요합니다. 아래 목록으로 진행하세요."); return null; }
+      if (!plan.tiles || !plan.tiles.url) { fallback(box, "지도 바탕을 정하지 못했습니다(MAP_TILES). 아래 목록으로 진행하세요."); return null; }
+      box.innerHTML = "";
+      // 확대 단추는 오른쪽 위(Apple 지도와 같은 자리) — 왼쪽 위에 두면 북서쪽 차고지 표지를 덮는다.
+      var map = L.map(box, { scrollWheelZoom: false, zoomControl: false });
+      L.control.zoom({ position: "topright" }).addTo(map);
+      L.tileLayer(plan.tiles.url, {
+        attribution: plan.tiles.attribution, maxZoom: plan.tiles.max_zoom || 19,
+        subdomains: plan.tiles.subdomains || "abc"
+      }).addTo(map);
+      var depot = [plan.depot.lat, plan.depot.lon];
+      /* opts.depotLegs === false면 차고지 왕복선을 긋지 않고 대여소에만 맞춰 확대한다.
+         차고지가 도심에서 멀어 16대의 왕복선이 부채꼴로 겹치고 경로가 작게 보였다(오늘 화면 실측). */
+      var legs = opts.depotLegs !== false;
+      var bounds = legs ? [depot] : [];
+      var pins = {};
+      plan.vehicles.forEach(function (v) {
+        if (opts.only && v.id !== opts.only) return;
+        var focus = opts.focus && v.id === opts.focus;
+        var dim = opts.focus && !focus;
+        var pts = legs ? [depot] : [];
+        v.stops.forEach(function (s) {
+          if (s.lat == null || s.lon == null) return;
+          if (!legs && s.action === "return") return;
+          pts.push([s.lat, s.lon]);
+        });
+        var line = L.polyline(pts, { color: v.color, weight: focus ? 5 : 3, opacity: dim ? 0.4 : 0.9 }).addTo(map);
+        if (opts.onVehicle) line.on("click", function () { opts.onVehicle(v); });
+        pts.forEach(function (p) { bounds.push(p); });
+        v.stops.forEach(function (s) {
+          if (s.action === "return" || s.lat == null || s.lon == null) return;
+          var marker;
+          if (opts.numbered) {
+            var ring = s.action === "pick" ? plan.colors.pick : plan.colors.drop;
+            marker = L.marker([s.lat, s.lon], { icon: L.divIcon({
+              className: "", iconSize: [32, 32], iconAnchor: [16, 16],
+              html: '<span class="m-pin" style="--c:' + ring + '">' + s.no + "</span>" }),
+              keyboard: true, title: s.no + ". " + s.name });
+          } else {
+            marker = L.circleMarker([s.lat, s.lon], { radius: focus ? 5 : 4, color: v.color,
+              weight: 2, fillColor: v.color, fillOpacity: dim ? 0.35 : 0.9, opacity: dim ? 0.4 : 1 });
+          }
+          marker.bindPopup(function () { return stopPopup(v, s, opts); });
+          marker.addTo(map);
+          pins[v.id + "#" + s.no] = marker;
+        });
+      });
+      L.marker(depot, { icon: L.divIcon({ className: "", iconSize: [48, 22], iconAnchor: [24, 11],
+        html: '<span class="m-depot">차고지</span>' }), title: plan.depot.name, keyboard: false }).addTo(map);
+      if (!bounds.length) bounds = [depot];
+      map.fitBounds(bounds, { padding: [32, 32], maxZoom: 16 });
+      return { map: map, pins: pins };
+    }
+
+    return { plan: plan, isDone: isDone, setDone: setDone, clearAll: clearAll, vehicle: vehicle,
+             progress: progress, overall: overall, badge: badge, navUrl: navUrl, drawMap: drawMap,
+             onChange: function (fn) { listeners.push(fn); },
+             stored: function () { return stored; } };
+  })();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

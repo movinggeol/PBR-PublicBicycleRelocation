@@ -1,0 +1,190 @@
+{% extends "m_base.html" %}
+{# 현장 앱 ④ 내 정보 (1.26.307) — 사진 시안의 넷째 화면.
+   로그인이 없으므로 **내 차량**이 신원을 대신한다(쿠키 — 이 기기에만). 시안의 메뉴 중
+   받쳐 줄 자료가 있는 것만 남겼다: 트럭 적재 현황 · 작업 메모 · 운영 요약 · 스케줄(→ 내
+   배정 이력). 긴급 알림 · 공지 · 신고 · 피드백 · 지원 요청은 받아 줄 서버가 없어 뺐다 —
+   눌러도 빈 화면인 메뉴는 두지 않는다. #}
+{% block title %}내 정보 · PBR 현장 앱{% endblock %}
+{% block style_extra %}
+    .m-profile { text-align: center; padding: 24px 16px 20px; }
+    .m-avatar { width: 88px; height: 88px; margin: 0 auto 12px; border-radius: 50%;
+                background: var(--m-fill); color: var(--m-ink-4); display: flex;
+                align-items: center; justify-content: center; border: 1px solid var(--m-line); }
+    .m-avatar svg { width: 52px; height: 52px; fill: none; stroke: currentColor; stroke-width: 1.4;
+                    stroke-linecap: round; stroke-linejoin: round; }
+    .m-profile .who { font-size: 24px; font-weight: 700; letter-spacing: -.5px; }
+    .m-profile .thanks { margin: 4px 0 0; font-size: 15px; color: var(--m-ink-2); }
+    .m-danger-text { color: var(--m-danger); }
+{% endblock %}
+
+{% macro ico(path) -%}
+<span class="m-ico" aria-hidden="true"><svg viewBox="0 0 24 24">{{ path | safe }}</svg></span>
+{%- endmacro %}
+{% macro chev() -%}
+<svg class="m-chev" viewBox="0 0 8 14" aria-hidden="true"><path d="M1 1l6 6-6 6"/></svg>
+{%- endmacro %}
+
+{% block content %}
+<h1 class="m-title">내 정보</h1>
+{% if saved %}<p class="m-alert good" role="status">내 차량을 저장했습니다.</p>{% endif %}
+
+<section class="m-card m-profile" aria-label="내 차량">
+  <div class="m-avatar" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></div>
+  <div class="who">{% if mine %}{{ mine }}{% else %}차량을 고르세요{% endif %}</div>
+  <p class="thanks">오늘도 타슈를 지켜 주셔서 감사합니다.</p>
+  {% if mine_route %}<p class="m-note">이 회차 {{ mine_route.stations }}곳 · 옮길 자전거 {{ mine_route.bikes }}대 · {{ hm(mine_route.minutes) }}</p>
+  {% elif mine and plan.vehicles %}<p class="m-note">이 회차에는 배정이 없습니다.</p>{% endif %}
+</section>
+
+<h2 class="m-section" id="vehicle-h">내 차량</h2>
+<form class="m-card" method="post" action="/m/vehicle" aria-labelledby="vehicle-h">
+  <input type="hidden" name="next" value="{{ next_url }}">
+  {% set assigned = plan.vehicles | map(attribute='id') | list %}
+  <div class="m-inline">
+    <label class="m-field tight"><span>이 기기에서 쓰는 차량</span>
+      <select class="m-input" name="vehicle">
+        <option value="">고르지 않음</option>
+        {%- for v in fleet %}
+        <option value="{{ v }}"{% if v == mine %} selected{% endif %}>{{ v }}{% if v in assigned %} · 이 회차 출동{% endif %}</option>
+        {%- endfor %}
+      </select></label>
+    <button class="m-btn small" type="submit">저장</button>
+  </div>
+  <p class="hint">이 기기(브라우저)에만 저장됩니다. 로그인이 없어 차량이 곧 신원입니다 — 오늘 작업과
+    경로 안내가 이 차량으로 열립니다.</p>
+</form>
+
+<h2 class="m-section" id="work-h">작업 정보</h2>
+<ul class="m-list" aria-labelledby="work-h">
+  <li><div class="m-row">
+    {{ ico('<path d="M3 16V8.5A1.5 1.5 0 0 1 4.5 7H14v9"/><path d="M14 10h3.6l2.9 3.2V16H14"/><circle cx="7" cy="17" r="1.8"/><circle cx="17" cy="17" r="1.8"/>') }}
+    <span class="main"><span class="name">트럭 적재 현황</span>
+      <span class="meta" id="load-meta">{% if mine_route %}계획상 가장 많이 실을 때 {{ mine_route.max_load }}대{% else %}내 차량을 고르면 보입니다{% endif %} · 적재 상한 {{ capacity }}대</span></span>
+    <span class="end num" id="load-now" aria-hidden="true"></span></div></li>
+  <li><a class="m-row" href="{{ links.kpi }}">
+    {{ ico('<path d="M4 20h16"/><path d="M7 16v-5"/><path d="M12 16V7"/><path d="M17 16v-8"/>') }}
+    <span class="main"><span class="name">운영 요약</span><span class="meta">이 계획의 성과 지표 (관제 화면)</span></span>
+    {{ chev() }}</a></li>
+  {%- if mine %}
+  <li><a class="m-row" href="/vehicles?vehicle_id={{ mine | urlencode }}#assignments">
+    {{ ico('<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16"/><path d="M9 3v4"/><path d="M15 3v4"/>') }}
+    <span class="main"><span class="name">내 배정 이력</span><span class="meta">{{ mine }}이(가) 나간 회차 (관제 화면)</span></span>
+    {{ chev() }}</a></li>
+  {%- endif %}
+</ul>
+<div class="m-card">
+  <label class="m-field tight"><span>작업 메모</span>
+    <textarea class="m-input" id="memo" placeholder="예: 3번 대여소 거치대 두 칸 고장"></textarea></label>
+  <p class="hint" id="memo-state">이 기기에만 저장됩니다 — 관제 화면에는 가지 않습니다.</p>
+</div>
+
+<h2 class="m-section" id="plans">계획 고르기</h2>
+{% if plan_groups %}
+<ul class="m-list" aria-labelledby="plans">
+  {%- for g in plan_groups[:5] %}
+  <li><a class="m-row" href="/m?run_label={{ g.run_label | urlencode }}"
+         {%- if g.run_label == run_label %} aria-current="true"{% endif %}>
+    {{ ico('<path d="M8 4h11v16H8z"/><path d="M5 7v13h11"/>') }}
+    <span class="main"><span class="name"><span class="num">{{ g.run_label }}</span>
+      {%- if g.run_label == run_label %} <span class="m-badge is-mine">보는 중</span>{% endif %}
+      {%- if loop.first %} <span class="m-badge is-todo">최신</span>{% endif %}</span>
+      <span class="meta">{% for d in g.durations %}{{ d.label }}{% if not loop.last %} · {% endif %}{% endfor %}</span></span>
+    {{ chev() }}</a></li>
+  {%- endfor %}
+</ul>
+{% endif %}
+<p class="hint">최근 운영 계획 {{ [plan_groups | length, 5] | min }}개입니다. 실험·수집 실행과 전체 목록은
+  <a href="/orders">관제 화면의 작업지시서</a>에서 고릅니다.</p>
+
+<h2 class="m-section" id="set-h">설정</h2>
+<ul class="m-list" aria-labelledby="set-h">
+  <li><button class="m-row" type="button" id="theme">
+    {{ ico('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16Z" fill="currentColor"/>') }}
+    <span class="main"><span class="name">화면 테마</span><span class="meta" id="theme-state">기기 설정을 따릅니다</span></span>
+    <span class="end">바꾸기</span></button></li>
+  {%- if plan.vehicles %}
+  <li><button class="m-row" type="button" id="clear">
+    {{ ico('<path d="M5 7h14"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6.5 7l1 13h9l1-13"/><path d="M9.5 7V4h5v3"/>') }}
+    <span class="main"><span class="name m-danger-text">이 회차 체크 기록 지우기</span>
+      <span class="meta" id="clear-meta">이 기기에서 체크한 것만 지웁니다</span></span></button></li>
+  {%- endif %}
+</ul>
+
+<h2 class="m-section" id="desk-h">관제 화면</h2>
+<ul class="m-list" aria-labelledby="desk-h">
+  <li><a class="m-row" href="/">
+    {{ ico('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/>') }}
+    <span class="main"><span class="name">관제 화면으로</span><span class="meta">현황판 · 계획 실행 · 결과</span></span>
+    {{ chev() }}</a></li>
+  <li><a class="m-row" href="/guide">
+    {{ ico('<circle cx="12" cy="12" r="8.5"/><path d="M9.8 9.5a2.3 2.3 0 1 1 3.2 2.1c-.6.3-1 .8-1 1.5v.4"/><path d="M12 16.8v.2"/>') }}
+    <span class="main"><span class="name">사용 안내</span><span class="meta">무엇을 계산하는지, 지표 읽는 법</span></span>
+    {{ chev() }}</a></li>
+</ul>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var F = window.PBRField;
+    var mine = F.plan ? F.plan.mine : "";
+
+    // 트럭 적재 현황 — 체크 기준 지금 싣고 있어야 할 대수(수거 − 배송).
+    var v = mine ? F.vehicle(mine) : null;
+    var loadNow = document.getElementById("load-now");
+    function renderLoad() {
+      if (!v) return;
+      var p = F.progress(v);
+      loadNow.textContent = p.load + "대";
+      loadNow.removeAttribute("aria-hidden");
+      loadNow.setAttribute("aria-label", "체크 기준 지금 적재 " + p.load + "대");
+    }
+
+    // 작업 메모 — 이 기기의 localStorage. 쓰는 대로 저장한다.
+    var memo = document.getElementById("memo");
+    var memoState = document.getElementById("memo-state");
+    try { memo.value = localStorage.getItem("pbr-field-memo") || ""; } catch (e) {}
+    var timer = null;
+    memo.addEventListener("input", function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        try { localStorage.setItem("pbr-field-memo", memo.value); memoState.textContent = "저장했습니다 — 이 기기에만 있습니다."; }
+        catch (e) { memoState.textContent = "이 브라우저는 메모를 저장하지 못합니다."; }
+      }, 400);
+    });
+
+    // 화면 테마 — 관제 화면과 같은 열쇠(pbr-theme)라 한쪽에서 바꾸면 다른 쪽도 따른다.
+    var root = document.documentElement;
+    var themeState = document.getElementById("theme-state");
+    function renderTheme() {
+      var t = root.dataset.theme;
+      themeState.textContent = t === "dark" ? "어둡게" : t === "light" ? "밝게" : "기기 설정을 따릅니다";
+    }
+    document.getElementById("theme").addEventListener("click", function () {
+      var dark = root.dataset.theme ? root.dataset.theme === "dark"
+                                    : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      root.dataset.theme = dark ? "light" : "dark";
+      try { localStorage.setItem("pbr-theme", root.dataset.theme); } catch (e) {}
+      renderTheme();
+    });
+
+    // 이 회차 체크 기록 지우기 — 되돌릴 수 없으므로 묻는다.
+    var clear = document.getElementById("clear");
+    function renderClear() {
+      if (!clear) return;
+      var all = F.overall();
+      document.getElementById("clear-meta").textContent =
+        all.done ? "이 기기에서 체크한 " + all.done + "건을 지웁니다" : "지울 체크가 없습니다";
+      clear.disabled = !all.done;
+    }
+    if (clear) clear.addEventListener("click", function () {
+      if (window.confirm("이 회차에서 체크한 기록을 지웁니다. 되돌릴 수 없습니다.")) F.clearAll();
+    });
+
+    function render() { renderLoad(); renderClear(); }
+    F.onChange(render);
+    render();
+    renderTheme();
+  })();
+</script>
+{% endblock %}

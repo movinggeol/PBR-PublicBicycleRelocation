@@ -1,0 +1,214 @@
+{% extends "m_base.html" %}
+{# 현장 앱 ② 경로 안내 (1.26.307) — 사진 시안의 둘째 화면.
+   '지금 → 다음' 두 칸, 번호 표지 지도, 두 단추(도착·완료 / 안내 시작), 방문 순서.
+   시안의 '나중에 출발'은 **도착·완료 체크**로 바꿨다 — 진행 기록이 없으면 그 단추로
+   할 일이 없고, 이 체크가 진행 현황을 만든다. 실제 길 안내는 지도 앱(카카오맵)이 한다.
+   계획은 바꾸지 않는다 — 체크는 기록일 뿐이다(orders.py 머리말의 규약). #}
+{% block title %}경로 안내 · PBR 현장 앱{% endblock %}
+{% block head_extra %}{% if route %}<link rel="stylesheet" href="{{ leaflet_css }}" crossorigin="">{% endif %}{% endblock %}
+{% block style_extra %}
+    .m-leg { display: grid; gap: 0; padding: 4px 16px; }
+    .m-leg-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center;
+                 gap: 10px; min-height: 52px; }
+    .m-leg-row + .m-leg-row { border-top: 1px solid var(--m-line-soft); }
+    .m-leg-k { font-size: 13px; font-weight: 600; color: var(--m-ink-3); }
+    .m-leg-v { min-width: 0; }
+    .m-leg-v b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis;
+                 white-space: nowrap; }
+    .m-leg-v span { font-size: 13px; color: var(--m-ink-3); }
+    .m-route-head { display: flex; align-items: center; gap: 8px; font-size: 15px;
+                    color: var(--m-ink-2); margin: 0 0 12px; flex-wrap: wrap; }
+    .m-route-head b { color: var(--m-ink); }
+    .m-stops .m-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+    .m-num {
+      display: flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+      border-radius: 50%; border: 3px solid var(--c); background: var(--m-card);
+      font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0;
+    }
+    .m-num.home { border-radius: 8px; border-color: var(--m-ink); font-size: 11px; width: auto;
+                  padding: 0 6px; }
+    .m-stop-main { display: block; min-width: 0; padding: 0; border: 0; background: none;
+                   color: inherit; font: inherit; text-align: left; cursor: pointer; }
+    .m-stop-main .name { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis;
+                         white-space: nowrap; }
+    .m-check {
+      width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--m-line);
+      background: var(--m-card); color: transparent; display: flex; align-items: center;
+      justify-content: center; cursor: pointer; flex: 0 0 auto;
+    }
+    .m-check svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.4;
+                   stroke-linecap: round; stroke-linejoin: round; }
+    .m-check[aria-pressed="true"] { border-color: var(--m-good); background: var(--m-good-soft);
+                                    color: var(--m-good); }
+    /* 지금 할 곳 — 왼쪽 막대 + '다음' 딱지(색만으로 말하지 않는다). */
+    .m-stop.is-current { box-shadow: inset 3px 0 0 var(--m-accent); }
+    .m-stop.is-done .m-stop-main .name { color: var(--m-ink-3); font-weight: 500; }
+    .m-stop [data-flag]:empty { display: none; }
+{% endblock %}
+
+{% block content %}
+<h1 class="m-title">경로 안내</h1>
+{% include "_m_plan.html" %}
+
+{% if not plan.vehicles %}
+{% include "_m_empty.html" %}
+{% elif not route %}
+<div class="m-card"><p class="empty">
+  {%- if target %}<b>{{ target }}</b>은(는) 이 회차에 배정이 없습니다 — 로테이션으로 쉬는 회차일 수
+  있습니다. 아래에서 차량을 고르거나 <a href="{{ tabs.me }}">내 차량을 바꾸세요</a>.
+  {%- else %}어느 차량의 경로를 볼까요? <a href="{{ tabs.me }}">내 차량을 정해 두면</a> 이 화면이 바로
+  그 차량으로 열립니다.{% endif %}</p></div>
+<h2 class="m-section" id="pick-h">이 회차의 차량</h2>
+<ul class="m-list" aria-labelledby="pick-h">
+  {%- for v in plan.vehicles %}{% include "_m_route_row.html" %}{% endfor %}
+</ul>
+{% else %}
+<p class="m-route-head">
+  <span class="m-dot" style="--c: {{ route.color }}" aria-hidden="true"></span>
+  <b>{{ route.id }}</b>{% if route.id == mine %} <span class="m-badge is-mine">내 차량</span>{% endif %}
+  <span>{{ route.stations }}곳 · {{ route.bikes }}대 · {{ hm(route.minutes) }}{% if route.finish %} · {{ route.finish }} 완료 예정{% endif %}</span>
+</p>
+{% if route.id != mine %}
+<p class="m-alert warn">다른 차량의 경로를 보고 있습니다{% if mine %}(내 차량 {{ mine }}){% endif %}. 체크하면 이 차량의 기록으로 남습니다.
+  <a href="{{ tabs.me }}">내 차량 정하기</a></p>
+{% endif %}
+
+{% set first = route.stops[0] %}
+<div class="m-card m-leg" aria-live="polite">
+  <div class="m-leg-row"><span class="m-leg-k">지금</span>
+    <span class="m-leg-v" id="leg-from"><b>차고지</b><span>{{ plan.depot.name }}</span></span></div>
+  <div class="m-leg-row"><span class="m-leg-k">다음</span>
+    <span class="m-leg-v" id="leg-to"><b>{{ first.no }}. {{ first.name }}</b><span>{{ first.id }} · {{ first.label }} {{ first.qty }}대</span></span></div>
+</div>
+
+<div class="m-map tall" id="route-map" role="region" aria-label="{{ route.id }} 경로 지도 — 번호는 방문 순서입니다. 같은 내용이 아래 목록에 있습니다.">
+  <p class="m-map-fallback">지도는 스크립트가 그립니다. 아래 목록으로 진행하세요.</p>
+</div>
+
+<div class="m-actions">
+  <button class="m-btn ghost" type="button" id="arrive">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>도착 · 완료</button>
+  <a class="m-btn" id="navigate" target="_blank" rel="noopener"
+     {%- if first_nav %} href="{{ first_nav }}"{% endif %}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 20 4l-7.5 16-2-6.5L4 11.5Z"/></svg>안내 시작</a>
+</div>
+<p class="hint" id="route-status">작업 {{ route.chain | length }}건 · 안내는 카카오맵이 합니다(앱이 있으면 앱으로 열립니다).</p>
+
+<div class="m-section-row">
+  <h2 class="m-section" id="stops-h">방문 순서</h2>
+  <a href="{{ links.orders_vehicle }}">관제 지시서</a>
+</div>
+<ol class="m-list m-stops" id="stops" aria-labelledby="stops-h">
+  {%- for s in route.stops %}
+  <li class="m-stop" data-no="{{ s.no }}" data-action="{{ s.action }}">
+    <div class="m-row">
+      {%- if s.action == 'return' %}
+      <span class="m-num home" aria-hidden="true">복귀</span>
+      <span class="main"><span class="name">{{ plan.depot.name }}</span>
+        <span class="meta">차고지 복귀{% if s.minutes is not none %} · 출발 후 {{ hm(s.minutes) }}{% endif %}</span></span>
+      <span></span>
+      {%- else %}
+      <span class="m-num" style="--c: {{ plan.colors.pick if s.action == 'pick' else plan.colors.drop }}" aria-hidden="true">{{ s.no }}</span>
+      <button class="m-stop-main" type="button" data-focus aria-label="{{ s.no }}번 {{ s.name }} 지도에서 보기">
+        <span class="name">{{ s.name }}</span>
+        <span class="meta"><span class="{{ s.action }}">{{ s.label }} {{ s.qty }}대</span> · 작업 뒤 적재 {{ s.load }}대{% if s.minutes is not none %} · 출발 후 {{ hm(s.minutes) }}{% endif %}</span>
+        <span class="chain">{{ s.id }}{% if s.stock is not none %} · 계획 시점 재고 {{ s.stock }}{% if s.lot is not none %}/{{ s.lot }}{% endif %}대{% endif %} <span class="m-badge is-doing" data-flag></span></span>
+      </button>
+      <button class="m-check" type="button" aria-pressed="false" data-check
+              aria-label="{{ s.no }}번 {{ s.name }} 완료">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button>
+      {%- endif %}
+    </div>
+  </li>
+  {%- endfor %}
+</ol>
+<p class="hint">재고는 <b>계획을 세운 시점</b>의 값입니다 — 지금 재고는
+  <a href="{{ links.live }}">관제 화면의 재고 대조</a>에서 봅니다.
+  지도의 선은 대여소 사이를 곧게 이은 것이고, 실도로 선은 <a href="{{ links.maps }}">경로 지도</a>에 있습니다.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if route %}
+<script src="{{ leaflet_js }}" crossorigin=""></script>
+<script>
+  (function () {
+    var F = window.PBRField;
+    var v = F.vehicle({{ route.id | tojson }});
+    if (!v) return;
+    var drawn = F.drawMap(document.getElementById("route-map"),
+                          { only: v.id, focus: v.id, numbered: true });
+    var list = document.getElementById("stops");
+    var arrive = document.getElementById("arrive");
+    var nav = document.getElementById("navigate");
+    var status = document.getElementById("route-status");
+    var depot = F.plan.depot;
+
+    function leg(node, title, sub) {
+      node.textContent = "";
+      var b = document.createElement("b"); b.textContent = title; node.appendChild(b);
+      var s = document.createElement("span"); s.textContent = sub; node.appendChild(s);
+    }
+    function pin(no) {
+      if (!drawn) return null;
+      var m = drawn.pins[v.id + "#" + no];
+      var node = m && m.getElement ? m.getElement() : null;
+      return node ? node.querySelector(".m-pin") : null;
+    }
+    function render() {
+      var p = F.progress(v);
+      var next = p.next, home = next && next.action === "return";
+      if (p.last) leg(document.getElementById("leg-from"), p.last.no + ". " + p.last.name,
+                      p.last.id + " · " + p.last.label + " " + p.last.qty + "대 끝남");
+      else leg(document.getElementById("leg-from"), "차고지", depot.name);
+      if (!next || home) leg(document.getElementById("leg-to"), "차고지 복귀", depot.name + " · 작업을 모두 끝냈습니다");
+      else leg(document.getElementById("leg-to"), next.no + ". " + next.name,
+               next.id + " · " + next.label + " " + next.qty + "대");
+
+      arrive.disabled = p.finished;
+      arrive.lastChild.textContent = p.finished ? "모두 끝남" : "도착 · 완료";
+      var target = home ? { name: depot.name, id: depot.id, lat: depot.lat, lon: depot.lon } : next;
+      var url = F.navUrl(target);
+      if (url) { nav.href = url; nav.removeAttribute("aria-disabled"); }
+      else { nav.removeAttribute("href"); nav.setAttribute("aria-disabled", "true"); }
+
+      list.querySelectorAll("li[data-no]").forEach(function (li) {
+        if (li.dataset.action === "return") return;
+        var no = Number(li.dataset.no), done = F.isDone(v.id, no);
+        var current = next && !home && next.no === no;
+        li.classList.toggle("is-done", done);
+        li.classList.toggle("is-current", !!current);
+        li.querySelector("[data-check]").setAttribute("aria-pressed", done ? "true" : "false");
+        var flag = li.querySelector("[data-flag]");
+        flag.className = "m-badge " + (done ? "is-done" : "is-doing");
+        flag.textContent = done ? "완료" : current ? "다음" : "";
+        var mark = pin(no);
+        if (mark) { mark.classList.toggle("is-done", done); mark.classList.toggle("is-current", !!current); }
+      });
+      status.textContent = "작업 " + p.total + "건 중 " + p.done + "건 끝남 · 옮긴 자전거 "
+        + p.moved + "대 · 지금 적재 " + p.load + "대";
+    }
+    arrive.addEventListener("click", function () {
+      var p = F.progress(v);
+      if (p.next && p.next.action !== "return") F.setDone(v.id, p.next.no, true);
+    });
+    list.addEventListener("click", function (e) {
+      var li = e.target.closest("li[data-no]");
+      if (!li) return;
+      var no = Number(li.dataset.no);
+      if (e.target.closest("[data-check]")) { F.setDone(v.id, no, !F.isDone(v.id, no)); return; }
+      if (e.target.closest("[data-focus]") && drawn) {
+        var m = drawn.pins[v.id + "#" + no];
+        if (m) {
+          drawn.map.setView(m.getLatLng(), Math.max(drawn.map.getZoom(), 15));
+          m.openPopup();
+          document.getElementById("route-map").scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+      }
+    });
+    F.onChange(render);
+    render();
+  })();
+</script>
+{% endif %}
+{% endblock %}
