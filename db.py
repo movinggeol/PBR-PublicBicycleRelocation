@@ -17,6 +17,7 @@ PostgreSQL 전환 시점에 connect()만 엔진 팩토리로 교체하면 나머
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import sqlite3
@@ -90,6 +91,9 @@ TABLES: Dict[str, TableSpec] = {
     # (1.23.2). step3이 지도를 그리며 받은 값을 여기에 남긴다 —
     # 이것이 없으면 VEHICLE_SPEED_KMPH가 맞는지 검증할 방법이 없다.
     "road_leg": TableSpec(scope=("run_label", "duration")),
+    # TMAP이 준 **실도로 경로의 좌표** (1.26.308). step3가 지도를 그리며 받은 선을 군집마다
+    # 한 줄로 남긴다 — 현장 앱(/m)이 대여소 사이를 직선으로 잇지 않고 실제 도로를 그리려고.
+    "road_path": TableSpec(scope=("run_label", "duration")),
     "metrics": TableSpec(scope=("run_label", "duration")),
     "route_summary": TableSpec(
         scope=("run_label", "duration"),
@@ -221,6 +225,21 @@ CREATE TABLE IF NOT EXISTS road_leg (
     -- observed_at은 '언제 호출했나', start_time은 '언제의 교통량인가'로 서로 다르다.
     start_time   TEXT,
     PRIMARY KEY (run_label, duration, cluster, leg)
+);
+
+-- TMAP 실도로 경로의 좌표 (1.26.308). 군집(= 차량 한 대) 하나가 한 줄이고, path는
+-- 방문 순서대로 이은 [[위도, 경도], ...] JSON이다(차고지 출발 · 복귀 포함). step3가
+-- 도로 경로를 **받은 군집만** 남긴다 — 직선으로 낮춘 군집은 없다(지어내지 않는다).
+-- source는 'tmap'(step3가 받은 그대로) 또는 'map_html'(이미 그린 경로 지도에서 되살림,
+-- tools/backfill_road_path.py).
+CREATE TABLE IF NOT EXISTS road_path (
+    run_label    TEXT NOT NULL,
+    duration     TEXT NOT NULL,
+    cluster      INTEGER NOT NULL,
+    points       INTEGER,
+    path         TEXT,
+    source       TEXT,
+    PRIMARY KEY (run_label, duration, cluster)
 );
 
 CREATE TABLE IF NOT EXISTS vrp_plan (
@@ -883,6 +902,40 @@ def replace_road_legs(df: pd.DataFrame, run_label: str, duration: str,
 
     반환값은 새로 넣은 행 수, 실패 시 0 (save_output과 같이 파이프라인을 막지 않는다).
     """
+    return _replace_clusters("road_leg", df, run_label, duration, clusters, db_path)
+
+
+def road_path_row(cluster: int, segments: Sequence, source: str = "tmap") -> dict:
+    """도로 선 조각들(`[[위도, 경도], ...]`의 목록) → `road_path` 한 행 (1.26.308).
+
+    step3는 TMAP이 준 LineString 조각을, 되살리는 도구는 경로 지도의 `L.polyline` 조각을
+    넘긴다 — 둘이 **같은 함수**로 한 줄을 만들어야 현장 앱이 받는 모양이 같다. 조각을
+    방문 순서대로 이어 붙이고, 이음매에서 겹치는 점은 한 번만 둔다. 소수 여섯째(약 0.1m)로 자른다.
+    """
+    points: list = []
+    for segment in segments:
+        for lat, lon in segment:
+            point = [round(float(lat), 6), round(float(lon), 6)]
+            if not points or points[-1] != point:
+                points.append(point)
+    return {"cluster": int(cluster), "points": len(points),
+            "path": json.dumps(points, separators=(",", ":")), "source": source}
+
+
+def replace_road_paths(df: pd.DataFrame, run_label: str, duration: str,
+                       clusters: Sequence[int], db_path: Optional[Path] = None) -> int:
+    """`road_path`에서 **도로 경로를 받은 군집만** 갈아끼운다 (1.26.308).
+
+    `replace_road_legs`와 같은 이유다 — 한도가 도중에 바닥나 몇 군집만 받았을 때 범위를
+    통째로 지우면 못 받은 군집의 옛 경로가 사라진다. 경로 지도를 되살리는 도구
+    (tools/backfill_road_path.py)도 확인을 통과한 군집만 넣으므로 이것을 쓴다.
+    """
+    return _replace_clusters("road_path", df, run_label, duration, clusters, db_path)
+
+
+def _replace_clusters(table: str, df: pd.DataFrame, run_label: str, duration: str,
+                      clusters: Sequence[int], db_path: Optional[Path] = None) -> int:
+    """(실행, 회차) 안에서 `clusters`의 행만 지우고 `df`를 넣는다. 실패해도 파이프라인은 계속."""
     measured = sorted({int(c) for c in clusters})
     if not measured:
         return 0
@@ -891,17 +944,17 @@ def replace_road_legs(df: pd.DataFrame, run_label: str, duration: str,
             ensure_run(conn, run_label, duration=duration)
             marks = ",".join("?" for _ in measured)
             conn.execute(
-                f"DELETE FROM road_leg WHERE run_label = ? AND duration = ?"
+                f"DELETE FROM {table} WHERE run_label = ? AND duration = ?"
                 f" AND cluster IN ({marks})", (run_label, duration, *measured))
             if len(df):
                 frame = df.copy()
                 frame.insert(0, "duration", duration)
                 frame.insert(0, "run_label", run_label)
-                frame.to_sql("road_leg", conn, if_exists="append", index=False)
+                frame.to_sql(table, conn, if_exists="append", index=False)
             conn.commit()
         return len(df)
     except Exception as err:   # noqa: BLE001 — save_output과 같은 전환기 규칙
-        print(f"[경고] DB 기록 실패 (road_leg): {type(err).__name__}: {err}")
+        print(f"[경고] DB 기록 실패 ({table}): {type(err).__name__}: {err}")
         return 0
 
 

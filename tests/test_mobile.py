@@ -100,6 +100,14 @@ def test_지도_스크립트는_folium과_같은_판이다():
         f"folium의 Leaflet 판이 {mobile_view.LEAFLET_VERSION}이 아니다: {urls[:200]}")
 
 
+def test_출처_표기는_지도_위가_아니라_아래_한_줄이다():
+    """사용자 요청(2026-09-30): 지도 위 'Leaflet | © OpenStreetMap contributors'를 없앤다.
+    OSM 타일은 출처 표기가 조건이라 지우지 않고 지도 아래로 옮긴다 — 문구는 MAP_TILES에서 푼 값."""
+    base = (TEMPLATES / "m_base.html").read_text(encoding="utf-8")
+    assert "attributionControl: false" in base, "지도 위 출처 칸이 다시 떴다"
+    assert '"m-credit"' in base and "plan.tiles.attribution" in base, "지도 아래 출처 줄이 없다"
+
+
 def test_지도_바탕은_MAP_TILES_하나를_folium_규칙으로_푼다():
     """pbr-pipeline 함정 4 — 세 지도와 같은 값. 템플릿에 타일 주소를 박지 않는다."""
     import folium
@@ -112,6 +120,84 @@ def test_지도_바탕은_MAP_TILES_하나를_folium_규칙으로_푼다():
 
 
 # ─────────────────────────── 실데이터 모양의 표본 ───────────────────────────
+
+# ─────────────────────────── 실도로 선 (1.26.308) ───────────────────────────
+# 사용자 지적(2026-09-30): "길을 일직선으로 뚫고 다니게 하면 안 된다 — 실제 경로의 좌표대로".
+
+def _backfill_tool():
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[1] / "tools" / "backfill_road_path.py"
+    spec = importlib.util.spec_from_file_location("backfill_road_path_under_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_도로_선_한_줄은_조각을_잇고_이음매의_점을_한_번만_둔다():
+    row = db.road_path_row(3, [[[36.1, 127.1], [36.2, 127.2]], [[36.2, 127.2], [36.3, 127.3]]])
+    assert row["cluster"] == 3 and row["points"] == 3 and row["source"] == "tmap"
+    assert json.loads(row["path"]) == [[36.1, 127.1], [36.2, 127.2], [36.3, 127.3]]
+
+
+def test_경로_지도_HTML에서_군집별_실도로_선만_읽는다():
+    """folium이 쓴 모양 그대로 읽는지 — folium을 올려 모양이 바뀌면 여기서 깨진다.
+    점선은 TMAP을 못 받아 직선으로 낮춘 선이라 빼야 한다."""
+    import folium
+
+    m = folium.Map(location=[36.35, 127.38], zoom_start=12)
+    road = folium.FeatureGroup(name="Cluster 3").add_to(m)
+    folium.PolyLine([[36.30, 127.30], [36.31, 127.32]], color="#56B4E9").add_to(road)
+    folium.PolyLine([[36.31, 127.32], [36.33, 127.35]], color="#56B4E9").add_to(road)
+    straight = folium.FeatureGroup(name="Cluster 4").add_to(m)
+    folium.PolyLine([[36.40, 127.40], [36.45, 127.45]], dash_array="8,6").add_to(straight)
+    folium.LayerControl().add_to(m)
+
+    paths = _backfill_tool().paths_from_html(m.get_root().render())
+    assert set(paths) == {3}, "직선(점선) 군집이 실도로로 들어왔다"
+    assert paths[3] == [[[36.30, 127.30], [36.31, 127.32]], [[36.31, 127.32], [36.33, 127.35]]]
+
+
+def test_선이_방문_대여소를_비껴가면_다른_계획의_지도다():
+    tool = _backfill_tool()
+    segments = [[[36.300, 127.300], [36.300, 127.310]]]
+    assert tool.far_stops(segments, [("A", 36.3005, 127.305)]) == []          # 약 55m
+    assert tool.far_stops(segments, [("B", 36.310, 127.305)]) == ["B"]        # 약 1.1km
+
+
+def test_폰에_보낼_선은_덜어도_모양과_끝점을_지킨다():
+    """한 회차 17대면 저장된 점이 수만 개다 — 곧은 길의 중간 점은 덜고, 꺾이는 점은 남긴다."""
+    straight = [[36.30 + i * 1e-4, 127.30] for i in range(51)]
+    bent = straight + [[36.305, 127.30 + i * 1e-4] for i in range(1, 51)]
+    kept = mobile_view._road_path(json.dumps(bent))
+    assert len(kept) < 10, len(kept)
+    assert kept[0] == (36.3, 127.3) and kept[-1] == (36.305, 127.305)
+    assert (36.305, 127.3) in kept, "꺾이는 점을 덜었다"
+
+
+def test_오늘_화면은_차고지_왕복을_잘라_낸다():
+    path = [[36.40, 127.30], [36.35, 127.33], [36.33, 127.35], [36.32, 127.36], [36.40, 127.30]]
+    work = [{"lat": 36.33, "lon": 127.35}, {"lat": 36.32, "lon": 127.36}]
+    assert mobile_view.core_span(path, work) == [2, 3]
+    assert mobile_view.core_span(None, work) is None
+
+
+def test_실도로_선이_없으면_직선을_긋지_않는다():
+    """🔴 대여소 좌표를 이어 선을 만들면 건물·강을 뚫는 경로가 된다 — 선은 `v.path`에서만."""
+    base = (TEMPLATES / "m_base.html").read_text(encoding="utf-8")
+    block = base[base.index("function drawMap"):base.index("return { plan: plan")]
+    assert "v.path" in block
+    assert "pts.push([s.lat, s.lon])" not in block, "대여소 좌표로 선을 잇고 있다"
+
+
+def test_step3가_받은_도로_선을_DB에_남긴다():
+    """step3는 TMAP을 불러야 돌아서 여기서 실행하지 않는다 — 저장 호출이 있는지만 본다."""
+    src = (Path(__file__).resolve().parents[1] / "pipeline" / "step3_map" / "main.py").read_text(
+        encoding="utf-8")
+    assert "db.road_path_row(c, segments" in src
+    assert 'db.save_output("road_path"' in src and "db.replace_road_paths(" in src
+    assert "road_path" in db.TABLES
+
 
 def _vrp():
     """차량 둘. V02는 수거 4·배송 3이라 `min(수거, 배송)`이 수거 합과 다르다."""
@@ -234,6 +320,16 @@ def test_계획_한_벌은_지시서와_같은_숫자다(client):
     assert stop3["stock"] is None and stop3["lot"] == 12
 
 
+def test_실도로_선이_있는_차량만_선을_받는다(client):
+    path = [[DEPOT_LAT, DEPOT_LON], [36.34, 127.39], [36.35, 127.40], [DEPOT_LAT, DEPOT_LON]]
+    db.replace_road_paths(pd.DataFrame([db.road_path_row(1, [path])]), LABEL, DURATION, [1])
+    plan = _plan(client.get("/m").text)
+    v1, v2 = plan["vehicles"]
+    assert v1["path"] is None, "선이 없는 차량에 선을 지어냈다"
+    assert v2["path"] and v2["path"][0] == [round(DEPOT_LAT, 5), round(DEPOT_LON, 5)]
+    assert plan["totals"]["roads"] == 1
+
+
 def test_내_차량이_없으면_회차_전체를_보인다(client):
     html = client.get("/m").text
     assert "출동 차량" in html and "회차 전체입니다" in html
@@ -244,7 +340,7 @@ def test_내_차량이_없으면_회차_전체를_보인다(client):
 def test_내_차량을_고르면_그_차로_열린다(client):
     client.cookies.set("pbr_field_vehicle", "V02", path="/m")
     html = client.get("/m").text
-    assert "내 경로 안내" in html
+    assert re.search(r'class="m-btn small" href="/m/route">', html), "내 경로 안내 단추가 없다"
     # 내 차량이 목록 맨 위다.
     rows = re.findall(r'<li data-vehicle="([^"]+)">', html)
     assert rows[0] == "V02", rows
@@ -257,7 +353,7 @@ def test_내_차량을_고르면_그_차로_열린다(client):
 def test_남의_경로를_볼_때는_밝힌다(client):
     client.cookies.set("pbr_field_vehicle", "V02", path="/m")
     html = client.get("/m/route?vehicle=V01").text
-    assert "다른 차량의 경로를 보고 있습니다" in html
+    assert "다른 차량을 보는 중" in html
 
 
 def test_이_회차에_없는_차량은_비우지_않고_늘어놓는다(client):
@@ -270,8 +366,8 @@ def test_이_회차에_없는_차량은_비우지_않고_늘어놓는다(client)
 def test_진행_현황은_계획_지표를_계획_지표라고_적는다(client):
     html = client.get("/m/progress").text
     assert "이 기기에서 체크한 기록으로 셉니다" in html
-    assert "0.39h" in html and "78.9% 감소" in html      # kpi_view.stockout_cut_pct와 같은 값
-    assert "50%" in html and "예산 120분" in html
+    assert "0.39<small>h</small>" in html and "78.9% 감소" in html   # kpi_view.stockout_cut_pct와 같은 값
+    assert "50<small>%</small>" in html and "예산 120분" in html
     assert "오늘 현장에서 잰 값이 아닙니다" in html
     # 시안의 '총 이용 횟수·신고 건수'는 자료가 없어 싣지 않는다.
     assert "이용 횟수" not in html and "신고" not in html

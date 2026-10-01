@@ -1140,7 +1140,8 @@ def _field_context(request: Request, run_label: Optional[str], duration: Optiona
     plan = mobile_view.build_plan(
         context["sheets"], context["sheet_names"],
         frames["candidates"] if frames else None,
-        mobile_view.route_minutes(run_label, duration), duration)
+        mobile_view.route_minutes(run_label, duration), duration,
+        mobile_view.road_paths(run_label, duration))
 
     mine = request.cookies.get(FIELD_VEHICLE_COOKIE) or ""
     if not _FIELD_VEHICLE_RE.match(mine):
@@ -1181,6 +1182,7 @@ def _field_context(request: Request, run_label: Optional[str], duration: Optiona
             for v in plan["vehicles"]},
         "hm": mobile_view.hours_minutes,
         "hm_parts": mobile_view.hours_minutes_parts,
+        "short": mobile_view.short_name,
         "leaflet_js": mobile_view.LEAFLET_JS,
         "leaflet_css": mobile_view.LEAFLET_CSS,
     })

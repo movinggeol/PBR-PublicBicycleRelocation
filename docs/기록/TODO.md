@@ -3271,7 +3271,7 @@ step 스크립트는 아직 CSV를 쓰며, 이관은 [DB_PLAN.md](../구현/DB_P
 
 | 항목 | 내용 |
 | --- | --- |
-| `db.py` | `data/bike_system.db` 연결(WAL), 20개 테이블 스키마, `save_frame`/`load_frame`/`latest_label`/`record_run`. 라벨 생략 시 최신 실행분 반환 |
+| `db.py` | `data/bike_system.db` 연결(WAL), 21개 테이블 스키마, `save_frame`/`load_frame`/`latest_label`/`record_run`. 라벨 생략 시 최신 실행분 반환 |
 | `tools/csv_to_db.py` | 기존 CSV 산출물을 DB로 적재. `--list`로 실행 이력 확인 |
 | `tests/test_db.py` (16개) | 멱등 저장, 실행·시간대 격리, 한글 컬럼 변환, VRP 방문 순서 보존, 실행 간 비교 쿼리 |
 | 통합 검증 (1개) | 파이프라인이 **실제로 만든 CSV**를 적재해 스키마 적합성과 행 수 일치 확인 |

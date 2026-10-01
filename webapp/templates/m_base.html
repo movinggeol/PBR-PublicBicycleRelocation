@@ -73,7 +73,7 @@
       --m-pick: var(--pick-ink);          /* 수거 (범주색 — 글자와 함께만) */
       --m-drop: var(--drop-ink);          /* 배송 */
       --m-shadow-map: var(--shadow-product); /* 시스템에 하나뿐인 그림자 — 지도에만 */
-      --m-bar-h: 56px;                    /* 탭 막대 높이(윗선 1px 별도) */
+      --m-bar-h: 48px;                    /* 탭 막대 높이(윗선 1px 별도) — 누르는 면 44px 이상 */
     }
 
     /* ── 기본 ── */
@@ -89,10 +89,17 @@
       margin: 0; background: var(--m-bg); color: var(--m-ink);
       font-family: "Pretendard Variable", -apple-system, BlinkMacSystemFont,
                    system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
-      font-size: 17px; line-height: 1.47; letter-spacing: -.374px;
+      /* 밀도 (1.26.308, 사용자 요청 — "패널이 필요 이상으로 커서 한눈에 안 들어온다, 스크롤을
+         줄여 달라"). 본문 15px · 제목 24px · 카드 여백 12px로 줄였다. 누르는 것은 **보이는
+         크기만** 줄이고 터치 면은 `.m-hit`(아래)로 44px을 지킨다. */
+      font-size: 15px; line-height: 1.4; letter-spacing: -.24px;
       -webkit-font-smoothing: antialiased;
       -webkit-tap-highlight-color: transparent;
     }
+    /* 보이는 크기는 작게, 누르는 면은 44px — 투명한 덧면을 위아래로 늘린다. */
+    .m-hit { position: relative; }
+    .m-hit::after { content: ""; position: absolute; left: 0; right: 0; top: 50%;
+                    height: 44px; transform: translateY(-50%); }
     a { color: var(--m-accent); text-decoration: none; }
     :focus-visible { outline: 2px solid var(--m-accent-focus); outline-offset: 2px; border-radius: 4px; }
     .sr-only {
@@ -120,95 +127,108 @@
       .m-bar { background: var(--m-bar); }
     }
     .m-bar-inner {
-      max-width: 520px; margin: 0 auto; padding: 0 16px; min-height: 52px;
+      max-width: 520px; margin: 0 auto; padding: 0 16px; min-height: 44px;
       display: flex; align-items: center; gap: 12px;
     }
     .m-brand {
-      font-size: 17px; font-weight: 700; letter-spacing: -.4px; color: var(--m-ink);
-      padding: 12px 0; margin-right: auto;
+      font-size: 16px; font-weight: 700; letter-spacing: -.4px; color: var(--m-ink);
+      padding: 10px 0; margin-right: auto;
     }
     .m-chip {
-      display: inline-flex; align-items: center; gap: 6px; min-height: 44px;
-      padding: 0 14px; border-radius: var(--r-pill); border: 1px solid var(--m-line);
-      background: var(--m-card); color: var(--m-ink); font-size: 14px; font-weight: 600;
-      letter-spacing: -.224px; white-space: nowrap;
+      display: inline-flex; align-items: center; gap: 5px; min-height: 30px;
+      padding: 0 11px; border-radius: var(--r-pill); border: 1px solid var(--m-line);
+      background: var(--m-card); color: var(--m-ink); font-size: 13px; font-weight: 600;
+      letter-spacing: -.2px; white-space: nowrap;
     }
     .m-chip.is-empty { color: var(--m-accent); font-weight: 400; }
-    .m-chip svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8;
+    .m-chip svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8;
                   stroke-linecap: round; stroke-linejoin: round; }
 
     /* ── 본문 ── */
     main {
       max-width: 520px; margin: 0 auto;
-      padding: 0 16px calc(var(--m-bar-h) + 1px + env(safe-area-inset-bottom, 0px) + 24px);
+      padding: 0 12px calc(var(--m-bar-h) + 1px + env(safe-area-inset-bottom, 0px) + 12px);
     }
-    /* iOS 큰 제목 — 큰 글자일수록 자간을 조인다(Apple 문법). */
-    .m-title { font-size: 32px; font-weight: 700; letter-spacing: -.8px; line-height: 1.15;
-               margin: 20px 0 4px; }
-    .m-sub { font-size: 15px; color: var(--m-ink-3); margin: 0 0 16px; letter-spacing: -.24px; }
+    /* 제목 — 큰 글자일수록 자간을 조인다(Apple 문법). 한 화면에 더 담으려고 24px. */
+    .m-title { font-size: 24px; font-weight: 700; letter-spacing: -.6px; line-height: 1.2;
+               margin: 12px 0 0; }
+    .m-sub { font-size: 12.5px; color: var(--m-ink-3); margin: 1px 0 8px; letter-spacing: -.15px; }
     .m-sub a, .hint a, .empty a, .m-note a, .m-alert a { text-decoration: underline; }
-    .m-section { font-size: 20px; font-weight: 600; letter-spacing: -.4px; margin: 28px 0 10px; }
-    .m-section-row { display: flex; align-items: baseline; gap: 12px; margin: 28px 0 10px; }
+    .m-section { font-size: 15px; font-weight: 700; letter-spacing: -.3px; margin: 14px 0 6px; }
+    .m-section-row { display: flex; align-items: baseline; gap: 10px; margin: 14px 0 6px; }
     .m-section-row .m-section { margin: 0 auto 0 0; }
-    .m-section-row a { font-size: 15px; padding: 12px 0; margin: -12px 0; }
-    .hint { font-size: 13px; color: var(--m-ink-4); margin: 8px 0 0; letter-spacing: -.1px; }
-    .m-note { font-size: 13px; color: var(--m-ink-3); margin: 10px 0 12px; }
-    .empty { color: var(--m-ink-3); font-size: 15px; margin: 0; }
+    .m-section-row a { font-size: 13px; padding: 12px 0; margin: -12px 0; }
+    .hint { font-size: 11.5px; color: var(--m-ink-4); margin: 4px 0 0; letter-spacing: -.1px; }
+    .m-note { font-size: 12.5px; color: var(--m-ink-3); margin: 0; }
+    .empty { color: var(--m-ink-3); font-size: 14px; margin: 0; }
 
-    /* ── 카드 · 타일 ── */
+    /* ── 카드 · 요약 띠 ── 모서리는 11px(묶음 목록과 같은 iOS 문법 — 18px은 이 밀도에 둥글다). */
     .m-card {
       background: var(--m-card); border: 1px solid var(--m-line);
-      border-radius: var(--r-lg); padding: 16px; margin-bottom: 12px;
+      border-radius: var(--r-md); padding: 10px 12px; margin-bottom: 8px;
     }
     .m-card > :first-child { margin-top: 0; }
     .m-card > :last-child { margin-bottom: 0; }
     .m-card.flush { padding: 0; overflow: hidden; }
-    .m-card-title { font-size: 15px; font-weight: 600; color: var(--m-ink-2); margin: 0 0 10px;
-                    letter-spacing: -.24px; }
-    .m-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
-               margin-bottom: 12px; }
-    .m-tile {
-      background: var(--m-card); border: 1px solid var(--m-line); border-radius: var(--r-lg);
-      padding: 12px 12px 13px; min-width: 0;
-    }
-    .m-tile .label { font-size: 13px; color: var(--m-ink-3); letter-spacing: -.1px; }
-    .m-tile .value { font-size: clamp(20px, 6.4vw, 24px); font-weight: 600; letter-spacing: -.5px;
-                     line-height: 1.2; margin-top: 4px; font-variant-numeric: tabular-nums;
+    .m-card-title { font-size: 12.5px; font-weight: 600; color: var(--m-ink-3); margin: 0 0 4px;
+                    letter-spacing: -.15px; }
+    /* 타일 셋을 **카드 한 장의 세 칸**으로 — 테두리 셋이 한 줄의 높이를 두 배로 썼다. */
+    .m-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 8px;
+               background: var(--m-card); border: 1px solid var(--m-line); border-radius: var(--r-md); }
+    .m-tile { padding: 7px 10px 8px; min-width: 0; }
+    .m-tile + .m-tile { border-left: 1px solid var(--m-line-soft); }
+    .m-tile .label { font-size: 11px; color: var(--m-ink-3); letter-spacing: -.1px; }
+    .m-tile .value { font-size: clamp(16px, 4.8vw, 19px); font-weight: 700; letter-spacing: -.4px;
+                     line-height: 1.2; margin-top: 1px; font-variant-numeric: tabular-nums;
                      white-space: nowrap; }
     /* 시간 값('2시간 10분')만 접을 수 있다 — 360px부터 한 칸에 안 들어간다(실측 4~17px 넘침).
        `keep-all`이 있어야 공백에서만 접힌다 — 없으면 한글은 음절 사이도 줄 바꿈 자리라
        '2시간 10 / 분'으로 숫자와 단위가 갈렸다(360px 스크린샷). */
     .m-tile .value.wrap { white-space: normal; word-break: keep-all; }
-    .m-tile .value small { font-size: 13px; font-weight: 500; letter-spacing: -.1px;
+    .m-tile .value small { font-size: 11px; font-weight: 500; letter-spacing: -.1px;
                            color: var(--m-ink-2); margin: 0 1px; }
-    .m-tile .sub { font-size: 12px; color: var(--m-ink-4); margin-top: 2px; }
+    .m-tile .sub { font-size: 10.5px; color: var(--m-ink-4); margin-top: 1px; white-space: nowrap;
+                   overflow: hidden; text-overflow: ellipsis; }
 
-    /* ── 분할 컨트롤 (회차 · 진행 상태) — 누르는 것이라 알약, 그림자 대신 테두리 ── */
+    /* ── 분할 컨트롤 (회차 · 진행 상태) — 누르는 것이라 알약, 그림자 대신 테두리.
+       보이는 높이 30px, 누르는 면은 `.m-hit`처럼 44px(아래 ::after). ── */
     .m-seg {
       display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
       gap: 2px; padding: 2px; border-radius: var(--r-pill); background: var(--m-fill);
-      border: 1px solid var(--m-line-soft); margin: 0 0 12px;
+      border: 1px solid var(--m-line-soft); margin: 0 0 8px;
     }
     .m-seg a, .m-seg button {
-      display: flex; align-items: center; justify-content: center; gap: 5px;
-      min-height: 44px; padding: 0 8px; border-radius: var(--r-pill);
+      position: relative;
+      display: flex; align-items: center; justify-content: center; gap: 4px;
+      min-height: 30px; padding: 0 6px; border-radius: var(--r-pill);
       border: 1px solid transparent; background: transparent; color: var(--m-ink-2);
-      font: inherit; font-size: 15px; letter-spacing: -.24px; white-space: nowrap;
+      font: inherit; font-size: 13px; letter-spacing: -.2px; white-space: nowrap;
       cursor: pointer; text-decoration: none;
     }
+    .m-seg a::after, .m-seg button::after { content: ""; position: absolute; left: 0; right: 0;
+      top: 50%; height: 44px; transform: translateY(-50%); }
     .m-seg [aria-current], .m-seg [aria-pressed="true"] {
       background: var(--m-card); border-color: var(--m-line); color: var(--m-ink); font-weight: 600;
     }
-    .m-seg .count { font-size: 13px; color: var(--m-ink-4); font-variant-numeric: tabular-nums; }
+    .m-seg .count { font-size: 11.5px; color: var(--m-ink-4); font-variant-numeric: tabular-nums; }
     .m-seg [aria-pressed="true"] .count { color: var(--m-ink-3); }
+    /* 제목 줄 오른쪽에 붙는 거르기 — 줄 하나를 아낀다. */
+    .m-section-row { align-items: center; }
+    .m-section-row .m-seg-inline { margin: 0; flex: 0 1 auto; grid-auto-columns: auto; }
+    .m-seg-inline button { padding: 0 9px; min-height: 26px; font-size: 12px; }
+    .m-row-done { font-size: 11px; font-weight: 500; color: var(--m-ink-3); font-variant-numeric: tabular-nums; }
 
     /* ── 지도 — 시스템에서 그림자를 받는 유일한 것 ── */
     .m-map {
-      position: relative; height: 260px; margin-bottom: 12px;
-      border-radius: var(--r-lg); overflow: hidden; background: var(--m-fill);
+      position: relative; height: 210px; margin-bottom: 4px;
+      border-radius: var(--r-md); overflow: hidden; background: var(--m-fill);
       border: 1px solid var(--m-line); box-shadow: var(--m-shadow-map);
     }
-    .m-map.tall { height: 320px; }
+    .m-map.tall { height: 250px; }
+    .m-credit { font-size: 10px; color: var(--m-ink-4); margin: 0 0 8px; text-align: right;
+                line-height: 1.35; }
+    .m-credit a { color: inherit; }
+    .m-credit-note { color: var(--m-ink-3); }
     .m-map-fallback {
       position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
       padding: 24px; text-align: center; font-size: 14px; color: var(--m-ink-3);
@@ -229,9 +249,9 @@
        순색 채움 위에 흰 번호를 얹으면 배송(#D55E00)에서 4.5:1을 못 넘는다. */
     .m-pin {
       display: flex; align-items: center; justify-content: center;
-      width: 26px; height: 26px; border-radius: 50%;
+      width: 24px; height: 24px; border-radius: 50%;
       background: var(--m-card); color: var(--m-ink); border: 3px solid var(--c);
-      font-size: 12px; font-weight: 700; letter-spacing: 0; font-variant-numeric: tabular-nums;
+      font-size: 11px; font-weight: 700; letter-spacing: 0; font-variant-numeric: tabular-nums;
     }
     /* 지금 갈 곳 — **잉크 채움**. 강조색 테두리로 두었더니 수거 테두리(#0072B2)와 같은
        파랑이라 3번이 지금인지 수거인지 갈리지 않았다(390px 실측). 크기도 함께 키운다. */
@@ -245,37 +265,40 @@
     }
 
     /* ── 묶음 목록 (iOS 설정 앱의 inset grouped) ── */
-    .m-list { list-style: none; margin: 0 0 12px; padding: 0; background: var(--m-card);
-              border: 1px solid var(--m-line); border-radius: var(--r-lg); overflow: hidden; }
+    .m-list { list-style: none; margin: 0 0 8px; padding: 0; background: var(--m-card);
+              border: 1px solid var(--m-line); border-radius: var(--r-md); overflow: hidden; }
     .m-list > li + li { border-top: 1px solid var(--m-line-soft); }
     .m-row {
       display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
-      gap: 12px; min-height: 56px; padding: 12px 16px; color: inherit; text-decoration: none;
+      gap: 10px; min-height: 44px; padding: 6px 12px; color: inherit; text-decoration: none;
     }
     a.m-row:active, button.m-row:active { background: var(--m-fill); }
     button.m-row { width: 100%; border: 0; background: transparent; font: inherit; text-align: left;
                    cursor: pointer; }
     button.m-row:disabled { opacity: .55; cursor: not-allowed; }
     .m-row .main { min-width: 0; }
-    .m-row .name { font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .m-row .name { font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+                   line-height: 1.3; }
     .m-row .meta, .m-row .chain { display: block; }
-    .m-row .meta { font-size: 14px; color: var(--m-ink-3); letter-spacing: -.2px; }
-    .m-row .chain { font-size: 13px; color: var(--m-ink-4); letter-spacing: -.1px;
+    .m-row .meta { font-size: 12px; color: var(--m-ink-3); letter-spacing: -.15px; line-height: 1.35;
+                   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .m-row .chain { font-size: 11.5px; color: var(--m-ink-4); letter-spacing: -.1px;
                     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .m-row .end { display: flex; align-items: center; gap: 6px; color: var(--m-ink-3); font-size: 15px; }
-    .m-chev { width: 8px; height: 14px; fill: none; stroke: var(--m-ink-4); stroke-width: 2;
+    .m-row .end { display: flex; align-items: center; gap: 6px; color: var(--m-ink-3); font-size: 13px;
+                  font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .m-chev { width: 7px; height: 12px; fill: none; stroke: var(--m-ink-4); stroke-width: 2;
               stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
-    .m-ico { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center;
+    .m-ico { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center;
              justify-content: center; background: var(--m-fill); color: var(--m-ink-2); }
-    .m-ico svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8;
+    .m-ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8;
                  stroke-linecap: round; stroke-linejoin: round; }
-    .m-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); flex: 0 0 auto; }
+    .m-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); flex: 0 0 auto; }
 
     /* ── 딱지 — 색만으로 말하지 않는다: 늘 글자와 함께 ── */
     .m-badge {
-      display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px;
-      border-radius: var(--r-pill); font-size: 12px; font-weight: 600; letter-spacing: -.1px;
-      line-height: 1.5; white-space: nowrap; border: 1px solid transparent;
+      display: inline-flex; align-items: center; gap: 3px; padding: 0 6px;
+      border-radius: var(--r-pill); font-size: 10.5px; font-weight: 600; letter-spacing: -.1px;
+      line-height: 1.55; white-space: nowrap; border: 1px solid transparent;
     }
     .m-badge.is-todo { color: var(--m-ink-3); border-color: var(--m-line); }
     .m-badge.is-doing { color: var(--m-accent); border-color: currentColor; }
@@ -286,21 +309,24 @@
     .drop { color: var(--m-drop); font-weight: 600; }
 
     /* ── 진행 막대 — 계열 하나는 강조색, 차량별은 그 경로 색(점 + 이름 + % 글자와 함께) ── */
-    .m-progress { height: 8px; border-radius: var(--r-pill); background: var(--m-track); overflow: hidden; }
+    .m-progress { height: 6px; border-radius: var(--r-pill); background: var(--m-track); overflow: hidden; }
     .m-progress > span { display: block; height: 100%; width: 0; border-radius: inherit;
                          background: var(--c, var(--m-accent)); transition: width .25s ease; }
-    .m-big { font-size: 40px; font-weight: 700; letter-spacing: -1px; line-height: 1.1;
+    .m-big { font-size: 26px; font-weight: 700; letter-spacing: -.6px; line-height: 1.15;
              font-variant-numeric: tabular-nums; }
-    .m-kv { display: flex; justify-content: space-between; gap: 12px; font-size: 14px;
-            color: var(--m-ink-3); margin-top: 8px; }
+    .m-kv { display: flex; justify-content: space-between; gap: 10px; font-size: 12px;
+            color: var(--m-ink-3); margin-top: 5px; }
     .m-kv b { color: var(--m-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+    /* 두 칸 나란히 — 진행 현황의 '대여소 기준 · 대수 기준'처럼 짝인 숫자. */
+    .m-duo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+    .m-duo .m-card { margin-bottom: 8px; }
 
     /* ── 단추 ── */
     .m-btn {
-      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-      min-height: 50px; padding: 0 20px; border-radius: var(--r-pill);
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      min-height: 44px; padding: 0 16px; border-radius: var(--r-pill);
       border: 1px solid var(--m-accent); background: var(--m-accent); color: var(--m-on-accent);
-      font: inherit; font-size: 17px; letter-spacing: -.374px; cursor: pointer; text-decoration: none;
+      font: inherit; font-size: 15px; letter-spacing: -.24px; cursor: pointer; text-decoration: none;
     }
     .m-btn:active { transform: scale(.97); }
     .m-btn.ghost { background: var(--m-card); color: var(--m-accent); border-color: var(--m-line); }
@@ -308,16 +334,20 @@
       background: var(--m-fill); color: var(--m-ink-4); border-color: var(--m-line);
       cursor: not-allowed; transform: none;
     }
-    .m-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9;
+    .m-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9;
                  stroke-linecap: round; stroke-linejoin: round; }
-    .m-btn.small { min-height: 44px; font-size: 15px; padding: 0 16px; }
+    /* 작은 단추 — 보이는 높이 32px, 누르는 면 44px(.m-hit와 같은 덧면). */
+    .m-btn.small { position: relative; min-height: 32px; font-size: 13px; padding: 0 12px; }
+    .m-btn.small::after { content: ""; position: absolute; left: 0; right: 0; top: 50%;
+                          height: 44px; transform: translateY(-50%); }
+    .m-btn.small svg { width: 15px; height: 15px; }
     .m-btn.block { width: 100%; }
     .m-btn.danger { color: var(--m-danger); }
     /* 경로 안내의 두 단추는 엄지 쪽(탭 막대 바로 위)에 붙들어 둔다. */
     .m-actions {
       position: sticky; bottom: calc(var(--m-bar-h) + 1px + env(safe-area-inset-bottom, 0px));
       z-index: 30; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
-      gap: 8px; padding: 10px 0; margin: 0 0 4px;
+      gap: 8px; padding: 6px 0; margin: 0 0 2px;
       background: color-mix(in srgb, var(--m-bg) 88%, transparent);
       -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
     }
@@ -326,20 +356,23 @@
     }
 
     /* ── 폼 ── */
-    .m-field { display: block; margin: 0 0 12px; }
+    .m-field { display: block; margin: 0 0 8px; }
     .m-field.tight { margin: 0; }
-    .m-field > span { display: block; font-size: 14px; color: var(--m-ink-3); margin-bottom: 6px; }
-    /* 17px 미만이면 iOS 사파리가 입력칸을 누를 때 화면을 확대한다. */
+    .m-field > span { display: block; font-size: 12px; color: var(--m-ink-3); margin-bottom: 4px; }
+    /* 16px 미만이면 iOS 사파리가 입력칸을 누를 때 화면을 확대한다 — 이것만은 줄이지 않는다. */
     .m-input {
-      width: 100%; min-height: 48px; padding: 11px 13px; border-radius: var(--r-md);
+      width: 100%; min-height: 40px; padding: 7px 11px; border-radius: var(--r-sm);
       border: 1px solid var(--m-line); background: var(--m-card); color: var(--m-ink);
-      font: inherit; font-size: 17px;
+      font: inherit; font-size: 16px;
     }
-    textarea.m-input { min-height: 110px; resize: vertical; line-height: 1.45; }
-    .m-inline { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+    textarea.m-input { min-height: 72px; resize: vertical; line-height: 1.4; }
+    .m-inline { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+    /* 글 한 줄 + 오른쪽 작은 단추 */
+    .m-line { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+    .m-line > :first-child { flex: 1 1 auto; min-width: 0; }
 
     /* ── 알림 줄 ── */
-    .m-alert { border-radius: var(--r-md); padding: 10px 12px; font-size: 14px; margin: 0 0 12px; }
+    .m-alert { border-radius: var(--r-sm); padding: 6px 10px; font-size: 12.5px; margin: 0 0 8px; }
     .m-alert.warn { background: var(--m-warn-soft); color: var(--m-ink); }
     .m-alert.good { background: var(--m-good-soft); color: var(--m-ink); }
     .m-alert[hidden] { display: none; }
@@ -361,11 +394,11 @@
                     grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .m-tabs a {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 2px; min-height: var(--m-bar-h); padding: 6px 2px 5px;
-      color: var(--m-ink-3); font-size: 11px; letter-spacing: -.1px; line-height: 1.2;
+      gap: 1px; min-height: var(--m-bar-h); padding: 4px 2px 3px;
+      color: var(--m-ink-3); font-size: 10px; letter-spacing: -.1px; line-height: 1.2;
       white-space: nowrap;
     }
-    .m-tabs svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7;
+    .m-tabs svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7;
                   stroke-linecap: round; stroke-linejoin: round; }
     .m-tabs a[aria-current] { color: var(--m-accent); font-weight: 600;
                               box-shadow: inset 0 2px 0 var(--m-accent); }
@@ -381,7 +414,7 @@
   <div class="m-bar-inner">
     <a class="m-brand" href="{{ tabs.today }}">PBR</a>
     {# 사진 시안의 프로필 자리. 로그인이 없으므로 '내 차량'이 신원을 대신한다. #}
-    <a class="m-chip{% if not mine %} is-empty{% endif %}" href="{{ tabs.me }}"
+    <a class="m-chip m-hit{% if not mine %} is-empty{% endif %}" href="{{ tabs.me }}"
        aria-label="{% if mine %}내 차량 {{ mine }} — 바꾸기{% else %}내 차량 고르기{% endif %}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16V8.5A1.5 1.5 0 0 1 4.5 7H14v9"/><path d="M14 10h3.6l2.9 3.2V16H14"/><circle cx="7" cy="17" r="1.8"/><circle cx="17" cy="17" r="1.8"/></svg>
       {% if mine %}{{ mine }}{% else %}차량 고르기{% endif %}</a>
@@ -551,6 +584,18 @@
       if (href) { var a = el("a", null, v.id + " 경로 안내"); a.href = href; root.appendChild(a); }
       return root;
     }
+    /* 지도 아래 출처 한 줄. 문구는 folium이 MAP_TILES에서 푼 것(mobile_view.tile_source)이라
+       바탕을 바꾸면 따라 바뀐다. 믿을 수 있는 설정값이라 HTML로 넣는다(링크 포함). */
+    function credit(box, note) {
+      var next = box.nextElementSibling;
+      if (next && next.classList.contains("m-credit")) next.remove();
+      var p = el("p", "m-credit");
+      if (note) { p.appendChild(el("span", "m-credit-note", note)); p.appendChild(document.createTextNode(" ")); }
+      var src = el("span");
+      src.innerHTML = "지도 " + plan.tiles.attribution;
+      p.appendChild(src);
+      box.insertAdjacentElement("afterend", p);
+    }
     function drawMap(box, opts) {
       opts = opts || {};
       if (!box) return null;
@@ -559,31 +604,40 @@
       if (!plan.tiles || !plan.tiles.url) { fallback(box, "지도 바탕을 정하지 못했습니다(MAP_TILES). 아래 목록으로 진행하세요."); return null; }
       box.innerHTML = "";
       // 확대 단추는 오른쪽 위(Apple 지도와 같은 자리) — 왼쪽 위에 두면 북서쪽 차고지 표지를 덮는다.
-      var map = L.map(box, { scrollWheelZoom: false, zoomControl: false });
+      // 출처 표기는 지도 위에 띄우지 않고 지도 아래 한 줄로 옮긴다(사용자 요청 2026-09-30).
+      // OSM 타일은 출처 표기가 조건이라 없애지는 않는다 — 아래 credit()이 붙인다.
+      var map = L.map(box, { scrollWheelZoom: false, zoomControl: false, attributionControl: false });
       L.control.zoom({ position: "topright" }).addTo(map);
       L.tileLayer(plan.tiles.url, {
         attribution: plan.tiles.attribution, maxZoom: plan.tiles.max_zoom || 19,
         subdomains: plan.tiles.subdomains || "abc"
       }).addTo(map);
       var depot = [plan.depot.lat, plan.depot.lon];
-      /* opts.depotLegs === false면 차고지 왕복선을 긋지 않고 대여소에만 맞춰 확대한다.
-         차고지가 도심에서 멀어 16대의 왕복선이 부채꼴로 겹치고 경로가 작게 보였다(오늘 화면 실측). */
+      /* 선은 **TMAP 실도로 경로**(`v.path` — step3가 받아 경로 지도에 그린 그 선)만 긋는다.
+         🔴 대여소 사이를 직선으로 잇지 않는다 — 건물·강을 뚫고 가는 선이 된다(사용자 지적
+         2026-09-30). 실도로 선이 없는 차량은 번호 표지만 두고 지도 아래에 까닭을 적는다.
+         opts.depotLegs === false면 차고지 왕복 구간(v.core 밖)을 잘라 대여소에 맞춰 확대한다 —
+         차고지가 도심에서 멀어 모든 차의 왕복선이 한 길에 겹친다(오늘 화면 실측). */
       var legs = opts.depotLegs !== false;
       var bounds = legs ? [depot] : [];
       var pins = {};
+      var noRoad = 0;
       plan.vehicles.forEach(function (v) {
         if (opts.only && v.id !== opts.only) return;
         var focus = opts.focus && v.id === opts.focus;
         var dim = opts.focus && !focus;
-        var pts = legs ? [depot] : [];
+        if (v.path && v.path.length > 1) {
+          var pts = !legs && v.core ? v.path.slice(v.core[0], v.core[1] + 1) : v.path;
+          var line = L.polyline(pts, { color: v.color, weight: focus ? 5 : 3,
+                                       opacity: dim ? 0.4 : 0.9 }).addTo(map);
+          if (opts.onVehicle) line.on("click", function () { opts.onVehicle(v); });
+          pts.forEach(function (p) { bounds.push(p); });
+        } else {
+          noRoad += 1;
+        }
         v.stops.forEach(function (s) {
-          if (s.lat == null || s.lon == null) return;
-          if (!legs && s.action === "return") return;
-          pts.push([s.lat, s.lon]);
+          if (s.action !== "return" && s.lat != null && s.lon != null) bounds.push([s.lat, s.lon]);
         });
-        var line = L.polyline(pts, { color: v.color, weight: focus ? 5 : 3, opacity: dim ? 0.4 : 0.9 }).addTo(map);
-        if (opts.onVehicle) line.on("click", function () { opts.onVehicle(v); });
-        pts.forEach(function (p) { bounds.push(p); });
         v.stops.forEach(function (s) {
           if (s.action === "return" || s.lat == null || s.lon == null) return;
           var marker;
@@ -605,7 +659,11 @@
       L.marker(depot, { icon: L.divIcon({ className: "", iconSize: [48, 22], iconAnchor: [24, 11],
         html: '<span class="m-depot">차고지</span>' }), title: plan.depot.name, keyboard: false }).addTo(map);
       if (!bounds.length) bounds = [depot];
-      map.fitBounds(bounds, { padding: [32, 32], maxZoom: 16 });
+      // 여백은 표지 반지름만큼만 — 32px이면 지도를 210px로 줄인 뒤 확대가 한 단계 내려가
+      // 대여소가 가운데에 뭉쳐 보였다(390px 실측, 1.26.308).
+      map.fitBounds(bounds, { padding: [14, 14], maxZoom: 16 });
+      credit(box, noRoad ? (opts.only ? "실도로 경로가 기록되지 않은 계획이라 선 없이 번호만 보입니다 — 길은 '안내 시작'이 찾습니다."
+                                      : "실도로 경로가 없는 차량 " + noRoad + "대는 선 없이 점만 보입니다.") : null);
       return { map: map, pins: pins };
     }
 

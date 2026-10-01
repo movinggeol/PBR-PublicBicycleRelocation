@@ -9,7 +9,7 @@
 | --- | --- |
 | 파일 | `data/bike_system.db` (환경변수 `PBR_DB_PATH`로 재정의) |
 | 엔진 | SQLite 3, `journal_mode=WAL` (파이프라인이 쓰는 중에도 웹이 읽을 수 있음) |
-| 테이블 | **20개** (실행 이력 1 · 산출물 10 · 차량 운용 2 · 지표 1 · 원천 1 · 재고 시계열 2 · 예측 백테스트 1 · **실도로 관측 1 · 결품 보정 1**) |
+| 테이블 | **21개** (실행 이력 1 · 산출물 11(1.26.308에 `road_path`) · 차량 운용 2 · 지표 1 · 원천 1 · 재고 시계열 2 · 예측 백테스트 1 · **실도로 관측 1 · 결품 보정 1**) |
 | 접근 | 항상 `db.session()` 경유. `sqlite3.connect`를 직접 부르지 마세요 |
 
 ---
@@ -600,6 +600,22 @@ step3이 지도를 그리며 받은 값을 그대로 남깁니다. `VEHICLE_SPEE
 > 지도를 그리며 받은 구간은 그 PC의 실행에 속하기 때문입니다. **고정 패널분
 > (`roadprobe-*`)은 합칩니다** — `export_collected.py --road` → `merge_stock.py`
 > (먼저 수집한 것이 이깁니다, [DB_이관.md](DB_이관.md) 3-B장).
+
+**`road_path`** — TMAP **실도로 경로의 좌표** (1.26.308, PK: `run_label`, `duration`, `cluster`)
+
+step3가 받아 경로 지도에 그린 선을 군집(= 차량 한 대)마다 한 줄로 남깁니다. 현장 앱(`/m`)이 대여소 사이를
+직선으로 잇지 않고 실제 도로를 그리려고 둡니다. 직선으로 낮춘 군집은 **남기지 않습니다**(지어내지 않습니다).
+저장 규칙은 `road_leg`와 같습니다 — 일부만 받았으면 `db.replace_road_paths()`가 받은 군집만 갈아끼웁니다.
+1.26.308 전에 그린 지도는 `tools/backfill_road_path.py`가 HTML에서 되살립니다(방문 대여소가 모두 선분 200m
+안인 군집만). `road_leg`와 달리 **계획의 산출물**이라 실행 이관(`transfer_run.py`)에 따라갑니다.
+
+| 컬럼 | 타입 | 설명 |
+| --- | --- | --- |
+| `run_label`, `duration` | TEXT | 스코프 |
+| `cluster` | INTEGER | 군집 |
+| `points` | INTEGER | 점 수 |
+| `path` | TEXT | `[[위도, 경도], …]` JSON — 차고지 출발 · 복귀 포함, 소수 여섯째 |
+| `source` | TEXT | `tmap`(step3) · `map_html`(되살림) |
 
 **`stockout_calibration`** — 결품 지표 보정 계수 (1.26.1, PK: `measured_at`, `duration`, `day_type`)
 

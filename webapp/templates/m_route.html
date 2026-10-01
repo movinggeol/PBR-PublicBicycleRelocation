@@ -7,36 +7,41 @@
 {% block title %}경로 안내 · PBR 현장 앱{% endblock %}
 {% block head_extra %}{% if route %}<link rel="stylesheet" href="{{ leaflet_css }}" crossorigin="">{% endif %}{% endblock %}
 {% block style_extra %}
-    .m-leg { display: grid; gap: 0; padding: 4px 16px; }
-    .m-leg-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center;
-                 gap: 10px; min-height: 52px; }
+    /* 지금 → 다음 — 한 칸에 한 줄(이름은 말줄임, 작업은 오른쪽) (1.26.308 밀도). */
+    .m-leg { display: grid; gap: 0; padding: 2px 12px; }
+    .m-leg-row { display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: center;
+                 gap: 8px; min-height: 34px; }
     .m-leg-row + .m-leg-row { border-top: 1px solid var(--m-line-soft); }
-    .m-leg-k { font-size: 13px; font-weight: 600; color: var(--m-ink-3); }
-    .m-leg-v { min-width: 0; }
-    .m-leg-v b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis;
-                 white-space: nowrap; }
-    .m-leg-v span { font-size: 13px; color: var(--m-ink-3); }
-    .m-route-head { display: flex; align-items: center; gap: 8px; font-size: 15px;
-                    color: var(--m-ink-2); margin: 0 0 12px; flex-wrap: wrap; }
-    .m-route-head b { color: var(--m-ink); }
+    .m-leg-k { font-size: 11px; font-weight: 600; color: var(--m-ink-3); }
+    .m-leg-v { min-width: 0; display: flex; align-items: baseline; gap: 6px; }
+    .m-leg-v b { flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: 14px; overflow: hidden;
+                 text-overflow: ellipsis; white-space: nowrap; }
+    .m-leg-v span { flex: 0 0 auto; font-size: 12px; color: var(--m-ink-3); white-space: nowrap; }
+    .m-route-head { display: flex; align-items: center; gap: 6px; font-size: 12.5px;
+                    color: var(--m-ink-2); margin: 0 0 6px; flex-wrap: wrap; }
+    .m-route-head b { color: var(--m-ink); font-size: 14px; }
     .m-stops .m-row { grid-template-columns: auto minmax(0, 1fr) auto; }
     .m-num {
-      display: flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center; width: 24px; height: 24px;
       border-radius: 50%; border: 3px solid var(--c); background: var(--m-card);
-      font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0;
+      font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0;
     }
-    .m-num.home { border-radius: 8px; border-color: var(--m-ink); font-size: 11px; width: auto;
-                  padding: 0 6px; }
+    .m-num.home { border-radius: 7px; border-color: var(--m-ink); font-size: 10px; width: auto;
+                  padding: 0 5px; }
     .m-stop-main { display: block; min-width: 0; padding: 0; border: 0; background: none;
                    color: inherit; font: inherit; text-align: left; cursor: pointer; }
-    .m-stop-main .name { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis;
-                         white-space: nowrap; }
+    .m-stop-main .name { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14px; }
+    .m-stop-main .name > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                                             white-space: nowrap; }
+    /* 보이는 원 30px · 누르는 면 44px(덧면). */
     .m-check {
-      width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--m-line);
+      position: relative;
+      width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--m-line);
       background: var(--m-card); color: transparent; display: flex; align-items: center;
-      justify-content: center; cursor: pointer; flex: 0 0 auto;
+      justify-content: center; cursor: pointer; flex: 0 0 auto; padding: 0;
     }
-    .m-check svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.4;
+    .m-check::after { content: ""; position: absolute; inset: -7px; }
+    .m-check svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2.6;
                    stroke-linecap: round; stroke-linejoin: round; }
     .m-check[aria-pressed="true"] { border-color: var(--m-good); background: var(--m-good-soft);
                                     color: var(--m-good); }
@@ -66,10 +71,10 @@
 <p class="m-route-head">
   <span class="m-dot" style="--c: {{ route.color }}" aria-hidden="true"></span>
   <b>{{ route.id }}</b>{% if route.id == mine %} <span class="m-badge is-mine">내 차량</span>{% endif %}
-  <span>{{ route.stations }}곳 · {{ route.bikes }}대 · {{ hm(route.minutes) }}{% if route.finish %} · {{ route.finish }} 완료 예정{% endif %}</span>
+  <span>{{ route.stations }}곳 · {{ route.bikes }}대 · {{ hm(route.minutes) }}{% if route.finish %} · {{ route.finish }} 끝{% endif %}</span>
 </p>
 {% if route.id != mine %}
-<p class="m-alert warn">다른 차량의 경로를 보고 있습니다{% if mine %}(내 차량 {{ mine }}){% endif %}. 체크하면 이 차량의 기록으로 남습니다.
+<p class="m-alert warn">다른 차량을 보는 중{% if mine %}(내 차량 {{ mine }}){% endif %} — 체크는 이 차량 기록으로 남습니다.
   <a href="{{ tabs.me }}">내 차량 정하기</a></p>
 {% endif %}
 
@@ -78,7 +83,7 @@
   <div class="m-leg-row"><span class="m-leg-k">지금</span>
     <span class="m-leg-v" id="leg-from"><b>차고지</b><span>{{ plan.depot.name }}</span></span></div>
   <div class="m-leg-row"><span class="m-leg-k">다음</span>
-    <span class="m-leg-v" id="leg-to"><b>{{ first.no }}. {{ first.name }}</b><span>{{ first.id }} · {{ first.label }} {{ first.qty }}대</span></span></div>
+    <span class="m-leg-v" id="leg-to"><b>{{ first.no }}. {{ first.name }}</b><span>{{ first.label }} {{ first.qty }}대</span></span></div>
 </div>
 
 <div class="m-map tall" id="route-map" role="region" aria-label="{{ route.id }} 경로 지도 — 번호는 방문 순서입니다. 같은 내용이 아래 목록에 있습니다.">
@@ -92,12 +97,10 @@
      {%- if first_nav %} href="{{ first_nav }}"{% endif %}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 20 4l-7.5 16-2-6.5L4 11.5Z"/></svg>안내 시작</a>
 </div>
-<p class="hint" id="route-status">작업 {{ route.chain | length }}건 · 안내는 카카오맵이 합니다(앱이 있으면 앱으로 열립니다).</p>
+<p class="hint" id="route-status">작업 {{ route.chain | length }}건 · 안내는 카카오맵이 합니다.</p>
 
-<div class="m-section-row">
-  <h2 class="m-section" id="stops-h">방문 순서</h2>
-  <a href="{{ links.orders_vehicle }}">관제 지시서</a>
-</div>
+<h2 class="m-section" id="stops-h">방문 순서</h2>
+{# 대여소 한 곳 = 두 줄(이름·딱지 / 작업·적재·시각·ID·계획 시점 재고). 1.26.308에 세 줄을 두 줄로. #}
 <ol class="m-list m-stops" id="stops" aria-labelledby="stops-h">
   {%- for s in route.stops %}
   <li class="m-stop" data-no="{{ s.no }}" data-action="{{ s.action }}">
@@ -110,9 +113,8 @@
       {%- else %}
       <span class="m-num" style="--c: {{ plan.colors.pick if s.action == 'pick' else plan.colors.drop }}" aria-hidden="true">{{ s.no }}</span>
       <button class="m-stop-main" type="button" data-focus aria-label="{{ s.no }}번 {{ s.name }} 지도에서 보기">
-        <span class="name">{{ s.name }}</span>
-        <span class="meta"><span class="{{ s.action }}">{{ s.label }} {{ s.qty }}대</span> · 작업 뒤 적재 {{ s.load }}대{% if s.minutes is not none %} · 출발 후 {{ hm(s.minutes) }}{% endif %}</span>
-        <span class="chain">{{ s.id }}{% if s.stock is not none %} · 계획 시점 재고 {{ s.stock }}{% if s.lot is not none %}/{{ s.lot }}{% endif %}대{% endif %} <span class="m-badge is-doing" data-flag></span></span>
+        <span class="name"><span>{{ s.name }}</span><span class="m-badge is-doing" data-flag></span></span>
+        <span class="meta"><span class="{{ s.action }}">{{ s.label }} {{ s.qty }}</span> · 적재 {{ s.load }}{% if s.minutes is not none %} · {{ hm(s.minutes) }}{% endif %} · {{ s.id }}{% if s.stock is not none %} · 재고 {{ s.stock }}{% if s.lot is not none %}(거치대 {{ s.lot }}){% endif %}{% endif %}</span>
       </button>
       <button class="m-check" type="button" aria-pressed="false" data-check
               aria-label="{{ s.no }}번 {{ s.name }} 완료">
@@ -122,9 +124,8 @@
   </li>
   {%- endfor %}
 </ol>
-<p class="hint">재고는 <b>계획을 세운 시점</b>의 값입니다 — 지금 재고는
-  <a href="{{ links.live }}">관제 화면의 재고 대조</a>에서 봅니다.
-  지도의 선은 대여소 사이를 곧게 이은 것이고, 실도로 선은 <a href="{{ links.maps }}">경로 지도</a>에 있습니다.</p>
+<p class="hint">시각은 출발 후 · 재고는 계획을 세운 시점 값(지금 재고는 <a href="{{ links.live }}">재고 대조</a>) ·
+  <a href="{{ links.orders_vehicle }}">관제 지시서</a> · <a href="{{ links.maps }}">경로 지도</a></p>
 {% endif %}
 {% endblock %}
 
@@ -159,11 +160,11 @@
       var p = F.progress(v);
       var next = p.next, home = next && next.action === "return";
       if (p.last) leg(document.getElementById("leg-from"), p.last.no + ". " + p.last.name,
-                      p.last.id + " · " + p.last.label + " " + p.last.qty + "대 끝남");
+                      p.last.label + " " + p.last.qty + "대 끝");
       else leg(document.getElementById("leg-from"), "차고지", depot.name);
-      if (!next || home) leg(document.getElementById("leg-to"), "차고지 복귀", depot.name + " · 작업을 모두 끝냈습니다");
+      if (!next || home) leg(document.getElementById("leg-to"), "차고지 복귀", "작업 모두 끝");
       else leg(document.getElementById("leg-to"), next.no + ". " + next.name,
-               next.id + " · " + next.label + " " + next.qty + "대");
+               next.label + " " + next.qty + "대");
 
       arrive.disabled = p.finished;
       arrive.lastChild.textContent = p.finished ? "모두 끝남" : "도착 · 완료";
@@ -185,7 +186,7 @@
         var mark = pin(no);
         if (mark) { mark.classList.toggle("is-done", done); mark.classList.toggle("is-current", !!current); }
       });
-      status.textContent = "작업 " + p.total + "건 중 " + p.done + "건 끝남 · 옮긴 자전거 "
+      status.textContent = p.total + "건 중 " + p.done + "건 끝 · 옮긴 자전거 "
         + p.moved + "대 · 지금 적재 " + p.load + "대";
     }
     arrive.addEventListener("click", function () {

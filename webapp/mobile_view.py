@@ -23,6 +23,7 @@ from __future__ import annotations
 # ponytail: 체크가 기기마다 따로다 — 여러 폰의 진행을 모으려면 DB 표 + 쓰기 API(B안)로 옮긴다.
 
 import hashlib
+import json
 import math
 import re
 import sys
@@ -175,14 +176,18 @@ def _station_facts(candidates: Optional[pd.DataFrame]) -> dict:
 
 
 def build_plan(sheets: list, names: list, candidates: Optional[pd.DataFrame],
-               minutes_by_cluster: dict, duration: Optional[str]) -> dict:
+               minutes_by_cluster: dict, duration: Optional[str],
+               paths_by_cluster: Optional[dict] = None) -> dict:
     """화면 넷과 스크립트가 함께 쓰는 계획 한 벌 (JSON으로 그대로 실린다).
 
     `sheets`는 `orders.build()`, `names`는 그와 같은 순서의 차량 이름(`_orders_context`의
     `sheet_names` — 차량이 없는 옛 산출물은 '군집 N')이다. 이름 규칙을 여기서 다시
     만들지 않는다 — `/orders?vehicle=`와 같은 이름이어야 두 화면이 같은 차를 가리킨다.
+    `paths_by_cluster`는 `road_paths()` — 실도로 선이 없는 군집은 `path`가 None이고, 화면은
+    **선을 긋지 않는다**(직선으로 잇지 않는다 — 사용자 지적 2026-09-30).
     """
     window = duration_window(duration)
+    paths_by_cluster = paths_by_cluster or {}
     start = window[0] if window else None
     facts = _station_facts(candidates)
 
@@ -222,7 +227,9 @@ def build_plan(sheets: list, names: list, candidates: Optional[pd.DataFrame],
             "max_load": max((s["load_after"] for s in sheet["stops"]), default=0),
             "chain": [s["station_id"] for s in work],
             "stops": stops,
+            "path": paths_by_cluster.get(sheet["cluster"]),
         })
+        vehicles[-1]["core"] = core_span(vehicles[-1]["path"], work)
 
     longest = max((v["minutes"] or 0 for v in vehicles), default=0)
     return {
@@ -238,12 +245,99 @@ def build_plan(sheets: list, names: list, candidates: Optional[pd.DataFrame],
             "stops": sum(len(v["chain"]) for v in vehicles),
             "bikes": sum(v["bikes"] for v in vehicles),
             "moved_plan": sum(v["moved_plan"] for v in vehicles),
+            # 실도로 선이 있는 차량 수 — 모자라면 화면이 까닭을 적는다.
+            "roads": sum(1 for v in vehicles if v["path"]),
         },
         "depot": {"id": DEPOT_ID, "name": DEPOT_NAME, "lat": DEPOT_LAT, "lon": DEPOT_LON},
         # 지도 표지의 수거·배송 색 — 기존 지도(`mapviz`)와 같은 값. 표지는 채운 원이 아니라
         # **테두리**로만 쓴다(안의 번호 글자가 배송 순색 위에서 4.5:1을 못 넘는다).
         "colors": {"pick": PICK_COLOR, "drop": DROP_COLOR},
     }
+
+
+def _simplify(points: list, tol: float) -> list:
+    """더글러스-포이커 — 선에서 `tol`(도) 안쪽으로 비껴 있는 점을 덜어 낸다."""
+    if len(points) < 3:
+        return points
+    keep = [False] * len(points)
+    keep[0] = keep[-1] = True
+    stack = [(0, len(points) - 1)]
+    while stack:
+        a, b = stack.pop()
+        (ax, ay), (bx, by) = points[a], points[b]
+        dx, dy = bx - ax, by - ay
+        norm = dx * dx + dy * dy
+        best, idx = -1.0, None
+        for i in range(a + 1, b):
+            px, py = points[i]
+            u = 0.0 if norm == 0 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / norm))
+            d = (px - ax - u * dx) ** 2 + (py - ay - u * dy) ** 2
+            if d > best:
+                best, idx = d, i
+        if idx is not None and best > tol * tol:
+            keep[idx] = True
+            stack += [(a, idx), (idx, b)]
+    return [p for p, k in zip(points, keep) if k]
+
+
+@lru_cache(maxsize=512)
+def _road_path(path_json: str) -> tuple:
+    """저장된 선 한 줄 → 폰에 보낼 좌표. 약 1.5m 안쪽으로 비낀 점을 덜고 소수 다섯째(약 1m)로.
+
+    한 회차 17대면 저장된 점이 수만 개라 그대로 보내면 계획 JSON이 수백 KB가 된다. 눈에 보이는
+    선은 같다. 같은 줄은 다시 계산하지 않는다(내용이 열쇠라 바뀌면 새로 한다).
+    """
+    try:
+        points = [[float(a), float(b)] for a, b in json.loads(path_json)]
+    except (TypeError, ValueError):
+        return ()
+    return tuple((round(a, 5), round(b, 5)) for a, b in _simplify(points, 1.5e-5))
+
+
+def road_paths(run_label: Optional[str], duration: Optional[str]) -> dict:
+    """군집 → 실도로 선 좌표 목록(`road_path`, 1.26.308). 없으면 빈 dict.
+
+    step3가 TMAP에서 받아 경로 지도에 그린 **그 선**이다. 1.26.308 전에 그린 지도는
+    `tools/backfill_road_path.py`가 HTML에서 되살려 넣는다.
+    """
+    if not run_label or not duration:
+        return {}
+    frame, _ = store.load("road_path", run_label=run_label, duration=duration)
+    if frame.empty or "path" not in frame:
+        return {}
+    paths = {}
+    for row in frame.to_dict("records"):
+        cluster = _int_or_none(row.get("cluster"))
+        points = _road_path(str(row.get("path") or ""))
+        if cluster is not None and len(points) > 1:
+            paths[cluster] = [list(p) for p in points]
+    return paths
+
+
+def core_span(path: Optional[list], work: list) -> Optional[list]:
+    """선에서 **첫 방문지 ~ 마지막 방문지** 구간의 [시작, 끝] 번호. 오늘 화면이 차고지 왕복을 뺄 때 쓴다.
+
+    차고지가 도심에서 멀어 모든 차의 왕복선이 한 길에 겹친다(오늘 화면 실측 — 직선일 때는
+    부채꼴이었다). 첫 방문지는 앞에서부터, 마지막은 뒤에서부터 가장 가까운 점을 찾는다 —
+    같은 길을 두 번 지나도 안쪽 구간을 고른다. 못 찾으면 None(화면은 선 전체를 쓴다).
+    """
+    if not path or not work:
+        return None
+    first, last = work[0], work[-1]
+    if None in (first["lat"], first["lon"], last["lat"], last["lon"]):
+        return None
+
+    def nearest(stop, order):
+        best, where = None, None
+        for i in order:
+            d = (path[i][0] - stop["lat"]) ** 2 + (path[i][1] - stop["lon"]) ** 2
+            if best is None or d < best:
+                best, where = d, i
+        return where
+
+    start = nearest(first, range(len(path)))
+    end = nearest(last, range(len(path) - 1, start - 1, -1))
+    return [start, end] if end is not None and end > start else None
 
 
 def nav_url(stop: dict) -> Optional[str]:

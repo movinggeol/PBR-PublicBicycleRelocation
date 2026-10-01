@@ -86,6 +86,9 @@ RUN_TABLES = (
     "vrp_plan",
     "metrics",
     "route_summary",
+    # 실도로 경로 좌표(1.26.308) — road_leg와 달리 **계획의 산출물**이다(경로 지도의 선).
+    # 옮긴 PC의 현장 앱이 직선이 아니라 도로를 그리려면 따라가야 한다.
+    "road_path",
     "kpi_summary",
     "vehicle_assignment",
 )

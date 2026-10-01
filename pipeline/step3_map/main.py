@@ -208,6 +208,7 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
     
 
     road_rows = []                  # TMAP 실측 구간 (정답표). 아래에서 DB에 남긴다
+    path_rows = []                  # TMAP 실도로 선의 좌표 — 현장 앱(/m)이 그린다 (1.26.308)
     measured = []                   # 도로 경로를 실제로 받은 군집
     straight = []                   # 못 받아 직선으로 낮춘 군집
     unique_clusters = sorted(vrp_plan['cluster'].unique())
@@ -360,6 +361,9 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
                 if feat.get("geometry", {}).get("type") == "LineString"
             ]
             dashed = None
+            # 지도에 그린 **그 선**을 DB에도 남긴다. 직선으로 낮춘 군집은 남기지 않는다 —
+            # 현장 앱이 도로 대신 직선을 그리면 안 된다(사용자 요청 2026-09-30).
+            path_rows.append(db.road_path_row(c, segments, source="tmap"))
         else:
             # 대체 표시: 방문 순서대로 이은 직선 하나 (점선으로 구분)
             segments = [[[p["lat"], p["lon"]] for p in route_pts]]
@@ -613,6 +617,14 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
     else:
         print("[안내] TMAP 실측이 없어 road_leg에 남기지 않았습니다"
               " (한도 초과 등으로 직선으로 그린 경우).")
+
+    # 실도로 선도 같은 규칙이다 — 일부만 받았으면 받은 군집만 갈아끼운다(1.26.308).
+    if straight and measured:
+        db.replace_road_paths(pd.DataFrame(path_rows), now, duration, measured)
+    elif path_rows:
+        db.save_output("road_path", pd.DataFrame(path_rows), run_label=now, duration=duration)
+    if path_rows:
+        print(f"실도로 경로 {len(path_rows)}개 군집을 road_path에 남겼습니다.")
 
     if not straight:
         print("지도 생성 완료")

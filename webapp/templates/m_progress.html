@@ -1,25 +1,19 @@
 {% extends "m_base.html" %}
 {# 현장 앱 ③ 진행 현황 (1.26.307) — 사진 시안의 셋째 화면.
    진행률은 **이 기기의 체크**로 센다 — 다른 폰의 체크는 모이지 않는다(A안). 그래서
-   관제 모니터가 아니라고 화면 첫 줄에 적는다. 시안의 '총 이용 횟수 · 신고 건수'는
-   자료가 없어 뺐고, 자리에 그 회차의 **계획 지표**를 계획 지표라고 적어 둔다. #}
+   관제 모니터가 아니라고 화면에 적는다. 시안의 '총 이용 횟수 · 신고 건수'는
+   자료가 없어 뺐고, 자리에 그 회차의 **계획 지표**를 계획 지표라고 적어 둔다.
+   1.26.308 밀도: 전체 · 대수 기준을 두 칸 나란히, 계획 지표는 요약 띠 한 줄, 차량별
+   진행은 한 줄에 하나(차량 17대면 목록이 약 1,200px에서 약 560px). #}
 {% block title %}진행 현황 · PBR 현장 앱{% endblock %}
 {% block style_extra %}
-    .m-bars { list-style: none; margin: 0; padding: 0; }
-    .m-bars li { padding: 10px 0; }
-    .m-bars li + li { border-top: 1px solid var(--m-line-soft); }
-    .m-bars .top { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
-    .m-bars .who { font-weight: 600; margin-right: auto; display: flex; align-items: center;
-                   gap: 8px; min-width: 0; }
-    .m-bars .pct { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
-    .m-bars .sub { font-size: 13px; color: var(--m-ink-3); margin-top: 5px; }
-    .m-kpi { list-style: none; margin: 0; padding: 0; }
-    .m-kpi li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px;
-                padding: 10px 0; align-items: baseline; }
-    .m-kpi li + li { border-top: 1px solid var(--m-line-soft); }
-    .m-kpi .k { color: var(--m-ink-2); font-size: 15px; }
-    .m-kpi .v { font-weight: 600; font-variant-numeric: tabular-nums; }
-    .m-kpi .s { grid-column: 1 / -1; font-size: 13px; color: var(--m-ink-3); }
+    .m-bars li { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto;
+                 align-items: center; gap: 8px; padding: 7px 12px; min-height: 32px; }
+    .m-bars .who { font-weight: 600; font-size: 13.5px; display: flex; align-items: center; gap: 5px;
+                   white-space: nowrap; }
+    .m-bars .num { font-size: 12px; color: var(--m-ink-3); white-space: nowrap; text-align: right;
+                   min-width: 68px; }
+    .m-bars .num b { color: var(--m-ink); font-weight: 600; }
 {% endblock %}
 
 {% block content %}
@@ -29,70 +23,55 @@
 {% if not plan.vehicles %}
 {% include "_m_empty.html" %}
 {% else %}
-<p class="m-note">이 기기에서 체크한 기록으로 셉니다 — 다른 폰의 체크는 여기에 모이지 않습니다.</p>
+<div class="m-duo">
+  <section class="m-card" aria-labelledby="overall-h">
+    <h2 class="m-card-title" id="overall-h">전체 작업</h2>
+    <div class="m-big"><span id="overall-pct">0</span>%</div>
+    <div class="m-progress" role="progressbar" aria-labelledby="overall-h"
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="overall-bar"><span></span></div>
+    <div class="m-kv"><span><b id="overall-done">0</b>/{{ plan.totals.stops }}건</span>
+      <span>{{ plan.start or "—" }}→<b>{{ plan.finish or "—" }}</b></span></div>
+  </section>
+  <section class="m-card" aria-labelledby="moved-h">
+    <h2 class="m-card-title" id="moved-h">옮긴 자전거</h2>
+    <div class="m-big"><span id="moved-pct">0</span>%</div>
+    <div class="m-progress" role="progressbar" aria-labelledby="moved-h"
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="moved-bar"><span></span></div>
+    <div class="m-kv"><span><b id="moved-n">0</b>/{{ plan.totals.moved_plan }}대</span>
+      <span>수거·배송 중 적은 쪽</span></div>
+  </section>
+</div>
 
-<section class="m-card" aria-labelledby="overall-h">
-  <h2 class="m-card-title" id="overall-h">전체 작업</h2>
-  <div class="m-big"><span id="overall-pct">0</span>%</div>
-  <div class="m-progress" role="progressbar" aria-labelledby="overall-h"
-       aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="overall-bar"><span></span></div>
-  <div class="m-kv"><span>시작 <b>{{ plan.start or "—" }}</b></span>
-    <span>완료 예정 <b>{{ plan.finish or "—" }}</b> (계획)</span></div>
-  <div class="m-kv"><span>작업</span>
-    <span><b id="overall-done">0</b> / <b>{{ plan.totals.stops }}</b>건 끝남</span></div>
-</section>
+{# 그 회차의 계획 지표 — 요약 띠 한 줄. 계획 시점 계산이지 오늘 잰 값이 아니다(아래 한 줄). #}
+{% if kpi %}
+<div class="m-tiles" aria-label="이 회차의 계획 지표">
+  <div class="m-tile"><div class="label">결품(대여소·일)</div>
+    <div class="value">{% if kpi.stockout_after is not none %}{{ kpi.stockout_after | round(2) }}<small>h</small>{% else %}—{% endif %}</div>
+    <div class="sub">{% if kpi.stockout_cut is not none %}{% if kpi.stockout_cut > 0 %}{{ kpi.stockout_cut }}% 감소{% elif kpi.stockout_cut < 0 %}{{ -kpi.stockout_cut }}% 증가{% else %}변화 없음{% endif %}{% elif kpi.stockout_before is not none %}전 {{ kpi.stockout_before | round(2) }}h{% else %}전 값 없음{% endif %}</div></div>
+  <div class="m-tile"><div class="label">총 이동 거리</div>
+    <div class="value">{% if kpi.distance_km is not none %}{{ kpi.distance_km | round(0) | int }}<small>km</small>{% else %}—{% endif %}</div></div>
+  <div class="m-tile"><div class="label">예산 안 차량</div>
+    <div class="value">{% if kpi.budget_met is not none %}{{ (kpi.budget_met * 100) | round(0) | int }}<small>%</small>{% else %}—{% endif %}</div>
+    {% if kpi.time_budget is not none %}<div class="sub">예산 {{ kpi.time_budget | round(0) | int }}분</div>{% endif %}</div>
+</div>
+{% endif %}
 
-<section class="m-card" aria-labelledby="per-h">
-  <h2 class="m-card-title" id="per-h">경로별 진행 상황</h2>
-  <ul class="m-bars" id="per-vehicle">
-    {#- 내 차량을 맨 위로(오늘 작업 목록과 같은 순서). #}
-    {%- for v in (plan.vehicles | selectattr('id', 'equalto', mine) | list) + (plan.vehicles | rejectattr('id', 'equalto', mine) | list) %}
-    <li data-vehicle="{{ v.id }}">
-      <div class="top">
-        <span class="who"><span class="m-dot" style="--c: {{ v.color }}" aria-hidden="true"></span>
-          {{ v.id }}{% if v.id == mine %} <span class="m-badge is-mine">내 차량</span>{% endif %}
-          <span class="m-badge is-todo" data-status>예정</span></span>
-        <span class="pct"><span data-pct>0</span>%</span>
-      </div>
-      <div class="m-progress" role="progressbar" aria-label="{{ v.id }} 진행률"
-           aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-bar><span style="--c: {{ v.color }}"></span></div>
-      <div class="sub">작업 <span data-done>0</span> / {{ v.chain | length }}건{% if v.finish %} · {{ v.finish }} 완료 예정{% endif %}</div>
-    </li>
-    {%- endfor %}
-  </ul>
-</section>
-
-<section class="m-card" aria-labelledby="moved-h">
-  <h2 class="m-card-title" id="moved-h">재배치 완료율 (자전거 대수)</h2>
-  <div class="m-big"><span id="moved-pct">0</span>%</div>
-  <div class="m-progress" role="progressbar" aria-labelledby="moved-h"
-       aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="moved-bar"><span></span></div>
-  <div class="m-kv"><span>옮긴 자전거</span>
-    <span><b id="moved-n">0</b> / <b>{{ plan.totals.moved_plan }}</b>대</span></div>
-  <p class="hint">수거와 배송 가운데 <b>적은 쪽</b>으로 셉니다 — 실었지만 아직 내리지 못한 자전거는 옮긴 것이 아닙니다.</p>
-</section>
-
-<h2 class="m-section" id="kpi-h">이 회차의 계획 지표</h2>
-<section class="m-card" aria-labelledby="kpi-h">
-  {% if kpi %}
-  <ul class="m-kpi">
-    <li><span class="k">결품 시간 (대여소·일 평균)</span>
-      <span class="v">{% if kpi.stockout_after is not none %}{{ kpi.stockout_after | round(2) }}h{% else %}—{% endif %}</span>
-      <span class="s">{% if kpi.stockout_before is not none %}재배치 전 {{ kpi.stockout_before | round(2) }}h
-        {%- if kpi.stockout_cut is not none %} · {% if kpi.stockout_cut > 0 %}{{ kpi.stockout_cut }}% 감소{% elif kpi.stockout_cut < 0 %}{{ -kpi.stockout_cut }}% 증가{% else %}변화 없음{% endif %}{% endif %}
-        {%- else %}재배치 전 값이 없습니다{% endif %}</span></li>
-    <li><span class="k">총 이동 거리</span>
-      <span class="v">{% if kpi.distance_km is not none %}{{ kpi.distance_km | round(1) }} km{% else %}—{% endif %}</span></li>
-    <li><span class="k">시간 예산 안에 끝나는 차량</span>
-      <span class="v">{% if kpi.budget_met is not none %}{{ (kpi.budget_met * 100) | round(0) | int }}%{% else %}—{% endif %}</span>
-      {% if kpi.time_budget is not none %}<span class="s">예산 {{ kpi.time_budget | round(0) | int }}분</span>{% endif %}</li>
-  </ul>
-  <p class="hint">계획을 세울 때 계산한 값입니다(결품은 과거 수요로 되살린 추정) — 오늘 현장에서 잰 값이 아닙니다.
-    <a href="{{ links.kpi }}">성과 지표에서 자세히 보기</a></p>
-  {% else %}
-  <p class="empty">이 회차의 지표 기록이 없습니다. <a href="{{ links.kpi }}">성과 지표</a>에서 확인하세요.</p>
-  {% endif %}
-</section>
+<h2 class="m-section" id="per-h">경로별 진행</h2>
+<ul class="m-list m-bars" id="per-vehicle" aria-labelledby="per-h">
+  {#- 내 차량을 맨 위로(오늘 작업 목록과 같은 순서). 상태는 숫자('3/8건')가 말한다. #}
+  {%- for v in (plan.vehicles | selectattr('id', 'equalto', mine) | list) + (plan.vehicles | rejectattr('id', 'equalto', mine) | list) %}
+  <li data-vehicle="{{ v.id }}">
+    <span class="m-dot" style="--c: {{ v.color }}" aria-hidden="true"></span>
+    <span class="who">{{ v.id }}{% if v.id == mine %} <span class="m-badge is-mine">내 차량</span>{% endif %}</span>
+    <div class="m-progress" role="progressbar" aria-label="{{ v.id }} 진행률"
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-bar><span style="--c: {{ v.color }}"></span></div>
+    <span class="num"><b data-done>0</b>/{{ v.chain | length }}건 · <span data-pct>0</span>%</span>
+  </li>
+  {%- endfor %}
+</ul>
+<p class="hint">이 기기에서 체크한 기록으로 셉니다(다른 폰은 모이지 않음). 계획 지표는 계획 때 계산한 값으로,
+  오늘 현장에서 잰 값이 아닙니다(결품은 과거 수요로 되살린 추정) · <a href="{{ links.kpi }}">성과 지표</a></p>
+{% if not kpi %}<p class="empty">이 회차의 지표 기록이 없습니다. <a href="{{ links.kpi }}">성과 지표</a>에서 확인하세요.</p>{% endif %}
 {% endif %}
 {% endblock %}
 
@@ -117,7 +96,6 @@
         var p = F.progress(F.vehicle(li.dataset.vehicle));
         li.querySelector("[data-pct]").textContent = p.pct;
         li.querySelector("[data-done]").textContent = p.done;
-        F.badge(li.querySelector("[data-status]"), p.status);
         bar(li.querySelector("[data-bar]"), p.pct);
       });
     }
