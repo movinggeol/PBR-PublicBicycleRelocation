@@ -1731,3 +1731,49 @@ def test_예보_호출이_끝내_안_되면_숨기지_않고_알린다(monkeypat
 
     with pytest.raises(fi.weather.WeatherError):
         fi.load_all_forecasts(["25년 11월"], pause=0)
+
+
+# ───────────────────────────── 예측 학습 곡선 (1.26.312) — 재고를 더 모으면 예측이 좋아지나
+
+def test_학습곡선은_낮을_덮은_평일만_쓰고_두_원점의_검증이_겹치지_않는다():
+    """09-14 전에는 수집 창이 낮뿐이었다 — 09~17시를 40틱 넘게 덮지 못한 날과 휴일은 뺀다.
+    원점 A의 검증 날은 B의 학습 · 검증 어디에도 들지 않아야 두 곡선이 독립이다."""
+    from experiments.structure import forecast_learning_curve as lc
+
+    stamps = []
+    for day, ticks in [("2026-09-04", 48), ("2026-09-05", 48),   # 토요일 — 휴일
+                       ("2026-09-07", 39), ("2026-09-08", 40)]:  # 39틱은 모자라다
+        start = pd.Timestamp(f"{day} 09:00")
+        stamps += [start + pd.Timedelta(minutes=10 * i) for i in range(ticks)]
+    stamps.append(pd.Timestamp("2026-09-07 20:00"))                # 창 밖 틱은 세지 않는다
+
+    days = lc.qualified_days(pd.Series(stamps))
+    assert [str(d) for d in days] == ["2026-09-04", "2026-09-08"]
+
+    many = list(range(21))
+    got = lc.origins(many)
+    a_test, a_pool = got["A"]
+    b_test, b_pool = got["B"]
+    assert a_test == [17, 18, 19, 20] and b_test == [13, 14, 15, 16]
+    assert not set(a_test) & (set(b_test) | set(b_pool))
+    assert max(b_pool) < min(b_test) and max(a_pool) < min(a_test)   # 학습은 검증보다 앞
+    assert lc.train_sizes(17) == [3, 5, 7, 10, 14, 17]
+    assert lc.train_sizes(13) == [3, 5, 7, 10, 13]
+
+
+def test_학습곡선_판정은_두_원점이_모두_3퍼센트를_넘어야_향상이다():
+    """사전 등록 — k=5 대비 최대 k에서 3% 이상, 두 원점 모두. 갈리면 보류다."""
+    from experiments.structure import forecast_learning_curve as lc
+
+    def table(a_values, b_values):
+        rows = [{"원점": "A", "k": k, "GBM": v} for k, v in zip([3, 5, 10], a_values)]
+        rows += [{"원점": "B", "k": k, "GBM": v} for k, v in zip([3, 5, 10], b_values)]
+        return pd.DataFrame(rows)
+
+    both = lc.judge(table([0.12, 0.10, 0.095], [0.12, 0.10, 0.096]), "GBM")
+    assert lc.verdict(both).startswith("✅")
+    assert both["A"][0] == pytest.approx(0.05)
+    split = lc.judge(table([0.12, 0.10, 0.095], [0.12, 0.10, 0.099]), "GBM")
+    assert lc.verdict(split).startswith("⚠️")
+    flat = lc.judge(table([0.12, 0.10, 0.099], [0.12, 0.10, 0.1]), "GBM")
+    assert lc.verdict(flat).startswith("❌")

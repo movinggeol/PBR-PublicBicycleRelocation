@@ -53,6 +53,11 @@ MIN_TICKS_PER_DAY = 30
 # 예전 문턱 0.24는 빔이 절반인 라벨의 무작위 수준 0.25에 이 비율을 곱한 값이었다(1.26.305).
 LEAK_RATIO = 0.96
 
+# 모형 피처 — 학습 곡선(`forecast_learning_curve.py`)도 이 목록을 그대로 쓴다.
+FEATURES = ["지금빔", "재고", "1틱전빔", "3틱전빔", "6틱전빔",
+            "최근6틱빔비율", "최근18틱빔비율", "재고변화3틱",
+            "시", "요일", "대여소시간대빔비율"]
+
 
 def load_grid(conn) -> pd.DataFrame:
     """관측을 (시각 × 대여소) 격자로 편다.
@@ -182,9 +187,7 @@ def main(argv=None) -> int:
     결과["⓪ 전체 평균"] = np.full(len(test), train["타깃"].mean())
 
     # ── 모델: 그래디언트 부스팅
-    피처 = ["지금빔", "재고", "1틱전빔", "3틱전빔", "6틱전빔",
-           "최근6틱빔비율", "최근18틱빔비율", "재고변화3틱",
-           "시", "요일", "대여소시간대빔비율"]
+    피처 = FEATURES
     try:
         from sklearn.ensemble import HistGradientBoostingClassifier
         model = HistGradientBoostingClassifier(
