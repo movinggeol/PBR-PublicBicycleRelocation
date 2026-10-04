@@ -613,6 +613,5 @@ def scale_legend(scale: float, unit: str = "") -> str:
         f'<span class="viz-ramp">{"".join(chips)}</span>'
         f'<span><b>빠져나감</b> +{_fmt(scale)}{unit}까지 · 채워 줘야 함</span>'
         '</div>'
-        '<p class="viz-scale-note">가운데 무채색은 0 근처입니다 —'
-        ' 그 시간대는 손댈 필요가 없습니다.</p>'
+        '<p class="viz-scale-note">가운데 회색은 0 근처입니다.</p>'
     )

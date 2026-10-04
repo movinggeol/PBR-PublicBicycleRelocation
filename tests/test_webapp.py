@@ -934,7 +934,7 @@ def test_KPI_타일에_용어_설명이_붙는다():
     from webapp import app as webapp_app
 
     source = inspect.getsource(webapp_app.kpi_page)
-    shared = "목표 재고까지 모자란 양을 계획이 몇 % 메웠는지입니다."
+    shared = "목표 재고까지 모자란 양을 몇 % 메웠는지입니다."
     assert shared in source, "타일 설명이 표 머리글과 다른 문구다"
     for label in ("한 번에 닿는 범위", "km당 개선", "시간 예산 준수"):
         assert label in source
@@ -952,7 +952,7 @@ def test_KPI_타일_설명이_표_머리글과_같은_문구다():
 
     from webapp import app as webapp_app
 
-    shared = "목표 재고까지 모자란 양을 계획이 몇 % 메웠는지입니다."
+    shared = "목표 재고까지 모자란 양을 몇 % 메웠는지입니다."
     template = Path(webapp_app.__file__).parent / "templates" / "kpi.html"
     assert shared in inspect.getsource(webapp_app.kpi_page)
     assert shared in template.read_text(encoding="utf-8")
@@ -2750,8 +2750,8 @@ def test_낡은_계획이면_화면이_경고하고_확인할_길을_준다(clie
 
     body = client.get("/").text
     assert "12일 전" in body
-    assert "세운 것입니다" in body, "낡았는데 경고가 없다"
-    assert "지금 재고와 대조하기" in body, "확인할 길을 안 알려 준다"
+    assert "세운 계획입니다" in body, "낡았는데 경고가 없다"
+    assert "지금 재고와 대조" in body, "확인할 길을 안 알려 준다"
 
 
 def test_갓_세운_계획에는_경고를_붙이지_않는다(client, monkeypatch):
@@ -2821,7 +2821,7 @@ def test_기본값으로_떨어지면_표가_어긋날_수_있다고_말한다(c
                              source="기본값 — 등록된 작업을 찾지 못했습니다"))
     body = client.get("/collect").text
     assert "등록된 수집 작업을 찾지 못했습니다" in body
-    assert "어긋납니다" in body, "기본값인데 표를 믿어도 되는 것처럼 보인다"
+    assert "실제와 다를 수 있습니다" in body, "기본값인데 표를 믿어도 되는 것처럼 보인다"
 
 
 def test_오래_멈췄으면_화면이_먼저_말한다(client, monkeypatch):
@@ -2884,19 +2884,17 @@ def test_멈췄는지_판정할_수_없으면_모른다고_한다():
     assert collect_view._stalled_note("2026-09-09", today="2026-09-08") is None
 
 
-def test_온전한_날이_세_가지_뜻임을_화면이_밝힌다(client, monkeypatch):
-    """🔴 같은 이름이 셋을 뜻한다(1.26.153).
-
-    밝히지 않으면 **0일**을 보고 *"쓸 자료가 없다"* 고 읽는다 — 실제로 그
-    오독이 있었다(1.26.120).
+def test_온전한_날은_이_화면의_기준만_말한다(client, monkeypatch):
+    """🔴 같은 이름이 셋을 뜻한다(1.26.153) — 밝히지 않으면 **0일**을 보고 *"쓸 자료가 없다"* 고
+    읽는다(1.26.120). 1.26.153은 세 뜻을 표로 늘어놓았지만 함수 이름까지 적힌 표는 운영자에게
+    필요 없어 1.26.308에 뺐다. 화면은 **이 화면의 기준**(등록 시간을 빠짐없이)만 말한다.
     """
     from webapp import collect_view
 
     monkeypatch.setattr(collect_view, "context", lambda: _collect_ctx())
     body = client.get("/collect").text
-    assert "dense_days()" in body
-    assert "duration_complete_days()" in body
-    assert "등록된 창의 100%" in body
+    assert "등록된 수집 시간을 빠짐없이 채운 날" in body
+    assert "dense_days()" not in body, "내부 함수 이름이 화면에 나왔다"
 
 
 def test_결측은_아직_판정이_아니라고_말한다(client, monkeypatch):
@@ -2905,7 +2903,7 @@ def test_결측은_아직_판정이_아니라고_말한다(client, monkeypatch):
 
     monkeypatch.setattr(collect_view, "context", lambda: _collect_ctx())
     body = client.get("/collect").text
-    assert "아직 판정이 아닙니다" in body
+    assert "이 PC가 받은 것만 셉니다" in body
     assert "merge_stock.py" in body
 
 
@@ -2920,7 +2918,7 @@ def test_구간이_여러_개면_수집_실패가_아니라_PC_꺼짐이라_말�
     monkeypatch.setattr(collect_view, "context", lambda: _collect_ctx())
     body = client.get("/collect").text
     assert "PC 꺼짐" in body
-    assert "수집기 고장이 아닙니다" in body
+    assert "PC가 꺼져 있었던 것입니다" in body
 
 
 def test_수집이_없어도_화면이_죽지_않고_길을_준다(client):
@@ -3231,8 +3229,7 @@ def test_지도_화면에도_차례가_붙는다(client, monkeypatch):
 
 
 def test_재고_수집_화면에도_차례가_붙는다(client, monkeypatch):
-    """/collect의 h2 둘(이 화면이 묻는 것 · 날짜별 수집 현황)은 `rows`가
-    있을 때만 그려지므로 자료를 심어야 한다."""
+    """/collect의 h2(날짜별 수집 현황)는 `rows`가 있을 때만 그려지므로 자료를 심어야 한다."""
     from webapp import collect_view
 
     monkeypatch.setattr(collect_view, "context", lambda: _collect_ctx())
@@ -3485,9 +3482,10 @@ def test_문서형_화면이_코드를_따라왔다(client):
     말하고 있었다 — 각각 README(12개월·n=36), 1.26.265(부분 갱신), 1.26.214(예상은
     기록에서)가 바꾼 것들이다.
     """
+    # 첫 화면의 검정 문장과 '검증된 효과' 표는 1.26.308에 뺐다 — 운영자에게 필요한 정보가 아니고,
+    # 한 화면에 들어와야 한다. 낡은 수치가 다시 붙지 않는지만 본다.
     home = client.get("/").text
-    assert "n = 36" in home and "n = 15" not in home
-    assert "상수 속도 25 km/h" in home, "'검증된 효과' 표가 어느 모형 기준인지 말하지 않는다"
+    assert "n = 15" not in home and "검증된 효과" not in home
     guide = client.get("/guide").text
     assert "저절로 새로고침" not in guide and "3초마다 진행 상황을 받아" in guide
     assert "보통 2~4분" not in guide
@@ -3801,9 +3799,9 @@ def test_없는_실행을_고르면_필터를_푸는_길을_준다(client, monke
         {"run_label": ["지표 없는 수집"], "kind": ["probe"], "created_at": ["2026-09-02 08:00:00"]}))
     html = client.get("/kpi", params={"run_label": "지표 없는 수집"}).text
     hero = html.split('<section class="hero">', 1)[1].split("</section>", 1)[0]
-    assert "성과 지표 기록이 없습니다" in hero and "기록된 실행이 아닙니다" not in hero
+    assert "지표 기록이 없습니다" in hero and "기록된 실행이 아닙니다" not in hero
     table_empty = html.split('<div class="card flush">', 1)[1].split("</div>", 1)[0]
-    assert "계획이 아닌 실행이거나" in table_empty
+    assert "지표 기록이 없습니다" in table_empty
     # 히어로 문장 속 푸는 링크는 색만으로 가르지 않는다 — axe link-in-text-block이 /kpi·/maps·/data
     # 네 화면 × 라이트·다크 × 1400·375에서 20건을 냈다(1.26.284 브라우저 확인)
     rule = html[html.index(".muted a, .hint a, .empty a"):]
@@ -3836,10 +3834,11 @@ def test_지표_화면의_수요_예측과_보정_문장도_회차_이름이다(
         assert f'data-sort="{d}"><b>{names[d]}</b></td>' in forecast, f"수요 예측 표의 {d}가 이름이 아니다"
         assert f"<h3>{names[d]} 예측 오차</h3>" in forecast, f"수요 예측 그래프 제목의 {d}가 이름이 아니다"
         assert f"<b>{d}</b>" not in forecast and f"{d} 예측 오차" not in forecast
-    sentence = html[html.index("관측으로 맞대어 본 결과"):]
-    sentence = " ".join(sentence[:sentence.index("였습니다")].split())
-    assert f"{names[DURATIONS[0]]}에서 실측이 복원의" in sentence, sentence
-    assert f"{DURATIONS[0]}에서" not in sentence
+    # 결품 보정은 1.26.308부터 회차별 배율을 늘어놓지 않고 범위 한 줄이다 — 코드가 새지 않는지만 본다
+    sentence = html[html.index("<b>결품 시간</b>은 시뮬레이션 값입니다."):]
+    sentence = " ".join(sentence[:sentence.index("</div>")].split())
+    assert "실제 관측은 이 값의 1.3배였습니다." in sentence, sentence
+    assert DURATIONS[0] not in sentence
 
 
 def test_실행으로_좁힌_데이터는_나중에_다시_쓰인_기간_파일을_밝힌다(client, monkeypatch):

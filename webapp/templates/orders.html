@@ -175,8 +175,7 @@
 
 <section class="hero no-print">
   <h1>작업지시서</h1>
-  <p class="lead">차량 한 대가 한 장입니다. 어디를 어떤 순서로 들러 몇 대를 싣고 내리는지
-    그대로 적혀 있습니다. <b>인쇄하면 차량마다 쪽이 나뉩니다.</b></p>
+  <p class="lead">차량별 방문 순서와 수거·배송 대수입니다. 인쇄하면 차량마다 한 장씩 나옵니다.</p>
   <div class="actions">
     <button class="btn" type="button" onclick="window.print()">인쇄</button>
     {% if run_label %}
@@ -257,8 +256,7 @@
 {% endif %}
 
 {% if selected_vehicle %}
-<div class="alert no-print"><span><b>{{ selected_vehicle }}</b> 한 대만 보고 있습니다 —
-  <b>인쇄하면 이 한 장만 나옵니다.</b>
+<div class="alert no-print"><span><b>{{ selected_vehicle }}</b> 한 대만 보고 있습니다. 인쇄하면 이 한 장만 나옵니다.
   <a href="/orders?run_label={{ run_label | urlencode }}{% if duration %}&duration={{ duration | urlencode }}{% endif %}">전체 {{ sheet_names | length }}대 보기</a></span></div>
 {% endif %}
 
@@ -290,9 +288,7 @@
   <a class="btn ghost" href="/orders?run_label={{ run_label | urlencode }}{% if duration %}&duration={{ duration | urlencode }}{% endif %}">
     대조 끄기</a>
 </div>
-<p class="section-lead">계획을 세운 뒤에도 재고는 계속 바뀝니다. <b>계획 대상 대여소만</b>
-  타슈 API로 다시 조회했습니다. 여기서는 <b>표시만 하고 계획을 바꾸지 않습니다</b> —
-  현장 상황을 아는 것은 사람입니다.</p>
+<p class="section-lead">계획에 든 대여소의 지금 재고입니다. 계획은 바꾸지 않습니다.</p>
 
 <div class="tally card">
   <div>대상 <b>{{ live_summary.total }}</b>곳</div>
@@ -322,8 +318,7 @@
   </div>
 
   {% if not cs.returns %}
-  <p class="hint">※ 이 계획에는 차고지 복귀 구간이 없습니다(복귀를 기록하지 않던 옛 산출물).
-    실제 운행 시간은 복귀분만큼 더 걸립니다.</p>
+  <p class="hint">※ 차고지 복귀가 빠진 옛 계획입니다. 실제로는 복귀 시간만큼 더 걸립니다.</p>
   {% endif %}
 
   <div class="table-wrap">
@@ -372,11 +367,8 @@
 </div>
 
 <div class="note no-print">
-  <b>차고지는 {{ depot_name }}</b>이고, 적재 용량은 한 대에 {{ capacity }}대입니다.
-  "싣고 남는 수"가 0이면 그 시점에 차가 비어 있다는 뜻입니다.<br>
-  판정 기준: <b>수거</b>는 지금 재고만큼만 가능하고, <b>배송</b>는 거치대 수의
-  {{ upper_ratio }}배까지만 받습니다(계획이 목표 재고를 자른 것과 같은 기준).
-  작업량이 {{ min_qty }}대 이하인 대여소는 애초에 계획에 들어오지 않습니다.
+  차고지 <b>{{ depot_name }}</b> · 적재 용량 {{ capacity }}대.
+  수거는 지금 재고만큼, 배송은 거치대 수의 {{ upper_ratio }}배까지 가능합니다.
 </div>
 {% endif %}
 
@@ -406,8 +398,7 @@
   </div>
 
   {% if not sheet.returns %}
-  <p class="hint">※ 이 계획에는 차고지 복귀 구간이 없습니다(복귀를 기록하지 않던 옛 산출물).
-    실제 운행 시간은 복귀분만큼 더 걸립니다.</p>
+  <p class="hint">※ 차고지 복귀가 빠진 옛 계획입니다. 실제로는 복귀 시간만큼 더 걸립니다.</p>
   {% endif %}
 
   {# m-cards: 좁은 화면에서 이 표는 카드로 눕는다(base.html). 그때 각 칸이
@@ -445,8 +436,7 @@
 
 {% if sheets %}
 <div class="note no-print">
-  <b>차고지는 {{ depot_name }}</b>이고, 적재 용량은 한 대에 {{ capacity }}대입니다.
-  “싣고 남는 수”가 0이면 그 시점에 차가 비어 있다는 뜻입니다.
+  차고지 <b>{{ depot_name }}</b> · 적재 용량 {{ capacity }}대.
 </div>
 {% endif %}
 {% endif %}

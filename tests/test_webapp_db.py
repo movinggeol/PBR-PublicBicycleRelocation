@@ -984,10 +984,10 @@ def test_헤드라인_증감은_같은_조건의_앞선_실행과_견준다(kpi_
 
     html = kpi_client.get("/kpi").text
     hero = _hero(html)
-    assert f"가장 최근 실행은 {KPI_HOL_NEW}" in hero
-    # '같은 조건'이라고만 쓰면 수요 기간까지 같다고 읽힌다 — 무엇이 같은지 밝힌다(1.26.284 검토)
-    assert f"종류·요일 구분·회차 구성이 같은 앞선 실행 {KPI_HOL_OLD} 대비" in hero, hero
-    assert "수요 기간 기록이 없어 같은 달 자료인지는 모릅니다" in hero, "기간 기록이 없는데 말하지 않았다"
+    assert f"최근 실행 {KPI_HOL_NEW}" in hero
+    # 짝의 조건(종류·요일 구분·회차 구성)은 괄호의 조건 글과 사용 안내가 말한다 — 히어로는 한 줄이다(1.26.308)
+    assert f"같은 조건의 앞선 실행 {KPI_HOL_OLD} 대비" in hero, hero
+    assert "수요 달이 다릅니다" not in hero, "기간 기록이 없는데 다르다고 단언했다"
     assert KPI_WK_NEW not in hero, "기록 시각만 보고 평일 계획과 견줬다"
     # 개선률 70% − 60% = ▲10%(좋아짐). 평일 계획(80%)과 견줬다면 ▼10%, 실험(90%)이면 ▼20%였다.
     first = _tile_values(html)[0]
@@ -1000,7 +1000,7 @@ def test_한_실행을_골라도_증감이_남고_고른_실행이라고_말한�
     비교 대상은 필터와 상관없이 전체에서 같은 규칙으로 고른다."""
     html = kpi_client.get("/kpi", params={"run_label": KPI_WK_NEW}).text
     hero = _hero(html)
-    assert "가장 최근 실행은" not in hero, "고른 실행을 '가장 최근'이라 불렀다"
+    assert "최근 실행" not in hero, "고른 실행을 '최근'이라 불렀다"
     assert f"고른 실행 {KPI_WK_NEW}" in hero and f"앞선 실행 {KPI_WK_OLD} 대비" in hero, hero
     first = _tile_values(html)[0]
     assert "80%" in first and 'class="delta good">▲ 25%' in first, f"골라도 증감이 남아야 한다: {first}"
@@ -1017,13 +1017,13 @@ def test_한_실행을_골라도_증감이_남고_고른_실행이라고_말한�
     # 짝이 없으면 증감을 비우고 **까닭을 말한다** — 숫자를 지어내지 않는다
     html = kpi_client.get("/kpi", params={"run_label": KPI_HOL_PART}).text
     assert 'class="delta' not in "".join(_tile_values(html)), "짝이 없는데 증감을 냈다"
-    assert "회차 구성이 같은 앞선 실행이 없어 증감을 내지 않습니다" in _hero(html)
+    assert "같은 조건의 앞선 실행이 없어 증감을 내지 않습니다" in _hero(html)
     html = kpi_client.get("/kpi", params={"run_label": KPI_UNKNOWN}).text
     assert 'class="delta' not in "".join(_tile_values(html))
-    assert "요일 구분(평일·휴일) 기록이 없는" in _hero(html)
+    assert "요일 구분 기록이 없어 증감을 내지 않습니다" in _hero(html)
     # 실험을 고르면 실험끼리만 견주고, 운영 계획이 아니라고 밝힌다
     html = kpi_client.get("/kpi", params={"run_label": KPI_HOL_EXP}).text
-    assert "운영 계획이 아닌 실행" in _hero(html)
+    assert "운영 계획이 아닙니다" in _hero(html)
 
 
 def test_결품_타일의_화살표는_앞선_실행_대비이고_전후_차이는_부제다(kpi_client):
@@ -1085,9 +1085,8 @@ def test_추세_절은_한_실행을_골라도_자리를_남긴다(kpi_client):
     # 전체 화면은 그래프가 그대로 나온다
     html = kpi_client.get("/kpi").text
     assert 'class="empty"' not in _between(html, "<h2>추세</h2>", "<h2>")
-    assert "커서를 대면" in _between(html, "<h2>추세</h2>", "<h2>")
-    # 표의 '회차' 머리 풍선은 **칸**을 누르라고 말한다 — 머리글을 누르면 정렬될 뿐이다(1.26.284 검토)
-    assert "칸의 회차 이름을 누르면 그 회차의 작업지시서가 열립니다" in html
+    # 회차 칸이 지시서로 간다는 것은 표 위 한 줄이 말한다(1.26.309 — 머리 풍선은 뜻만 적는다)
+    assert "회차를 누르면 작업지시서" in html
 
 
 # ───────────── 실행을 따라가는 길 — 완료 화면·첫 화면·표의 행 (1.26.284) ─────────────
@@ -1190,7 +1189,7 @@ def test_첫_화면_카드는_그_실행으로_보내되_실험의_지시서는_
                      ("2026-09-23 09:00:00", late))
         conn.commit()
     html = runs_client.get("/").text
-    assert f"<h3>{late}</h3>" in html, "시험 전제: 가장 최근 실행이 실험이어야 한다"
+    assert f"<h2>마지막 계획 · {late}</h2>" in html, "시험 전제: 가장 최근 실행이 실험이어야 한다"
     foot = _between(html, '<div class="card-foot">', "</div>")
     assert 'href="/orders"' in foot, "실험이 최신인데 그 실험의 지시서를 열었다(1.26.125)"
     assert f'href="/maps?run_label={quote(late)}"' in foot
@@ -1243,7 +1242,7 @@ def test_차량_하나의_배정_이력을_화면_안에서_본다(runs_client):
     # 예산 타일도 같은 범위를 센다 — 표만 좁히고 타일은 전체면 한 화면의 숫자가 갈린다
     assert f"{api['count']}회차 중" in html, "시간 예산 타일이 차량으로 좁혀지지 않았다"
     assert "<b>V02</b>" not in history, "다른 차량의 배정이 섞였다"
-    assert "<b>V01</b> 한 대의 배정 이력만" in html and "· 차량 V01만" in html,         "차량으로 좁힌 것을 밝히지 않았다(예산 타일도 이 차량만 센다)"
+    assert "<b>V01</b> 한 대만 보고 있습니다" in html and "· 차량 V01만" in html,         "차량으로 좁힌 것을 밝히지 않았다(예산 타일도 이 차량만 센다)"
     # 누적 표의 '이력'은 이 화면으로, JSON은 작게 남는다
     assert 'href="/vehicles?vehicle_id=V01#assignments"' in html
     # 실행 칩은 차량을 이어 간다
@@ -1290,14 +1289,14 @@ def test_증감의_짝은_기간을_가르지_않되_히어로가_두_기간을_
     hero = _hero(kpi_client.get("/kpi").text)
     assert f"{KPI_HOL_NEW} (휴일 · 운영 계획 · 회차 2개 · 25년 06월)" in hero, hero
     assert f"앞선 실행 {KPI_HOL_OLD} (26년 03월) 대비" in hero, hero
-    assert "수요 기간이 다릅니다 (25년 06월 ↔ 26년 03월)" in hero, hero
+    assert "수요 달이 다릅니다(25년 06월 ↔ 26년 03월)" in hero, hero
 
     # 같은 달이면 덧붙이지 않는다
     with db.session() as conn:
         conn.execute("UPDATE runs SET period = ? WHERE run_label = ?", ("26년 03월", KPI_HOL_NEW))
         conn.commit()
     hero = _hero(kpi_client.get("/kpi").text)
-    assert "수요 기간이 다릅니다" not in hero and "같은 달 자료인지는 모릅니다" not in hero, hero
+    assert "수요 달이 다릅니다" not in hero, hero
 
 
 def test_0으로_보이는_증감에는_딱지를_달지_않는다(tmp_path, monkeypatch):
@@ -1390,12 +1389,12 @@ def test_차량으로_좁힌_알림은_범위를_밝히고_없는_타일을_가�
         db.save_assignments(conn, PLAN_NEW, DURATIONS[0], [_work("V01")])
     html = " ".join(unescape(runs_client.get("/vehicles", params={"vehicle_id": "V01"}).text).split())
     assert "차량 V01의 모든 작업이 시간 예산 안에서 끝납니다" in html, "알림이 범위를 밝히지 않는다"
-    assert "위 시간 예산 타일과 그 아래 알림도 이 차량만 셉니다" in html
+    assert "(시간 예산도 이 차량만 셉니다)" in html
 
     html = " ".join(unescape(runs_client.get("/vehicles", params={"vehicle_id": "V99"}).text).split())
     assert "시간 예산 준수" not in html.split('id="assignments"')[0], "시험 전제: 예산 타일이 없어야 한다"
-    assert "<b>V99</b> 한 대의 배정 이력만 보고 있습니다." in html
-    assert "시간 예산 타일" not in html, "그려지지 않은 타일을 가리켰다"
+    assert "<b>V99</b> 한 대만 보고 있습니다." in html
+    assert "시간 예산도" not in html, "그려지지 않은 타일을 가리켰다"
 
 
 def test_여러_링크가_든_칸은_한_덩어리로_감싸고_지도_링크는_단추_줄을_늘리지_않는다(runs_client):

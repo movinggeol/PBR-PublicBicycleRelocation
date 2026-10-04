@@ -6,13 +6,9 @@
 
 <section class="hero">
   <h1>차량 운용</h1>
-  <p class="lead">보유 {{ fleet_size }}대 가운데 한 회차에 최대 {{ per_round }}대까지 나갑니다.
-    누적 작업이 적은 차량부터 배정하므로, 직전 회차에 나갔던 차량은 다음 회차에서 뒤로 밀립니다.</p>
+  <p class="lead">보유 {{ fleet_size }}대, 한 회차에 최대 {{ per_round }}대. 누적 작업이 적은 차량부터 배정합니다.</p>
   {# 기간을 밝히지 않으면 '하루치인가?'를 화면에서 알 수 없다 (수정안 20번). #}
-  <p class="lead muted"><b>아래 숫자는 하루치가 아닙니다.</b>
-    출동·작업량 차이와 차량별 누적은 <b>DB에 쌓인 모든 실행·회차의 합계</b>입니다 —
-    로테이션이 고르게 도는지는 여러 실행에 걸쳐 봐야 알 수 있기 때문입니다.
-    한 실행만 보시려면 아래 <b>회차별 배정 이력</b>에서 실행을 고르세요.</p>
+  <p class="lead muted">아래 숫자는 <b>모든 실행의 합계</b>입니다.</p>
 </section>
 
 <div class="tiles">
@@ -27,11 +23,7 @@
     <p class="value">{{ balance.gap_minutes }}<span class="unit">분</span></p>
     {# 안 나간 차량이 있을 때만 무엇을 뺐는지 밝힌다 — 없는 경우까지 적으면
        일어나지도 않은 일을 설명하는 군더더기가 된다. #}
-    <p class="sub">{% if balance.idle %}출동한 차량 가운데 {% endif %}가장 적게 일한 차량 {{ balance.min_minutes }}분,
-      가장 많이 일한 차량 {{ balance.max_minutes }}분 — 작을수록 고르게 나뉜 것
-      {%- if balance.idle %}<br>
-      <span class="muted">한 번도 안 나간 {{ balance.idle }}대의 0분은 빼고 잽니다 —
-        섞으면 이 값이 곧 최대값이 되어 로테이션이 고른지를 못 봅니다</span>{% endif %}</p>
+    <p class="sub">최소 {{ balance.min_minutes }}분 · 최대 {{ balance.max_minutes }}분{% if balance.idle %}(출동한 차량만){% endif %} · 작을수록 고릅니다</p>
   </div>
   {% endif %}
   {% if budget %}
@@ -52,19 +44,14 @@
 {% if budget and budget.over %}
 <div class="alert bad">
   <span><b>{{ who }}{{ budget.over }}건이 시간 예산을 넘었습니다.</b>
-  작업이 늦어지면 계획이 겨냥한 시간대가 이미 지나가 버려 효과가 줄어듭니다.
-  아래 표에서 붉은 배경에 ⚠가 붙은 행입니다{% if pages > 1 %} —
-  <span class="muted">이 수는 전체 {{ assignments_total }}건을 센 것이라,
-    {{ pages }}쪽에 나뉘어 있습니다</span>{% endif %}.</span>
+  아래 표의 ⚠ 행입니다{% if pages > 1 %}({{ pages }}쪽에 나뉘어 있습니다){% endif %}.</span>
 </div>
 {% elif budget %}
 <div class="alert ok"><span>{% if selected_vehicle %}차량 {{ selected_vehicle }}의 {% endif %}모든 작업이 시간 예산 안에서 끝납니다.</span></div>
 {% endif %}
 
 <h2>차량별 누적 <span class="hint">전체 실행 합계</span></h2>
-<p class="section-lead">한 대에 일이 몰리지 않았는지 봅니다. 누적 시간이 고를수록 로테이션이 잘 도는 것입니다.
-  <b>실행을 골라도 이 표는 좁혀지지 않습니다</b> — 형평성은 누적으로만 보이기 때문입니다.
-  표는 많이 일한 차량부터 늘어놓았고, 위 8대만 펴 둡니다 — 나머지는 표 아래 단추로 펴세요.</p>
+<p class="section-lead">한 대에 일이 몰렸는지 봅니다. 실행을 골라도 이 표는 전체 합계입니다.</p>
 
 {# 그래프 자리를 통째로 없애면 '왜 안 보이지'를 화면에서 알 수 없다 —
    빈 상태에도 자리를 남기고 무엇이 없어서 비었는지 적는다. #}
@@ -74,16 +61,11 @@
   <h3>누적 작업 시간 — 평균과의 차이
     <span class="hint">오른쪽으로 뻗을수록 많이 일한 차량</span></h3>
   {% if workload_svg %}
-  <p class="hint" style="margin:0 0 var(--sp-xs)">막대는 <b>평균에서 떨어진 만큼</b>이고
-    가운데 세로선이 평균입니다 — 값 자체가 아니라 <b>고른지</b>를 보는 그림이라
-    기준을 평균에 둡니다. 차량별 실제 누적 시간은 커서를 대면 뜨고 아래 표에 있습니다.
-    {% if balance and balance.idle %}<b>기준선은 출동한 {{ balance.used }}대의 평균입니다</b> —
-    한 번도 안 나간 {{ balance.idle }}대의 0분을 섞으면 기준이 내려앉아 일한 차량이
-    전부 평균 위로 보이기 때문입니다. 그 {{ balance.idle }}대는 맨 아래 왼쪽 끝 막대입니다.{% endif %}</p>
+  <p class="hint" style="margin:0 0 var(--sp-xs)">가운데 세로선이 평균입니다{% if balance and balance.idle %}(출동한 {{ balance.used }}대 기준){% endif %}.</p>
   {{ workload_svg | safe }}
   {% else %}
-  <p class="empty">아직 출동한 차량이 없어 그릴 것이 없습니다 — 보유 {{ fleet_size }}대가 모두 0분입니다.
-    <a href="/run#run">계획을 실행</a>하면 차량별로 누적됩니다.</p>
+  <p class="empty">아직 출동한 차량이 없습니다.
+    <a href="/run#run">계획을 실행</a>하면 쌓입니다.</p>
   {% endif %}
 </div>
 
@@ -97,9 +79,9 @@
     <thead><tr>
       <th scope="col">차량</th>
       <th scope="col" class="num"><span class="tip" data-tip="이 차량이 지금까지 나간 횟수입니다.">출동</span></th>
-      <th scope="col" class="num"><span class="tip" data-tip="이 차량이 싣고 옮긴 자전거 총 대수입니다.">옮긴 대수</span></th>
+      <th scope="col" class="num"><span class="tip" data-tip="이 차량이 옮긴 자전거 총 대수입니다.">옮긴 대수</span></th>
       <th scope="col" class="num">누적 거리</th>
-      <th scope="col" class="num"><span class="tip" data-tip="이동 시간에 자전거를 싣고 내리는 시간을 더한 값입니다. 배정 순서는 이 값이 작은 차량부터입니다.">누적 시간</span></th>
+      <th scope="col" class="num"><span class="tip" data-tip="이동과 수거·배송에 쓴 시간입니다. 이 값이 작은 차량부터 배정합니다.">누적 시간</span></th>
       <th scope="col" class="grow">최근 작업</th><th scope="col" data-nosort>이력</th>
     </tr></thead>
     <tbody>
@@ -147,8 +129,8 @@
 {# /orders의 '한 대만 보고 있습니다'와 같은 모양이다. 푸는 링크는 실행 조건은 남긴다. #}
 {# 타일 문장은 타일이 있을 때만 — 배정이 0건이면 예산 타일이 그려지지 않는데 '위 시간 예산 타일도'
    라고 없는 타일을 가리켰다(1.26.284 검토, 실측 V99). #}
-<div class="alert no-print"><span><b>{{ selected_vehicle }}</b> 한 대의 배정 이력만 보고 있습니다
-  {%- if budget %} — 위 시간 예산 타일과 그 아래 알림도 이 차량만 셉니다(누적 표와 막대는 그대로 전체입니다){% endif %}.
+<div class="alert no-print"><span><b>{{ selected_vehicle }}</b> 한 대만 보고 있습니다
+  {%- if budget %}(시간 예산도 이 차량만 셉니다){% endif %}.
   <a href="/vehicles{% if selected_run %}?run_label={{ selected_run | urlencode }}{% endif %}#assignments">전체 차량 보기</a></span></div>
 {% endif %}
 
@@ -161,7 +143,7 @@
       <th scope="col" class="num"><span class="tip" data-tip="이 차량이 맡은 대여소 덩어리의 번호입니다.">군집</span></th>
       <th scope="col" class="num">대여소</th><th scope="col" class="num">옮긴 대수</th>
       <th scope="col" class="num">거리</th>
-      <th scope="col" class="num"><span class="tip" data-tip="이동 시간 + 자전거를 싣고 내리는 시간입니다. 그 회차가 계획될 때의 시간 예산(기록이 없으면 {{ time_budget | round | int }}분)을 넘으면 붉게 표시됩니다.">작업 시간</span></th>
+      <th scope="col" class="num"><span class="tip" data-tip="이동과 수거·배송에 쓴 시간입니다. 시간 예산을 넘으면 붉게 표시됩니다.">작업 시간</span></th>
     </tr></thead>
     <tbody>
     {% for a in assignments %}
@@ -226,10 +208,8 @@
     <a href="/vehicles">전체 실행 보기</a></p>
   {% else %}
   <p class="empty">배정 이력이 없습니다.
-    <a href="/run#run">계획을 실행</a>하면 회차별 배정이 여기에 남습니다.</p>
+    <a href="/run#run">계획을 실행</a>하면 쌓입니다.</p>
   {% endif %}
   {% endif %}
 </div>
-
-<p class="hint" style="margin-top:var(--sp-md)">보유 대수 변경과 로테이션 규칙은 <code>docs/구현/FLEET.md</code> 참고.</p>
 {% endblock %}

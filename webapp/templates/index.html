@@ -6,11 +6,10 @@
 
 <section class="hero">
   <h1>재배치 계획을 세웁니다</h1>
-  <p class="lead">지금 대여소에 자전거가 몇 대 있는지와, 과거 같은 조건에서
-    얼마나 빠져나갔는지를 놓고 어디에서 몇 대를 빼 어디로 옮길지 계산합니다.</p>
+  <p class="lead">지금 재고와 지난 이용 기록으로 어디서 몇 대를 옮길지 계산합니다.</p>
   <div class="actions">
     <a class="btn ghost" href="/kpi">지난 결과 보기</a>
-    <a class="btn ghost" href="/guide">처음이신가요? 사용 안내</a>
+    <a class="btn ghost" href="/guide">사용 안내</a>
   </div>
 </section>
 
@@ -40,25 +39,23 @@
         <span class="badge running">실행 중</span>
         <a href="/runs/{{ running.id }}">{{ running.id }} 진행 상황 보기 →</a>
       </p>
-      <p class="hint" style="margin-top:var(--sp-sm)">파이프라인은 공유 파일을 쓰기 때문에
-        한 번에 하나만 돌아갑니다. 멈추려면 위 화면에서 “실행 중단”을 누르세요.</p>
+      <p class="hint" style="margin-top:var(--sp-sm)">한 번에 하나만 실행됩니다.</p>
     {% else %}
     <form method="post" action="/runs">
       <div class="form-grid" style="margin-top:var(--sp-md)">
         <div class="field wide">
           <label for="f-now">
-            <span class="tip" data-tip="이 실행에 붙일 이름입니다. 산출물 파일명과 DB 기록에 그대로 들어가므로, 나중에 결과를 비교할 때 이 이름으로 찾습니다.">실행 이름</span>
+            <span class="tip" data-tip="결과를 찾을 때 쓰는 이름입니다.">실행 이름</span>
           </label>
           <input id="f-now" type="text" name="now" value="{{ defaults.now }}">
-          <span class="hint">산출물 파일명과 DB 실행 라벨에 쓰입니다.
-            오늘 날짜로 채워 두었으니 원하는 이름으로 고쳐 쓰셔도 됩니다.</span>
+          <span class="hint">기본은 지금 시각입니다.</span>
         </div>
 
         {# 계산해 둔 달만 고르게 한다 — 직접 적게 두면 없는 달을 넣어 step0가 멈춘다.
            기본값은 가진 것 중 가장 최근 달이고, 목록은 요청마다 다시 읽는다. #}
         <div class="field wide">
           <label for="f-period">
-            <span class="tip" data-tip="대여소별 평균·편차를 뽑을 달입니다. 계획 대상 달(웹 실행은 오늘이 속한 달)의 첫 {{ warmup_days }}일 순수요가 있으면 계절 배율로 보정합니다 — 한 달 통계만 쓰는 것이 아닙니다. 과거를 더 넣으면 값이 다른 달이 섞여 오히려 나빠지는 것을 12개월로 확인했습니다.">순수요 기간</span>
+            <span class="tip" data-tip="대여소별 수요를 뽑을 달입니다. 이번 달 자료가 있으면 계절 차이를 보정합니다.">순수요 기간</span>
           </label>
           {% if periods %}
           <select id="f-period" name="period">
@@ -67,23 +64,10 @@
               {% if option == defaults.period %}selected{% endif %}>{{ option }}</option>
             {% endfor %}
           </select>
-          <span class="hint">순수요를 계산해 둔 달 {{ periods | length }}개.
-            가장 최근인 <b>{{ defaults.period }}</b>이 기본값입니다.<br>
-            <b>한 달치만 보는 것이 아닙니다</b> — <b>계획 대상 달(웹 실행은 오늘이 속한
-            달)의 첫 {{ warmup_days }}일</b> 순수요가 계산돼 있으면 계절 배율을 곱하고,
-            없으면 이 달 통계를 그대로 씁니다(실행 로그의 ‘계절 보정’ 줄). 과거를 더 넣으면 오히려 나빠지는 것을
-            <b>12개월 자료로 확인</b>했습니다(<a href="/guide#period">자세히</a>).</span>
-          {% if year_ago_period %}
-          {# 계절을 맞추고 싶은 사람에게 선택지를 알린다. 기본값으로 삼지는
-             않는다 — 측정에서 현행을 넘지 못했다(수정안 34). #}
-          <span class="hint">계절을 맞추려면 <b>{{ year_ago_period }}</b>(1년 전 같은 달)도
-            있습니다. 다만 측정에서는 <b>가장 최근 달이 더 나았습니다</b> —
-            자료에 빠진 달이 있어 계절이 오히려 어긋나기 때문입니다.</span>
-          {% endif %}
+          <span class="hint">가장 최근 달이 기본값입니다. <a href="/guide#period">자세히</a></span>
           {% else %}
           <input id="f-period" type="text" name="period" value="{{ defaults.period }}">
-          <span class="hint">아직 계산해 둔 순수요가 없습니다.
-            <code>25년 11월</code> 표기로 적으면 그 달을 새로 계산합니다.</span>
+          <span class="hint"><code>25년 11월</code>처럼 적으면 그 달을 계산합니다.</span>
           {% endif %}
         </div>
 
@@ -94,7 +78,7 @@
              role=group + aria-labelledby로 묶어야 "시간대"가 그룹 이름으로
              들린다 — 없으면 개별 항목만 읽혀 무엇을 고르는지 알 수 없다. #}
           <label id="lbl-duration">
-            <span class="tip" data-tip="하루 중 어느 시간대를 계획할지입니다. 시간대마다 자전거가 흐르는 방향이 달라 따로 계산합니다. 여러 개를 고르면 차례로 계획합니다.">시간대</span>
+            <span class="tip" data-tip="계획할 시간대입니다.">시간대</span>
           </label>
           <div class="checks" role="group" aria-labelledby="lbl-duration">
             {% for option in durations %}
@@ -104,13 +88,12 @@
               {{ option.label }}</label>
             {% endfor %}
           </div>
-          <span class="hint">여러 개를 고르면 차례로 계획합니다.
-            하나도 안 고르면 기본값(<code>{{ defaults.duration }}</code>)으로 돕니다.</span>
+          <span class="hint">여러 개를 고르면 차례로 계획합니다.</span>
         </div>
 
         <div class="field wide">
           <label for="f-day">
-            <span class="tip" data-tip="휴일 = 주말 + 공휴일. 평일과 휴일은 자전거가 흐르는 방향 자체가 달라서, 섞으면 서로 상쇄돼 계획이 무의미해집니다.">요일 구분</span>
+            <span class="tip" data-tip="휴일은 주말과 공휴일입니다.">요일 구분</span>
           </label>
           <select id="f-day" name="day_type">
             {% for option in day_types %}
@@ -118,12 +101,12 @@
               {% if option.value == defaults.day_type %}selected{% endif %}>{{ option.label }}</option>
             {% endfor %}
           </select>
-          <span class="hint">둘 다 필요하면 이름을 달리해서 두 번 실행하세요.</span>
+          <span class="hint">둘 다 필요하면 이름을 달리해 두 번 실행하세요.</span>
         </div>
 
         <div class="field">
           <label for="f-fleet">
-            <span class="tip" data-tip="오늘 실제로 굴릴 수 있는 트럭 대수입니다. 줄이면 남는 차량은 배정에서 빠지고, 늘리면 다시 들어옵니다.">보유 차량 대수</span>
+            <span class="tip" data-tip="오늘 쓸 수 있는 차량 수입니다.">보유 차량 대수</span>
           </label>
           <input id="f-fleet" type="number" name="fleet_size" min="1"
                  max="{{ max_fleet_size }}" step="1" value="{{ defaults.fleet_size }}">
@@ -132,17 +115,16 @@
 
         <div class="field">
           <label for="f-round">
-            <span class="tip" data-tip="한 회차에 동시에 내보낼 수 있는 최대 대수입니다. 실제 대수는 그 회차의 일감(옮길 자전거 수·들를 대여소 수)이 정합니다. 현장에서 한 번에 낼 수 있는 차·기사가 정해져 있을 때만 줄이세요.">회차당 투입 상한</span>
+            <span class="tip" data-tip="한 회차에 내보낼 수 있는 최대 대수입니다. 실제 대수는 일감에 따라 정해집니다.">회차당 투입 상한</span>
           </label>
           <input id="f-round" type="number" name="vehicles_per_round" min="1"
                  max="{{ max_fleet_size }}" step="1" value="{{ defaults.vehicles_per_round }}">
-          <span class="hint">상한입니다 — 실제 대수는 일감이 정합니다.
-            {% if typical_vehicles is not none %}지난 실행 기준 회차당 {{ typical_vehicles }}대.{% endif %}</span>
+          {% if typical_vehicles is not none %}<span class="hint">지난 실행은 회차당 {{ typical_vehicles }}대.</span>{% endif %}
         </div>
 
         <div class="field wide">
           <label for="f-raw">
-            <span class="tip" data-tip="위 순수요 기간의 대여이력이 DB에 아직 없을 때만 쓰는 원본 CSV입니다. 이미 DB에 있는 기간이면 이 값은 무시됩니다 — 대여이력은 DB를 우선으로 읽습니다.">원천 대여 이력 CSV</span>
+            <span class="tip" data-tip="고른 달의 이용 기록이 DB에 없을 때만 씁니다.">원천 대여 이력 CSV</span>
           </label>
           <input id="f-raw" type="text" name="raw_file" value="{{ defaults.raw_file }}"
                  data-periods-in-db='{{ periods_in_db | tojson }}'>
@@ -159,9 +141,9 @@
       {# 눈으로 보면 폼 맨 아래 두 칸이라 무엇인지 짐작되지만, 소리로 들으면
          묶음 이름이 없어 앞 항목과 이어진 것처럼 들린다. #}
       <div class="checks" role="group" aria-label="건너뛸 단계">
-        <label data-tip="켜면 실시간 재고를 새로 받지 않고 가장 최근 실행의 재고를 물려받습니다. 그 시점 재고로 계획을 세우게 되므로, 방금 받아 뒀을 때만 켜세요. 어느 실행에서 물려받았는지는 로그에 남습니다.">
+        <label data-tip="재고를 새로 받지 않고 지난 실행의 재고를 씁니다. 방금 받았을 때만 켜세요.">
           <input type="checkbox" name="skip_api" value="1"> API 수집 생략</label>
-        <label data-tip="탐색적 분석 그래프를 만들지 않습니다. 계획 결과에는 영향이 없고 시간만 줄어듭니다.">
+        <label data-tip="분석 그래프를 건너뜁니다. 결과는 같고 더 빨리 끝납니다.">
           <input type="checkbox" name="skip_eda" value="1" checked> EDA 생략</label>
       </div>
 
@@ -195,11 +177,7 @@
             기록이 쌓이면 예상 시간이 여기 나옵니다
             {%- endif -%}
           </span>
-          걸립니다. 대여소를 묶는 단계가 대부분이라, <b>시간대를 하나 더 고를 때마다</b>
-          그만큼 늘어납니다.
-          {% if run_estimate %}<span class="muted">(지난 실행 {{ run_estimate.samples }}번의
-          단계별 기록에서 뽑았습니다 — 앞은 보통, 뒤는 그중 가장 오래 걸린 쪽입니다.)</span>{% endif %}
-          누르면 진행 상황 화면으로 넘어갑니다.</p>
+          걸립니다.</p>
       </div>
     </form>
     {% endif %}
@@ -244,11 +222,7 @@
 </div>
 
 <h2 id="saved-runs">저장된 실행</h2>
-<p class="section-lead">실행할 때마다 결과가 이름과 함께 데이터베이스에 남습니다.
-  지난 실행의 지표와 대여소별 계획을 그대로 다시 꺼내 볼 수 있습니다.
-  <b>한 데이터베이스에 세 가지가 섞여 쌓입니다</b> — 운영 계획, 견줘 보려고 돌린
-  실험, 계획이 아닌 기록(도로 시간 수집 등). <b>실험·수집은 결과 화면의 계획
-  목록에서 다르게 다룹니다</b>, 그래서 종류를 여기서 밝히고 고칠 수 있게 뒀습니다.</p>
+<p class="section-lead">지난 실행을 다시 엽니다. 종류가 틀렸으면 여기서 고치세요.</p>
 {# 최신순(`runs.created_at`) **전부**를 내려보내고 10행씩 쪽으로 끊는다 (1.26.283).
    예전에는 서버가 사전 역순 10행만 보내서 앞 10행이 모두 실험·수집이었고, 계획
    8건을 포함한 19건에는 닿을 길이 없었다 — 위 설명문이 "여기서 고치라"는 표인데.
@@ -261,7 +235,7 @@
     <thead><tr>
       <th scope="col">실행 이름</th>
       {# 낱말은 kind_labels 한 벌에서 온다 — 여기 또 적으면 고르는 목록과 갈린다. #}
-      <th scope="col"><span class="tip" data-tip="{{ kind_labels.plan }} · {{ kind_labels.experiment }}(견줘 보려고 돌린 것) · {{ kind_labels.probe }}(계획이 아닌 기록). {{ kind_labels.probe }}은 결과 화면의 계획 목록에 뜨지 않습니다.">종류</span></th>
+      <th scope="col"><span class="tip" data-tip="{{ kind_labels.experiment }}은 결과 화면에서 운영 계획과 따로 보이고, {{ kind_labels.probe }}은 뜨지 않습니다.">종류</span></th>
       <th scope="col">순수요 기간</th><th scope="col">시간대</th><th scope="col">요일</th><th scope="col">기록 시각</th>
       <th scope="col" data-nosort>바로 보기</th>
     </tr></thead>
@@ -318,7 +292,7 @@
 </div>
 
 <h2>실행 이력</h2>
-<p class="section-lead">이 서버가 돌린 작업의 기록입니다. 실패했다면 여기서 로그를 열어 원인을 봅니다.</p>
+<p class="section-lead">실패한 작업은 여기서 로그를 엽니다.</p>
 <div class="card flush">
   {% if jobs %}
   <div class="table-wrap">

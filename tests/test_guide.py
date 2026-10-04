@@ -140,7 +140,8 @@ def test_period_example_matches_the_real_format(client):
     from project_config import period_label
 
     stamp_example = period_label("2025-11-01")
-    for path in ("/", "/guide"):
+    # 첫 화면은 1.26.309부터 한 화면 요약이라 기간을 적지 않는다 — 기간을 고르는 /run을 본다
+    for path in ("/run", "/guide"):
         html = client.get(path).text
         assert stamp_example in html or re.search(r"\d{2}년 \d{2}월", html), \
             f"{path}에 기간 표기 예시가 없다"

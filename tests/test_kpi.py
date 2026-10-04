@@ -239,8 +239,8 @@ def test_kpi_page_renders(client):
 
     assert "성과 지표" in html
     assert "65%" in html                      # 최신 개선률
-    assert "계획 달성률" in html               # 지표 성격 안내
-    assert "목표 도달 비율" in html
+    assert "계획을 얼마나 지켰는지" in html     # 지표 성격 안내
+    assert "목표 도달" in html
 
 
 def test_kpi_page_shows_stockout(client):
@@ -278,7 +278,7 @@ def test_kpi_page_says_why_no_delta_without_day_type(tmp_path, monkeypatch):
         db.save_kpi(conn, NEW, "_05_10", _metrics(0.65))
     with TestClient(app) as c:
         html = c.get("/kpi").text
-    assert "요일 구분(평일·휴일) 기록이 없는" in html
+    assert "요일 구분 기록이 없어 증감을 내지 않습니다" in html
     assert 'class="delta' not in html, "요일을 모르는데 증감을 냈다"
 
 

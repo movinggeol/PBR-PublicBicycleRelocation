@@ -1392,16 +1392,13 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
         # **같은 문구**를 쓴다 — 두 곳이 갈리면 같은 지표를 다르게 설명하게 된다.
         for label, column, weight, fmt, tip in [
             ("평균 개선률", "avg_improvement_rate", "stations", "pct",
-             "목표 재고까지 모자란 양을 계획이 몇 % 메웠는지입니다."
-             " 수요를 맞췄다는 뜻이 아니라 계획을 지켰다는 뜻입니다."),
+             "목표 재고까지 모자란 양을 몇 % 메웠는지입니다."),
             ("한 번에 닿는 범위", "reachable_ratio", "stations", "pct",
-             "목표까지 벌어진 양이 트럭 적재 용량 안이라 한 번 방문으로 해결할 수 있었던"
-             " 대여소의 비율입니다. 낮으면 애초에 한 회차로는 못 푸는 일감이 많다는 뜻입니다."),
+             "한 번 방문으로 목표를 채울 수 있는 대여소 비율입니다."),
             ("km당 개선", "improvement_per_km", "total_distance_km", "num",
-             "1km 움직일 때마다 개선률이 얼마나 올랐는지입니다. 연료 대비 효율로 볼 수 있습니다."),
+             "1km 움직일 때 오른 개선률입니다."),
             ("시간 예산 준수", "time_budget_met", "clusters", "pct",
-             "차량 한 대의 회차가 시간 예산 안에 끝난 비율입니다."
-             " 넘으면 계획이 겨냥한 시간대가 이미 지나가 효과가 줄어듭니다."),
+             "시간 예산 안에 끝난 회차 비율입니다."),
         ]:
             now_value = headline(latest, column, weight)
             before = headline(previous, column, weight) if previous is not None else None

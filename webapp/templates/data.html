@@ -4,15 +4,12 @@
 
 <section class="hero">
   <h1>데이터</h1>
-  <p class="lead">계산 단계마다 남긴 CSV 원본입니다. 숫자를 직접 확인하거나 엑셀로 가져갈 때 씁니다.
-    미리보기는 앞 200행만 읽습니다.</p>
+  <p class="lead">계산 결과 CSV입니다. 미리보기는 앞 200행만 보여 줍니다.</p>
   {# 한 실행의 원자료를 모으는 길 (1.26.284). 예전에는 536개가 분류당 5건씩 쪽으로 나뉘어 한
      실행의 회차별 파일이 흩어져 있었다. 순수요는 실행이 아니라 그 실행의 **기간**으로 붙는다. #}
   {% if selected_run %}
   <p class="lead" data-file-scope>{% if known_run %}실행 <b>{{ selected_run }}</b>{% if selected_duration %} ·
-    {{ duration_labels.get(selected_duration, selected_duration) }}{% endif %}의 파일만 보고 있습니다
-    (순수요는 그 실행의 기간으로 <b>지금 폴더에 있는</b> 파일입니다 — 그 실행의 파일보다 늦게
-    쓰였으면 “이 실행 뒤에 다시 쓰임”이라 표시합니다).
+    {{ duration_labels.get(selected_duration, selected_duration) }}{% endif %}의 파일만 보고 있습니다.
     {%- else %}기록된 실행이 아닙니다: <b>{{ selected_run }}</b>.{% endif %}
     <a href="/data">전체 실행 보기</a></p>
   {% endif %}

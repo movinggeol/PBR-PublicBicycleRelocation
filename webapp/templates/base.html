@@ -1447,16 +1447,16 @@
   <div class="global-nav-inner">
     <a class="brand" href="/">🚲 PBR</a>
     <a class="util{% if path.startswith('/guide') %} here{% endif %}" href="/guide"
-       data-tip="이 도구가 무엇을 계산하는지, 무엇을 입력하고 결과를 어떻게 읽는지 설명합니다.">사용 안내</a>
+       data-tip="입력 항목과 결과 읽는 법.">사용 안내</a>
     {# 현장 앱(/m) — 기사가 폰으로 드는 화면(1.26.307). 관제 화면과 **독립**이라(base.html을
        상속하지 않는다) 작업 흐름 번호가 없고 유틸리티 줄에 둔다. 넓은 창에서는 기기
        프레임(/device)으로 연다 — 폰 화면을 넓게 늘려 보이면 폰과 다른 화면이다(아래
        '모바일 모드' 절). 좁은 화면·프레임 안·스크립트가 없을 때는 /m으로 바로 간다.
        옆의 '모바일' 단추와는 뜻이 다르다: 그쪽은 **지금 화면**을 폰 폭으로 미리 본다. #}
     <a class="util" href="/m" data-field-app
-       data-tip="기사가 폰으로 드는 화면입니다 — 오늘 경로, 대여소 도착 체크, 진행 현황. 넓은 창에서는 폰 크기 미리보기로 열립니다.">현장 앱</a>
+       data-tip="기사용 폰 화면. 오늘 경로와 도착 체크.">현장 앱</a>
     <a class="util" href="/api/docs"
-       data-tip="다른 프로그램에서 결과를 가져다 쓸 때 필요한 JSON API 목록입니다.">API</a>
+       data-tip="결과를 가져다 쓰는 JSON API 목록.">API</a>
     {# 라벨은 **한글**이다. 저장소에 담은 Pretendard 서브셋(KS X 1001)에는
        이모지도 도형 문자도 없어서(📱 U+1F4F1·▯ U+25AF 모두 없음) 두부가 뜬다.
        시스템 폰트 폴백에 기대면 기기마다 달라지는데, 이 저장소는 인터넷이
@@ -1464,30 +1464,30 @@
        (같은 이유로 옆의 ◐도 서브셋에 없다 — 폴백으로 보이고 있을 뿐이다.) #}
     <button class="theme-toggle view-toggle" type="button" id="view-toggle"
             aria-label="모바일 화면으로 미리 보기" aria-pressed="false"
-            data-tip="휴대폰 크기의 화면에 이 페이지를 띄웁니다. 폭이 실제 폰과 같아서 표가 카드로 바뀌는 것까지 그대로 보입니다.">모바일</button>
+            data-tip="이 화면을 폰 크기로 봅니다.">모바일</button>
     <button class="theme-toggle" type="button" id="theme-toggle"
             aria-label="밝은 화면과 어두운 화면 전환"
-            data-tip="밝은 화면과 어두운 화면을 전환합니다.">◐</button>
+            data-tip="밝은 화면·어두운 화면 전환.">◐</button>
   </div>
 </header>
 
 <nav class="flow-nav" aria-label="작업 흐름">
   <div class="flow-nav-inner">
     <a class="flow-title" href="/"
-       data-tip="지금 상태와 마지막 계획 요약을 봅니다.">재배치 계획</a>
+       data-tip="마지막 계획 요약.">재배치 계획</a>
     <div class="flow-steps">
       <a href="/run" {% if group == 'run' %}aria-current="page"{% endif %}
-         data-tip="재고와 과거 순수요로 재배치 계획을 계산합니다. 여기서 시작하세요.">
+         data-tip="새 계획을 세웁니다.">
         <span class="step-no">1</span>실행</a>
       <a href="/kpi" {% if group == 'result' %}aria-current="page"{% endif %}
-         data-tip="계획이 목표를 얼마나 채웠는지, 차량이 고르게 나갔는지, 어디로 다니는지를 봅니다.">
+         data-tip="지표·차량·지도·작업지시서.">
         <span class="step-no">2</span>결과</a>
       <a href="/data" {% if group == 'data' %}aria-current="page"{% endif %}
-         data-tip="단계마다 만들어진 CSV 원본을 미리 보고 내려받습니다.">
+         data-tip="계산 결과 CSV.">
         <span class="step-no">3</span>데이터</a>
     </div>
     <a class="btn" href="/run#run"
-       data-tip="새 재배치 계획을 계산합니다.">계획 실행</a>
+       data-tip="새 계획을 세웁니다.">계획 실행</a>
   </div>
 </nav>
 
@@ -1524,14 +1524,14 @@
 <nav class="group-nav" aria-label="결과 보기">
   <div class="group-nav-inner">
     <a href="/kpi{{ q_run }}" {% if path.startswith('/kpi') %}aria-current="page"{% endif %}
-       data-tip="계획 달성률·목표 도달·이동거리·결품 시간을 실행별로 비교합니다.">성과 지표</a>
+       data-tip="실행별 개선률·이동거리·결품 시간.">성과 지표</a>
     <a href="/vehicles{{ q_run }}" {% if path.startswith('/vehicles') %}aria-current="page"{% endif %}
        {# 보유 대수는 실행마다 바뀐다 — 내비 풍선에 숫자를 박지 않는다. #}
-       data-tip="차량마다 일이 고르게 나뉘었는지, 시간 예산을 지켰는지 봅니다.">차량 운용</a>
+       data-tip="차량별 작업량과 시간 예산.">차량 운용</a>
     <a href="/maps{{ q_round }}" {% if path.startswith('/maps') or path.startswith('/view') %}aria-current="page"{% endif %}
-       data-tip="군집·경로·재고 현황을 지도 위에서 확인합니다.">지도</a>
+       data-tip="군집·경로·재고 지도.">지도</a>
     <a href="/orders{{ q_round }}" {% if path.startswith('/orders') %}aria-current="page"{% endif %}
-       data-tip="차량마다 어디를 어떤 순서로 들러 몇 대를 싣고 내리는지. 인쇄해서 현장에 냅니다.">작업지시서</a>
+       data-tip="차량별 방문 순서와 수거·배송 대수. 인쇄용.">작업지시서</a>
   </div>
 </nav>
 {% endif %}
@@ -1540,9 +1540,9 @@
 <nav class="group-nav" aria-label="데이터 보기">
   <div class="group-nav-inner">
     <a href="/data" {% if path.startswith('/data') or path.startswith('/preview') %}aria-current="page"{% endif %}
-       data-tip="단계마다 만들어진 CSV 원본을 미리 보고 내려받습니다.">산출물 CSV</a>
+       data-tip="계산 결과 CSV.">산출물 CSV</a>
     <a href="/collect" {% if path.startswith('/collect') %}aria-current="page"{% endif %}
-       data-tip="대여소 재고를 10분마다 받아 쌓은 실측 기록입니다. 결품 지표가 여기서 나옵니다.">재고 수집</a>
+       data-tip="10분마다 받은 대여소 재고 기록.">재고 수집</a>
   </div>
 </nav>
 {% endif %}
