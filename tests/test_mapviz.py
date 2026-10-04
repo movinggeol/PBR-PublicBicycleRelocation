@@ -3,6 +3,8 @@
 세 지도(step1 군집·step3 경로·step4 재고 현황)의 범례를 한 함수로 모으고
 군집 팔레트를 색맹 안전 8색(Okabe & Ito, 2008)으로 바꿨다. 시안으로 만들어
 실제로 띄워 비교한 뒤 채택했다(1.26.79 조사 → 1.26.80 적용).
+1.26.316에 군집 팔레트는 서로 다른 20색으로 바꿨다 — 8색을 어둡게 돌려쓴 18군집 지도에서
+군집을 가릴 수 없었다(사용자 지적). 수거 · 배송 두 색은 그대로 Okabe-Ito다.
 
 여기서 지키는 것은 셋이다:
 
@@ -63,11 +65,14 @@ def test_색이_모두_유효한_16진수다(shared):
         assert re.fullmatch(r"#[0-9a-fA-F]{6}", color), f"군집 {i}의 색이 이상하다: {color}"
 
 
-def test_첫_여덟은_색맹_안전색_그대로다(shared):
-    """군집이 8개 이하면 Okabe-Ito 원본 색을 손대지 않고 쓴다 —
-    밝기를 흔드는 순간 색맹 안전 보장이 깨진다."""
-    for i in range(8):
-        assert shared.cluster_color(i) == shared._OKABE_ITO[i]
+def test_스무_군집까지는_팔레트_원색_그대로다(shared):
+    """20개까지는 `_CLUSTER_COLORS`를 손대지 않고 쓴다 (1.26.316).
+
+    예전에는 Okabe-Ito 8색을 넘으면 어둡게 돌려써서, 18군집 지도에 파랑 계열 다섯과
+    검정 · 회색이 함께 서 군집을 가릴 수 없었다(사용자 지적)."""
+    for i in range(20):
+        assert shared.cluster_color(i) == shared._CLUSTER_COLORS[i]
+    assert len(set(shared._CLUSTER_COLORS)) == 20
 
 
 def test_이웃한_순번은_눈에_띄게_다르다(shared):

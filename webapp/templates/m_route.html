@@ -189,6 +189,39 @@
       status.textContent = p.total + "건 중 " + p.done + "건 끝 · 옮긴 자전거 "
         + p.moved + "대 · 지금 적재 " + p.load + "대";
     }
+    /* 안내 시작 — 출발지를 **지금 위치**로 채운다 (1.26.316). 위치는 누를 때 한 번 묻는다
+       (화면을 여는 것만으로 위치 권한을 묻지 않는다). 위치를 못 받으면(권한 거부 · 5초 초과 ·
+       https가 아닌 주소 — 브라우저는 보안 연결에서만 위치를 준다) 지금처럼 도착지만 넘기고
+       까닭을 아래 줄에 적는다. 창은 **누르는 순간** 먼저 연다 — 위치를 기다린 뒤에 열면
+       사용자 동작이 끊겨 팝업 차단에 걸린다. */
+    nav.addEventListener("click", function (e) {
+      var direct = nav.getAttribute("href");
+      if (!direct || !navigator.geolocation || !window.isSecureContext
+          || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) {
+        if (direct && !window.isSecureContext) {
+          status.textContent = "이 주소(https 아님)에서는 현재 위치를 쓸 수 없어 출발지는 지도 앱에서 고릅니다.";
+        }
+        return;                         /* 링크 그대로 — 도착지만 */
+      }
+      e.preventDefault();
+      var w = window.open("about:blank", "_blank");
+      var done = false;
+      function go(url, note) {
+        if (done) return; done = true;
+        if (note) status.textContent = note;
+        if (w && !w.closed) { try { w.opener = null; } catch (x) {} w.location.href = url; }
+        else window.location.href = url;
+      }
+      var p = F.progress(v), next = p.next, home = next && next.action === "return";
+      var target = home ? { name: depot.name, id: depot.id, lat: depot.lat, lon: depot.lon } : next;
+      setTimeout(function () { go(direct, "현재 위치를 5초 안에 받지 못해 도착지만 넘겼습니다."); }, 6000);
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        go(F.navUrl(target, { lat: pos.coords.latitude.toFixed(6), lon: pos.coords.longitude.toFixed(6) }) || direct);
+      }, function (err) {
+        go(direct, err && err.code === 1 ? "위치 권한이 없어 도착지만 넘겼습니다."
+                                         : "현재 위치를 받지 못해 도착지만 넘겼습니다.");
+      }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 });
+    });
     arrive.addEventListener("click", function () {
       var p = F.progress(v);
       if (p.next && p.next.action !== "return") F.setDone(v.id, p.next.no, true);

@@ -154,13 +154,16 @@ def make_clustered_map(durations: list):
                 location=[row['lat'], row['lon']],
                 radius=radius,
 
-                color=cluster_color(cluster),    # cluster : int
-                weight=2,
+                # 테두리는 흰색, 채움은 군집 색을 진하게 (1.26.316). 예전에는 테두리 · 채움이 같은
+                # 색에 채움 0.5라 지도 바탕(초록 산 · 분홍 도로)과 섞여 군집 색이 흐려졌고, 겹친
+                # 원은 경계가 사라졌다. 흰 테두리가 겹친 원을 떼어 놓는다.
+                color="#ffffff",
+                weight=1.5,
                 opacity=1.0,
 
                 fill=True,
-                fill_color=cluster_color(cluster),
-                fill_opacity=0.5,
+                fill_color=cluster_color(cluster),    # cluster : int
+                fill_opacity=0.85,
 
                 # sticky: 풍선이 커서를 따라온다. 점이 촘촘한 곳에서
                 # 어느 점의 설명인지 헷갈리지 않는다 (세 지도가 같게).

@@ -5,7 +5,7 @@
 이후 모든 수정은 이 위에서 이뤄졌습니다.
 
 ```powershell
-python -m pytest              # 전체 1171개 (약 200초)
+python -m pytest              # 전체 1179개 (약 200초)
 python -m pytest -q           # 요약만
 python -m pytest tests/test_db.py -v
 python -m pytest -k stockout  # 이름으로 골라 실행
@@ -54,7 +54,8 @@ python -m pytest -k stockout  # 이름으로 골라 실행
 | [tests/test_db_tools.py](../../tests/test_db_tools.py) | 9 | **시험이 없던 DB 도구 셋** — `show_schema`(`PBR_DB_PATH`를 따르는지)·`rebuild_net_demand`(예행이 순수요를 안 건드리고 평일/휴일을 갈라 세는지)·`train_demand_model`(기간이 모자라면 이유를 말하는지, 예행이 모델을 저장하지 않는지). 모델이 생기면 파이프라인이 **다음 실행부터 그것을 쓴다** |
 | [tests/test_sameday_plan.py](../../tests/test_sameday_plan.py) | 15 | **회차 시작 시각 계획의 무인 도구** (1.26.278) — 추석처럼 아무도 없는 날 예약 작업으로 돌아 **틀려도 아무도 모른다.** 늦게 깨면 세우지 않는지(출발 재고가 회차 시작의 상태가 아니게 된다), 휴일 계획을 평일에 · 평일 계획을 휴일에 세우지 않는지(두 방향, 1.26.280 — 10-05 대체공휴일), TMAP을 부르지 않고 스냅샷을 라이브로 뜨는지(`--skip-api`로 물려받으면 출발 재고가 또 어긋난다), 스케줄러에 넘기는 작업 이름·인자가 ASCII인지, 저장소·파이썬 경로가 한글이면 걸지 않는지(1.26.304 — 경로를 ASCII로 고정해 PC와 무관하게 잰다) |
 | [tests/test_mobile.py](../../tests/test_mobile.py) | 38 | **현장 앱 `/m`** (1.26.307) — 회차 시각은 올림 · 완료율 분모는 `min(수거, 배송)` · 계획 지문이 정거장을 따라 바뀌는지, 네 화면이 빈 DB에서도 뜨고 `None`/`nan`이 새지 않는지(계획 JSON은 NaN 없이 엄격하게 읽는다), 내 차량 쿠키가 `/m` 안에만 · 돌아갈 곳이 바깥으로 안 튀는지, 입구가 관제 화면 어디에나 있고 기존 `모바일` 단추가 그대로인지, `base.html`을 상속하지 않는지, **색 토큰이 한 벌이고 앱 규칙은 `--m-*` 별칭만 읽는지**, Leaflet이 folium과 같은 판인지 ([DESIGN.md](DESIGN.md) '현장 앱') |
-| **합계** | **1171** | 37개 파일 · 약 200초 (`python -m pytest`) |
+| [tests/test_district.py](../../tests/test_district.py) | 8 | **구별 불균형 완화**(1.26.316, `webapp/district_view.py`) — 다섯 자치구 경계가 다 있는지, 알려진 곳(시청 · KAIST · 대전역 · 두 구청)이 제 구에 드는지, 경계를 줄이며 생긴 틈의 점이 가장 가까운 구로 가는지, 색칠 지도가 값을 **글자로도** 적고 값이 없는 구를 0이 아니라 —로 적는지 |
+| **합계** | **1179** | 38개 파일 · 약 200초 (`python -m pytest`) |
 
 > **이 합계는 손으로 세지 마세요.** 1.26.88이 손으로 세어 548이라 적었는데
 > 실측은 555였습니다 — `test_version_log.py` 한 파일을 통째로 빠뜨린 것입니다.

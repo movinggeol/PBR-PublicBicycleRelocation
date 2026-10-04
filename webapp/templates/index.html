@@ -258,8 +258,10 @@
       {# 종류는 눌러서 바꾼다. 라벨 규칙으로 짐작한 것이 틀릴 수 있고, 틀린 채
          두면 실험이 첫 화면에 운영 계획으로 올라간다(1.26.107). #}
       <td data-label="종류">
-        <form method="post" action="/runs/{{ run.run_label | urlencode }}/kind" class="kind-form">
-          <select name="kind" aria-label="{{ run.run_label }} 실행 종류" onchange="this.form.submit()">
+        {# data-swap — 바꾼 뒤 화면을 다시 받지 않고 본문만 갈아 끼운다(1.26.316, base.html '제자리 바꾸기').
+           `requestSubmit`이라야 submit 이벤트가 난다(`submit()`은 이벤트 없이 바로 보낸다). #}
+        <form method="post" action="/runs/{{ run.run_label | urlencode }}/kind" class="kind-form" data-swap>
+          <select name="kind" aria-label="{{ run.run_label }} 실행 종류" onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
             {% for value, text in kind_labels.items() %}
             <option value="{{ value }}" {% if run.kind == value %}selected{% endif %}>{{ text }}</option>
             {% endfor %}

@@ -62,6 +62,21 @@ def load(table: str, run_label: Optional[str] = None,
     return pd.DataFrame(), "none"
 
 
+def metric_durations(run_label: str) -> list:
+    """이 실행에서 `metrics`(작업 대여소별 전후 불균형)가 있는 회차, 하루 순서대로.
+
+    `/maps`의 구별 불균형 완화(1.26.316, `district_view.py`)가 고를 수 있는 회차다. 읽지 못하면 빈 목록.
+    """
+    try:
+        with db.session() as conn:
+            rows = conn.execute("SELECT DISTINCT duration FROM metrics WHERE run_label = ?",
+                                (run_label,)).fetchall()
+    except Exception as err:      # noqa: BLE001 — 구별 표가 없어도 지도 화면은 떠야 한다
+        print(f"[경고] DB 조회 실패 (metrics 회차): {type(err).__name__}: {err}")
+        return []
+    return sorted((r[0] for r in rows if r[0]), key=duration_rank)
+
+
 def duration_rank(duration) -> int:
     """회차의 하루 안 순서 — `project_config.DURATIONS`의 순번. 모르는 회차는 맨 뒤.
 

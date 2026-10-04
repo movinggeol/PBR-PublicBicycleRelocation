@@ -257,6 +257,8 @@
        1300px에 '한 실행만 보'/'기'로 쪼개져 한 글자가 다음 줄 맨 앞에 홀로 남았다.
        `.row-links`는 표 칸 안의 묶음이다 — 아래 카드 모드 규칙 참고. */
     .keep-links a, .row-links a { white-space: nowrap; }
+    /* 본문을 갈아 끼우는 동안(1.26.316 제자리 바꾸기) — 0.15초 안에 끝나면 아무 변화도 안 보인다. */
+    html.pbr-swapping #main-content { opacity: .55; transition: opacity .15s ease .15s; }
 
     /* ════════ 카드 — 1px 헤어라인만. 그림자 없음 ════════ */
     .card {
@@ -457,6 +459,9 @@
        인라인 SVG가 이 변수들을 그대로 상속한다 — 색을 파이썬 쪽에 박지 않는다.
        마크는 얇게, 격자·축은 면보다 한 단 진한 실선 머리카락선. 점선은 쓰지 않는다. */
     .viz { width: 100%; height: auto; display: block; overflow: visible; }
+    /* 혼자 한 줄을 다 쓰는 그래프는 폭을 묶는다 (1.26.316) — 폭 100%면 높이도 비례해 커져
+       효과와 비용 산점도가 490px, 차량별 누적 막대가 900px까지 늘었다. */
+    .viz-compact .viz { max-width: 720px; }
     /* 격자는 **눈금을 잇는 선**이다 — 보이지 않으면 y축 숫자와 곡선이 따로 논다.
        ⚠️ `--divider-soft`(#f0f0f0)는 흰 면 위에서 대비가 1.06:1이라 사실상
        안 보였다(실측). 표의 칸 구분선과 같은 `--hairline`으로 올린다 — 면보다
@@ -912,10 +917,6 @@
         top: 168px; max-height: calc(100vh - 200px); overflow-y: auto;
         padding-left: var(--sp-md); border-left: 1px solid var(--hairline);
       }
-    }
-    .toc-title {
-      font-size: 11px; font-weight: 600; color: var(--ink-4);
-      letter-spacing: .02em; margin: 0 0 8px;
     }
     .toc ol { list-style: none; margin: 0; padding: 0; }
     .toc a {
@@ -1572,6 +1573,18 @@
      빈 툴팁으로 보조기기에 노출됐다(axe aria-tooltip-name). show()/hide()가 켠다. -->
 <div id="tipbox" role="tooltip" aria-hidden="true"></div>
 <script>
+  /* ════════ 본문에 붙는 초기화 목록 (1.26.316) ════════
+     본문 요소에 직접 붙는 것(쪽 넘기기 · 정렬 · 행 접기 · 표 창 · 차례 …)은 여기 등록하고,
+     맨 아래에서 한 번 `pbrHydrate(document)`로 돈다. 고르기 상자·회차·쪽 링크를 누르면 화면을
+     새로 받지 않고 본문만 갈아 끼우는데(맨 아래 '제자리 바꾸기'), 그때 새 본문에 같은 초기화를
+     다시 건다. **document·window에 거는 위임 처리기는 여기 넣지 않는다** — 두 번 걸리면 한 번
+     누른 것이 두 번 처리된다(펴고 바로 닫힘). 등록 순서가 실행 순서다(정렬 → 카드 정렬 줄). */
+  var pbrHydrators = [];
+  function pbrHydrate(root) {
+    pbrHydrators.forEach(function (fn) {
+      try { fn(root || document); } catch (e) { if (window.console) console.error(e); }
+    });
+  }
   /* 모바일 모드 (TODO 20 · 1.26.193).
 
      CSS는 [data-narrow] 하나만 본다. 폭 판정을 여기서 하는 이유는 @media를
@@ -1667,6 +1680,7 @@
     if (NARROW.addEventListener) NARROW.addEventListener("change", apply);
     else if (NARROW.addListener) NARROW.addListener(apply);
     apply();
+    pbrHydrators.push(function () { apply(); });   /* 새 본문의 접이식 묶음도 폭에 맞춰 접는다 */
   })();
 
   document.getElementById("theme-toggle").addEventListener("click", function () {
@@ -1778,8 +1792,10 @@
        설명을 읽을 수 없었다. 고정은 .tip에서만 하므로(아래 클릭 처리) 여기도
        .tip만 포커스 대상으로 넣는다 — 내비 링크 등 다른 data-tip은 원래도
        자기 자신이 포커스 가능하다. */
-    document.querySelectorAll(".tip").forEach(function (el) {
-      if (el.tabIndex < 0) el.tabIndex = 0;
+    pbrHydrators.push(function (root) {
+      root.querySelectorAll(".tip").forEach(function (el) {
+        if (el.tabIndex < 0) el.tabIndex = 0;
+      });
     });
 
     /* 본문만 갈아 끼운다. 닫기 단추는 그대로 두어야 다시 만들 필요가 없다.
@@ -1840,6 +1856,7 @@
       box.removeAttribute("aria-hidden");
       place(el);
     }
+    window.pbrTipHide = function () { hide(); };   /* 본문을 갈아 끼울 때 떠 있던 풍선을 접는다 */
     function hide() {
       current = null; pinned = false;
       box.removeAttribute("data-show");
@@ -1922,8 +1939,8 @@
      **값이 같은 요소는 한 덩어리로 움직인다** — 표에서 분류 이름이 그 분류의
      첫 행에만 붙으므로, 덩어리를 쪼개면 이름 없는 행으로 시작하는 쪽이 생긴다.
      조작부는 여기서 만든다: 스크립트가 없으면 전부 보이는 예전 동작 그대로다. */
-  (function () {
-    document.querySelectorAll("[data-pager]").forEach(function (box) {
+  pbrHydrators.push(function (root) {
+    root.querySelectorAll("[data-pager]").forEach(function (box) {
       var size = parseInt(box.dataset.pager, 10) || 10;
       var items = [], keys = [], pages = 0;
 
@@ -1988,7 +2005,7 @@
       box.__pbrPagerRefresh = function () { collect(); page = 0; render(); };
       render();
     });
-  })();
+  });
 
   /* 접기 상태 기억.
      테마·모바일 모드와 같은 pbr-* 열쇠를 쓴다. 프라이빗 모드 등에서 막히면
@@ -2011,8 +2028,8 @@
      .col-toggle-wrap 안의 단추가 형제 표의 .col-more 칸(th·td)을 한꺼번에
      접었다 편다. 부가 열이 많은 표에서 핵심 열만 먼저 보여주려는 것이다 —
      정렬·모바일 카드는 손대지 않는다(숨긴 셀도 DOM에는 그대로 있다). */
-  (function () {
-    document.querySelectorAll("[data-col-toggle]").forEach(function (btn) {
+  pbrHydrators.push(function (root) {
+    root.querySelectorAll("[data-col-toggle]").forEach(function (btn) {
       var wrap = btn.closest(".col-toggle-wrap");
       var table = wrap && wrap.parentElement.querySelector("table");
       if (!table || !table.querySelector(".col-more")) return;
@@ -2032,7 +2049,7 @@
          떠났다면 그대로 펴 준다(저장하지는 않는다 — 사람이 누른 게 아니다). */
       apply(pbrRecall(key, true), false);
     });
-  })();
+  });
 
   /* 표 행 접기.
      data-row-limit="N"을 단 표는 위 N행만 두고 나머지를 접는다. 그래프가 이미
@@ -2043,8 +2060,8 @@
      ⚠️ **어느 행을 접을지는 그때그때 DOM 순서에서 고른다.** 정렬하면 행 순서가
      바뀌므로, 처음 한 번 집어 두면 정렬한 뒤에도 엉뚱한 행이 숨는다(쪽 넘기기가
      collect()를 다시 부르는 것과 같은 이유). */
-  (function () {
-    document.querySelectorAll("table[data-row-limit]").forEach(function (table) {
+  pbrHydrators.push(function (root) {
+    root.querySelectorAll("table[data-row-limit]").forEach(function (table) {
       var limit = parseInt(table.dataset.rowLimit, 10) || 10;
       var body = table.tBodies[0];
       if (!body || body.rows.length <= limit) return;   /* 다 들어가면 조작부를 만들지 않는다 */
@@ -2083,7 +2100,7 @@
       table.__pbrRowsRefresh = render;
       render();
     });
-  })();
+  });
 
   /* 긴 파일 경로의 이름만 따로 알린다.
      원천 CSV 경로가 칸보다 길면 좁은 화면에서는 앞의 'data/raw_data/…'만 보이고,
@@ -2094,11 +2111,14 @@
      **넘칠 때만** 보여준다. 데스크톱처럼 경로가 다 보이는 화면에서는 같은 말을
      두 번 하는 셈이라 오히려 방해가 된다. */
   (function () {
+    var update = function () {};
+    window.addEventListener("resize", function () { update(); });
+    pbrHydrators.push(function () {
     var input = document.getElementById("f-raw");
     var note = document.getElementById("f-raw-name");
     if (!input || !note) return;
 
-    function update() {
+    update = function () {
       var name = input.value.split(/[\\/]/).pop();
       /* 경로에 폴더가 없으면 이름이 곧 값이라 덧붙일 말이 없다. */
       var overflow = input.scrollWidth > input.clientWidth + 2;
@@ -2108,11 +2128,11 @@
       } else {
         note.hidden = true;
       }
-    }
+    };
 
     input.addEventListener("input", update);
-    window.addEventListener("resize", update);
     update();
+    });
   })();
 
   /* 지도 iframe이 안 뜰 때 안내.
@@ -2120,7 +2140,8 @@
      출처)이라 열리지만, 인터넷이 끊기면 지도만 빈 채로 남는다. iframe이 다
      실린 뒤 안의 전역(window.L)이 있는지 들여다보고, 없으면 iframe 대신
      안내 문구를 보여준다. 같은 출처라 contentWindow 접근이 막히지 않는다. */
-  document.querySelectorAll("iframe[data-map-frame]").forEach(function (frame) {
+  pbrHydrators.push(function (root) {
+  root.querySelectorAll("iframe[data-map-frame]").forEach(function (frame) {
     /* ⚠️ 예전에는 frame.nextElementSibling이 안내라고 **가정**했다. 그 뒤
        iframe을 <figure>로 감싸면서 바로 다음 형제가 <figcaption>이 되어,
        여기서 조용히 빠져나가고 안내가 **한 번도 뜨지 않았다**. 인터넷이
@@ -2147,6 +2168,7 @@
         }
       }, 300);
     });
+  });
   });
 
   /* 표 정렬.
@@ -2177,7 +2199,7 @@
       return parseFloat(head[0]);
     }
 
-    document.querySelectorAll("table[data-sortable]").forEach(function (table) {
+    pbrHydrators.push(function (root) { root.querySelectorAll("table[data-sortable]").forEach(function (table) {
       var head = table.tHead, body = table.tBodies[0];
       if (!head || !body || !head.rows.length) return;
       var headRow = head.rows[head.rows.length - 1];
@@ -2236,7 +2258,7 @@
         th.__pbrSort = sort;
       });
       table.__pbrSortable = true;
-    });
+    }); });
   })();
 
   /* 눌러서 복사 (TODO 20).
@@ -2306,8 +2328,8 @@
      달라진다.
 
      좁을 때만 보인다(CSS). 넓은 화면에서는 머리글이 원래 자리에 있다. */
-  (function () {
-    document.querySelectorAll("table[data-sortable].m-cards").forEach(function (table) {
+  pbrHydrators.push(function (root) {
+    root.querySelectorAll("table[data-sortable].m-cards").forEach(function (table) {
       if (!table.__pbrSortable) return;      /* 정렬이 안 걸린 표는 줄도 없다 */
       var head = table.tHead;
       var headRow = head.rows[head.rows.length - 1];
@@ -2348,7 +2370,7 @@
       var wrap = table.closest(".table-wrap") || table;
       wrap.parentNode.insertBefore(bar, wrap);
     });
-  })();
+  });
 
   /* 본문 차례.
      `<div data-toc>`가 있는 화면에서 본문의 h2를 읽어 오른쪽 차례를 세운다.
@@ -2357,6 +2379,23 @@
      스크립트가 없거나 폭이 모자라면 아무 일도 일어나지 않는다(차례가 없을 뿐
      본문은 그대로다). 다른 화면에 도입할 때도 붙일 것은 그 한 줄뿐이다. */
   (function () {
+    /* 본문을 갈아 끼우면 차례도 새 h2로 다시 세운다 (1.26.316). 스크롤·크기 처리기는 한 번만
+       걸고, 지금 차례의 sync를 부른다. */
+    var sync = function () {};
+    var ticking = false;
+    function onScroll() {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(function () { ticking = false; sync(); });
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+
+    pbrHydrators.push(function () {
+    var old = document.querySelector("nav.toc");
+    if (old) old.remove();
+    document.documentElement.removeAttribute("data-has-toc");
+    sync = function () {};
     var host = document.querySelector("[data-toc]");
     var main = document.getElementById("main-content");
     if (!host || !main) return;
@@ -2369,11 +2408,9 @@
     var nav = document.createElement("nav");
     nav.className = "toc";
     nav.setAttribute("aria-label", host.getAttribute("data-toc") || "본문 차례");
-    var title = document.createElement("p");
-    title.className = "toc-title";
-    title.textContent = host.getAttribute("data-toc") || "이 화면의 절";
+    /* 보이는 제목('이 화면의 절')은 뺐다 (1.26.316 — 사용자 요청). 오른쪽 세로 목록이 차례라는 것은
+       모양으로 읽힌다. 소리로 듣는 사람에게는 nav의 aria-label이 그 이름을 그대로 말한다. */
     var list = document.createElement("ol");
-    nav.appendChild(title);
     nav.appendChild(list);
 
     var links = [];
@@ -2406,7 +2443,7 @@
 
     /* 지금 읽는 절 표시. **화면 위쪽에 걸린 제목 중 가장 아래**가 현재 절이다
        — 보이는 것 아무거나 잡으면 스크롤 중에 표시가 위아래로 튄다. */
-    function sync() {
+    sync = function () {
       var line = offset + 8;
       var cur = 0;
       for (var i = 0; i < heads.length; i++) {
@@ -2420,17 +2457,9 @@
         if (i === cur) a.setAttribute("aria-current", "true");
         else a.removeAttribute("aria-current");
       });
-    }
-
-    var ticking = false;
-    function onScroll() {
-      if (ticking) return;
-      ticking = true;
-      requestAnimationFrame(function () { ticking = false; sync(); });
-    }
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
+    };
     sync();
+    });
   })();
 
   /* 표 창 — 그래프 옆에 놓고 맞대어 보라고 띄운다.
@@ -2551,7 +2580,7 @@
       panel.style.top = (box.top + STEP * depth) + "px";
     }
 
-    document.querySelectorAll("[data-table-open]").forEach(function (trigger) {
+    pbrHydrators.push(function (root) { root.querySelectorAll("[data-table-open]").forEach(function (trigger) {
       var panel = trigger.parentNode.querySelector(".table-panel");
       if (!panel) return;
 
@@ -2605,7 +2634,7 @@
         panel.hidden ? open() : close();
       });
       parts.close.addEventListener("click", close);
-    });
+    }); });
   })();
 
   /* 가로로 넘치는 표 상자는 키보드로도 밀 수 있어야 한다 (1.26.315 — axe
@@ -2613,10 +2642,8 @@
      곳이 없어 화살표로 못 민다. **넘칠 때만** 초점을 받게 한다 — 늘 받게 두면 넓은
      화면에서 할 일 없는 탭 정지가 표마다 하나씩 생긴다. */
   (function () {
-    var wraps = document.querySelectorAll(".table-wrap");
-    if (!wraps.length) return;
     function update() {
-      wraps.forEach(function (w) {
+      document.querySelectorAll(".table-wrap").forEach(function (w) {
         var over = w.scrollWidth > w.clientWidth + 1;
         if (over && !w.hasAttribute("tabindex")) {
           w.setAttribute("tabindex", "0");
@@ -2631,7 +2658,167 @@
       });
     }
     window.addEventListener("resize", update);
-    update();
+    pbrHydrators.push(update);
+  })();
+
+  pbrHydrate(document);
+
+  /* ════════ 제자리 바꾸기 (1.26.316) ════════
+     고르기 상자(실행 · 차량) · 회차 단추 · 서버 쪽 넘기기 · '전체 보기' 같은 링크는 **같은 화면에
+     조건만 바꾼 주소**다. 예전에는 누를 때마다 화면을 통째로 다시 받아 맨 위로 돌아갔고, 아래쪽
+     '회차별 배정 이력'에서 실행을 고른 사람은 다시 스크롤해 내려와야 했다(사용자 지적).
+
+     이제 그런 링크는 새 화면을 **뒤에서 받아 본문(`main`)과 결과 내비만 갈아 끼운다.**
+     - 누른 자리(가장 가까운 id — 고르기 상자 `#run-pick`, `#assignments` … — 가 없으면 본문의 몇
+       번째 덩어리인지)가 **화면의 같은 높이**에 남도록 스크롤을 맞춘다. 주소에 #가 있으면 거기로 간다.
+     - 주소창은 새 주소로 바뀐다(pushState) — 새로고침 · 북마크 · 링크 보내기 · 뒤로 가기가 그대로 된다.
+     - 초점은 누른 고르기 상자의 요약(없으면 같은 자리의 첫 링크)으로 돌아간다. 소리로 듣는 사람에게는
+       '내용을 바꿨습니다'를 알린다.
+     - **다른 화면으로 가는 링크, 새 창 · 내려받기, Ctrl·가운데 단추는 건드리지 않는다.** 받은 응답이
+       다른 화면이거나 실패하면 평소처럼 옮긴다 — 이 기능이 없을 때와 같은 결과다.
+     - `form[data-swap]`(저장된 실행의 '종류')도 같다 — 보내고, 돌아온 화면이 지금 화면이면 갈아 끼운다.
+     스크립트가 없으면 모두 평범한 링크 · 폼이다. */
+  (function () {
+    if (!window.fetch || !window.DOMParser || !window.URL || !history.pushState) return;
+    var main = document.getElementById("main-content");
+    if (!main) return;
+
+    var live = document.createElement("div");
+    live.setAttribute("role", "status");
+    live.style.cssText = "position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap";
+    document.body.appendChild(live);
+
+    function key(u) { return u.pathname + u.search; }
+    var shown = key(location);
+    var busy = null;
+
+    function topChild(el) {
+      while (el && el.parentNode !== main) el = el.parentNode;
+      return el;
+    }
+    /* 누른 것의 자리 — 새 본문에서 같은 것을 다시 찾을 수 있는 표식과 지금 화면 높이. */
+    function locate(trigger) {
+      if (!trigger || !main.contains(trigger)) return null;
+      var withId = trigger.closest("[id]");
+      if (withId && withId !== main && main.contains(withId)) {
+        return { id: withId.id, top: withId.getBoundingClientRect().top };
+      }
+      var top = topChild(trigger);
+      if (!top) return null;
+      return { index: Array.prototype.indexOf.call(main.children, top), top: top.getBoundingClientRect().top };
+    }
+    function find(spot) {
+      if (!spot) return null;
+      return spot.id ? document.getElementById(spot.id) : (main.children[spot.index] || null);
+    }
+    /* innerHTML로 넣은 <script>는 돌지 않는다 — 새로 만들어 끼워야 돈다. */
+    function runScripts(root) {
+      root.querySelectorAll("script").forEach(function (old) {
+        var s = document.createElement("script");
+        Array.prototype.forEach.call(old.attributes, function (a) { s.setAttribute(a.name, a.value); });
+        s.textContent = old.textContent;
+        old.parentNode.replaceChild(s, old);
+      });
+    }
+
+    function swap(url, trigger, push, init, fallback) {
+      if (busy && busy.abort) busy.abort();
+      var ctl = window.AbortController ? new AbortController() : {};
+      busy = ctl;
+      var spot = locate(trigger);
+      var pick = trigger && trigger.closest && trigger.closest("details.pick");
+      var pickId = pick && pick.id;
+      var fail = fallback || function (to) { location.href = (to || url).href; };
+      main.setAttribute("aria-busy", "true");
+      document.documentElement.classList.add("pbr-swapping");
+
+      init = init || {};
+      init.credentials = "same-origin";
+      if (ctl.signal) init.signal = ctl.signal;
+      fetch(url.href, init).then(function (res) {
+        var final = new URL(res.url || url.href);
+        var html = (res.headers.get("content-type") || "").indexOf("text/html") >= 0;
+        if (!res.ok || !html || final.pathname !== location.pathname) throw { fallback: final };
+        return res.text().then(function (text) { return { text: text, url: final }; });
+      }).then(function (r) {
+        if (!r || busy !== ctl) return;           /* 그사이 다른 것을 눌렀다 */
+        var doc = new DOMParser().parseFromString(r.text, "text/html");
+        var fresh = doc.getElementById("main-content");
+        if (!fresh) throw { fallback: r.url };
+
+        /* 떠 있던 것(고정 풍선 · 표 창)은 옛 본문의 것이다 — 닫고 Esc 스택도 비운다. */
+        if (window.pbrTipHide) window.pbrTipHide();
+        escLayers.length = 0;
+
+        main.innerHTML = fresh.innerHTML;
+        var oldNavs = document.querySelectorAll("nav.group-nav");
+        var newNavs = doc.querySelectorAll("nav.group-nav");
+        if (oldNavs.length === newNavs.length) {
+          oldNavs.forEach(function (n, i) { n.replaceWith(document.importNode(newNavs[i], true)); });
+        }
+        document.title = doc.title;
+        var hash = url.hash || "";
+        if (push) history.pushState({ pbrSwap: 1 }, "", r.url.pathname + r.url.search + hash);
+        else if (key(r.url) !== key(location)) history.replaceState(history.state, "", r.url.pathname + r.url.search + hash);
+        shown = key(location);
+
+        runScripts(main);
+        pbrHydrate(main);
+
+        var dest = hash && document.getElementById(decodeURIComponent(hash.slice(1)));
+        if (dest) dest.scrollIntoView();
+        else {
+          var now = find(spot);
+          if (now) window.scrollBy(0, now.getBoundingClientRect().top - spot.top);
+        }
+        var focus = pickId && document.getElementById(pickId);
+        focus = focus && focus.querySelector("summary");
+        if (!focus) {
+          var area = find(spot);
+          focus = area && (area.matches("a[href], button, summary") ? area
+                  : area.querySelector("[aria-current], a[href], button, summary"));
+        }
+        try { (focus || main).focus({ preventScroll: true }); } catch (e) { (focus || main).focus(); }
+        live.textContent = "";
+        setTimeout(function () { live.textContent = "내용을 바꿨습니다."; }, 50);
+      }).catch(function (err) {
+        if (err && err.name === "AbortError") return;
+        if (busy !== ctl) return;
+        fail(err && err.fallback);
+      }).then(function () {
+        if (busy !== ctl) return;
+        busy = null;
+        main.removeAttribute("aria-busy");
+        document.documentElement.classList.remove("pbr-swapping");
+      });
+    }
+
+    document.addEventListener("click", function (e) {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      var a = e.target.closest && e.target.closest("a[href]");
+      if (!a || !main.contains(a)) return;
+      if ((a.target && a.target !== "_self") || a.hasAttribute("download") || a.hasAttribute("data-full-nav")) return;
+      var url = new URL(a.href, location.href);
+      if (url.origin !== location.origin || url.pathname !== location.pathname) return;
+      if (key(url) === key(location)) return;       /* # 만 바뀌면 브라우저가 옮긴다 */
+      e.preventDefault();
+      swap(url, a, true);
+    });
+
+    document.addEventListener("submit", function (e) {
+      var form = e.target;
+      if (e.defaultPrevented || !form.matches || !form.matches("form[data-swap]")) return;
+      e.preventDefault();
+      var body = new URLSearchParams(new FormData(form));
+      swap(new URL(form.action, location.href), form, true,
+           { method: "POST", body: body, headers: { "Content-Type": "application/x-www-form-urlencoded" } },
+           function () { form.submit(); });     /* 실패하면 평소처럼 보낸다 */
+    });
+
+    window.addEventListener("popstate", function () {
+      if (key(location) === shown) return;          /* # 만 오간 것 */
+      swap(new URL(location.href), null, false);
+    });
   })();
 </script>
 </body>

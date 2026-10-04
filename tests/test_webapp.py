@@ -1724,7 +1724,8 @@ def test_정렬은_일부러_기억하지_않는다():
     js = (Path(webapp_app.__file__).parent / "templates" / "base.html").read_text(
         encoding="utf-8")
 
-    start = js.index('document.querySelectorAll("table[data-sortable]")')
+    # 1.26.316부터 정렬 초기화는 새 본문에도 다시 걸도록 `root`를 받는다(제자리 바꾸기).
+    start = js.index('root.querySelectorAll("table[data-sortable]")')
     sort_block = js[start:js.index("__pbrSortable", start)]
     assert "pbrRemember" not in sort_block and "localStorage" not in sort_block, (
         "정렬이 저장되고 있다")
@@ -2074,7 +2075,7 @@ def test_그래프가_빌_때도_자리와_이유가_남는다():
     card = card[:card.index("</div>") + 6]
     assert "{% else %}" in card, "그래프가 없을 때의 안내가 카드 안에 없다"
     # 카드 자체가 if로 감싸여 사라지면 안 된다
-    before = html[:html.index('<div class="card viz-card">')]
+    before = html[:html.index('<div class="card viz-card viz-compact">')]
     assert not before.rstrip().endswith("{% if workload_svg %}"), (
         "그래프 카드가 통째로 사라지게 돼 있다")
 

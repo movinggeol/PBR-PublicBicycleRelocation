@@ -1,5 +1,22 @@
 {% extends "base.html" %}
 {% block title %}지도 — PBR 대시보드{% endblock %}
+{% block head_extra %}
+<style>
+  /* 구별 불균형 완화 (1.26.316) — 지도(왼쪽) · 표(오른쪽), 좁으면 위아래. */
+  .district-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--sp-lg); align-items: start; }
+  @media (max-width: 980px) { .district-grid { grid-template-columns: minmax(0, 1fr); } }
+  [data-narrow] .district-grid { grid-template-columns: minmax(0, 1fr); }
+  .district-map { max-width: 520px; }
+  .district-shape { fill: var(--blue); stroke: var(--surface); stroke-width: 2; cursor: default; }
+  .district-shape:hover, .district-shape:focus { stroke: var(--ink); stroke-width: 2.5; outline: none; }
+  .district-name { font-size: 19px; font-weight: 600; fill: var(--ink); paint-order: stroke;
+                   stroke: var(--surface); stroke-width: 3px; pointer-events: none; }
+  .district-value { font-size: 16px; fill: var(--ink-2); paint-order: stroke;
+                    stroke: var(--surface); stroke-width: 3px; pointer-events: none; font-variant-numeric: tabular-nums; }
+  .district-table tfoot td { font-weight: 600; border-top: 1px solid var(--hairline); }
+  [data-narrow] .district-table tfoot { display: block; }
+</style>
+{% endblock %}
 {% block content %}
 {# 오른쪽 차례. 항목은 스크립트가 아래 h2(분류별)에서 읽는다 — 여기 손으로 적지 않는다. #}
 <div data-toc="이 화면의 절" hidden></div>
@@ -17,6 +34,68 @@
     <a href="/maps">전체 실행 보기</a></p>
   {% endif %}
 </section>
+
+{# ───────── 구별 불균형 완화 (1.26.316) ─────────
+   대여소 점 지도로는 '어느 동네가 나아졌나'가 한눈에 안 들어온다(사용자 지적). 다섯 자치구로 묶는다.
+   셈은 `district_view.py` — 불균형 = |재고 − 목표 재고|, 작업 전은 모든 대여소, 작업 후는 작업한
+   대여소만 바뀐다(step4와 같은 정의). #}
+{% if district %}
+<h2 id="districts">구별 불균형 완화</h2>
+<p class="section-lead">재고가 목표에서 벗어난 대수를 구마다 더해, 계획대로 옮기면 얼마나 줄어드는지 봅니다. 진한 구일수록 많이 줄어듭니다.</p>
+{% if district.durations | length > 1 %}
+<div class="pickbar no-print">
+  <div class="pick-field">
+    <span class="label" id="district-round-name">회차</span>
+    <div class="seg" role="group" aria-labelledby="district-round-name">
+      {% for d in district.durations %}
+      <a href="/maps?run_label={{ selected_run | urlencode }}&duration={{ d | urlencode }}#districts"
+         {% if d == district.duration %}aria-current="true"{% endif %}>{{ duration_labels.get(d, d) }}</a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+<div class="card">
+  <div class="district-grid">
+    <div>
+      {{ district.svg | safe }}
+      <p class="hint" style="margin:var(--sp-xs) 0 0">{{ duration_labels.get(district.duration, district.duration) }} · 구에 커서를 대면 값이 뜹니다.</p>
+    </div>
+    <div class="table-wrap">
+    <table class="m-cards district-table">
+      <thead><tr>
+        <th scope="col">구</th>
+        <th scope="col" class="num"><span class="tip" data-tip="계획이 작업하는 대여소 / 구 안의 모든 대여소입니다.">작업 대여소</span></th>
+        <th scope="col" class="num">수거 · 배송</th>
+        <th scope="col" class="num"><span class="tip" data-tip="재고가 목표 재고에서 벗어난 대수의 합입니다. 작업 전 → 작업 후.">불균형 (대)</span></th>
+        <th scope="col" class="num"><span class="tip" data-tip="구 전체 불균형이 줄어든 비율입니다. 작업하지 않는 대여소까지 분모에 들어갑니다.">완화율</span></th>
+        <th scope="col" class="num"><span class="tip" data-tip="작업한 대여소만의 평균 개선률입니다(성과 지표의 개선률과 같은 셈).">작업 대여소 개선률</span></th>
+      </tr></thead>
+      <tbody>
+      {% for r in district.rows %}
+      <tr>
+        <td data-label=""><b>{{ r.name }}</b></td>
+        <td class="num" data-label="작업 대여소">{{ r.worked }} / {{ r.stations }}곳</td>
+        <td class="num muted" data-label="수거 · 배송">{{ r.pick }} · {{ r.drop }}대</td>
+        <td class="num" data-label="불균형 (대)">{{ "%.0f" | format(r.before) }} → {{ "%.0f" | format(r.after) }}</td>
+        <td class="num" data-label="완화율"><b>{% if r.cut_pct is not none %}{{ r.cut_pct }}%{% else %}—{% endif %}</b></td>
+        <td class="num muted" data-label="작업 대여소 개선률">{% if r.worked_pct is not none %}{{ r.worked_pct }}%{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+      <tfoot><tr>
+        <td data-label="">대전 전체</td>
+        <td class="num" data-label="작업 대여소">{{ district.total.worked }} / {{ district.total.stations }}곳</td>
+        <td class="num" data-label="수거 · 배송">{{ district.total.pick }} · {{ district.total.drop }}대</td>
+        <td class="num" data-label="불균형 (대)">{{ "%.0f" | format(district.total.before) }} → {{ "%.0f" | format(district.total.after) }}</td>
+        <td class="num" data-label="완화율">{% if district.total.cut_pct is not none %}{{ district.total.cut_pct }}%{% else %}—{% endif %}</td>
+        <td data-label=""></td>
+      </tr></tfoot>
+    </table>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {# 실행을 거듭하면 분류마다 지도가 쌓인다. 분류당 5건씩 끊어 보여준다 —
    분류 이름이 표 밖(h2)에 있으므로 행 단위로 끊어도 된다. 최신순이라 첫 쪽이 최근분. #}

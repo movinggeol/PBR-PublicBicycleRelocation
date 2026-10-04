@@ -194,7 +194,7 @@
 <h2>효과와 비용</h2>
 <p class="section-lead">왼쪽 위일수록 적게 움직여 효과가 큰 회차입니다.
   {% if cost.note %}<span class="hint">{{ cost.note }}</span>{% endif %}</p>
-<div class="card viz-card">
+<div class="card viz-card viz-compact">
   {{ cost_svg | safe }}
   {# 점 이름표·풍선·표 보기는 회차의 사람 이름이다 — 표·칩과 같은 표기(1.26.284). 점 옆에는 괄호
      앞까지만 적는다 — 전체 이름은 넓어 이름표를 붙인 점이 17 → 9개로 줄었다(`duration_name(short=True)`). #}

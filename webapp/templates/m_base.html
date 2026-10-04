@@ -550,11 +550,18 @@
 
     /* 길 안내는 지도 앱이 한다 — 좌표를 카카오맵 웹 주소로 넘긴다(앱이 있으면 앱이
        열린다). 주소 모양: https://map.kakao.com/link/to/이름,위도,경도 . 이름의 쉼표는
-       구분자와 겹치므로 공백으로 바꾼다. */
-    function navUrl(stop) {
+       구분자와 겹치므로 공백으로 바꾼다.
+       `from`(현재 위치 {lat, lon})을 주면 출발지까지 채운다 (1.26.316) — 도착지만 주면 카카오맵
+       웹이 출발지를 빈칸으로 열어 기사가 손으로 넣어야 했다. 모양: …/link/from/이름,위도,경도/to/… */
+    function navUrl(stop, from) {
       if (!stop || stop.lat == null || stop.lon == null) return null;
       var name = String(stop.name || stop.id).replace(/,/g, " ");
-      return "https://map.kakao.com/link/to/" + encodeURIComponent(name) + "," + stop.lat + "," + stop.lon;
+      var to = "to/" + encodeURIComponent(name) + "," + stop.lat + "," + stop.lon;
+      if (from && from.lat != null && from.lon != null) {
+        return "https://map.kakao.com/link/from/" + encodeURIComponent("현재 위치") + ","
+          + from.lat + "," + from.lon + "/" + to;
+      }
+      return "https://map.kakao.com/link/" + to;
     }
 
     /* ── 지도 (Leaflet — folium과 같은 판을 같은 CDN에서) ──

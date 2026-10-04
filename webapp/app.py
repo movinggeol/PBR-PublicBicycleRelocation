@@ -44,8 +44,8 @@ from project_config import (ROAD_FIXED_SEC_WEEKDAY, ROAD_SPEED_KMPH_WEEKDAY, USE
     normalize_fleet_size, normalize_per_round, normalize_period, resolve_day_type,
 )
 import tashu
-from webapp import (catalog, charts, collect_view, jobs, kpi_view, mobile_view, orders,
-                    store, weather_view)
+from webapp import (catalog, charts, collect_view, district_view, jobs, kpi_view, mobile_view,
+                    orders, store, weather_view)
 
 app = FastAPI(title="PBR 파이프라인 대시보드", docs_url="/api/docs")
 
@@ -1301,8 +1301,20 @@ def _file_scope(groups: list, run_label: Optional[str],
 @app.get("/maps")
 def maps_page(request: Request, run_label: Optional[str] = None,
               duration: Optional[str] = None):
-    return templates.TemplateResponse(
-        request, "maps.html", _file_scope(catalog.list_maps(), run_label, duration))
+    context = _file_scope(catalog.list_maps(), run_label, duration)
+    # 구별 불균형 완화 (1.26.316) — 실행을 골랐을 때만. 회차를 안 골랐으면 그 실행의 첫 회차로
+    # 센다(회차마다 계획이 따로라 회차를 더하면 뜻이 없다). 회차 단추는 고른 회차를 바꾼다.
+    district = None
+    if run_label and context["known_run"]:
+        rounds = district_view.run_durations(run_label)
+        if rounds:
+            pick = duration if duration in rounds else rounds[0]
+            found = district_view.summary(run_label, pick)
+            if found:
+                district = dict(found, duration=pick, durations=rounds,
+                                svg=district_view.map_svg(found["rows"]))
+    context["district"] = district
+    return templates.TemplateResponse(request, "maps.html", context)
 
 
 @app.get("/data")
@@ -1428,8 +1440,11 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
         })
 
     cost = kpi_view.cost_benefit(rows)
+    # 640×260 — 카드 폭을 다 채우면 1400px 화면에서 490px 높이였다(1.26.316 사용자: 줄여라).
+    # 높이를 줄이고 화면 폭은 `.viz-compact`가 720px로 묶는다.
     cost_svg = charts.scatter(cost["points"], x_key="x", y_key="y",
-                              x_label="총 이동거리 (km)", y_label=cost["y_label"])
+                              x_label="총 이동거리 (km)", y_label=cost["y_label"],
+                              height=260)
 
     forecast = kpi_view.forecast_accuracy()
     for series in forecast["series"]:
@@ -1609,7 +1624,10 @@ def vehicles_page(request: Request, run_label: Optional[str] = None, page: int =
             sorted_wl["vehicle_id"].tolist(), sorted_wl["minutes"].tolist(),
             title="차량별 누적 작업 시간 — 출동한 차량 평균과의 차이", unit="분",
             baseline=float(worked_minutes.mean()),
-            baseline_label="출동한 차량 평균")
+            baseline_label="출동한 차량 평균",
+            # 줄 높이 25 → 16 (1.26.316 사용자: "위아래로 너무 길다") — 21대가 1400px 화면에서
+            # 약 900px이던 것을 380px 남짓으로. 폭은 `.viz-compact`가 720px로 묶는다.
+            width=720, bar_h=11, gap=5)
 
     return templates.TemplateResponse(request, "vehicles.html", {
         "fleet_size": fleet_size,
