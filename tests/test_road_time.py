@@ -500,6 +500,31 @@ def test_day_type_기록이_없는_옛_수집분도_평일로_읽는다(collecto
     assert set(holiday_only["run_label"]) == {"roadprobe-holiday-2026-09-05"}
 
 
+def test_판정일로_잘라야_판정_값이_다시_나온다(collector):
+    """판정 뒤에도 패널은 쌓인다 — `--until`로 자르지 않으면 게이트 값이 다시 안 나온다 (1.26.309).
+
+    휴일 라벨은 `holiday-` 접두가 붙어 통째로 견주면 날짜 비교가 틀린다 — 판정용
+    일수(`JUDGE_FROM`)도 같은 함정이라 끝 10자로 견준다.
+    """
+    import db
+
+    model = _model_module()
+    labels = ["roadprobe-holiday-2026-10-03", "roadprobe-holiday-2026-10-04",
+              "roadprobe-holiday-2026-10-05"]
+    with db.session() as conn:
+        for label in labels:
+            db.ensure_run(conn, label, kind="probe", day_type="holiday")
+    for label in labels:
+        db.save_output("road_leg", pd.DataFrame([_leg_row(leg=i) for i in range(25)]),
+                       run_label=label, duration="_10_15")
+
+    cut = model.load_legs(include_pipeline=False, panel_only=False,
+                          day_type="holiday", until="2026-10-04")
+    assert set(cut["run_label"]) == set(labels[:2]), "판정일 뒤 수집분이 섞였다"
+    everything = model.load_legs(include_pipeline=False, panel_only=False, day_type="holiday")
+    assert set(everything["run_label"]) == set(labels)
+
+
 # ---------------------------------------------------------------- 실행 기록 (1.26.223)
 
 def test_스케줄러로_돌아도_출력과_종료_코드가_실행_기록에_남는다(collector, tmp_path, monkeypatch):

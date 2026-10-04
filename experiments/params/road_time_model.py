@@ -20,6 +20,7 @@
 실행:
     python experiments/params/road_time_model.py
     python experiments/params/road_time_model.py --include-pipeline
+    python experiments/params/road_time_model.py --day-type holiday --until 2026-10-04   # 게이트 B 판정 재현
 """
 import argparse
 import json
@@ -69,7 +70,7 @@ def panel_segments() -> set:
 
 
 def load_legs(include_pipeline: bool, panel_only: bool = True,
-              day_type: str = "weekday") -> pd.DataFrame:
+              day_type: str = "weekday", until: str | None = None) -> pd.DataFrame:
     """road_leg에서 쓸 만한 구간을 읽는다.
 
     ⚠️ **`roadprobe` 접두사만으로는 부족하다** (2026-09-02 실측). 패널이 도중에
@@ -143,6 +144,12 @@ def load_legs(include_pipeline: bool, panel_only: bool = True,
     date = frame["run_label"].str.replace(PROBE_PREFIX, "", regex=False)
     date = date.where(frame["패널"], frame["observed_at"].str.slice(0, 10))
     frame["날짜"] = date
+
+    # 판정한 날 뒤에도 패널은 계속 쌓인다 — 판정 값을 다시 내려면 그날로 자른다
+    # (평일 게이트 A는 09-15, 휴일 게이트 B는 10-04). 휴일 라벨은 `holiday-` 접두가
+    # 남아 있으므로 끝 10자(YYYY-MM-DD)로 견준다.
+    if until:
+        frame = frame[frame["날짜"].astype(str).str.slice(-10) <= until]
 
     frame = frame.dropna(subset=["straight_km", "road_sec"])
     # 0km 구간(같은 자리 재방문)과 음수는 모형이 배울 것이 없다.
@@ -256,7 +263,8 @@ def verdict(frame: pd.DataFrame, by_day: pd.DataFrame, oos: pd.DataFrame,
     # 앞의 둘만 재고 "두 기준을 모두 통과"라 말했다. 일수를 안 세면 그 문구가
     # 채택 신호로 읽힌다 — 2026-09-11에 실제로 그렇게 출력됐다.
     # 표본 밖 검증을 못 해도 일수는 알려야 하므로 아래 early return보다 앞에 둔다.
-    판정일 = sorted(d for d in by_day["날짜"].astype(str) if d >= JUDGE_FROM)
+    # 휴일 라벨은 `holiday-2026-09-12`라 통째로 견주면 접두 덕에 늘 참이 된다 — 끝 10자로 견준다.
+    판정일 = sorted(d for d in by_day["날짜"].astype(str) if d[-10:] >= JUDGE_FROM)
     등록일수 = len(판정일)
     print(f"  ② 판정용 수집 일수 — {등록일수}일"
           f"  (기준 {MIN_DAYS}일 이상 · {JUDGE_FROM}부터 센다)")
@@ -313,10 +321,13 @@ def main() -> int:
     parser.add_argument("--day-type", choices=("weekday", "holiday"), default="weekday",
                         help="어느 쪽 패널분을 잴지 (기본 weekday). 평일·휴일 계수는"
                              " 절대 같은 회귀에 섞지 않는다")
+    parser.add_argument("--until", metavar="YYYY-MM-DD",
+                        help="이 날짜(수집 라벨)까지만 쓴다 — 판정 값을 다시 낼 때"
+                             " (평일 2026-09-15 · 휴일 2026-10-04)")
     args = parser.parse_args()
 
     frame = load_legs(args.include_pipeline, panel_only=not args.all_legs,
-                      day_type=args.day_type)
+                      day_type=args.day_type, until=args.until)
     if frame.empty:
         print(f"road_leg에 {args.day_type} 패널분이 없습니다."
               " python tools/collect_road_time.py 부터 돌리십시오.")
