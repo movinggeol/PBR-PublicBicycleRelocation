@@ -168,6 +168,22 @@ def report_pairs(pairs: pd.DataFrame) -> None:
     print(f"  번호는 다르나 50m 안(같은 자리로 봄) {len(renum):,}")
 
 
+def report_center(pairs: pd.DataFrame) -> None:
+    """관제센터의 기록에 운영의 흔적이 얼마나 섞였나 — 원고 8.4.2의 *"남는 물음"* 에 답하려고 더했다(2026-10-04).
+
+    센터 반납 뒤 다음 대여가 다른 곳(센터에서 내보냄)인 몫과, 센터 대여 앞 반납이 다른 곳(센터로 들여옴)인 몫.
+    """
+    print("\n## 관제센터 기록 중 이용자 아닌 이동의 몫")
+    ok = pairs[pairs["status"] == "ok"]
+    move = ~ok["same_place"]
+    for st in CENTER_STATIONS:
+        f, t = ok["from_station"] == st, ok["to_station"] == st
+        print(f"  {st}: 반납 뒤 쌍 {int(f.sum()):,} 중 다른 곳에서 다음 대여 {int((f & move).sum()):,} "
+              f"({(f & move).sum() / max(f.sum(), 1):.1%}) · 대여 앞 쌍 {int(t.sum()):,} 중 직전 반납이 다른 곳 "
+              f"{int((t & move).sum()):,} ({(t & move).sum() / max(t.sum(), 1):.1%})")
+    print(f"  전체 쌍 {len(ok):,} 중 이동(장기 포함) {int(move.sum()):,} ({move.mean():.2%})")
+
+
 def q1_scale(moves: pd.DataFrame) -> None:
     print("\n## Q1 규모 — 갈래별 하루 이동 대수 (다음 대여 날 기준)")
     days = moves.groupby([moves["to_at"].dt.normalize(), "holiday", "kind"]).size()
@@ -282,6 +298,7 @@ def main(argv=None) -> None:
               f"연속 구간 {df['block'].nunique()}개")
         pairs = build_pairs(df)
         report_pairs(pairs)
+        report_center(pairs)
         moves = classify_moves(pairs)
         q1_scale(moves)
         q2_timing(moves)
