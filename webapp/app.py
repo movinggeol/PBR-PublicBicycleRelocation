@@ -45,7 +45,7 @@ from project_config import (ROAD_FIXED_SEC_WEEKDAY, ROAD_SPEED_KMPH_WEEKDAY, USE
 )
 import tashu
 from webapp import (catalog, charts, collect_view, district_view, jobs, kpi_view, mobile_view,
-                    orders, store, weather_view)
+                    orders, store, upcoming_view, weather_view)
 
 app = FastAPI(title="PBR 파이프라인 대시보드", docs_url="/api/docs")
 
@@ -1333,6 +1333,15 @@ def collect_page(request: Request):
     """
     return templates.TemplateResponse(request, "collect.html",
                                       collect_view.context())
+
+
+@app.get("/upcoming")
+def upcoming_page(request: Request, hours: int = 1):
+    """다음 회차 예상 — 1 · 3시간 뒤 계획에서 수거 · 배송 대상이 될 대여소 (1.26.319, EXPERIMENTS 46장).
+
+    **읽기만 한다** — 재고는 수집기가 쌓은 마지막 틱이고 타슈 API를 부르지 않는다. 계획도 바꾸지 않는다.
+    """
+    return templates.TemplateResponse(request, "upcoming.html", upcoming_view.context(hours))
 
 
 @app.get("/kpi")

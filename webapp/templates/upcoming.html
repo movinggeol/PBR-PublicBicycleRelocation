@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}다음 회차 예상 — PBR 대시보드{% endblock %}
+{% block content %}
+<div data-toc="이 화면의 절" hidden></div>
+
+<section class="hero">
+  <h1>다음 회차 예상</h1>
+  <p class="lead">지금 재고와 시간대별 평균 흐름으로, {{ hours }}시간 뒤 계획을 세우면 수거·배송 대상이 될 대여소입니다.</p>
+</section>
+
+{# 지평은 ML 14번이 잰 두 값만 연다(1·3시간). 다른 값을 열면 근거 없는 숫자를 보여 주게 된다. #}
+<p class="section-lead">
+  {% for h in horizons %}
+  <a href="/upcoming?hours={{ h }}" {% if h == hours %}aria-current="page"><b>{{ h }}시간 뒤</b>{% else %}>{{ h }}시간 뒤{% endif %}</a>{% if not loop.last %} · {% endif %}
+  {% endfor %}
+</p>
+
+{% if stale %}
+{# 🔴 옛 재고로 '예상'을 내면 틀린 곳으로 차를 보낸다 — 목록을 아예 내지 않는다(upcoming_view 머리말). #}
+<div class="alert bad"><span><b>마지막 관측이 {{ stale }}분 전({{ last_tick }})이라 예상하지 않습니다.</b>
+  수집이 멈췄을 수 있습니다. <a href="/collect">재고 수집</a>에서 확인하세요.</span></div>
+
+{% elif error %}
+<div class="alert"><span><b>{{ error }}</b></span></div>
+
+{% else %}
+<div class="tiles">
+  <div class="tile">
+    <p class="label"><span class="tip" data-tip="예상 재고가 목표보다 {{ threshold }}대 넘게 많은 곳입니다.">수거 예상</span></p>
+    <p class="value">{{ pick_total }}<span class="unit">곳</span></p>
+    <p class="sub muted">아래에는 격차가 큰 {{ limit }}곳까지</p>
+  </div>
+  <div class="tile">
+    <p class="label"><span class="tip" data-tip="예상 재고가 목표보다 {{ threshold }}대 넘게 모자란 곳입니다.">배송 예상</span></p>
+    <p class="value">{{ drop_total }}<span class="unit">곳</span></p>
+    <p class="sub muted">아래에는 격차가 큰 {{ limit }}곳까지</p>
+  </div>
+  <div class="tile">
+    <p class="label"><span class="tip" data-tip="마지막으로 받은 재고 시각에 {{ hours }}시간을 더한 때입니다.">예상 시각</span></p>
+    <p class="value">{{ tau }}</p>
+    <p class="sub muted">{{ day_type }} {{ duration }} 회차 · 재고 {{ last_tick }} ({{ age_minutes }}분 전)</p>
+  </div>
+</div>
+
+{% for side, rows, total in (("수거", pick, pick_total), ("배송", drop, drop_total)) %}
+<h2>{{ side }} 예상</h2>
+{% if not rows %}
+<p class="empty">{{ hours }}시간 뒤 {{ side }} 대상이 될 대여소가 없습니다.
+  {% for h in horizons if h != hours %}<a href="/upcoming?hours={{ h }}">{{ h }}시간 뒤</a>도 보세요.{% endfor %}</p>
+{% else %}
+<div class="card flush" data-pager="10" data-pager-label="{{ side }} 예상 쪽 넘기기">
+<div class="table-wrap">
+<table data-sortable class="m-cards">
+  <thead><tr>
+    <th scope="col" class="grow">대여소</th>
+    <th scope="col" class="num">지금 재고</th>
+    <th scope="col" class="num">목표</th>
+    <th scope="col" class="num"><span class="tip" data-tip="지금 재고에서 앞으로 {{ hours }}시간의 평균 순수요(대여 − 반납)를 뺀 값입니다. 평균만 빼므로 0 아래로 내려갈 수 있고, 그만큼 더 모자란다는 뜻입니다.">예상 재고</span></th>
+    <th scope="col" class="num"><span class="tip" data-tip="목표 − 예상 재고. 음수면 남고(수거), 양수면 모자랍니다(배송).">예상 격차</span></th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr data-page-item="{{ loop.index0 }}">
+    <td data-label="">{{ r.name }} <span class="hint">{{ r.station_id }}</span></td>
+    <td class="num" data-label="지금 재고">{{ r.stock }}</td>
+    <td class="num" data-label="목표">{{ r.target }}</td>
+    <td class="num" data-label="예상 재고">{{ r.expected }}</td>
+    <td class="num" data-label="예상 격차">{{ "%+.1f" | format(r.gap) }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+</div>
+{% endif %}
+{% endfor %}
+
+<h2>이 목록을 읽는 법</h2>
+<p class="hint">목표 재고는 같은 요일 구분·회차의 가장 최근 계획(<code>{{ plan_label }}</code>, {{ period }} 통계)에서 가져옵니다.
+  평일 검증에서 매 시각 격차가 큰 50곳 가운데 실제로 대상이 된 비율은 {{ hours }}시간 뒤 수거 {{ validated['수거'] }}% ·
+  배송 {{ validated['배송'] }}%였습니다{% if day_type == '휴일' %} — <b>휴일은 아직 재지 않았습니다</b>(관측한 휴일이 적습니다){% endif %}.
+  계획을 바꾸지 않고 보여 주기만 합니다.</p>
+{% endif %}
+{% endblock %}

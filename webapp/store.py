@@ -569,6 +569,59 @@ def net_demand(period: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def latest_stock_tick() -> Tuple[Optional[pd.Timestamp], pd.DataFrame]:
+    """수집기가 쌓은 **마지막 재고 틱**과 그 틱의 (station_id, stock). 없거나 못 읽으면 (None, 빈 표).
+
+    다음 회차 예상(`upcoming_view`, 1.26.319)이 쓴다 — 타슈 API를 부르지 않고 수집된 재고만 읽는다.
+    """
+    try:
+        with db.session() as conn:
+            row = conn.execute("SELECT MAX(observed_at) FROM stock_history").fetchone()
+            if not row or not row[0]:
+                return None, pd.DataFrame()
+            stock = pd.read_sql("SELECT station_id, stock FROM stock_history WHERE observed_at = ?",
+                                conn, params=(row[0],))
+    except Exception as err:
+        print(f"[경고] 마지막 재고 틱 조회 실패: {type(err).__name__}: {err}")
+        return None, pd.DataFrame()
+    return pd.Timestamp(row[0]), stock
+
+
+def latest_plan_targets(day_type: str, duration: str) -> Tuple[Optional[pd.Series], Optional[str], Optional[str]]:
+    """그 요일 구분 · 회차의 **가장 최근 계획 실행**(`kind = plan`)의 목표 재고. (대여소 → target_qty, 라벨, 기간).
+
+    없으면 (None, None, None) — 목표를 모르면 다음 회차 예상은 목록을 내지 않는다.
+    """
+    try:
+        with db.session() as conn:
+            found = conn.execute(
+                """SELECT r.run_label, r.period FROM runs r
+                   WHERE r.kind = 'plan' AND r.day_type = ?
+                     AND EXISTS (SELECT 1 FROM rebalance_plan p WHERE p.run_label = r.run_label AND p.duration = ?)
+                   ORDER BY r.created_at DESC LIMIT 1""", (day_type, duration)).fetchone()
+            if not found:
+                return None, None, None
+            plan = pd.read_sql("SELECT station_id, target_qty FROM rebalance_plan WHERE run_label = ? AND duration = ?",
+                               conn, params=(found[0], duration))
+    except Exception as err:
+        print(f"[경고] 계획 목표 조회 실패: {type(err).__name__}: {err}")
+        return None, None, None
+    target = plan.drop_duplicates("station_id").set_index("station_id")["target_qty"].astype(float)
+    return target, found[0], found[1]
+
+
+def stock_station_names() -> pd.Series:
+    """대여소 → 이름. 수집기 마스터(`stock_station_master`)의 가장 최근 날. 못 읽으면 빈 Series."""
+    try:
+        with db.session() as conn:
+            master = pd.read_sql("""SELECT station_id, station_name FROM stock_station_master
+                                    WHERE observed_on = (SELECT MAX(observed_on) FROM stock_station_master)""", conn)
+    except Exception as err:
+        print(f"[경고] 대여소 이름 조회 실패: {type(err).__name__}: {err}")
+        return pd.Series(dtype=object)
+    return master.drop_duplicates("station_id").set_index("station_id")["station_name"]
+
+
 def db_stamp() -> Optional[float]:
     """DB 파일의 수정 시각. 캐시 열쇠에 넣어 **웹 밖의 실행**도 캐시를 낡게 한다.
 

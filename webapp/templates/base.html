@@ -1438,7 +1438,7 @@
       or path.startswith('/orders') %}
   {% set group = 'result' %}
 {% elif path.startswith('/data') or path.startswith('/preview')
-        or path.startswith('/collect') %}
+        or path.startswith('/collect') or path.startswith('/upcoming') %}
   {# 수집 현황도 '데이터'다 — 계산 흐름의 한 단계가 아니라 **흐름에 들어가는
      입력**이라 3단계에 넷째를 붙이지 않고 이 묶음 안에 둔다. #}
   {% set group = 'data' %}
@@ -1553,6 +1553,8 @@
        data-tip="계산 결과 CSV.">산출물 CSV</a>
     <a href="/collect" {% if path.startswith('/collect') %}aria-current="page"{% endif %}
        data-tip="10분마다 받은 대여소 재고 기록.">재고 수집</a>
+    <a href="/upcoming" {% if path.startswith('/upcoming') %}aria-current="page"{% endif %}
+       data-tip="지금 재고와 평균 흐름으로 본, 곧 작업 대상이 될 대여소.">다음 회차 예상</a>
   </div>
 </nav>
 {% endif %}
