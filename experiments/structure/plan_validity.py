@@ -26,6 +26,10 @@
   찍기만   : 이미 비어 있던 배송 대여소의 빈 시간 비율 · 수거 대여소의 포화(거치대 90%) 도달 · 회차별 표 ·
              실제 동시각 계획(kind = plan, 라벨 '동시각')의 차량 계획(vrp_plan) 대여소로 같은 지표
 
+사후 진단 (등록 뒤 추가 · 판정 아님 — 1.26.321) — 첫 실측에서 수거가 5시간 기준에 못 미쳐(무해 64.8%) 까닭을 보려고
+  목표 재고 식의 두 갈래(mu < 0 · mu ≥ 0)별 무해, 빼 갔다면 비었을 시간, 공사 트럭의 흔적(10분에 JUMP대 이상 변화)을
+  더 찍는다. 판정 줄의 수치는 이것을 더하기 전과 한 자리도 같다.
+
 알려진 치우침 — 관측 기간에 공사가 실제로 채운 대여소는 관측 재고가 덜 빈다. 배송 적중을 **낮춰** 잡는 쪽이고 계획과 대조군에
 똑같이 걸린다. 공사의 이동을 대여이력 사슬(44장)로 걸러 낼 수는 없다 — 대여이력이 26년 03월에서 끝난다.
 
@@ -63,6 +67,7 @@ MIN_OBSERVED = 0.8                       # 창의 10분 칸 중 관측 비율
 SIGN_P = 0.05
 PICK_SAFE_FLOOR = 0.90                   # 5시간 수거 무해율 하한
 SAT_RATIO = 0.9                          # 포화 = 거치대의 90% 이상(11번과 같다) — 찍기만
+JUMP = 5                                 # 사후 진단: 10분 사이 이만큼 움직이면 트럭의 흔적으로 본다(등록 뒤 추가)
 SEED = 42
 DAY_TYPES = {"weekday": "평일", "holiday": "휴일"}
 
@@ -130,12 +135,13 @@ def window_stats(grid: pd.DataFrame, i: int, horizon: int):
     if len(win) < horizon:
         return None
     observed = win.notna().mean()
-    return win.min(), win.max(), (win == 0).sum() / win.notna().sum().replace(0, np.nan), observed >= MIN_OBSERVED
+    return (win.min(), win.max(), (win == 0).sum() / win.notna().sum().replace(0, np.nan), observed >= MIN_OBSERVED,
+            win)
 
 
-def score_instance(rebal: pd.Series, s0: pd.Series, cap: pd.Series, ws, rng) -> dict:
+def score_instance(rebal: pd.Series, s0: pd.Series, cap: pd.Series, ws, rng, mu: pd.Series) -> dict:
     """회차 하나 × 지평 하나의 점수."""
-    lo, hi, zero_share, ok = ws
+    lo, hi, zero_share, ok = ws[:4]
     ok = ok.reindex(rebal.index).fillna(False).astype(bool)
     s0 = s0.reindex(rebal.index)
     lo, hi = lo.reindex(rebal.index), hi.reindex(rebal.index)
@@ -167,6 +173,32 @@ def score_instance(rebal: pd.Series, s0: pd.Series, cap: pd.Series, ws, rng) -> 
     row["수거대수"] = float(q.sum())
     row["수거무해"] = int((lo[pick] >= q).sum())
     row["수거포화"] = int(sat[pick].sum())
+    # 사후 진단(등록 뒤 추가 · 판정 아님) — 목표 재고 식의 두 갈래(mu ≥ 0: mu + z·sigma / mu < 0: 재고 + mu)별 무해와
+    # 해의 크기(수거량을 뺀 궤적이 0 이하인 칸의 비율 = 빼 갔다면 비었을 시간)
+    neg = pick & (mu.reindex(rebal.index) < 0)
+    pos = pick & ~neg
+    row["수거_mu음수"] = int(neg.sum())
+    row["수거_mu음수_무해"] = int((lo[neg] >= q[neg[pick]]).sum()) if neg.any() else 0
+    row["수거_mu양수"] = int(pos.sum())
+    row["수거_mu양수_무해"] = int((lo[pos] >= q[pos[pick]]).sum()) if pos.any() else 0
+    win = ws[4]
+    if pick.any():
+        below = win[q.index].le(q, axis=1).where(win[q.index].notna())
+        row["수거_빈시간합"] = float((below.sum() / win[q.index].notna().sum()).sum())
+    else:
+        row["수거_빈시간합"] = 0.0
+    # 사후 진단 — 공사 트럭의 흔적. 10분 사이 JUMP대 이상 준(수거) · 는(배송) 칸이 창에 있으면 사람 손으로 본다.
+    # 수거 대상은 거의 다 차는 곳이라 공사도 거기서 빼 간다 — 관측 재고가 트럭 때문에 내려가면 우리 수거가 해로워 보인다
+    step = pd.concat([s0.to_frame().T, win]).diff()
+    jump_down = (step <= -JUMP).any().reindex(rebal.index).fillna(False).astype(bool)
+    jump_up = (step >= JUMP).any().reindex(rebal.index).fillna(False).astype(bool)
+    clean = pick & ~jump_down
+    row["수거_흔적"] = int((pick & jump_down).sum())
+    row["수거_흔적없음"] = int(clean.sum())
+    row["수거_흔적없음_무해"] = int((lo[clean] >= q[clean[pick]]).sum()) if clean.any() else 0
+    miss = drop & ~hit0
+    row["배송빗나감"] = int(miss.sum())
+    row["배송빗나감_흔적"] = int((miss & jump_up).sum())
     if len(q):
         everyone = ok & s0.notna()
         top = lowest(-s0[everyone], len(q), rng)              # 재고가 가장 많은 곳
@@ -221,6 +253,15 @@ def report(rows: pd.DataFrame, day_type: str, verdict: bool) -> dict:
               f"{pk['수거대수'].sum():,.0f}대) · B1 고정 여유 {b1_safe:.1%} "
               f"({int(pk['B1수거수'].sum()):,}곳 · {pk['B1수거대수'].sum():,.0f}대)")
         print(f"  수거 대여소 포화 도달 : 계획 {sat_p:.1%} · B1 {sat_b1:.1%} · 전체 대여소 {sat_all:.1%}")
+        print(f"  [사후 진단] 수거 무해 — mu < 0(목표 = 재고 + mu) "
+              f"{rate(pk['수거_mu음수_무해'].sum(), pk['수거_mu음수'].sum()):.1%} ({int(pk['수거_mu음수'].sum()):,}곳) · "
+              f"mu ≥ 0(목표 = mu + z·sigma) {rate(pk['수거_mu양수_무해'].sum(), pk['수거_mu양수'].sum()):.1%} "
+              f"({int(pk['수거_mu양수'].sum()):,}곳) · 빼 갔다면 비었을 시간 = 창의 "
+              f"{rate(pk['수거_빈시간합'].sum(), pk['수거수'].sum()):.1%}")
+        print(f"  [사후 진단] 공사 트럭의 흔적(10분에 {JUMP}대 이상) — 수거 대여소 {rate(pk['수거_흔적'].sum(), pk['수거수'].sum()):.1%}"
+              f"에 있었고, 흔적 없는 {int(pk['수거_흔적없음'].sum()):,}곳만 보면 수거 무해 "
+              f"{rate(pk['수거_흔적없음_무해'].sum(), pk['수거_흔적없음'].sum()):.1%} · 빗나간 배송 대여소 중 채운 흔적 "
+              f"{rate(d['배송빗나감_흔적'].sum(), d['배송빗나감'].sum()):.1%}")
         if verdict:
             print(f"  → 배송 {'✅' if drop_ok else '❌'} · 수거 {'✅' if pick_ok else '❌'}"
                   + ("" if h in MAIN_HORIZONS else "  (1시간은 판정 아님)"))
@@ -262,7 +303,7 @@ def real_plans(conn, grid: pd.DataFrame) -> None:
                 ws = window_stats(grid, i, h)
                 if ws is None:
                     continue
-                lo, _, _, ok = ws
+                lo, _, _, ok = ws[:4]
                 for _, r in st.iterrows():
                     sid = r["to_id"]
                     if sid not in ok.index or not ok[sid] or pd.isna(s0.get(sid)):
@@ -328,7 +369,7 @@ def main(argv=None) -> int:
                     ws = window_stats(grid, index[t], h)
                     if ws is None:
                         continue
-                    row = score_instance(rebal, s0, ref["parking_lot"], ws, rng)
+                    row = score_instance(rebal, s0, ref["parking_lot"], ws, rng, ref["mu"])
                     row.update({"요일": dt, "회차": dur, "지평": h, "회차키": f"{day} {dur}"})
                     rows.append(row)
         print(f"계획 회차 — 평일 {instances['weekday']}개 · 휴일 {instances['holiday']}개 (하루 30틱 이상 · t 관측 50% 이상)")
