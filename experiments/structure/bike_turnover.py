@@ -99,6 +99,9 @@ def build_returns(df: pd.DataFrame, block_end: dict) -> tuple:
 
     res = out.loc[keep, ["station_id", "t"]].copy()
     res["y"] = y[keep.to_numpy()].astype(np.int8)
+    # 같은 자리 다음 대여까지 분 — 45장이 '곧바로 다시 빌림'(10분 안)을 곁에서 가를 때 쓴다. 라벨에는 쓰지 않는다
+    same_min = (dt_h * 60).where(has_next & same_place)
+    res["next_same_min"] = same_min[keep].to_numpy()
     res["holiday"] = np.asarray(holiday_mask(res["t"]), dtype=bool)
     res["시"] = res["t"].dt.hour.astype(np.int8)
     res["요일"] = res["t"].dt.dayofweek.astype(np.int8)
@@ -179,10 +182,13 @@ def calibration_gap(p: np.ndarray, y: np.ndarray) -> tuple:
     return worst, used
 
 
-def fit_and_evaluate(df: pd.DataFrame, returns: pd.DataFrame, hourly_weather: pd.DataFrame) -> tuple:
+def predict_test(df: pd.DataFrame, returns: pd.DataFrame, hourly_weather: pd.DataFrame):
+    """요일 구분마다 학습하고 시험 행에 세 예측(p_gbm · p_base · p_mean)을 붙여 내놓는다.
+
+    (holiday, 학습 피처 표, 시험 표, ① 빈도표)를 차례로 돌려준다 — 45장(수준 보정)도 이 함수를 그대로 부른다.
+    """
     from sklearn.ensemble import HistGradientBoostingClassifier
 
-    rows, tables, models = [], {}, {}
     for holiday in (False, True):
         name = "휴일" if holiday else "평일"
         part = returns[returns["holiday"] == holiday]
@@ -191,16 +197,21 @@ def fit_and_evaluate(df: pd.DataFrame, returns: pd.DataFrame, hourly_weather: pd
         tr = add_features(train, train, True, daily, hourly_weather)
         te = add_features(train, test, False, daily, hourly_weather)
         table = baseline_table(train)
-        tables[holiday] = table
         print(f"\n## {name} — 학습 {len(tr):,}행(양성 {tr['y'].mean():.3f}) · 시험 {len(te):,}행(양성 {te['y'].mean():.3f})")
 
         model = HistGradientBoostingClassifier(**GBM_PARAMS)
         model.fit(tr[FEATURES], tr["y"])
-        models[holiday] = (model, train, daily)
         te = te.assign(p_gbm=model.predict_proba(te[FEATURES])[:, 1],
                        p_base=baseline_predict(table, te["station_id"], te["시"]),
                        p_mean=float(train["y"].mean()))
+        yield holiday, tr, te, table
 
+
+def fit_and_evaluate(df: pd.DataFrame, returns: pd.DataFrame, hourly_weather: pd.DataFrame) -> tuple:
+    rows, tables = [], {}
+    for holiday, tr, te, table in predict_test(df, returns, hourly_weather):
+        name = "휴일" if holiday else "평일"
+        tables[holiday] = table
         for ym, g in te.groupby("ym"):
             y = g["y"].to_numpy()
             b_gbm, b_base, b_mean = brier(g["p_gbm"], y), brier(g["p_base"], y), brier(g["p_mean"], y)
@@ -210,7 +221,7 @@ def fit_and_evaluate(df: pd.DataFrame, returns: pd.DataFrame, hourly_weather: pd
                          "GBM/① −1": b_gbm / b_base - 1, "Brier 이김": b_gbm < b_base,
                          "보정 최대오차": worst, "보정 구간": used, "보정 통과": worst <= CALIB_TOL})
         leak_check(tr, te, holiday)
-    return pd.DataFrame(rows), tables, models
+    return pd.DataFrame(rows), tables, None
 
 
 def leak_check(tr: pd.DataFrame, te: pd.DataFrame, holiday: bool) -> None:
