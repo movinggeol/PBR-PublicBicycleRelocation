@@ -1,24 +1,35 @@
 {% extends "base.html" %}
 {% block title %}실행 — PBR 대시보드{% endblock %}
+{% block head_extra %}
+<style>
+  /* '계획 실행' 단추가 1440×900·1366×768에서도 첫 화면에 들도록 (1.26.315) — 히어로를 첫 화면처럼
+     한 줄 크기로 줄이고, 짧은 칸 다섯(이름·기간·요일·차량·상한)을 한 줄에 세운다. */
+  .hero.run-hero { padding: var(--sp-lg) 0 var(--sp-md); }
+  .hero.run-hero h1 { font-size: var(--fs-h2); margin: 0 0 4px; }
+  .hero.run-hero .lead { font-size: var(--fs-body); }
+  .form-grid.run-form-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+  /* '생략' 묶음과 단추 줄 사이의 두 번째 구분선은 뺀다 — 둘은 한 덩어리(실행 직전 선택)다. */
+  .checks.run-skip + .form-foot { margin-top: 0; padding-top: 0; border-top: 0; }
+</style>
+{% endblock %}
 {% block content %}
 {# 오른쪽 차례. 항목은 스크립트가 아래 h2에서 읽는다 — 여기 손으로 적지 않는다. #}
 <div data-toc="이 화면의 절" hidden></div>
 
-<section class="hero">
+{# 히어로의 '지난 결과 보기 · 사용 안내' 단추는 뺐다 — 바로 위 내비(2 결과 · 사용 안내)와 같은 길이다. #}
+<section class="hero run-hero">
   <h1>재배치 계획을 세웁니다</h1>
   <p class="lead">지금 재고와 지난 이용 기록으로 어디서 몇 대를 옮길지 계산합니다.</p>
-  <div class="actions">
-    <a class="btn ghost" href="/kpi">지난 결과 보기</a>
-    <a class="btn ghost" href="/guide">사용 안내</a>
-  </div>
 </section>
 
 {% if error %}
 <div class="alert bad"><span>{{ error }}</span></div>
 {% endif %}
 
-<div class="split">
-  <div class="card" id="run">
+{# 폼은 줄 폭 전체를 쓴다 (1.26.315). 예전에는 옆에 '최신 산출물'을 나란히 둬서 폼이 5/9 폭으로
+   좁아졌고, 칸마다 한 줄을 차지해 '계획 실행' 단추가 1920×1080에서도 첫 화면 밖(y=1214)이었다.
+   짧은 칸은 한 줄에 여럿 서고, 산출물 목록은 폼 아래로 내렸다 — 이 화면의 일은 실행이다. #}
+<div class="card" id="run">
     <div class="card-head"><h2>새 실행</h2></div>
 
     {# 계획을 세우는 자리에 지금 날씨를 띄운다. 비 오는 날 실제 재배치 필요량은
@@ -42,8 +53,8 @@
       <p class="hint" style="margin-top:var(--sp-sm)">한 번에 하나만 실행됩니다.</p>
     {% else %}
     <form method="post" action="/runs">
-      <div class="form-grid" style="margin-top:var(--sp-md)">
-        <div class="field wide">
+      <div class="form-grid run-form-grid" style="margin-top:var(--sp-md)">
+        <div class="field">
           <label for="f-now">
             <span class="tip" data-tip="결과를 찾을 때 쓰는 이름입니다.">실행 이름</span>
           </label>
@@ -53,7 +64,7 @@
 
         {# 계산해 둔 달만 고르게 한다 — 직접 적게 두면 없는 달을 넣어 step0가 멈춘다.
            기본값은 가진 것 중 가장 최근 달이고, 목록은 요청마다 다시 읽는다. #}
-        <div class="field wide">
+        <div class="field">
           <label for="f-period">
             <span class="tip" data-tip="대여소별 수요를 뽑을 달입니다. 이번 달 자료가 있으면 계절 차이를 보정합니다.">순수요 기간</span>
           </label>
@@ -71,27 +82,7 @@
           {% endif %}
         </div>
 
-        {# 하루를 5시간 창 넷으로 자른다. 창마다 수요 방향이 반대라 한 번에
-           여러 개를 골라도 계획은 창별로 따로 세운다. #}
-        <div class="field wide">
-          {# 체크박스 묶음의 이름은 for로 이을 상대가 없다(입력이 여럿이다).
-             role=group + aria-labelledby로 묶어야 "시간대"가 그룹 이름으로
-             들린다 — 없으면 개별 항목만 읽혀 무엇을 고르는지 알 수 없다. #}
-          <label id="lbl-duration">
-            <span class="tip" data-tip="계획할 시간대입니다.">시간대</span>
-          </label>
-          <div class="checks" role="group" aria-labelledby="lbl-duration">
-            {% for option in durations %}
-            <label>
-              <input type="checkbox" name="duration" value="{{ option.value }}"
-                {% if option.value in defaults.duration.split(",") %}checked{% endif %}>
-              {{ option.label }}</label>
-            {% endfor %}
-          </div>
-          <span class="hint">여러 개를 고르면 차례로 계획합니다.</span>
-        </div>
-
-        <div class="field wide">
+        <div class="field">
           <label for="f-day">
             <span class="tip" data-tip="휴일은 주말과 공휴일입니다.">요일 구분</span>
           </label>
@@ -122,6 +113,26 @@
           {% if typical_vehicles is not none %}<span class="hint">지난 실행은 회차당 {{ typical_vehicles }}대.</span>{% endif %}
         </div>
 
+        {# 하루를 5시간 창 넷으로 자른다. 창마다 수요 방향이 반대라 한 번에
+           여러 개를 골라도 계획은 창별로 따로 세운다. #}
+        <div class="field wide">
+          {# 체크박스 묶음의 이름은 for로 이을 상대가 없다(입력이 여럿이다).
+             role=group + aria-labelledby로 묶어야 "시간대"가 그룹 이름으로
+             들린다 — 없으면 개별 항목만 읽혀 무엇을 고르는지 알 수 없다. #}
+          <label id="lbl-duration">
+            <span class="tip" data-tip="계획할 시간대입니다.">시간대</span>
+          </label>
+          <div class="checks" role="group" aria-labelledby="lbl-duration">
+            {% for option in durations %}
+            <label>
+              <input type="checkbox" name="duration" value="{{ option.value }}"
+                {% if option.value in defaults.duration.split(",") %}checked{% endif %}>
+              {{ option.label }}</label>
+            {% endfor %}
+          </div>
+          <span class="hint">여러 개를 고르면 차례로 계획합니다.</span>
+        </div>
+
         <div class="field wide">
           <label for="f-raw">
             <span class="tip" data-tip="고른 달의 이용 기록이 DB에 없을 때만 씁니다.">원천 대여 이력 CSV</span>
@@ -140,7 +151,7 @@
 
       {# 눈으로 보면 폼 맨 아래 두 칸이라 무엇인지 짐작되지만, 소리로 들으면
          묶음 이름이 없어 앞 항목과 이어진 것처럼 들린다. #}
-      <div class="checks" role="group" aria-label="건너뛸 단계">
+      <div class="checks run-skip" role="group" aria-label="건너뛸 단계">
         <label data-tip="재고를 새로 받지 않고 지난 실행의 재고를 씁니다. 방금 받았을 때만 켜세요.">
           <input type="checkbox" name="skip_api" value="1"> API 수집 생략</label>
         <label data-tip="분석 그래프를 건너뜁니다. 결과는 같고 더 빨리 끝납니다.">
@@ -181,7 +192,7 @@
       </div>
     </form>
     {% endif %}
-  </div>
+</div>
 
   {# 분류가 13개라 다 펼치면 옆의 실행 폼보다 훨씬 길어진다 — 5분류씩 끊어 보여준다.
      한 분류의 행들은 같은 data-page-item 값으로 묶여 함께 움직인다(분류 이름이
@@ -219,7 +230,6 @@
       <p class="empty">아직 산출물이 없습니다. <a href="/run#run">계획을 실행</a>하면 여기에 나타납니다.</p>
     {% endif %}
   </div>
-</div>
 
 <h2 id="saved-runs">저장된 실행</h2>
 <p class="section-lead">지난 실행을 다시 엽니다. 종류가 틀렸으면 여기서 고치세요.</p>

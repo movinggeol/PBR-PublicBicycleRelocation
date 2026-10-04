@@ -59,8 +59,8 @@
     {% if selected_run %}이 실행의 <b>{{ newest.name }}</b>
     {%- else %}가장 최근에 그린 <b>{{ newest.name }}</b>{% if newest.run_label %} · 실행 <a href="/maps?run_label={{ newest.run_label | urlencode }}">{{ newest.run_label }}</a>{% endif %}{% endif %}
     · {{ newest.mtime }}
-    · <a href="/view/{{ newest.relpath | urlencode }}">크게 보기</a>
-    · <a href="/files/{{ newest.relpath | urlencode }}" target="_blank">새 창 ↗</a>
+    · <span class="keep-links"><a href="/view/{{ newest.relpath | urlencode }}">크게 보기</a>
+    · <a href="/files/{{ newest.relpath | urlencode }}" target="_blank">새 창 ↗</a></span>
   </figcaption>
 </figure>
 <p class="empty no-print" data-map-fallback hidden>

@@ -1053,6 +1053,9 @@
     [data-narrow] .pick-item { padding: 12px 10px; }
     [data-narrow] .seg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
     [data-narrow] .seg a { min-height: 44px; padding: 12px 8px; }
+    /* 칸 수가 홀수면 마지막 칸이 줄을 다 쓴다 (1.26.315) — 회차가 하나뿐인 실행에서 옆에
+       빈 회색 칸(틈 색 --hairline)이 남아 깨진 단추처럼 보였다. */
+    [data-narrow] .seg a:last-child:nth-child(odd) { grid-column: 1 / -1; }
 
     /* ── 표 열 접기 ──
        열이 많은 표에서 핵심 열만 기본으로 보여준다. 스크립트가 없으면
@@ -1226,6 +1229,12 @@
        ⚠️ `.station-name`·`.hint`처럼 표시용으로 쓰는 것은 제외한다. */
     [data-narrow] td a, [data-narrow] th a {
       display: inline-block; padding: 12px 4px; margin: -12px 0;
+    }
+    /* 표 밖의 짧은 링크 묶음도 같다 (1.26.315) — 홈 카드 바닥 '성과 지표 · 작업지시서 · 지도',
+       지도 밑 '크게 보기 · 새 창', 지시서 제목 옆 '이 회차 지도'가 높이 14px이었다(실측).
+       문장 속 링크는 WCAG 2.5.8의 인라인 예외라 두고, 단추처럼 쓰는 묶음(.keep-links)만 키운다. */
+    [data-narrow] .keep-links a, [data-narrow] .card-foot a {
+      display: inline-block; padding: 14px 2px; margin: -14px 0;
     }
     [data-narrow] .chip { padding: 12px 14px; min-height: 44px; }
     [data-narrow] .pager button, [data-narrow] .pager a { padding: 12px 14px; }
@@ -2597,6 +2606,32 @@
       });
       parts.close.addEventListener("click", close);
     });
+  })();
+
+  /* 가로로 넘치는 표 상자는 키보드로도 밀 수 있어야 한다 (1.26.315 — axe
+     scrollable-region-focusable, /guide 390px). 상자 안에 링크가 없으면 초점이 들어갈
+     곳이 없어 화살표로 못 민다. **넘칠 때만** 초점을 받게 한다 — 늘 받게 두면 넓은
+     화면에서 할 일 없는 탭 정지가 표마다 하나씩 생긴다. */
+  (function () {
+    var wraps = document.querySelectorAll(".table-wrap");
+    if (!wraps.length) return;
+    function update() {
+      wraps.forEach(function (w) {
+        var over = w.scrollWidth > w.clientWidth + 1;
+        if (over && !w.hasAttribute("tabindex")) {
+          w.setAttribute("tabindex", "0");
+          w.setAttribute("role", "region");
+          var cap = w.querySelector("caption");
+          var head = w.closest(".card") && w.closest(".card").querySelector("h2, h3");
+          w.setAttribute("aria-label", (cap || head || {}).textContent
+            ? (cap || head).textContent.trim() + " 표" : "가로로 넘기는 표");
+        } else if (!over && w.getAttribute("tabindex") === "0") {
+          w.removeAttribute("tabindex"); w.removeAttribute("role"); w.removeAttribute("aria-label");
+        }
+      });
+    }
+    window.addEventListener("resize", update);
+    update();
   })();
 </script>
 </body>

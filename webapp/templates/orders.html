@@ -274,7 +274,7 @@
    ⚠️ 히어로의 단추 줄에 두었다가 **이 제목 옆 작은 글 링크로 옮겼다**(1.26.284 검토) — 390px에서
    단추가 셋이면 두 줄이 되어 첫 지시서가 약 61px 밀렸다. 기사가 쓰는 폭은 폰이다. 제목 줄은
    이미 있는 줄이라 어느 폭에서도 첫 지시서를 밀지 않는다(.hint라 차례에도 안 들어간다). #}
-{% set map_link %}<span class="hint no-print"><a href="/maps?run_label={{ run_label | urlencode }}{% if duration %}&duration={{ duration | urlencode }}{% endif %}">이 회차 지도</a></span>{% endset %}
+{% set map_link %}<span class="hint no-print keep-links"><a href="/maps?run_label={{ run_label | urlencode }}{% if duration %}&duration={{ duration | urlencode }}{% endif %}">이 회차 지도</a></span>{% endset %}
 {# ───────────────────────── 실시간 재고 대조 ───────────────────────── #}
 {% if live_error %}
 <div class="alert bad"><span>{{ live_error }}</span></div>
