@@ -150,7 +150,7 @@ def km_to_travel_seconds(km: float, speed_kmph: float = None) -> float:
     다른 식을 쓰면 ILP가 고른 조합이 VRP에서는 최소가 아니게 된다(1.13.2에서 겪음).
     `PBR_USE_ROAD_MODEL=1`이면 실측 기반 '고정비 + 거리비례'로 바뀐다 — 이
     실행의 `config.day_type`(평일/휴일 계획인지)에 맞는 계수 쌍을 고른다
-    (1.26.160). 휴일 계수가 아직 안 채워져 있으면 평일 계수로 폴백한다.
+    (1.26.160). 휴일 계수는 1.26.311부터 게이트 B 판정값이다(그 전에는 평일 계수로 폴백했다).
     '''
     return float(travel_seconds(km, speed_kmph, day_type=config.day_type))
 

@@ -1333,14 +1333,20 @@ def test_ilp와_vrp가_같은_이동시간_함수를_쓴다():
 
     1.13.2 이전에 속도가 ILP 25 / VRP 30으로 갈려 실제로 겪었다. 지금은
     project_config.travel_seconds() 하나만 쓴다 — 그 규약을 여기서 지킨다.
+
+    🔴 **기댓값은 모듈이 실제로 잡은 `day_type`으로 낸다** (1.26.311). step 모듈은 import 때
+    `--day-type auto` → 오늘 달력을 읽으므로 주말 · 공휴일에 돌리면 휴일 계수를 쓴다. 예전에는
+    기댓값을 평일 기본으로 냈는데, 휴일 계수가 평일로 폴백해 있어 늘 같은 값이라 통과했다 —
+    휴일 계수를 채운 날(일요일) 이 테스트만 실패했다.
     """
     import project_config as pc
 
     ilp = _load("pipeline/step2_optimize/ilp.py", "ilp_mod")
     vrp = _load("pipeline/step2_optimize/vrp.py", "vrp_mod")
+    assert ilp.config.day_type == vrp.config.day_type
 
     for km in (0.0, 0.25, 1.0, 3.7, 12.0):
-        expected = pc.travel_seconds(km)
+        expected = pc.travel_seconds(km, day_type=ilp.config.day_type)
         assert ilp.km_to_travel_seconds(km) == pytest.approx(expected)
         assert vrp._travel_sec(km) == pytest.approx(expected)
 
@@ -1444,22 +1450,27 @@ def test_모형을_켜도_거리는_그대로다(monkeypatch):
         importlib.reload(pc)
 
 
-def test_휴일_계수가_없으면_평일_계수로_폴백한다(monkeypatch):
-    """1.26.160 — 휴일 패널은 이제 쌓이지만(1.26.159) **판정용 표본이 아직
-    없다.** `_HOLIDAY` 환경변수를 안 주면 `day_type='holiday'`로 불러도
-    평일 계수와 같은 값이 나와야 한다 — "아무 값이나 쓴다"가 아니라 "지금
-    유일하게 검증된 계수를 쓴다"는 뜻이다.
+def test_휴일_기본_계수는_게이트_B_판정값이고_평일로_폴백하지_않는다(monkeypatch):
+    """1.26.311 — 게이트 B(2026-10-04)가 통과해 휴일은 **판정값**(309.5초 + 32.33 km/h)을 쓴다.
+
+    1.26.160~310에는 휴일 판정용 표본이 없어 평일 계수로 폴백했다. 수집완료_계획 4-2 ③
+    *"폴백이 더 이상 안 걸리는 것을 확인 — 평일 계수와 다른 값이 나와야 한다"* 를 지킨다.
+    두 계수는 거의 같으므로(구간당 15초 안팎) 값까지 맞대야 폴백과 갈린다.
     """
     import importlib
 
     import project_config as pc
 
     monkeypatch.setenv("PBR_USE_ROAD_MODEL", "1")
+    monkeypatch.delenv("PBR_ROAD_FIXED_SEC_HOLIDAY", raising=False)
+    monkeypatch.delenv("PBR_ROAD_SPEED_KMPH_HOLIDAY", raising=False)
     importlib.reload(pc)
     try:
         for km in (0.5, 5.0, 15.0):
-            assert pc.travel_seconds(km, day_type="holiday") == pytest.approx(
-                pc.travel_seconds(km, day_type="weekday"))
+            holiday = pc.travel_seconds(km, day_type="holiday")
+            assert holiday == pytest.approx(309.5 + km * 3600.0 / 32.33)
+            assert holiday != pytest.approx(pc.travel_seconds(km, day_type="weekday")), (
+                "휴일이 평일 계수로 폴백했다")
     finally:
         monkeypatch.delenv("PBR_USE_ROAD_MODEL", raising=False)
         importlib.reload(pc)
