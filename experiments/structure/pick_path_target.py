@@ -30,6 +30,7 @@
 실행:
     python experiments/structure/pick_path_target.py            # 판정
     python experiments/structure/pick_path_target.py --sanity   # 결과 없이 입력만 점검
+    python experiments/structure/pick_path_target.py --until "2026-10-06 00:00"   # 인용판(1.26.325)
 """
 import argparse
 import sys
@@ -89,11 +90,15 @@ def shrink_to(q: pd.Series, total: int) -> pd.Series:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--sanity", action="store_true", help="결과 없이 입력만 점검한다")
+    parser.add_argument("--until", help="이 시각 전의 관측만 쓴다(예: '2026-10-06 00:00') — 인용 값을 고정한다(1.26.325)")
     args = parser.parse_args(argv)
 
     with db.session() as conn:
         refs = {dt: pv.load_refs(conn, dt) for dt in pv.DAY_TYPES}
         raw = sf.load_grid(conn)
+    if args.until:
+        raw = raw[raw["ts"] < pd.Timestamp(args.until)]          # 인용 값을 고정한다(1.26.325)
+    print(f"관측 자료: {raw['ts'].min()} ~ {raw['ts'].max()}" + (f" (--until {args.until})" if args.until else " (끝 고정 없음)"))
     nets = {dt: pv.load_net(dt) for dt in pv.DAY_TYPES}
     stock = raw.pivot_table(index="ts", columns="station_id", values="stock")
     grid = stock.reindex(pd.date_range(stock.index.min().floor("D"), stock.index.max().ceil("D"),
@@ -196,6 +201,11 @@ def main(argv=None) -> int:
             print(f"\n### {h // 6}시간 — 원래 수거 대여소 {n:,}곳")
             print(f"  무해율: 원래 {r['원래']:.1%} · **새 안 {r['새']:.1%}** · 같은 총량 균등 축소 {r['균등']:.1%}")
             print(f"    회차 부호 검정(새 안 > 균등): {wins}승 {losses}패 {len(gh) - wins - losses}무 · 단측 p = {p:.4f}")
+            if len(gh) > 1:
+                a, b = pv.boot_ci(gh, "무해_새", "모집단")
+                c, d2 = pv.boot_ci(gh, "무해_새", "모집단", "무해_균등")
+                print(f"  [인용] 95% 구간(회차 재표집 2,000번) — 새 안 무해 {a:.1%}~{b:.1%} · 새 안 − 균등 "
+                      f"{c * 100:+.1f}~{d2 * 100:+.1f}%p")
             print(f"  빼 갔다면 비었을 시간(창 대비): 원래 {empty['원래']:.1%} · 새 안 {empty['새']:.1%} · 균등 {empty['균등']:.1%}")
             print(f"  수거 뒤에도 포화(관측 최고 − q ≥ 거치대 90%): 원래 {sat['원래']:.1%} · 새 안 {sat['새']:.1%} · 균등 {sat['균등']:.1%}")
         if dt == "weekday":

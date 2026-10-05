@@ -40,6 +40,7 @@
 실행:
     python experiments/structure/plan_validity.py            # 판정(등록 그대로)
     python experiments/structure/plan_validity.py --stats current   # 정정판 — 지금 순수요로
+    python experiments/structure/plan_validity.py --stats current --until "2026-10-06 00:00"   # 인용판(1.26.325)
     python experiments/structure/plan_validity.py --sanity   # 결과 없이 입력만 점검(재계산 일치 · 회차 수)
 """
 import argparse
@@ -241,6 +242,22 @@ def score_instance(rebal: pd.Series, s0: pd.Series, cap: pd.Series, ws, rng, mu:
     return row
 
 
+def boot_ci(g: pd.DataFrame, num: str, den: str, num2: str = None, n: int = 2000, seed: int = SEED) -> tuple:
+    """회차를 단위로 다시 뽑은(2,000번) 합친 비율의 95% 구간. num2를 주면 (num − num2)/den의 차이 구간.
+
+    인용용 출력이다(1.26.325 추가 · 판정 아님). 대여소가 아니라 **회차**를 뽑는 까닭 — 같은 회차의 대여소들은 같은 날씨 ·
+    같은 시각을 함께 겪어 서로 독립이 아니다.
+    """
+    rng = np.random.default_rng(seed)
+    a = g[num].to_numpy(dtype=float)
+    b = g[den].to_numpy(dtype=float)
+    c = g[num2].to_numpy(dtype=float) if num2 else None
+    idx = rng.integers(0, len(g), size=(n, len(g)))
+    top = a[idx].sum(axis=1) - (c[idx].sum(axis=1) if c is not None else 0)
+    vals = top / b[idx].sum(axis=1)
+    return float(np.percentile(vals, 2.5)), float(np.percentile(vals, 97.5))
+
+
 def rate(num: float, den: float) -> float:
     return num / den if den else float("nan")
 
@@ -289,6 +306,12 @@ def report(rows: pd.DataFrame, day_type: str, verdict: bool) -> dict:
               f"에 있었고, 흔적 없는 {int(pk['수거_흔적없음'].sum()):,}곳만 보면 수거 무해 "
               f"{rate(pk['수거_흔적없음_무해'].sum(), pk['수거_흔적없음'].sum()):.1%} · 빗나간 배송 대여소 중 채운 흔적 "
               f"{rate(d['배송빗나감_흔적'].sum(), d['배송빗나감'].sum()):.1%}")
+        if len(d) > 1 and len(pk) > 1:
+            lo_d, hi_d = boot_ci(d, "배송적중", "배송수")
+            lo_x, hi_x = boot_ci(d, "배송적중", "배송수", "B1배송적중")
+            lo_p, hi_p = boot_ci(pk, "수거무해", "수거수")
+            print(f"  [인용] 95% 구간(회차 재표집 2,000번) — 배송 적중 {lo_d:.1%}~{hi_d:.1%} · 계획 − B1 "
+                  f"{lo_x * 100:+.1f}~{hi_x * 100:+.1f}%p · 수거 무해 {lo_p:.1%}~{hi_p:.1%}")
         if verdict:
             print(f"  → 배송 {'✅' if drop_ok else '❌'} · 수거 {'✅' if pick_ok else '❌'}"
                   + ("" if h in MAIN_HORIZONS else "  (1시간은 판정 아님)"))
@@ -300,6 +323,16 @@ def report(rows: pd.DataFrame, day_type: str, verdict: bool) -> dict:
             print(f"    {dur}: 계획 {rate(dd['배송적중'].sum(), dd['배송수'].sum()):.1%} · "
                   f"B1 {rate(dd['B1배송적중'].sum(), dd['배송수'].sum()):.1%} · "
                   f"B0 {rate(gg['B0적중'].sum(), gg['B0풀'].sum()):.1%} · 회차 {len(gg)}개")
+    print(f"\n  [인용] 회차별 — 배송 적중 계획 / B1 / B0 · 수거 무해 계획 / B1 (회차 수)")
+    for h in HORIZONS:
+        g = rows[rows["지평"] == h]
+        for dur, gg in g.groupby("회차"):
+            dd = gg[gg["배송수"] > 0]
+            pp = gg[gg["수거수"] > 0]
+            print(f"    {h // 6}시간 {dur}: 배송 {rate(dd['배송적중'].sum(), dd['배송수'].sum()):.1%} / "
+                  f"{rate(dd['B1배송적중'].sum(), dd['배송수'].sum()):.1%} / {rate(gg['B0적중'].sum(), gg['B0풀'].sum()):.1%}"
+                  f" · 수거 {rate(pp['수거무해'].sum(), pp['수거수'].sum()):.1%} / "
+                  f"{rate(pp['B1수거무해'].sum(), pp['B1수거수'].sum()):.1%} ({len(gg)})")
     return results
 
 
@@ -356,6 +389,7 @@ def main(argv=None) -> int:
     parser.add_argument("--sanity", action="store_true", help="결과 없이 입력만 점검한다")
     parser.add_argument("--stats", choices=("plan", "current"), default="plan",
                         help="plan = 등록 그대로 참조 계획의 mu · sigma · current = 지금 순수요로 다시 계산(1.26.323 정정)")
+    parser.add_argument("--until", help="이 시각 전의 관측만 쓴다(예: '2026-10-06 00:00') — 인용 값을 고정한다(1.26.325)")
     args = parser.parse_args(argv)
 
     with db.session() as conn:
@@ -369,6 +403,10 @@ def main(argv=None) -> int:
                     print(f"  {DAY_TYPES[dt]} {d}: 지금 순수요로 다시 낸 mu가 '{lab}'의 mu와 같은 곳 {same:.1%}")
                     refs[dt][d] = (fresh, f"{lab} → 지금 순수요")
         raw = sf.load_grid(conn)
+        if args.until:
+            # 수집기는 계속 틱을 더한다 — 끝을 고정하지 않으면 같은 명령이 날마다 다른 값을 낸다(1.26.325)
+            raw = raw[raw["ts"] < pd.Timestamp(args.until)]
+        print(f"관측 자료: {raw['ts'].min()} ~ {raw['ts'].max()}" + (f" (--until {args.until})" if args.until else " (끝 고정 없음)"))
         stock = raw.pivot_table(index="ts", columns="station_id", values="stock")
         grid = stock.reindex(pd.date_range(stock.index.min().floor("D"), stock.index.max().ceil("D"),
                                            freq=TICK, inclusive="left"))
