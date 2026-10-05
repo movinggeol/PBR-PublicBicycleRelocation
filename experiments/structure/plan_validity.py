@@ -33,8 +33,13 @@
 알려진 치우침 — 관측 기간에 공사가 실제로 채운 대여소는 관측 재고가 덜 빈다. 배송 적중을 **낮춰** 잡는 쪽이고 계획과 대조군에
 똑같이 걸린다. 공사의 이동을 대여이력 사슬(44장)로 걸러 낼 수는 없다 — 대여이력이 26년 03월에서 끝난다.
 
+정정 (1.26.323) — 등록의 '가장 최근 계획 실행' 규칙이 09-28 15시 이전 동시각 계획(평일 셋 · 휴일 넷)을 집었는데, 그 계획들은
+  IQR로 깎인 대여이력의 순수요로 섰다(7c6f851). `--stats current`는 mu · sigma를 지금 순수요로 운영 함수 build_stats()가
+  다시 낸다. 원고에 쓰는 값은 이쪽이다(EXPERIMENTS 47장 정정 절).
+
 실행:
-    python experiments/structure/plan_validity.py            # 판정
+    python experiments/structure/plan_validity.py            # 판정(등록 그대로)
+    python experiments/structure/plan_validity.py --stats current   # 정정판 — 지금 순수요로
     python experiments/structure/plan_validity.py --sanity   # 결과 없이 입력만 점검(재계산 일치 · 회차 수)
 """
 import argparse
@@ -55,7 +60,8 @@ import pandas as pd  # noqa: E402
 import db  # noqa: E402
 import stockout_forecast as sf  # noqa: E402
 from pipeline.step0_collect import calculate_target_qty as target_mod  # noqa: E402
-from project_config import DEFAULT_PERIOD, REBAL_MIN_QTY, duration_hours, holiday_mask  # noqa: E402
+from project_config import (DATA_ROOT, DEFAULT_PERIOD, REBAL_MIN_QTY, duration_hours, holiday_mask,  # noqa: E402
+                            select_day_type)
 
 TICK = pd.Timedelta(minutes=sf.TICK_MINUTES)
 
@@ -93,6 +99,27 @@ def load_refs(conn, day_type: str) -> dict:
         if len(out) == len(DURATIONS):
             break
     return out
+
+
+def load_net(day_type: str) -> pd.DataFrame:
+    """운영 기간의 날짜별 시간 순수요(지금 DB) — 요일 구분 한쪽만."""
+    path = DATA_ROOT / f"pp_data/순수요/st_net_daily ({DEFAULT_PERIOD}).csv"
+    net, _ = db.read_step_output("net_demand", str(path), period=DEFAULT_PERIOD)
+    return select_day_type(net.rename(columns={"date": "날짜"}), "날짜", day_type)
+
+
+def current_stats(ref: pd.DataFrame, net: pd.DataFrame, duration: str) -> pd.DataFrame:
+    """참조 계획의 거치대는 두고 mu · sigma만 **지금 순수요로** 운영 함수 build_stats()가 다시 낸다(계절 보정 없음).
+
+    1.26.323 — 47장 첫 실측의 참조 계획 가운데 09-28 15시 이전 동시각 계획(평일 셋 · 휴일 넷)은 **깎인 대여이력**으로
+    만든 순수요로 세운 것이었다(7c6f851). 09-30 22시 계획은 계절 보정이 걸리지 않았으므로(배율 1) 여기도 걸지 않는다.
+    """
+    init = ref[["stock", "parking_lot"]].reset_index()
+    stats, _, _ = quiet(target_mod.build_stats, net, init, duration, verbose=False)
+    out = ref.copy()
+    fresh = stats.set_index("station_id")[["mu", "sigma"]]
+    out[["mu", "sigma"]] = fresh.reindex(out.index).to_numpy()
+    return out.dropna(subset=["mu", "sigma"])
 
 
 def replan(ref: pd.DataFrame, stock: pd.Series) -> pd.Series:
@@ -327,10 +354,20 @@ def real_plans(conn, grid: pd.DataFrame) -> None:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--sanity", action="store_true", help="결과 없이 입력만 점검한다")
+    parser.add_argument("--stats", choices=("plan", "current"), default="plan",
+                        help="plan = 등록 그대로 참조 계획의 mu · sigma · current = 지금 순수요로 다시 계산(1.26.323 정정)")
     args = parser.parse_args(argv)
 
     with db.session() as conn:
         refs = {dt: load_refs(conn, dt) for dt in DAY_TYPES}
+        if args.stats == "current":
+            for dt in DAY_TYPES:
+                net = load_net(dt)
+                for d, (frame, lab) in list(refs[dt].items()):
+                    fresh = current_stats(frame, net, d)
+                    same = np.isclose(fresh["mu"], frame["mu"].reindex(fresh.index), atol=1e-6).mean()
+                    print(f"  {DAY_TYPES[dt]} {d}: 지금 순수요로 다시 낸 mu가 '{lab}'의 mu와 같은 곳 {same:.1%}")
+                    refs[dt][d] = (fresh, f"{lab} → 지금 순수요")
         raw = sf.load_grid(conn)
         stock = raw.pivot_table(index="ts", columns="station_id", values="stock")
         grid = stock.reindex(pd.date_range(stock.index.min().floor("D"), stock.index.max().ceil("D"),
