@@ -7261,7 +7261,7 @@ C1N에 대한 예상과 같은 방향이지만 한 회차라 말할 것이 없�
 
 ### 첫 실측 — **배송 진단은 몇 시간 뒤 실제와 맞았고, 지금 재고 규칙보다 낫다. 수거는 3시간까지만 버틴다** — 등록 기준으로는 ❌ 증명 안 됨 (2026-10-04, 등록 커밋 뒤)
 
-> 재현: `python experiments/structure/plan_validity.py` · 로그: 회사 PC `data\exp_47_20261004\plan_validity.log`(판정) ·
+> 재현: `python experiments/structure/plan_validity.py` · 로그: 집 PC `data\exp_47_20261004\plan_validity.log`(판정) ·
 > `plan_validity_diag.log`(사후 진단을 더한 재실행 — 평일 판정 수치는 한 자리도 같다)
 
 평일 회차 70개(`_05_10` 9 · `_10_15` 23 · `_15_20` 21 · `_20_05` 17 — `_05_10`은 수집이 24시간이 된 09-14 뒤에만 있다).
@@ -7324,7 +7324,7 @@ C1N에 대한 예상과 같은 방향이지만 한 회차라 말할 것이 없�
 
 ### 🔴 정정 재측정 — 참조 계획 여덟 중 일곱이 **깎인 대여이력**으로 세워져 있었다 (2026-10-06, 1.26.323)
 
-> 재현: `python experiments/structure/plan_validity.py --stats current` · 로그: `data\exp_47_20261006\current_mode.log`
+> 재현: `python experiments/structure/plan_validity.py --stats current` · 로그: 집 PC `data\exp_47_20261006\current_mode.log`
 > (등록 그대로 `--stats plan`을 같은 날 다시 돌린 것은 `plan_mode.log` — 회차가 하나 늘어난 것 말고는 첫 실측과 같다)
 
 **어떻게 찾았나.** 49장을 짜며 경로 안전 재고를 지금 순수요로 내 참조 계획의 `mu`와 견주자 `_05_10`(`2026-09-30 22`)만
@@ -7457,7 +7457,7 @@ C1N에 대한 예상과 같은 방향이지만 한 회차라 말할 것이 없�
 
 ### 첫 실측 — **경로 기준은 같은 양의 균등 축소를 확실히 이기고 대가도 작다. 그래도 5시간 무해는 71%다** — ① 미달로 채택 후보 아님 (2026-10-06, 등록 커밋 뒤)
 
-> 재현: `python experiments/structure/pick_path_target.py` · 로그: `data\exp_49_20261006\pick_path_target.log`
+> 재현: `python experiments/structure/pick_path_target.py` · 로그: 집 PC `data\exp_49_20261006\pick_path_target.log`
 
 평일 71회차. 모집단은 원래 계획의 수거 대여소다.
 
