@@ -1777,3 +1777,72 @@ def test_학습곡선_판정은_두_원점이_모두_3퍼센트를_넘어야_향
     assert lc.verdict(split).startswith("⚠️")
     flat = lc.judge(table([0.12, 0.10, 0.099], [0.12, 0.10, 0.1]), "GBM")
     assert lc.verdict(flat).startswith("❌")
+
+
+# ───────────────────────────── 배송 도착 대 빈 시각 (EXPERIMENTS 51장) — 늦게 닿은 배송을 같은 정류장에서 센다
+
+def _timing_grid(values: dict, start="2026-09-28 10:00", ticks=31):
+    index = pd.date_range(start, periods=ticks, freq="10min")
+    return pd.DataFrame({sid: series for sid, series in values.items()}, index=index)
+
+
+def test_배송_도착은_작업_전_시각이고_처음_빈_칸과_맞대어_늦음과_제때를_가른다():
+    """도착 = 시작 + (cum_sec − work_sec). 처음 0이 관측된 칸이 도착 이전(같은 칸 포함)이면 늦음 —
+    t에 이미 0이면 '이미', 창 안에 0이 없으면 '필요 없음'으로 따로 센다."""
+    from experiments.structure import delivery_timing as dtm
+
+    start = pd.Timestamp("2026-09-28 10:00")
+    grid = _timing_grid({
+        "A": [5, 4, 3, 0] + [0] * 27,          # 10:30에 빈다
+        "B": [5, 5, 5, 5, 5, 5, 5, 0] + [0] * 23,  # 11:10에 빈다
+        "C": [0] * 31,                         # 이미 비었다
+        "D": [9] * 31,                         # 안 빈다
+    })
+    vrp = pd.DataFrame({"run_label": "x", "cluster": 1, "seq": [1, 2, 3, 4],
+                        "to_id": ["A", "B", "C", "D"], "action": "drop", "qty": 3,
+                        "cum_sec": [2400.0, 2700.0, 3000.0, 3300.0], "work_sec": 300.0})
+    stops = dtm.stops_with_arrival(vrp, start)
+    assert stops["도착"].iloc[0] == pd.Timestamp("2026-09-28 10:35")    # 2400 − 300초 = 35분
+
+    got = dtm.classify(stops, grid, pd.Series(dtype=float), start).set_index("to_id")["상태"]
+    assert got.to_dict() == {"A": "늦음", "B": "제때", "C": "이미", "D": "필요 없음"}
+
+    frame = dtm.classify(stops, grid, pd.Series(dtype=float), start)
+    assert dtm.late_rate(frame) == (1, 2)
+    assert dtm.late_rate(frame, pd.Timedelta(minutes=30)) == (0, 2), "30분 당기면 A(10:05 도착)는 제때다"
+
+
+def test_수거는_거치대에_닿으면_늦고_관측이_모자란_정류장은_세지_않는다():
+    from experiments.structure import delivery_timing as dtm
+
+    start = pd.Timestamp("2026-09-28 10:00")
+    grid = _timing_grid({"P": [8, 9, 10] + [10] * 28, "Q": [8] + [float("nan")] * 30})
+    vrp = pd.DataFrame({"run_label": "x", "cluster": 1, "seq": [1, 2], "to_id": ["P", "Q"],
+                        "action": "pick", "qty": 3, "cum_sec": [3900.0, 4200.0], "work_sec": 300.0})
+    got = dtm.classify(dtm.stops_with_arrival(vrp, start), grid, pd.Series({"P": 10, "Q": 10}), start)
+    assert list(got["상태"]) == ["늦음", "관측 부족"]
+
+
+def test_순서_상한은_같은_도착_칸을_일찍_비는_곳부터_다시_준다():
+    """늦게 비는 곳을 먼저 들르면 상한이 늦음을 줄인다 — 이동은 다시 풀지 않는다."""
+    from experiments.structure import delivery_timing as dtm
+
+    t = pd.Timestamp("2026-09-28 10:00")
+    frame = pd.DataFrame({
+        "run_label": "x", "cluster": 1, "action": "drop",
+        "도착": [t + pd.Timedelta(minutes=20), t + pd.Timedelta(minutes=80)],
+        "닿은시각": [t + pd.Timedelta(minutes=120), t + pd.Timedelta(minutes=40)],
+        "상태": ["제때", "늦음"],
+    })
+    assert dtm.late_rate(frame) == (1, 2)
+    assert dtm.oracle_reorder(frame) == (0, 2)
+
+
+def test_마지막_배송_목표는_빈_시각_중앙값으로_정한다():
+    from experiments.structure import delivery_timing as dtm
+
+    assert dtm.deadline_verdict(45) == 60
+    assert dtm.deadline_verdict(60) == 60
+    assert dtm.deadline_verdict(75) == 90
+    assert dtm.deadline_verdict(130) == 120
+    assert dtm.plan_start("2026-09-28 05 평일 동시각") == pd.Timestamp("2026-09-28 05:00")
