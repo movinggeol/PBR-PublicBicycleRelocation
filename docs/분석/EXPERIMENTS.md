@@ -6396,6 +6396,7 @@ ILP는 군집당 **0.03초**, 경로는 **1밀리초 미만**이다. 원고가 1
 
 > 재현: `PBR_DB_PATH=data/backup/raw_reload_260926/bike_system.db python experiments/baseline/baseline_compare.py --period "25년 11월" --seed 42`
 > (옛 자료 — 7·13도) · 같은 명령에서 `PBR_DB_PATH`를 빼면 새 자료다.
+> 🗑 **옛 DB 사본은 2026-10-07에 지웠다**(사용자 결정 — 원고는 원본 자료로 다시 쟀고 옛 수치를 재현할 일이 없다). 옛 자료 쪽 명령은 더 돌지 않는다.
 > 적재: `python tools/load_rentals.py --dir "data/raw_data/대전교통공사_대전시 공영자전거 타슈 대여이력 정보_20260331"` →
 > `python tools/rebuild_net_demand.py`
 
@@ -6663,7 +6664,7 @@ N=50의 선택, 상수 속도에서 채택한 식으로 바꾸면 거리당 이�
 
 ⚠️ 정본 실행 `2026-08-11 real`의 저장 계획은 **건드리지 않았다.** 새 계획은 스냅샷 세 표를 복사한
 `2026-08-11 real raw19`(본 DB, `kind=experiment`)에 있다. 옛 자료 계획은 `data\rerun\old_trimmed.db`(백업의
-사본)에만 있다. 이 사본에서 파이프라인을 돌리면 `data\pp_data\`의 25년 11월 순수요 CSV가 깎인 값으로 덮이므로,
+사본)에만 있었다(🗑 2026-10-07에 지웠다). 이 사본에서 파이프라인을 돌리면 `data\pp_data\`의 25년 11월 순수요 CSV가 깎인 값으로 덮이므로,
 돌린 뒤 `tools/rebuild_net_demand.py --period "25년 11월"`로 되돌렸다.
 
 ### 만들며 걸린 함정 둘

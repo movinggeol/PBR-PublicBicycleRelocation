@@ -450,7 +450,7 @@ IQR은 잘라 낸 뒤 다시 재면 좁아지므로 **멱등이 아닙니다** �
 빌리고 반납해 서로 상쇄된다.
 
 **조치**: 월별 원본을 정본으로 삼아 DB를 다시 적재했다(`tools/load_rentals.py --dir`).
-옛 DB와 순수요 CSV는 `data/backup/raw_reload_260926/`에 있다. 계획·실험 수치에 미친 영향은
+옛 DB와 순수요 CSV는 `data/backup/raw_reload_260926/`에 있었다 — 🗑 2026-10-07에 지웠다(사본 `data/rerun/old_trimmed.db`도 함께, 사용자 결정). 계획·실험 수치에 미친 영향은
 [EXPERIMENTS.md](EXPERIMENTS.md) 40장에 쟀다.
 
 > **6-1이 남기는 세 번째 교훈**: *"그 코드가 무엇을 읽는가"* 에 더해 **"그 자료는 어디서
