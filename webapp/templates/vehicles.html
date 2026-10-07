@@ -20,10 +20,10 @@
   </div>
   <div class="tile">
     <p class="label">차량 간 작업량 차이</p>
-    <p class="value">{{ balance.gap_minutes }}<span class="unit">분</span></p>
+    <p class="value">{{ balance.gap_minutes | dur }}</p>
     {# 안 나간 차량이 있을 때만 무엇을 뺐는지 밝힌다 — 없는 경우까지 적으면
        일어나지도 않은 일을 설명하는 군더더기가 된다. #}
-    <p class="sub">최소 {{ balance.min_minutes }}분 · 최대 {{ balance.max_minutes }}분{% if balance.idle %}(출동한 차량만){% endif %} · 작을수록 고릅니다</p>
+    <p class="sub">최소 {{ balance.min_minutes | dur }} · 최대 {{ balance.max_minutes | dur }}{% if balance.idle %}(출동한 차량만){% endif %} · 작을수록 고릅니다</p>
   </div>
   {% endif %}
   {% if budget %}
@@ -91,7 +91,7 @@
       <td class="num" data-label="출동">{{ v.rounds }}회</td>
       <td class="num" data-label="옮긴 대수">{{ v.bikes }}</td>
       <td class="num muted" data-label="누적 거리">{{ v.distance_km }} km</td>
-      <td class="num muted" data-label="누적 시간">{{ v.minutes }}분</td>
+      <td class="num muted" data-label="누적 시간" data-sort="{{ v.minutes if v.minutes is not none else '' }}">{{ v.minutes | dur }}</td>
       {# 기록에 실제로 있는 한 배정이다(`store.vehicle_workload`, 1.26.283) — 예전에는
          실행·회차를 따로 사전순 MAX로 붙여 21대 모두 없는 조합 `sweep-21 _20_05`였다.
          그 차량의 그 회차 지시서로 바로 간다. 실험이면 밝힌다(표는 실험도 합친다). #}
@@ -164,8 +164,8 @@
       <td class="num" data-label="대여소">{{ a.stations }}</td>
       <td class="num" data-label="옮긴 대수">{{ a.bikes }}</td>
       <td class="num muted" data-label="거리">{{ a.distance_km }} km</td>
-      <td data-label="작업 시간" class="num{% if over %} over{% else %} muted{% endif %}">
-        {{ a.minutes }}분{% if over %} ⚠{% endif %}
+      <td data-label="작업 시간" class="num{% if over %} over{% else %} muted{% endif %}" data-sort="{{ a.minutes if a.minutes is not none else '' }}">
+        {{ a.minutes | dur }}{% if over %} ⚠{% endif %}
       </td>
     </tr>
     {% endfor %}

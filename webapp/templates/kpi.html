@@ -171,7 +171,7 @@
           <tbody>
           {% for label, value in t.table %}
           <tr><td class="wrap muted">{{ label }}</td>
-            <td class="num">{% if value is not none %}{{ "%.2f" | format(value) }}{{ t.unit }}{% else %}—{% endif %}</td></tr>
+            <td class="num">{% if value is none %}—{% elif t.unit == "분" %}{{ value | dur }}{% else %}{{ "%.2f" | format(value) }}{{ t.unit }}{% endif %}</td></tr>
           {% endfor %}
           </tbody>
         </table>
@@ -285,9 +285,9 @@
       {% set over = r.time_budget_minutes and r.max_cluster_minutes
                     and r.max_cluster_minutes > r.time_budget_minutes %}
       {# 지표 행에는 차량 ID가 없다 — 넘긴 차량은 /vehicles 배정 이력의 붉은 행이다(1.26.284). #}
-      <td class="num{% if over %} over-budget{% endif %}" data-label="최장 작업">
-        {% if over %}<a href="/vehicles?run_label={{ r.run_label | urlencode }}#assignments" title="어느 차량이 시간 예산을 넘었는지 — 차량 운용의 배정 이력">{{ whole(r.max_cluster_minutes, "분") }} ⚠</a>
-        {%- else %}{{ whole(r.max_cluster_minutes, "분") }}{% endif %}
+      <td class="num{% if over %} over-budget{% endif %}" data-label="최장 작업" data-sort="{{ r.max_cluster_minutes if r.max_cluster_minutes is not none else '' }}">
+        {% if over %}<a href="/vehicles?run_label={{ r.run_label | urlencode }}#assignments" title="어느 차량이 시간 예산을 넘었는지 — 차량 운용의 배정 이력">{{ r.max_cluster_minutes | dur }} ⚠</a>
+        {%- else %}{{ r.max_cluster_minutes | dur }}{% endif %}
       </td>
       <td class="num col-more" data-label="예산 준수">{{ fmt(r.time_budget_met, "pct") }}</td>
       <td class="num col-more" data-label="km당 개선">{{ fmt(r.improvement_per_km, "num") }}</td>

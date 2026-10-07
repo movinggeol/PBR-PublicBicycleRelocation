@@ -17,7 +17,7 @@ from project_config import (
     exit_if_help,
     DATA_ROOT, DAY_TYPE_LABELS, MAP_TILES, PICK_HARM_WARN_SHARE, PROJECT_ROOT,
     TIME_BUDGET_MINUTES,
-    VEHICLE_CAPACITY, duration_hours, duration_list, ensure_output_dirs,
+    VEHICLE_CAPACITY, duration_hours, duration_list, ensure_output_dirs, format_minutes,
     get_runtime_config,
     require_columns, select_day_type,
 )
@@ -189,12 +189,16 @@ def route_summary(duration: str):
 
     print("-" * 50)
     print("클러스터별 경로 요약:")
-    print(summary.to_string(index=False))
+    # 화면에 찍는 것만 "3시간 7분 6초"로 쓴다 — CSV · DB의 값은 분 숫자 그대로다(2026-10-06, 소수 분을 쓰지 않는다)
+    shown = summary.copy()
+    for col in ['총이동시간_분', '총작업시간_분', '총소요시간_분']:
+        shown[col] = shown[col].map(format_minutes)
+    print(shown.rename(columns=lambda c: c.removesuffix('_분')).to_string(index=False))
 
     within = (summary['총소요시간_분'] <= TIME_BUDGET_MINUTES).sum()
     rate = within / len(summary) * 100 if len(summary) else 0
     print(f"전체: {summary['총이동거리_km'].sum():.2f} km, "
-          f"최장 소요 {summary['총소요시간_분'].max():.1f} 분")
+          f"최장 소요 {format_minutes(summary['총소요시간_분'].max())}")
     print(f"시간 예산({TIME_BUDGET_MINUTES:.0f}분) 준수: "
           f"{within}/{len(summary)} 클러스터 ({rate:.0f}%)")
     if within < len(summary):
@@ -595,7 +599,7 @@ def save_kpi_summary(duration: str, imbalance_df: pd.DataFrame,
     print(f"  격차 중앙값 {metrics['gap_median']:.0f}대 · 최대 {metrics['gap_max']:.0f}대"
           f" · 한 번에 닿는 범위 {metrics['reachable_ratio'] * 100:.0f}%"
           f" (적재 {VEHICLE_CAPACITY}대)")
-    print(f"  이동 {distance:.0f}km · 최장 {minutes.max():.0f}분"
+    print(f"  이동 {distance:.0f}km · 최장 {format_minutes(minutes.max())}"
           f" · 예산준수 {metrics['time_budget_met'] * 100:.0f}%"
           f" · 차량 {metrics.get('vehicles_used', 0)}대")
     if 'stockout_hours_before' in metrics:

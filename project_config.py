@@ -268,6 +268,59 @@ def period_label(date) -> str:
     return f"{stamp.year % 100:02d}년 {stamp.month:02d}월"
 
 
+
+# ---- 시간 길이 표기 ----
+# 사람이 읽는 글(화면 · 작업지시서 · 실행 로그)에는 시간 길이를 **"5분 36초"** 로 쓴다. "5.6분" 같은 소수 분은
+# 읽는 사람이 다시 초로 바꿔야 한다(2026-10-06 사용자 지시 — *"예상시간은 5.6분처럼 쓰지 말고, 5분 30초처럼
+# 써라"*). 계산 · CSV · DB의 값은 그대로 초나 분 숫자로 둔다 — 바뀌는 것은 글뿐이다. 웹은 같은 함수를 Jinja
+# 필터(`dur` · `secs` · `est`)로 쓰고, 실행 폼의 스크립트(index.html `분()`)는 format_estimate()와 같은 규칙이다.
+def format_seconds(seconds, signed: bool = False) -> str:
+    """초 → '1시간 2분 5초' · '5분 36초' · '40초' — 0이 아닌 칸만 적는다. 값이 없으면 '—'.
+
+    `signed`면 양수에 '+'를 붙인다(평균 대비 차이처럼 방향이 뜻을 갖는 자리). 음수는 언제나 '−'.
+    """
+    try:
+        value = float(seconds)
+    except Exception:                      # None · 글자 · 템플릿의 정의 안 된 값(jinja2 Undefined는 float()에서 예외를 낸다)
+        return "—"
+    if value != value:                     # NaN
+        return "—"
+    total = int(abs(value) + 0.5)          # 반올림을 스크립트(Math.round)와 맞춘다 — round()는 짝수 쪽으로 간다
+    hours, rest = divmod(total, 3600)
+    minutes, secs = divmod(rest, 60)
+    parts = [f"{hours}시간"] if hours else []
+    if minutes:
+        parts.append(f"{minutes}분")
+    if secs or not parts:
+        parts.append(f"{secs}초")
+    sign = "−" if value < 0 and total else ("+" if signed and total else "")
+    return sign + " ".join(parts)
+
+
+def format_minutes(minutes, signed: bool = False) -> str:
+    """분(소수) → format_seconds()의 글. 화면의 '187.1분'이 '3시간 7분 6초'가 된다."""
+    try:
+        return format_seconds(float(minutes) * 60, signed=signed)
+    except Exception:                      # format_seconds와 같다 — 템플릿의 정의 안 된 값도 '—'
+        return "—"
+
+
+def format_estimate(seconds) -> str:
+    """예상 소요(통계로 낸 범위의 끝점) — 1분 미만은 5초, 그 위는 10초 단위로 반올림해 format_seconds()로 쓴다.
+
+    예상은 실행마다 수십 초씩 흔들리는 값이라 초 단위까지 적으면 아는 것보다 정밀해 보인다. 실행 폼의
+    스크립트(index.html `분()`)가 체크박스를 누를 때마다 같은 규칙으로 다시 셈한다 — 다르면 누르는 순간 글이 바뀐다.
+    """
+    try:
+        value = max(float(seconds), 0.0)
+    except Exception:
+        return "—"
+    if value != value:
+        return "—"
+    step = 5 if value < 60 else 10
+    return format_seconds(int(value / step + 0.5) * step)
+
+
 # ---- 계절 수준 보정 (warmup) ----
 # 계절이 바뀌는 달에는 지난달 통계가 못 따라간다(2월→3월 수요 1.5배).
 # 계획 대상 달의 **첫 N일 실적**으로 도시 전체 배율 하나를 구해 mu·sigma에 곱한다.

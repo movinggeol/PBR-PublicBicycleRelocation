@@ -313,7 +313,7 @@
       들를 곳 <b>{{ cs.stations }}</b>곳 ·
       옮길 자전거 <b>{{ cs.bikes }}</b>대 ·
       이동 <b>{{ cs.distance_km }}</b> km ·
-      예상 <b>{{ cs.minutes }}</b>분
+      예상 <b>{{ cs.minutes | dur }}</b>
     </div>
   </div>
 
@@ -350,7 +350,7 @@
       <td class="num" data-label="수량">{% if stop.qty %}{{ stop.qty }}대{% else %}—{% endif %}</td>
       <td class="num muted" data-label="싣고 남는 수">{{ stop.load_after }}대</td>
       <td class="num muted" data-label="이동">{{ stop.distance_km }} km</td>
-      <td class="num muted" data-label="누적">{{ stop.minutes }}분</td>
+      <td class="num muted" data-label="누적">{{ stop.minutes | dur }}</td>
       <td class="num muted" data-label="계획 때 재고">{{ stop.planned_stock if stop.planned_stock is not none else "—" }}</td>
       <td class="num" data-label="지금 재고">{{ stop.live_stock if stop.live_stock is not none else "—" }}</td>
       <td class="num muted" data-label="차이">{% if stop.delta is not none %}{{ "%+d" | format(stop.delta) }}{% else %}—{% endif %}</td>
@@ -393,7 +393,7 @@
       들를 곳 <b>{{ sheet.stations }}</b>곳 ·
       옮길 자전거 <b>{{ sheet.bikes }}</b>대 ·
       이동 <b>{{ sheet.distance_km }}</b> km ·
-      예상 <b>{{ sheet.minutes }}</b>분
+      예상 <b>{{ sheet.minutes | dur }}</b>
     </div>
   </div>
 
@@ -424,7 +424,7 @@
       <td class="num" data-label="수량">{% if stop.qty %}{{ stop.qty }}대{% else %}—{% endif %}</td>
       <td class="num muted" data-label="싣고 남는 수">{{ stop.load_after }}대</td>
       <td class="num muted" data-label="이동">{{ stop.distance_km }} km</td>
-      <td class="num muted" data-label="누적">{{ stop.minutes }}분</td>
+      <td class="num muted" data-label="누적">{{ stop.minutes | dur }}</td>
     </tr>
     {% endfor %}
     </tbody>

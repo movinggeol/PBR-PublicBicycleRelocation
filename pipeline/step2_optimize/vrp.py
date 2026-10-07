@@ -31,7 +31,7 @@ from project_config import (
     exit_if_help,
     DATA_ROOT, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DROP_TIME_SEC, PICK_TIME_SEC, PROJECT_ROOT,
     ENFORCE_TIME_BUDGET, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY,
-    VEHICLE_SPEED_KMPH,
+    VEHICLE_SPEED_KMPH, format_minutes,
     duration_list, ensure_output_dirs, get_runtime_config, require_columns,
     travel_seconds,
 )
@@ -401,7 +401,7 @@ def _assign_fleet(vrp_result: pd.DataFrame, duration: str) -> pd.DataFrame:
         over += exceeded
         print(f"  {mapping[int(row.cluster)]}  클러스터 {int(row.cluster):<3d}"
               f" 대여소 {int(row.stations):>3d}곳  {int(row.bikes):>3d}대"
-              f"  {row.distance_km:>6.2f}km  {row.minutes:>6.1f}분"
+              f"  {row.distance_km:>6.2f}km  {format_minutes(row.minutes):>12}"
               + ("  ⚠ 시간 예산 초과" if exceeded else ""))
 
     if over:

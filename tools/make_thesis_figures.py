@@ -1140,7 +1140,7 @@ def fig_3_4():
         model = f"직선거리 ÷ {pc.VEHICLE_SPEED_KMPH:g}km/h (상수 속도)"
     tx.set_title(f"이동시간 식: {model}\n작업시간: 한 대에 {pc.PICK_TIME_SEC:g}초(수거)·"
                  f"{pc.DROP_TIME_SEC:g}초(배송)", fontsize=9)
-    print(f"    군집 {chosen}: 방문 {len(stops)}회 · 총 {route['cum_sec'].iloc[-1] / 60:.1f}분 · "
+    print(f"    군집 {chosen}: 방문 {len(stops)}회 · 총 {pc.format_seconds(route['cum_sec'].iloc[-1])} · "
           f"이동시간 식 = {model}")
     save(fig, "그림3-4_방문순서_적재량", "그리디가 만든 한 군집의 방문 순서와 적재량 (3.7.1)")
 

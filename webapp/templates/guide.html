@@ -50,7 +50,7 @@
             나면 그 기록에서 뽑아 보여 줍니다.
           {% endif %}</span>
       </span>
-      <span class="step-state">{% if estimate_one is not none %}시간대 1개 {{ estimate_one }}분{% else %}기록이 쌓이면 여기에 나옵니다{% endif %}</span>
+      <span class="step-state">{% if estimate_one is not none %}시간대 1개 {{ estimate_one }}{% else %}기록이 쌓이면 여기에 나옵니다{% endif %}</span>
     </li>
     <li class="step">
       <span class="step-mark" aria-hidden="true">3</span>
@@ -125,7 +125,7 @@
           차고지에서 출발해 맡은 대여소를 다 들르고 돌아옵니다.
           {%- if road_model %}
           순서와 예상 시간은 대여소 사이 <b>직선거리</b>에 실측 도로 계수를 적용해
-          계산합니다 — 구간마다 고정 {{ road_fixed_min }}분 + {{ road_speed | round | int }} km/h로,
+          계산합니다 — 구간마다 고정 {{ road_fixed }} + {{ road_speed | round | int }} km/h로,
           TMAP 실도로 소요시간에 맞춘 값입니다.
           {%- else %}
           순서와 예상 시간은 대여소 사이 <b>직선거리</b>를 평균 {{ speed | round | int }} km/h로
@@ -150,7 +150,7 @@
           {% endif %}
           <tr><th scope="row">한 대 적재 용량</th><td class="num">최대 {{ capacity }}대</td></tr>
           {%- if road_model %}
-          <tr><th scope="row">이동시간 모형</th><td class="num">고정 {{ road_fixed_min }}분 + {{ road_speed | round | int }} km/h <span class="muted">(실도로 계수)</span></td></tr>
+          <tr><th scope="row">이동시간 모형</th><td class="num">고정 {{ road_fixed }} + {{ road_speed | round | int }} km/h <span class="muted">(실도로 계수)</span></td></tr>
           {%- else %}
           <tr><th scope="row">평균 주행 속도</th><td class="num">{{ speed | round | int }} km/h</td></tr>
           {%- endif %}
@@ -474,7 +474,7 @@
       <tr><td><b>작업 시간</b></td>
         <td class="muted">차고지를 떠나 대여소를 다 돌고 <b>차고지로 돌아올 때까지</b>입니다.
           이동 시간 + 자전거를 싣고 내리는 시간이고, 주행은 직선거리에
-          {%- if road_model %} 실도로 계수(고정 {{ road_fixed_min }}분 + {{ road_speed | round | int }} km/h)를
+          {%- if road_model %} 실도로 계수(고정 {{ road_fixed }} + {{ road_speed | round | int }} km/h)를
           {%- else %} {{ speed | round | int }} km/h를{% endif %} 적용해 잡습니다.</td></tr>
       <tr><td><b>시간 예산</b></td>
         <td class="muted">한 회차를 마치는 <b>목표</b> 시간({{ time_budget | round | int }}분).

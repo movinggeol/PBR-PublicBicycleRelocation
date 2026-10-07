@@ -549,7 +549,7 @@ def test_예상_소요는_0분이어도_숨지_않는다(client, monkeypatch):
                             "수집": 0.0, "전처리": 0.0, "시간대당": 0.0, "표본": 1})
 
     body = client.get("/guide").text
-    assert "시간대 1개 0.0분" in body, "0분이 하드코딩 문구에 가려졌다"
+    assert "시간대 1개 0초" in body, "0분이 하드코딩 문구에 가려졌다"   # 예전 글 "0.0분"(1.26.327 — 소수 분을 쓰지 않는다)
     assert "보통 2~4분" not in body, "기록이 있는데 하드코딩 문구가 나온다"
 
 
@@ -3963,9 +3963,10 @@ def test_보수적인_끝은_창_안의_최댓값이다(monkeypatch, tmp_path):
     assert jobs.estimate_seconds(model, 2, high=True) == 10.0 + 60.0 * 2
     assert jobs.estimate_seconds(model, 2, high=True) >= jobs.estimate_seconds(model, 2)
 
-    # 화면 글은 "보통~길면" 범위다. 같으면 하나만.
-    assert app_module._span_text(120.0, 180.0) == "2.0~3.0"
-    assert app_module._span_text(120.0, 121.0) == "2.0"
+    # 화면 글은 "보통~길면" 범위다. 같으면 하나만. 단위까지 글에 든다 — 소수 분을 쓰지 않는다(2026-10-06).
+    assert app_module._span_text(120.0, 180.0) == "2분~3분"
+    assert app_module._span_text(120.0, 121.0) == "2분"
+    assert app_module._span_text(336.0, 380.0) == "5분 40초~6분 20초"
     assert app_module._span_text(None, 180.0) is None
 
     # 옛 꼴의 계수('높음' 없음)도 받는다 — 보통 값으로 물러선다.
@@ -3984,7 +3985,7 @@ def test_끝난_작업의_예상은_시작할_때_굳힌_값이다(monkeypatch, 
                   args=["--duration", "_05_10,_10_15,_15_20,_20_05", "--skip-eda"])
     작업.estimate = jobs.job_estimate(작업, 약속)
     처음 = app_module._running_estimate_minutes(작업)
-    assert 처음 == "6.3~8.3"
+    assert 처음 == "6분 20초~8분 20초"   # 375.8초 ~ 496.0초 — 예전 글은 "6.3~8.3"(분)
 
     # 작업이 끝나 계수가 바뀌어도 그 작업의 예상은 그대로다.
     monkeypatch.setattr(jobs, "estimate_model", lambda limit=3: {

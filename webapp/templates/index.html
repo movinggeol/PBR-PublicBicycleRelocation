@@ -180,10 +180,10 @@
           <span data-estimate-text role="status">
             {%- if run_estimate -%}
             {%- set _n = defaults.duration.split(',') | length -%}
-            예상 <b>{{ ((run_estimate.collect + run_estimate.preprocess
-                        + run_estimate.per_duration * _n) / 60) | round(1) }}~{{
-                     ((run_estimate.collect_hi + run_estimate.preprocess_hi
-                        + run_estimate.per_duration_hi * _n) / 60) | round(1) }}분</b>
+            {%- set _lo = run_estimate.collect + run_estimate.preprocess + run_estimate.per_duration * _n -%}
+            {%- set _hi = run_estimate.collect_hi + run_estimate.preprocess_hi + run_estimate.per_duration_hi * _n -%}
+            {%- set _a = _lo | est -%}{%- set _b = [_hi, _lo] | max | est -%}
+            예상 <b>{{ _a if _a == _b else _a ~ "~" ~ _b }}</b>
             {%- else -%}
             기록이 쌓이면 예상 시간이 여기 나옵니다
             {%- endif -%}
@@ -504,10 +504,17 @@
     if (!form) return;
 
     function 분(seconds) {
-      /* 1분 미만은 초로 말한다 — "0.7분"은 읽어서 바로 와닿지 않는다. */
-      if (seconds < 60) return Math.round(seconds / 5) * 5 + "초";
-      var m = seconds / 60;
-      return (m < 10 ? m.toFixed(1) : Math.round(m)) + "분";
+      /* project_config.format_estimate()와 같은 규칙 — 1분 미만은 5초, 그 위는 10초 단위로 반올림해
+         "5분 30초"처럼 쓴다. "5.6분" 같은 소수 분은 쓰지 않는다(2026-10-06 사용자 지시). 서버와 규칙이
+         다르면 체크박스를 누르는 순간 글이 바뀐다. */
+      var step = seconds < 60 ? 5 : 10;
+      var total = Math.round(Math.max(seconds, 0) / step) * step;
+      var h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+      var parts = [];
+      if (h) parts.push(h + "시간");
+      if (m) parts.push(m + "분");
+      if (s || !parts.length) parts.push(s + "초");
+      return parts.join(" ");
     }
 
     function 다시셈() {
@@ -522,7 +529,7 @@
       var hi = preprocessHi + perHi * n + (api ? collectHi : 0);
       if (edaOn && !isNaN(eda)) { lo += eda; hi += edaHi; }
       var a = 분(lo), b = 분(Math.max(hi, lo));
-      var 글 = "예상 <b>" + (a === b ? a : a.replace(/분$/, "") + "~" + b) + "</b>";
+      var 글 = "예상 <b>" + (a === b ? a : a + "~" + b) + "</b>";
       if (고른것 === 0) 글 += " <span class=\"muted\">(기본 " + n + "개 기준)</span>";
       /* EDA를 켰는데 켠 실행의 기록이 없으면 — 모르는 몫을 지어내지 않고 그렇게 말한다.
          기록이 있으면 위 합계에 이미 들어 있다(09-26 실측 5분 28초). */

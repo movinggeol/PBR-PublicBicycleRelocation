@@ -40,8 +40,9 @@ from project_config import (ROAD_FIXED_SEC_WEEKDAY, ROAD_SPEED_KMPH_WEEKDAY, USE
     FLEET_SIZE, MAX_FLEET_SIZE, PROJECT_ROOT, REBAL_MIN_QTY, TARGET_QTY_UPPER_RATIO, TARGET_Z,
     TIME_BUDGET_MINUTES, TOP_STATION_LIMIT, VEHICLE_CAPACITY, VEHICLE_SPEED_KMPH,
     VEHICLES_PER_ROUND,
-    available_periods, latest_period, normalize_day_type, normalize_durations,
-    normalize_fleet_size, normalize_per_round, normalize_period, resolve_day_type,
+    available_periods, format_estimate, format_minutes, format_seconds, latest_period,
+    normalize_day_type, normalize_durations, normalize_fleet_size, normalize_per_round,
+    normalize_period, resolve_day_type,
 )
 import tashu
 from webapp import (catalog, charts, collect_view, district_view, jobs, kpi_view, mobile_view,
@@ -177,6 +178,12 @@ templates.env.globals["kind_labels"] = RUN_KIND_LABELS
 templates.env.globals["duration_labels"] = DURATION_LABELS
 # 요일 구분의 사람 이름도 한 벌 — `/kpi` 히어로가 비교 조건('휴일 · 운영 계획')을 적는다(1.26.284).
 templates.env.globals["day_type_labels"] = DAY_TYPE_LABELS
+# 시간 길이는 "5분 36초"로 쓴다 — "5.6분" 같은 소수 분을 화면에 내지 않는다(2026-10-06 사용자 지시,
+# project_config '시간 길이 표기'). 값은 숫자 그대로 넘기고(예산과 견주는 비교가 있다) 글만 필터로 바꾼다.
+# `dur` = 분 · `secs` = 초 · `est` = 예상 소요(초, 10초 단위로 반올림 — 실행 폼 스크립트와 같은 규칙)
+templates.env.filters["dur"] = format_minutes
+templates.env.filters["secs"] = format_seconds
+templates.env.filters["est"] = format_estimate
 
 # 배정 이력 한 쪽에 실을 건수. 실행 1건이 평균 17.2행이므로(실측, 1.26.116)
 # 50이면 대략 3회 실행분이 한 쪽에 들어온다.
@@ -298,16 +305,19 @@ def _run_estimate() -> Optional[dict]:
 
 
 def _span_text(low: Optional[float], high: Optional[float]) -> Optional[str]:
-    """초 두 개 → "5.5~6.3" 같은 분 글. 한 자리로 반올림해 같으면 하나만 적는다.
+    """초 두 개 → "5분 30초~6분 20초" 같은 글. 반올림해 같으면 하나만 적는다.
 
     🔴 **범위로 적는 이유**(1.26.294, 사용자 요청 "보수적으로"). 같은 설정도
     42초~119초로 흔들린다 — 중앙값 하나만 적으면 절반은 넘긴다. 앞은 창 안의
     중앙값(보통), 뒤는 최댓값(길면)이다.
+
+    글에 **단위까지 들어 있다**(2026-10-06 — "5.6분"을 "5분 36초"로). 예전에는 "5.5~6.3"에
+    화면이 "분"을 붙였다. 반올림은 `format_estimate()`(1분 미만 5초 · 그 위 10초 단위)다.
     """
     if low is None:
         return None
-    lo = f"{low / 60:.1f}"
-    hi = f"{max(high if high is not None else low, low) / 60:.1f}"
+    lo = format_estimate(low)
+    hi = format_estimate(max(high if high is not None else low, low))
     return lo if lo == hi else f"{lo}~{hi}"
 
 
@@ -925,6 +935,9 @@ def _run_view(job) -> dict:
         "estimate_minutes": _running_estimate_minutes(job),
         "estimate_note": _estimate_note(job),
         "elapsed_minutes": _minutes(jobs.elapsed_seconds(job)),
+        # 화면이 쓰는 글 — "3분 12초"(2026-10-06). 숫자(`elapsed_minutes`)는 상태 API의 값으로 남긴다.
+        "elapsed_text": (None if jobs.elapsed_seconds(job) is None
+                         else format_seconds(jobs.elapsed_seconds(job))),
         # 이 작업이 만든 실행 이름(`--now`). 화면 제목과 완료 안내의 링크가 쓰고, 상태 API도
         # 같은 값을 준다(1.26.284). `--now` 없이 띄운 옛 작업은 None — 짐작하지 않는다.
         "run_label": jobs.job_label(job),
@@ -946,7 +959,8 @@ def guide_page(request: Request):
         # 실도로 모형이 기본값이 된 뒤(1.26.268)에도 안내는 "25 km/h 직선거리"를
         # 말하고 있었다(1.26.272). 켜짐 여부와 계수를 넘겨 문장이 스위치를 따른다.
         "road_model": USE_ROAD_MODEL,
-        "road_fixed_min": round(ROAD_FIXED_SEC_WEEKDAY / 60, 1),
+        # 구간마다 붙는 고정비 — 320.4초를 "5.3분"이 아니라 "5분 20초"로 쓴다(2026-10-06).
+        "road_fixed": format_seconds(ROAD_FIXED_SEC_WEEKDAY),
         "road_speed": ROAD_SPEED_KMPH_WEEKDAY,
         "time_budget": TIME_BUDGET_MINUTES,
         "target_z": TARGET_Z,
@@ -1443,7 +1457,9 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
             "hint": series["hint"],
             "svg": charts.line(series["labels"], series["values"],
                                title=series["title"], unit=series["unit"],
-                               lower_is_better=series["lower_is_better"]),
+                               lower_is_better=series["lower_is_better"],
+                               # 시간 길이(최장 작업)는 "3시간 7분 6초"로 — 소수 분을 쓰지 않는다(2026-10-06)
+                               fmt=format_minutes if series["unit"] == "분" else None),
             "table": list(zip(series["labels"], series["values"])),
             "unit": series["unit"],
         })
@@ -1632,6 +1648,7 @@ def vehicles_page(request: Request, run_label: Optional[str] = None, page: int =
         workload_svg = charts.deviation_hbar(
             sorted_wl["vehicle_id"].tolist(), sorted_wl["minutes"].tolist(),
             title="차량별 누적 작업 시간 — 출동한 차량 평균과의 차이", unit="분",
+            fmt=format_minutes,              # "+64.8분" → "+1시간 4분 48초"(2026-10-06)
             baseline=float(worked_minutes.mean()),
             baseline_label="출동한 차량 평균",
             # 줄 높이 25 → 16 (1.26.316 사용자: "위아래로 너무 길다") — 21대가 1400px 화면에서

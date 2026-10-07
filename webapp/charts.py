@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import html
 import math
-from typing import Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 
 def _empty(message: str = "그릴 자료가 없습니다.") -> str:
@@ -102,7 +102,8 @@ def _text(x: float, y: float, body: str, cls: str = "viz-label",
 
 def line(labels: Sequence[str], values: Sequence[Optional[float]], *,
          title: str, unit: str = "", width: int = 360, height: int = 150,
-         lower_is_better: bool = False, all_ticks: bool = False) -> str:
+         lower_is_better: bool = False, all_ticks: bool = False,
+         fmt: Optional[Callable[..., str]] = None) -> str:
     """계열 하나짜리 꺾은선. 실행 순서에 따른 변화를 본다.
 
     labels: x축 이름(실행 라벨). values: 값(None은 건너뛴다 — 못 잰 지표).
@@ -110,7 +111,12 @@ def line(labels: Sequence[str], values: Sequence[Optional[float]], *,
     all_ticks: x축 이름을 **전부** 적는다. 기본은 처음·끝만인데, 그건 실행
       라벨(`2026-08-28 도로실측2`)이 길어 다 적으면 겹치기 때문이다.
       `2025-01`처럼 짧고 규칙적인 이름이면 켜서 전부 보여 준다.
+    fmt: 풍선 · 끝점 값의 글을 만드는 함수(단위까지 붙인다). 시간 길이는 `project_config.format_minutes`를
+      넘겨 "187.10분" 대신 "3시간 7분 6초"로 쓴다(2026-10-06). 눈금은 숫자 그대로다.
     """
+    def show(v):
+        return fmt(v) if fmt else f"{_fmt(v, 2)}{unit}"
+
     pairs = [(i, v) for i, v in enumerate(values) if v is not None]
     if len(pairs) < 2:
         return ('<p class="empty">그래프를 그리려면 실행이 2건 이상 필요합니다.</p>')
@@ -157,7 +163,7 @@ def line(labels: Sequence[str], values: Sequence[Optional[float]], *,
         right = min(width - pad_r, px(i) + slot / 2)
         parts.append(
             f'<g class="viz-band" tabindex="0" '
-            f'{_tip(labels[i], f"{_fmt(v, 2)}{unit}", title)}>'
+            f'{_tip(labels[i], show(v), title)}>'
             f'<rect x="{left:.1f}" y="{pad_t}" width="{max(1.0, right - left):.1f}" '
             f'height="{plot_h}" class="viz-band-hit"/>'
             f'<line x1="{px(i):.1f}" y1="{pad_t}" x2="{px(i):.1f}" '
@@ -169,7 +175,7 @@ def line(labels: Sequence[str], values: Sequence[Optional[float]], *,
     # 값 표시는 **끝점 하나만**. 점마다 숫자를 적으면 읽히지 않는다.
     last_i, last_v = pairs[-1]
     parts.append(_text(px(last_i), py(last_v) - 10,
-                       f"{_fmt(last_v, 2)}{unit}", "viz-value",
+                       show(last_v), "viz-value",
                        "end" if last_i == len(values) - 1 else "middle"))
 
     # x축은 처음과 끝 이름만. 실행 라벨은 길어서 다 적으면 겹친다.
@@ -239,7 +245,8 @@ def hbar(labels: Sequence[str], values: Sequence[float], *,
 def deviation_hbar(labels: Sequence[str], values: Sequence[float], *,
                    title: str, unit: str = "", baseline_label: str = "평균",
                    baseline: Optional[float] = None,
-                   width: int = 640, bar_h: int = 18, gap: int = 7) -> str:
+                   width: int = 640, bar_h: int = 18, gap: int = 7,
+                   fmt: Optional[Callable[..., str]] = None) -> str:
     """**평균에서 얼마나 떨어졌는가**를 좌우로 그리는 가로 막대.
 
     ## 왜 따로 있나 — `hbar`가 답을 못 준 자리
@@ -270,7 +277,17 @@ def deviation_hbar(labels: Sequence[str], values: Sequence[float], *,
     그래서 기준을 인자로 뺐다. 주지 않으면 받은 값 전체의 평균을 쓴다(그것이
     옳은 자리도 있다). 걸러야 할 값이 있는 쪽은 **거른 뒤의 평균을 직접 넘긴다**
     — 막대는 여전히 전부 그리되 기준만 옮긴다.
+
+    ## `fmt` — 값 글을 부르는 쪽이 정한다 (2026-10-06)
+
+    시간 길이는 `project_config.format_minutes`를 넘겨 "+64.8분" 대신 "+1시간 4분 48초"로 쓴다
+    (`fmt(값, signed=True)`가 부호를 붙인다). 글이 길어지므로 값 글자 자리를 넓힌다.
     """
+    def show(v, signed=False):
+        if fmt:
+            return fmt(v, signed=signed)
+        return f"{v:+.1f}{unit}" if signed else f"{_fmt(v, 1)}{unit}"
+
     n = len(labels)
     if n == 0:
         return _empty()
@@ -287,7 +304,7 @@ def deviation_hbar(labels: Sequence[str], values: Sequence[float], *,
     # 막대가 **양쪽으로** 뻗으므로 값 글자 자리도 양쪽에 있어야 한다. 왼쪽에
     # 항목 이름 몫(label_w)만 잡았더니 가장 긴 음수 막대의 "-42.3분"이 차량
     # 이름 위로 올라탔다(실측). 왼쪽 = 이름 + 값, 오른쪽 = 값.
-    label_w, value_w = 60, 62
+    label_w, value_w = 60, (92 if fmt else 62)
     pad_l, pad_r, pad_t, pad_b = label_w + value_w, value_w, 18, 6
     row_h = bar_h + gap
     plot_w = width - pad_l - pad_r
@@ -302,7 +319,7 @@ def deviation_hbar(labels: Sequence[str], values: Sequence[float], *,
     parts.append(f'<line x1="{zero_x:.1f}" y1="{pad_t - 6}" x2="{zero_x:.1f}" '
                  f'y2="{height - pad_b}" class="viz-baseline"/>')
     parts.append(_text(zero_x, pad_t - 9,
-                       f"{baseline_label} {_fmt(mean, 1)}{unit}", "viz-tick", "middle"))
+                       f"{baseline_label} {show(mean)}", "viz-tick", "middle"))
 
     for i, (label, value, dev) in enumerate(zip(labels, values, devs)):
         y = pad_t + row_h * i
@@ -315,13 +332,13 @@ def deviation_hbar(labels: Sequence[str], values: Sequence[float], *,
         parts.append(
             f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{bar_h}" '
             f'rx="3" class="viz-bar" tabindex="0" '
-            f'{_tip(label, f"{_fmt(value, 1)}{unit}", f"{baseline_label} 대비 {dev:+.1f}{unit}")}/>')
+            f'{_tip(label, show(value), f"{baseline_label} 대비 {show(dev, signed=True)}")}/>')
         # 값 글자는 막대 바깥, 뻗어 나간 쪽에 붙인다.
         if dev >= 0:
-            parts.append(_text(x + w + 6, cy + 4, f"{dev:+.1f}{unit}",
+            parts.append(_text(x + w + 6, cy + 4, show(dev, signed=True),
                                "viz-value", "start"))
         else:
-            parts.append(_text(x - 6, cy + 4, f"{dev:+.1f}{unit}",
+            parts.append(_text(x - 6, cy + 4, show(dev, signed=True),
                                "viz-value", "end"))
 
     parts.append("</svg>")

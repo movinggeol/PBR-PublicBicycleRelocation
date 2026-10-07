@@ -44,7 +44,8 @@ def test_guide_shows_live_settings(client):
     import project_config
     if project_config.USE_ROAD_MODEL:
         assert f"{int(round(project_config.ROAD_SPEED_KMPH_WEEKDAY))} km/h" in html
-        assert f"고정 {round(project_config.ROAD_FIXED_SEC_WEEKDAY / 60, 1)}분" in html
+        # 고정비는 "5.3분"이 아니라 "5분 20초"로 쓴다(2026-10-06 — 소수 분을 쓰지 않는다)
+        assert f"고정 {project_config.format_seconds(project_config.ROAD_FIXED_SEC_WEEKDAY)} +" in html
         assert "실측 도로 시간의 약 76%" not in html, "꺼진 모형의 문장이 남았다"
     else:
         assert f"{int(round(VEHICLE_SPEED_KMPH))} km/h" in html
@@ -80,7 +81,8 @@ def test_expected_runtime_comes_from_past_runs(client, monkeypatch):
 
     for path in ("/guide", "/"):
         html = client.get(path).text
-        assert "2.2분" in html, f"{path}에 지난 실행 기준 소요가 안 보인다"
+        # 132초 → 10초 단위로 "2분 10초"(2026-10-06 — 예전 글은 "2.2분")
+        assert "2분 10초" in html, f"{path}에 지난 실행 기준 소요가 안 보인다"
         assert "5~10분" not in html, f"{path}에 옛 예상 소요가 남아 있다"
 
 
