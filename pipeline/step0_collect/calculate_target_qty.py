@@ -26,6 +26,7 @@ from project_config import (
     duration_hours,
     duration_list,
     ensure_output_dirs,
+    months_apart,
     get_runtime_config,
     select_day_type,
     target_stamp,
@@ -267,8 +268,12 @@ if __name__ == '__main__':
                 warmup_raw.rename(columns={'date': '날짜'}), '날짜', config.day_type)
             print(f"계절 보정: {config.warmup_label} 첫 {config.warmup_days}일 실적을 씁니다.")
         else:
+            # 🔴 "지난달 통계"라고 쓰지 않는다(1.26.328). 대여이력은 반년 단위로 늦게 올라와 2026년 8~10월 계획은
+            #    **7개월 전 3월** 통계로 섰는데, 예전 문구는 그것을 '지난달'이라 불렀다(EXPERIMENTS 50장).
+            gap = months_apart(period, config.warmup_label)
             print(f"[안내] 계절 보정 건너뜀 — {config.warmup_label} 순수요가 없습니다"
-                  f" ({warmup_path.name}). 지난달 통계를 그대로 씁니다.")
+                  f" ({warmup_path.name}). {period} 통계를 배율 없이 그대로 씁니다"
+                  + (f" — 계획 대상 달보다 {gap}개월 앞의 자료입니다." if gap and gap > 1 else "."))
 
     # 시간대 목록은 --duration(콤마 구분)으로 준다. 예: "_05_10,_10_15"
     # 각 창은 project_config.DURATIONS이고(낮 셋은 5시간, 자정을 넘는 `_20_05`는

@@ -397,6 +397,21 @@ def test_backtest_and_pipeline_share_one_ratio_entry_point():
     assert demand_model.WARMUP_MIN_DEMAND > 0
 
 
+def test_warmup_skip_says_how_old_the_statistics_are():
+    """🔴 계절 보정을 건너뛸 때 *"지난달 통계를 그대로 씁니다"* 라고 찍었는데, 2026년 8~10월 계획이 실제로 쓴 것은
+    **7개월 전 3월** 통계였다(대여이력은 반년 단위로 늦게 올라온다 — EXPERIMENTS 50장, 1.26.328). 안내는 몇 달 묵었는지
+    말해야 한다."""
+    from project_config import months_apart
+
+    assert months_apart("26년 03월", "26년 10월") == 7
+    assert months_apart("25년 12월", "26년 01월") == 1
+    assert months_apart("26년 03월", "26년 03월") == 0
+    assert months_apart("재현 데모", "26년 03월") is None, "읽지 못하는 라벨은 간격을 지어내지 않는다"
+    source = (PROJECT_ROOT / "pipeline" / "step0_collect" / "calculate_target_qty.py").read_text(encoding="utf-8")
+    assert "지난달 통계를 그대로" not in source
+    assert "개월 앞의 자료입니다" in source
+
+
 def test_run_pipeline_forwards_warmup_options():
     """계절 보정 옵션이 run_pipeline에서 하위 단계까지 내려가야 한다.
 

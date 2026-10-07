@@ -268,6 +268,17 @@ def period_label(date) -> str:
     return f"{stamp.year % 100:02d}년 {stamp.month:02d}월"
 
 
+def months_apart(older: str, newer: str):
+    """기간 라벨 두 개 사이의 개월 수 — '26년 03월' → '26년 10월' = 7. 읽지 못하면 None.
+
+    계절 보정을 건너뛸 때 *"몇 달 묵은 통계인가"* 를 말하려고 둔다(1.26.328 — 예전 안내는 7개월 전 3월을 '지난달'이라 불렀다).
+    """
+    try:
+        (y1, m1), (y2, m2) = [(int(x.split("년")[0]), int(x.split("년")[1].replace("월", ""))) for x in (older, newer)]
+    except (AttributeError, IndexError, ValueError):
+        return None
+    return (y2 - y1) * 12 + (m2 - m1)
+
 
 # ---- 시간 길이 표기 ----
 # 사람이 읽는 글(화면 · 작업지시서 · 실행 로그)에는 시간 길이를 **"5분 36초"** 로 쓴다. "5.6분" 같은 소수 분은
