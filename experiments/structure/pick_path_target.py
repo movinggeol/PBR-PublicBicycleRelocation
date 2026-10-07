@@ -94,7 +94,8 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     with db.session() as conn:
-        refs = {dt: pv.load_refs(conn, dt) for dt in pv.DAY_TYPES}
+        # --until은 참조 계획도 묶는다 — 자료 끝 뒤에 세운 계획을 집지 않는다(1.26.326)
+        refs = {dt: pv.load_refs(conn, dt, before=args.until) for dt in pv.DAY_TYPES}
         raw = sf.load_grid(conn)
     if args.until:
         raw = raw[raw["ts"] < pd.Timestamp(args.until)]          # 인용 값을 고정한다(1.26.325)

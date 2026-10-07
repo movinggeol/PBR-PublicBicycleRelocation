@@ -84,11 +84,20 @@ def quiet(func, *args, **kwargs):
         return func(*args, **kwargs)
 
 
-def load_refs(conn, day_type: str) -> dict:
-    """회차 → (그 계획의 rebalance_plan 행, 라벨). 요일 구분마다 가장 최근 계획 실행(운영 기간)."""
+def load_refs(conn, day_type: str, before: str = None) -> dict:
+    """회차 → (그 계획의 rebalance_plan 행, 라벨). 요일 구분마다 가장 최근 계획 실행(운영 기간).
+
+    `before`를 주면 **그 시각 전에 만든** 계획 실행 중에서 고른다(1.26.326). `--until`이 관측 끝만 묶으면 그 뒤에 웹으로
+    세운 계획이 '가장 최근'이 되어 같은 명령이 다른 참조 계획을 집는다 — 2026-10-06 21:11 계획이 평일 `_05_10`의
+    '2026-09-30 22'를 밀어냈다(50장 등록 전 점검에서 찾음). 참조 계획은 자료 끝에 이미 있던 것이어야 한다.
+    """
     # 라벨부터 고르고 그 행만 읽는다 — 행마다 하위 질의를 돌리면 rebalance_plan 전체를 훑느라 10분을 넘긴다
-    runs = pd.read_sql("SELECT run_label, created_at FROM runs WHERE kind = 'plan' AND day_type = ? AND period = ?"
-                       " ORDER BY created_at DESC", conn, params=(day_type, DEFAULT_PERIOD))
+    sql = "SELECT run_label, created_at FROM runs WHERE kind = 'plan' AND day_type = ? AND period = ?"
+    params = [day_type, DEFAULT_PERIOD]
+    if before:
+        sql += " AND created_at < ?"
+        params.append(str(pd.Timestamp(before)))
+    runs = pd.read_sql(sql + " ORDER BY created_at DESC", conn, params=params)
     out = {}
     for label in runs["run_label"]:
         durations = [d for (d,) in conn.execute(
@@ -393,7 +402,8 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     with db.session() as conn:
-        refs = {dt: load_refs(conn, dt) for dt in DAY_TYPES}
+        # --until은 참조 계획도 묶는다 — 자료 끝 뒤에 세운 계획을 집지 않는다(1.26.326)
+        refs = {dt: load_refs(conn, dt, before=args.until) for dt in DAY_TYPES}
         if args.stats == "current":
             for dt in DAY_TYPES:
                 net = load_net(dt)
