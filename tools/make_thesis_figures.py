@@ -107,9 +107,28 @@ def setup():
         print("  [경고] 한글 글꼴을 못 찾았습니다 - 라벨이 깨질 수 있습니다.")
     plt.rcParams["axes.unicode_minus"] = False       # 마이너스가 □로 나오는 것 막기
     plt.rcParams["figure.dpi"] = 150
+    plt.rcParams["savefig.dpi"] = 220                 # 인쇄 제본 대비 — 화면 150 · 저장 220
     plt.rcParams["savefig.bbox"] = "tight"
+    # 차트 틀 정리 — 기본 matplotlib 박스(네 변 전부)는 잉크만 늘린다.
+    # 위·오른쪽 테두리를 지우고, 남는 선·눈금·격자는 옅은 회색 한 톤으로 통일한다.
+    plt.rcParams["axes.spines.top"] = False
+    plt.rcParams["axes.spines.right"] = False
+    plt.rcParams["axes.edgecolor"] = "#9a9890"
+    plt.rcParams["axes.labelcolor"] = "#0b0b0b"
+    plt.rcParams["text.color"] = "#0b0b0b"
+    plt.rcParams["xtick.color"] = "#52514e"
+    plt.rcParams["ytick.color"] = "#52514e"
     plt.rcParams["axes.grid"] = True
-    plt.rcParams["grid.alpha"] = 0.3
+    plt.rcParams["axes.axisbelow"] = True              # 격자가 막대·선 뒤로
+    plt.rcParams["grid.color"] = "#e1e0d9"
+    plt.rcParams["grid.linewidth"] = 0.7
+    plt.rcParams["grid.alpha"] = 1.0                   # 색 자체가 이미 옅다 — 더 섞지 않는다
+    plt.rcParams["font.size"] = 11
+    plt.rcParams["axes.titlesize"] = 13
+    plt.rcParams["axes.titleweight"] = "bold"
+    plt.rcParams["axes.labelsize"] = 11
+    plt.rcParams["legend.frameon"] = False              # 범례 테두리 상자도 잉크다
+    plt.rcParams["legend.fontsize"] = 10
     OUT.mkdir(parents=True, exist_ok=True)
 
 
