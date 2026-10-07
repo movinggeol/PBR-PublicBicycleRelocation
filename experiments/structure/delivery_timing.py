@@ -114,7 +114,10 @@ def classify(stops: pd.DataFrame, grid: pd.DataFrame, cap: pd.Series, start: pd.
         elif state == "안 닿음":
             state = "필요 없음"
         rows.append({**r.to_dict(), "상태": state, "닿은시각": when})
-    return pd.DataFrame(rows)
+    out = pd.DataFrame(rows)
+    # 닿지 않은 정류장의 None이 섞이면 object 열이 되어 시각 뺄셈이 안 된다(첫 실행에서 겪었다) — NaT로 맞춘다.
+    out["닿은시각"] = pd.to_datetime(out["닿은시각"])
+    return out
 
 
 def late_rate(frame: pd.DataFrame, shift: pd.Timedelta = pd.Timedelta(0)) -> tuple:
