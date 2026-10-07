@@ -49,6 +49,13 @@
     .m-stop.is-current { box-shadow: inset 3px 0 0 var(--m-accent); }
     .m-stop.is-done .m-stop-main .name { color: var(--m-ink-3); font-weight: 500; }
     .m-stop [data-flag]:empty { display: none; }
+    /* 지금 재고 재판정 — 방문지 아래 한 줄(번호 원 자리만큼 들여 이름에 맞춘다). */
+    .m-live { margin: 0 0 6px 32px; font-size: 12px; line-height: 1.45; color: var(--m-ink-2); }
+    .m-live[hidden] { display: none; }
+    .m-live .m-badge { margin-right: 4px; vertical-align: 1px; }
+    .m-live .advice { display: block; color: var(--m-ink-3); }
+    .m-live.is-stale { opacity: .55; }
+    .m-leg + .m-alert { margin-top: -2px; }
 {% endblock %}
 
 {% block content %}
@@ -85,6 +92,8 @@
   <div class="m-leg-row"><span class="m-leg-k">다음</span>
     <span class="m-leg-v" id="leg-to"><b>{{ first.no }}. {{ first.name }}</b><span>{{ first.label }} {{ first.qty }}대</span></span></div>
 </div>
+{# 다음 방문지가 지금 재고로 그대로 안 되면 여기서 먼저 말한다 — 목록까지 내려가지 않게. #}
+<p class="m-alert warn" id="live-next" role="status" hidden></p>
 
 <div class="m-map tall" id="route-map" role="region" aria-label="{{ route.id }} 경로 지도 — 번호는 방문 순서입니다. 같은 내용이 아래 목록에 있습니다.">
   <p class="m-map-fallback">지도는 스크립트가 그립니다. 아래 목록으로 진행하세요.</p>
@@ -99,7 +108,13 @@
 </div>
 <p class="hint" id="route-status">작업 {{ route.chain | length }}건 · 안내는 카카오맵이 합니다.</p>
 
-<h2 class="m-section" id="stops-h">방문 순서</h2>
+{# 작업 중 재판정 — 누를 때만 타슈 API를 부른다(/m/live). 스크립트가 없으면 관제 화면의 대조로 간다. #}
+<div class="m-section-row">
+  <h2 class="m-section" id="stops-h">방문 순서</h2>
+  <a class="m-btn small ghost" id="live-check" href="{{ links.live_vehicle }}">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>지금 재고로 재판정</a>
+</div>
+<p class="m-alert" id="live-summary" role="status" hidden></p>
 {# 대여소 한 곳 = 두 줄(이름·딱지 / 작업·적재·시각·ID·계획 시점 재고). 1.26.308에 세 줄을 두 줄로. #}
 <ol class="m-list m-stops" id="stops" aria-labelledby="stops-h">
   {%- for s in route.stops %}
@@ -121,10 +136,11 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button>
       {%- endif %}
     </div>
+    {%- if s.action != 'return' %}<p class="m-live" data-live hidden></p>{% endif %}
   </li>
   {%- endfor %}
 </ol>
-<p class="hint">시각은 출발 후 · 재고는 계획을 세운 시점 값(지금 재고는 <a href="{{ links.live }}">재고 대조</a>) ·
+<p class="hint">시각은 출발 후 · 재고는 계획을 세운 시점 값(지금 재고는 위 '재판정') ·
   <a href="{{ links.orders_vehicle }}">관제 지시서</a> · <a href="{{ links.maps }}">경로 지도</a></p>
 {% endif %}
 {% endblock %}
@@ -242,6 +258,109 @@
     });
     F.onChange(render);
     render();
+
+    /* ── 지금 재고로 재판정 (/m/live) ──
+       끝낸 방문지(이 기기의 체크)를 보내 **남은 곳만** 판정받는다. 결과는 체크와 함께 다시
+       그린다 — 판정 뒤에 체크가 바뀌면 줄을 흐리고 '다시 판정하세요'라고 적는다(앞 수거가
+       끝났는지에 따라 뒤 배송의 적재가 달라지므로 옛 판정을 그대로 믿으면 안 된다). */
+    var liveBtn = document.getElementById("live-check");
+    var liveSum = document.getElementById("live-summary");
+    var liveNext = document.getElementById("live-next");
+    var judged = null;     /* 마지막 응답 */
+    var BADGE = { "가능": "is-done", "부족": "is-warn", "넘침": "is-warn", "불가": "is-bad", "확인 불가": "is-todo" };
+
+    function doneNos() {
+      return v.stops.filter(function (s) { return s.action !== "return" && F.isDone(v.id, s.no); })
+                    .map(function (s) { return s.no; });
+    }
+    function sameDone() {
+      return judged && judged.done.join(",") === doneNos().sort(function (a, b) { return a - b; }).join(",");
+    }
+    function say(node, cls, text) {
+      node.className = "m-alert" + (cls ? " " + cls : "");
+      node.textContent = text;
+      node.hidden = !text;
+    }
+    function lineFor(r) {
+      var bits = [];
+      if (r.live_stock != null) {
+        var was = r.planned_stock != null ? "(계획 때 " + r.planned_stock + ")" : "";
+        bits.push("지금 재고 " + r.live_stock + "대" + was);
+      }
+      bits.push(r.note || "그대로 할 수 있습니다");
+      if (r.load != null) bits.push("지난 뒤 적재 " + r.load + "대");
+      return bits.join(" · ");
+    }
+    function renderLive() {
+      if (!judged) return;
+      var fresh = sameDone();
+      var byNo = {};
+      judged.stops.forEach(function (r) { byNo[r.no] = r; });
+      list.querySelectorAll("li[data-no]").forEach(function (li) {
+        var box = li.querySelector("[data-live]");
+        if (!box) return;
+        var r = byNo[Number(li.dataset.no)];
+        if (!r || r.status === "완료" || F.isDone(v.id, Number(li.dataset.no))) { box.hidden = true; return; }
+        box.textContent = "";
+        var b = document.createElement("span");
+        b.className = "m-badge " + (BADGE[r.status] || "is-todo");
+        b.textContent = r.status;
+        box.appendChild(b);
+        box.appendChild(document.createTextNode(" " + lineFor(r)));   /* 띄어야 '부족 지금…'으로 읽힌다 */
+        if (r.advice) {
+          var a = document.createElement("span"); a.className = "advice"; a.textContent = r.advice;
+          box.appendChild(a);
+        }
+        box.classList.toggle("is-stale", !fresh);
+        box.hidden = false;
+      });
+      var s = judged.summary;
+      var parts = [judged.checked_at + " 재고"
+                   + (judged.age_sec >= 5 ? "(" + judged.age_sec + "초 전에 받은 값)" : ""),
+                   "남은 " + s.total + "곳: 그대로 " + s.ok + " · 수량 조정 " + s.warn + " · 불가 " + s.blocked
+                   + (s.unknown ? " · 확인 불가 " + s.unknown : "")];
+      if (s.done) parts.push("끝낸 " + s.done + "곳은 계획 수량대로 했다고 보고 적재를 셉니다");
+      if (!fresh) parts.push("판정 뒤에 체크가 바뀌었습니다 — 다시 판정하세요");
+      say(liveSum, !fresh ? "warn" : (s.blocked ? "bad" : (s.warn || s.unknown) ? "warn" : "good"), parts.join(". ") + ".");
+
+      var p = F.progress(v), next = p.next;
+      var r = next && next.action !== "return" ? byNo[next.no] : null;
+      if (fresh && r && r.status !== "가능" && r.status !== "완료") {
+        say(liveNext, r.status === "불가" ? "bad" : "warn",
+            "다음 " + next.no + "번은 " + r.status + " — " + (r.note || "") + (r.advice ? ". " + r.advice : ""));
+      } else say(liveNext, "", "");
+    }
+    F.onChange(renderLive);
+
+    liveBtn.addEventListener("click", function (e) {
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || !window.fetch) return;
+      e.preventDefault();
+      if (liveBtn.getAttribute("aria-busy") === "true") return;
+      var plan = F.plan;
+      var q = new URLSearchParams({ run_label: plan.run_label || "", duration: plan.duration || "",
+                                    vehicle: v.id, done: doneNos().join(","), fp: plan.fp || "" });
+      liveBtn.setAttribute("aria-busy", "true");
+      liveBtn.lastChild.textContent = "재는 중…";
+      fetch("/m/live?" + q.toString(), { credentials: "same-origin" })
+        .then(function (res) { return res.json().catch(function () { return { ok: false, error: "응답을 읽지 못했습니다 (" + res.status + ")" }; }); })
+        .then(function (data) {
+          if (!data.ok) {
+            /* 옛 판정을 남겨 두면 지금 것으로 읽힌다 — 걷고 까닭만 적는다. */
+            judged = null;
+            list.querySelectorAll("[data-live]").forEach(function (box) { box.hidden = true; });
+            say(liveNext, "", "");
+            say(liveSum, "bad", data.error || "재판정하지 못했습니다.");
+            return;
+          }
+          judged = data;
+          renderLive();
+        })
+        .catch(function () { say(liveSum, "bad", "서버에 닿지 못했습니다 — 연결을 확인하고 다시 누르세요."); })
+        .then(function () {
+          liveBtn.removeAttribute("aria-busy");
+          liveBtn.lastChild.textContent = "지금 재고로 재판정";
+        });
+    });
   })();
 </script>
 {% endif %}

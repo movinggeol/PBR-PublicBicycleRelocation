@@ -416,6 +416,103 @@ def build_live(run_label: Optional[str], duration: Optional[str],
     return sheets
 
 
+def without_done(planned: pd.DataFrame, stops: list, done) -> pd.DataFrame:
+    """`planned_work()`에서 **이미 끝낸 방문지**를 뺀다 — 작업 중 재판정용.
+
+    끝낸 곳의 지금 재고는 작업 **뒤** 값이라 다시 재면 거짓 판정이 난다(수거를 마친 곳이
+    '재고가 모자라 부족'으로 뜬다). 대안 안내(`_suggest_actions`)도 끝낸 곳을 '여유 있는 곳'으로
+    가리키면 안 된다 — 이미 지나온 곳으로 되돌려 보낸다.
+    """
+    done = set(done or ())
+    gone = {(s["station_id"], s["action"]) for s in stops
+            if s["action"] != "return" and s["no"] in done}
+    if planned.empty or not gone:
+        return planned
+    keys = list(zip(planned["station_id"], planned["action"]))
+    return planned[[k not in gone for k in keys]].reset_index(drop=True)
+
+
+def _plain(value):
+    """`compare_stock()`의 Int64 칸(NA 포함) → JSON에 실을 int/None."""
+    if value is None or (not isinstance(value, str) and pd.isna(value)):
+        return None
+    return int(value)
+
+
+def rejudge_route(stops: list, compared: pd.DataFrame, done=()) -> list:
+    """한 차량의 **남은** 방문지를 지금 재고로 다시 판정한다 — 현장 앱 '지금 재고로 다시 판정'.
+
+    `compare_stock()`은 대여소를 하나씩 따로 본다. 작업 중에는 그것만으로 모자라다 — 앞
+    수거지에서 덜 실으면 **뒤 배송지에 내릴 자전거가 그만큼 없다.** 남은 방문지를 순서대로
+    걸으며 적재를 이어 센다:
+
+    - 출발 적재 = 끝낸 방문지의 **계획 수량**(수거 − 배송). 앱은 몇 대를 실었는지가 아니라
+      '끝냈다'만 기록하므로 계획대로 했다고 본다 — 화면이 이 전제를 밝힌다.
+    - 수거는 지금 재고만큼(`possible`) 싣는다. 판정을 못 하면(확인 불가) 계획 수량을 쓴다.
+    - 배송은 `min(내려놓을 수 있는 대수, 지금 적재)`. 적재가 모자라 덜 내리게 되면 판정을
+      **부족**(0대면 불가)으로 바꾸고 까닭을 적는다.
+
+    반환: 남은 방문지마다 {no, status, note, advice, live_stock, planned_stock, delta, need,
+    possible, load} — `load`는 그곳을 지난 뒤의 예상 적재. 끝낸 곳은 `status="완료"`만,
+    차고지 복귀는 넣지 않는다. **저장하지 않는 순수 계산이다.**
+    """
+    done = set(done or ())
+    by_key = {(r["station_id"], r["action"]): r for r in store.records(compared)}
+
+    load = 0
+    for s in stops:
+        if s["action"] == "return" or s["no"] not in done:
+            continue
+        load += s["qty"] if s["action"] == "pick" else -s["qty"]
+    load = max(load, 0)     # 순서를 건너뛰어 체크하면 음수가 될 수 있다 — 빈 차로 본다
+
+    out = []
+    for s in stops:
+        if s["action"] == "return":
+            continue
+        if s["no"] in done:
+            out.append({"no": s["no"], "status": "완료"})
+            continue
+        row = by_key.get((s["station_id"], s["action"]), {})
+        need = int(s["qty"])
+        possible = _plain(row.get("possible"))
+        status = row.get("status") or "확인 불가"
+        note = row.get("note") or ("타슈 API에 이 대여소가 없습니다" if not row else "")
+        advice = row.get("advice") or ""
+
+        if s["action"] == "pick":
+            load += possible if possible is not None else need
+        else:
+            room = possible if possible is not None else need
+            can = min(room, load)
+            if can < room and status in ("가능", "넘침"):
+                status = "부족" if can > 0 else "불가"
+                note = (f"실어 온 자전거가 {load}대뿐이라 {need}대 중 {can}대만 내릴 수 있습니다"
+                        if can > 0 else "실어 온 자전거가 없어 내릴 것이 없습니다")
+                advice = "앞 수거지에서 덜 실은 만큼입니다 — 남은 수거지에서 더 실을 수 있으면 메우세요"
+            if possible is not None:
+                possible = can
+            load -= can
+
+        out.append({
+            "no": s["no"], "status": status, "note": note, "advice": advice,
+            "live_stock": _plain(row.get("live_stock")),
+            "planned_stock": _plain(row.get("planned_stock")),
+            "delta": _plain(row.get("delta")),
+            "need": need, "possible": possible, "load": load,
+        })
+    return out
+
+
+def summarize_route(judged: list) -> dict:
+    """`rejudge_route()` 결과 한 줄 요약 — `summarize()`와 같은 칸(끝낸 곳은 세지 않는다)."""
+    left = [r for r in judged if r["status"] != "완료"]
+    count = lambda *names: sum(1 for r in left if r["status"] in names)   # noqa: E731
+    return {"total": len(left), "ok": count("가능"), "warn": count("부족", "넘침"),
+            "blocked": count("불가"), "unknown": count("확인 불가"),
+            "done": len(judged) - len(left)}
+
+
 def summarize(compared: pd.DataFrame) -> dict:
     """대조 결과 한 줄 요약. 화면 맨 위에 쓴다."""
     if compared.empty:

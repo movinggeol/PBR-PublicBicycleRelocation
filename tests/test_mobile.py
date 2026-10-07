@@ -482,3 +482,73 @@ def test_별칭은_모두_토큰을_가리킨다():
     assert len(aliases) >= 20
     for name, value in aliases.items():
         assert value.startswith("var(--") or value.endswith("px"), f"--{name}: {value}"
+
+
+# ─────────────── 작업 중 재판정 `/m/live` (1.26.333) ───────────────
+
+@pytest.fixture
+def live(monkeypatch):
+    """타슈 API를 가짜로 — 부른 횟수를 센다. 60초 캐시는 테스트마다 비운다."""
+    import tashu
+    from webapp import app as webapp_app
+
+    monkeypatch.setitem(webapp_app._field_live, "frame", None)
+    monkeypatch.setitem(webapp_app._field_live, "at", 0.0)
+    calls = []
+
+    def fetch(timeout=30):
+        calls.append(timeout)
+        return pd.DataFrame({"station_id": ["ST1001", "ST1002", "ST1003"], "stock": [2, 1, 3]})
+
+    monkeypatch.setattr(tashu, "fetch_stations", fetch)
+    return calls
+
+
+def _judge(client, **params):
+    q = {"run_label": LABEL, "duration": DURATION, "vehicle": "V01", **params}
+    return client.get("/m/live", params=q)
+
+
+def test_경로_화면을_열기만_해서는_타슈_API를_부르지_않는다(client, live):
+    html = client.get("/m/route?vehicle=V01").text
+    assert live == [], "화면을 여는 것만으로 외부 API를 불렀다"
+    assert 'id="live-check"' in html and "/orders/live?" in html, \
+        "재판정 단추(스크립트가 없으면 관제 화면의 대조로 가는 링크)가 없다"
+
+
+def test_재판정은_남은_곳만_적재를_이어_센다(client, live):
+    res = _judge(client)
+    assert res.status_code == 200
+    data = res.json()
+    by_no = {r["no"]: r for r in data["stops"]}
+    # ST1001에 2대뿐 → 2대만 싣고, ST1002(3대)엔 2대, ST1003(2대)엔 0대.
+    assert [by_no[n]["status"] for n in (1, 2, 3)] == ["부족", "부족", "불가"]
+    assert data["summary"]["total"] == 3 and data["summary"]["blocked"] == 1
+
+    # 1번을 끝냈다면 계획대로 5대를 실었다고 본다 — 뒤 두 곳은 그대로 된다.
+    data = _judge(client, done="1").json()
+    by_no = {r["no"]: r for r in data["stops"]}
+    assert by_no[1]["status"] == "완료" and data["done"] == [1]
+    assert by_no[2]["status"] == by_no[3]["status"] == "가능"
+
+
+def test_기사_여럿이_눌러도_60초_안에는_한_번만_받는다(client, live):
+    for _ in range(3):
+        assert _judge(client).status_code == 200
+    assert len(live) == 1, f"타슈 API를 {len(live)}번 불렀다"
+    assert "checked_at" in _judge(client).json()
+
+
+def test_계획이_바뀌었거나_차량이_없거나_API가_죽으면_말로_답한다(client, live, monkeypatch):
+    assert _judge(client, fp="옛지문").status_code == 409
+    assert _judge(client, vehicle="V99").status_code == 404
+    assert live == [], "판정할 수 없는 요청에 API를 불렀다"
+
+    import tashu
+
+    def boom(timeout=30):
+        raise tashu.TashuError("TASHU_API_KEY가 .env에 없습니다.")
+
+    monkeypatch.setattr(tashu, "fetch_stations", boom)
+    res = _judge(client)
+    assert res.status_code == 502 and "TASHU_API_KEY" in res.json()["error"]

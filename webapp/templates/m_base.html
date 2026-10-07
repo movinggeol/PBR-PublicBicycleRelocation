@@ -69,7 +69,8 @@
       --m-good-soft: var(--good-soft);
       --m-warn: var(--warning-ink);       /* 실험 계획 경고 */
       --m-warn-soft: var(--warning-soft);
-      --m-danger: var(--critical-ink);    /* 되돌릴 수 없는 동작(기록 지우기) */
+      --m-danger: var(--critical-ink);    /* 되돌릴 수 없는 동작(기록 지우기) · 재판정 '불가' */
+      --m-danger-soft: var(--critical-soft);
       --m-pick: var(--pick-ink);          /* 수거 (범주색 — 글자와 함께만) */
       --m-drop: var(--drop-ink);          /* 배송 */
       --m-shadow-map: var(--shadow-product); /* 시스템에 하나뿐인 그림자 — 지도에만 */
@@ -308,6 +309,7 @@
     .m-badge.is-done { color: var(--m-good); background: var(--m-good-soft); }
     .m-badge.is-mine { color: var(--m-ink); background: var(--m-fill); border-color: var(--m-line); }
     .m-badge.is-warn { color: var(--m-warn); background: var(--m-warn-soft); }
+    .m-badge.is-bad { color: var(--m-danger); background: var(--m-danger-soft); }
     .pick { color: var(--m-pick); font-weight: 600; }
     .drop { color: var(--m-drop); font-weight: 600; }
 
@@ -378,6 +380,7 @@
     .m-alert { border-radius: var(--r-sm); padding: 6px 10px; font-size: 12.5px; margin: 0 0 8px; }
     .m-alert.warn { background: var(--m-warn-soft); color: var(--m-ink); }
     .m-alert.good { background: var(--m-good-soft); color: var(--m-ink); }
+    .m-alert.bad { background: var(--m-danger-soft); color: var(--m-ink); }
     .m-alert[hidden] { display: none; }
 
     /* ── 하단 탭 막대 — 관제 화면 좁은 화면(.tabbar)과 같은 문법:

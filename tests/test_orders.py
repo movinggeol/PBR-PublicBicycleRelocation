@@ -454,3 +454,59 @@ def test_계획의_결측_수량과_거리에도_지시서가_산다():
     assert stops[0]["qty"] == 0 and stops[0]["distance_km"] == 0.0
     assert stops[1]["minutes"] == 0.0
     assert all(not (isinstance(v, float) and pd.isna(v)) for stop in stops for v in stop.values())
+
+
+# ─────────────── 작업 중 재판정 — 현장 앱 `/m/live` (1.26.333) ───────────────
+
+def _stops(*rows):
+    """`orders.build()`의 stops 모양 — (번호, 대여소, 동작, 수량)."""
+    return [{"no": no, "station_id": sid, "action": action, "qty": qty}
+            for no, sid, action, qty in rows]
+
+
+ROUTE = _stops((1, "A", "pick", 5), (2, "B", "drop", 3), (3, "C", "drop", 2), (4, "D", "return", 0))
+
+
+def _work(stops, lot=10):
+    return pd.DataFrame([{"station_id": s["station_id"], "station_name": s["station_id"],
+                          "cluster": 0, "seq": s["no"], "parking_lot": lot, "stock": 5,
+                          "need": s["qty"], "action": s["action"]}
+                         for s in stops if s["action"] != "return"])
+
+
+def test_앞에서_덜_실으면_뒤_배송이_그만큼_줄어든다():
+    """대여소를 하나씩 보는 `compare_stock()`은 B · C를 둘 다 '가능'이라 한다 — 자리는 있으니까.
+    그런데 A에 2대뿐이면 실어 갈 자전거가 2대라 B에 2대, C에 0대밖에 못 내린다."""
+    compared = orders.compare_stock(_work(ROUTE), _live(A=2, B=1, C=3))
+    assert set(compared["status"]) == {"부족", "가능"}, "대여소 단위 판정은 B · C를 가능으로 본다"
+
+    judged = {r["no"]: r for r in orders.rejudge_route(ROUTE, compared)}
+    assert judged[1]["status"] == "부족" and judged[1]["load"] == 2
+    assert judged[2]["status"] == "부족" and judged[2]["possible"] == 2
+    assert "2대뿐" in judged[2]["note"]
+    assert judged[3]["status"] == "불가" and judged[3]["possible"] == 0
+    assert 4 not in judged, "차고지 복귀는 판정 대상이 아니다"
+    assert orders.summarize_route(list(judged.values())) == {
+        "total": 3, "ok": 0, "warn": 2, "blocked": 1, "unknown": 0, "done": 0}
+
+
+def test_끝낸_방문지는_다시_재지_않고_계획_수량을_실었다고_본다():
+    """A를 끝냈으면 A의 지금 재고는 작업 **뒤** 값이다 — 다시 재면 '부족'으로 뜬다.
+    빼고 판정하고, 적재는 A의 계획 수량 5대에서 시작한다."""
+    planned = orders.without_done(_work(ROUTE), ROUTE, {1})
+    assert list(planned["station_id"]) == ["B", "C"]
+
+    judged = {r["no"]: r for r in orders.rejudge_route(
+        ROUTE, orders.compare_stock(planned, _live(A=0, B=1, C=3)), {1})}
+    assert judged[1] == {"no": 1, "status": "완료"}
+    assert judged[2]["status"] == "가능" and judged[2]["load"] == 2
+    assert judged[3]["status"] == "가능" and judged[3]["load"] == 0
+    assert orders.summarize_route(list(judged.values()))["done"] == 1
+
+
+def test_순서를_건너뛴_체크로_적재가_음수가_되지_않는다():
+    """배송만 끝냈다고 체크하면 적재가 −3이 된다 — 빈 차(0)로 보고 센다."""
+    judged = {r["no"]: r for r in orders.rejudge_route(
+        ROUTE, orders.compare_stock(orders.without_done(_work(ROUTE), ROUTE, {2}), _live(A=5, C=3)), {2})}
+    assert judged[1]["load"] == 5
+    assert judged[3]["status"] == "가능" and judged[3]["load"] == 3

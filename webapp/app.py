@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 import sys
+import threading
 import time
 import traceback
 from datetime import datetime
@@ -1229,10 +1230,79 @@ def field_route(request: Request, run_label: Optional[str] = None,
         run, dur = context["run_label"], context["duration"]
         context["links"]["orders_vehicle"] = _field_href(
             "/orders", run_label=run, duration=dur, vehicle=route["id"])
+        # '지금 재고로 재판정'의 스크립트 없는 길 — 관제 화면의 대조(이 차량만).
+        context["links"]["live_vehicle"] = _field_href(
+            "/orders/live", run_label=run, duration=dur, vehicle=route["id"])
         first = route["stops"][0] if route["stops"] else None
         # 스크립트가 없어도 첫 대여소로는 안내가 된다(있으면 스크립트가 체크를 따라 고친다).
         context["first_nav"] = mobile_view.nav_url(first) if first else None
     return templates.TemplateResponse(request, "m_route.html", context)
+
+
+# ── 작업 중 재판정 (현장 앱) ──
+# 타슈 API는 한 번에 대여소 전부를 준다. 기사 열댓 명이 비슷한 때 누르면 같은 표를 열댓 번
+# 받게 되므로 **60초 동안은 받은 표를 나눠 쓴다**(받은 시각을 화면에 적는다). 관제 화면
+# `/orders/live`는 사람이 '다시 조회'를 누른 뜻대로 늘 새로 받는다 — 이 캐시를 쓰지 않는다.
+FIELD_LIVE_TTL = 60
+_field_live = {"at": 0.0, "frame": None}
+_field_live_lock = threading.Lock()
+
+
+def _field_live_stations():
+    """(지금 재고 표, 받은 시각 time.time()). 실패하면 `tashu.TashuError`."""
+    with _field_live_lock:
+        now = time.time()
+        if _field_live["frame"] is not None and now - _field_live["at"] < FIELD_LIVE_TTL:
+            return _field_live["frame"], _field_live["at"]
+        frame = tashu.fetch_stations(timeout=15)
+        _field_live.update(at=now, frame=frame)
+        return frame, now
+
+
+@app.get("/m/live")
+def field_live(request: Request, run_label: Optional[str] = None,
+               duration: Optional[str] = None, vehicle: Optional[str] = None,
+               done: str = "", fp: str = ""):
+    """현장 앱 — **작업 중에** 남은 방문지를 지금 재고로 다시 판정한다(JSON).
+
+    `/orders/live`(관제 화면, 출발 전 대조)와 같은 판정 규칙(`orders.compare_stock`)을 쓰되 둘을
+    더한다 — 끝낸 방문지(`done=1,2,5`, 이 기기의 체크)는 빼고, 남은 방문지를 순서대로 걸으며
+    적재를 이어 센다(`orders.rejudge_route`). **기사가 눌렀을 때만 부른다** — 화면을 열 때
+    부르지 않는다(`/orders/live`와 같은 이유).
+
+    `fp`(화면이 든 계획 지문)가 지금 계획과 다르면 판정하지 않는다 — 같은 라벨로 다시 돌린
+    계획은 방문 번호가 바뀌어, 옛 화면의 3번에 새 계획 3번의 판정이 붙는다.
+    """
+    context = _orders_context(run_label, duration)
+    sheets, names = context["sheets"], context["sheet_names"]
+    target = vehicle or request.cookies.get(FIELD_VEHICLE_COOKIE) or ""
+    sheet = next((s for s, n in zip(sheets, names) if n == target), None)
+    if sheet is None:
+        return JSONResponse({"ok": False, "error": "이 회차에 이 차량의 경로가 없습니다."},
+                            status_code=404)
+    if fp and fp != mobile_view.plan_fingerprint(sheets, names):
+        return JSONResponse({"ok": False, "error": "계획이 바뀌었습니다 — 화면을 새로 고친 뒤 다시 판정하세요."},
+                            status_code=409)
+    finished = {int(x) for x in done.split(",") if x.strip().isdigit()}
+
+    try:
+        live, fetched_at = _field_live_stations()
+    except tashu.TashuError as err:
+        return JSONResponse({"ok": False, "error": str(err)}, status_code=502)
+
+    planned = orders.planned_work(context["run_label"], context["duration"],
+                                  frames=context["_frames"])
+    planned = orders.without_done(planned, sheet["stops"], finished)
+    judged = orders.rejudge_route(sheet["stops"], orders.compare_stock(planned, live), finished)
+    return JSONResponse({
+        "ok": True,
+        "vehicle": target,
+        "checked_at": time.strftime("%H:%M:%S", time.localtime(fetched_at)),
+        "age_sec": int(time.time() - fetched_at),
+        "done": sorted(finished),
+        "stops": judged,
+        "summary": orders.summarize_route(judged),
+    })
 
 
 @app.get("/m/progress")
