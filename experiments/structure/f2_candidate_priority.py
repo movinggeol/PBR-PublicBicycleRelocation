@@ -232,6 +232,7 @@ def evaluate(rows: list, day_count: int) -> list:
         cost = {k: pair[k].mean() / pair[f"{k}_현행"].mean() - 1 if pair[f"{k}_현행"].mean() else 0.0
                 for k in ("포화", "km", "vehicles")}
         bins_ok = bins_not_worse(pair, bin_names(table))
+        worse = bins_worse(pair, bin_names(table))
         passed = (diff.mean() < 0 and p < WILCOXON_ALPHA
                   and all(v <= COST_TOLERANCE for v in cost.values()) and bins_ok)
         if day_count < ADOPT_MIN_DAYS:
@@ -240,8 +241,24 @@ def evaluate(rows: list, day_count: int) -> list:
             word = "✅ 채택 조건 통과" if passed else "❌ 미달"
         verdicts.append({"duration": duration, "method": method, "n": len(pair),
                          "결품차": diff.mean(), "p": p, **{f"비용_{k}": v for k, v in cost.items()},
-                         "구간": bins_ok, "판정": word})
+                         "구간": bins_ok, "나빠진_구간": worse, "판정": word})
     return verdicts
+
+
+def bins_worse(pair: pd.DataFrame, names: list) -> list:
+    """현행보다 결품이 **커진** 구간을 (구간, 방법 평균, 현행 평균)으로 돌려준다.
+
+    첫 실측(2026-10-08)이 구간 ❌만 찍고 어느 구간인지 남기지 않아 80분 결과를 되짚을 수 없었다 —
+    판정 줄 아래에 이것을 찍는다. 규칙(`bins_not_worse`)은 그대로다.
+    """
+    out = []
+    for b in names:
+        mine, base = pair[f"결품_{b}"].mean(), pair[f"결품_{b}_현행"].mean()
+        if (pd.isna(mine) and pd.isna(base)) or (mine == 0 and base == 0):
+            continue
+        if pd.isna(mine) or pd.isna(base) or mine > base + 1e-12:
+            out.append((b, float(mine), float(base)))
+    return out
 
 
 def bins_not_worse(pair: pd.DataFrame, names: list) -> bool:
@@ -278,6 +295,7 @@ def main(argv=None) -> int:
     parser.add_argument("--durations", default=",".join(DURATIONS))
     parser.add_argument("--days", default="", help="평가할 날만 (쉼표, YYYY-MM-DD)")
     parser.add_argument("--seeds", default=",".join(str(s) for s in SEEDS))
+    parser.add_argument("--out", help="(날, 회차, 방법, 씨앗) 행을 CSV로 남긴다 — 80분짜리 실행을 되짚으려면 꼭 준다")
     args, _ = parser.parse_known_args(argv)
 
     durations = [d.strip() for d in args.durations.split(",") if d.strip()]
@@ -373,6 +391,9 @@ def main(argv=None) -> int:
         print("결과가 없습니다.")
         return 1
     table = pd.DataFrame(rows)
+    if args.out:
+        table.to_csv(args.out, index=False, encoding="utf-8-sig")
+        print(f"\n행 {len(table)}개를 {args.out}에 남겼다.")
     print("\n" + "=" * 96)
     print("회차 × 방법 평균 (중립 모집단 = 회차 시작에 관측된 대여소 전체)")
     print("=" * 96)
@@ -385,6 +406,8 @@ def main(argv=None) -> int:
         print(f"  {v['duration']:7} {v['method']}  n={v['n']:>3}  결품 {v['결품차']:+.4f}h  p={v['p']:.3f}"
               f"  포화 {v['비용_포화']:+.1%} · km {v['비용_km']:+.1%} · 차량 {v['비용_vehicles']:+.1%}"
               f"  구간 {'✅' if v['구간'] else '❌'}  → {v['판정']}")
+        for b, mine, base in v["나빠진_구간"]:
+            print(f"      ↳ 평소 빈도 {b}: {mine:.3f}h > 현행 {base:.3f}h")
     return 0
 
 
