@@ -1155,11 +1155,18 @@ def test_period_default_is_the_latest_month(client):
     if not available_periods():
         pytest.skip("순수요 자료가 없어 기간 선택지가 비어 있다")
 
+    import re
+
     period = latest_period()
     html = client.get("/run").text
     assert f'<option value="{period}"' in html
-    assert f'{latest_period()}"\n              selected' in html \
-        or "selected" in html, "기본 선택이 없다"
+    # 기간 select **안에서** 그 달의 option에 selected가 붙었는지 본다. 예전 단정은
+    # `or "selected" in html`이 붙어 있어, 같은 화면의 요일 구분 select가 늘 찍는
+    # selected 때문에 기본 선택이 통째로 빠져도 통과했다(2026-10-08 점검).
+    block = re.search(r'<select id="f-period".*?</select>', html, re.S)
+    assert block, "기간 선택 상자가 없다"
+    chosen = re.findall(r'<option value="([^"]*)"\s+selected', block.group(0))
+    assert chosen == [period], f"기본 선택이 가장 최근 달이 아니다: {chosen}"
 
 
 def test_year_ago_hint_only_when_it_exists(monkeypatch):

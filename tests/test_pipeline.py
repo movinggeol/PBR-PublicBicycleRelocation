@@ -16,7 +16,6 @@ import pandas as pd
 import pytest
 
 from project_config import DATA_ROOT, PP_ROOT, PROJECT_ROOT
-from tools.make_sample_data import generate
 
 DURATION = "_05_10"
 LABEL = f"smoketest-{os.getpid()}"

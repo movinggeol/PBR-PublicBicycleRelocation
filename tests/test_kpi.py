@@ -248,7 +248,11 @@ def test_kpi_page_shows_stockout(client):
     html = client.get("/kpi").text
 
     assert "결품 시간" in html
-    assert "2.3h" in html or "2.3" in html
+    # 결품 타일 **안에서** 본다 — 화면 어디에든 "2.3"이 있으면 통과하던 단정이었다
+    # (2026-10-08 점검). 타일의 큰 숫자는 재배치 뒤, 부제는 재배치 전이다.
+    tile = html.split("data-stockout-tile", 1)[1].split("</div>", 1)[0]
+    assert ">0.5<" in tile, "재배치 뒤 결품이 타일의 값이 아니다"
+    assert "재배치 전 2.3시간" in tile
     assert "시뮬레이션" in html
 
 
@@ -261,7 +265,9 @@ def test_kpi_page_shows_delta(client):
     """
     html = client.get("/kpi").text
     assert 'class="delta' in html, "헤드라인 타일에 증감 딱지가 없다"
-    assert f"{OLD}</b>" in html or OLD in html, "무엇과 견줬는지 말하지 않는다"
+    # `or OLD in html`이 붙어 있었다 — OLD는 실행 표에 늘 찍히므로 견준 상대를 말하는
+    # 문장이 사라져도 통과했다(2026-10-08 점검). 그 문장으로 본다.
+    assert f"<b>{OLD}</b>" in html and "대비입니다" in html, "무엇과 견줬는지 말하지 않는다"
 
 
 def test_kpi_page_says_why_no_delta_without_day_type(tmp_path, monkeypatch):

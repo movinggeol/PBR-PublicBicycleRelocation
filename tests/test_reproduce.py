@@ -117,8 +117,12 @@ def test_end_to_end(tmp_path):
          "--db", str(tmp_path / "repro.db")],
         cwd=PROJECT_ROOT, capture_output=True, text=True,
         encoding="utf-8", errors="replace",
+        # 🔴 자료 폴더도 임시 경로로 돌린다(2026-10-08 점검). 예전에는 DB만 따로 두고
+        #    산출물·합성 원천 CSV는 사용자의 실제 `data/`에 **고정 라벨 '재현 데모'** 로
+        #    썼다 — pytest 두 벌이 겹치면 한쪽의 정리가 다른 쪽 산출물을 지운다.
         env={**__import__("os").environ, "PYTHONUTF8": "1",
-             "PYTHONIOENCODING": "utf-8"},
+             "PYTHONIOENCODING": "utf-8",
+             "PBR_DATA_ROOT": str(tmp_path / "data")},
     )
     assert completed.returncode == 0, (
         f"재현이 실패했습니다\n--- stdout ---\n{completed.stdout[-3000:]}\n"

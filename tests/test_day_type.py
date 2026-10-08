@@ -23,7 +23,6 @@ from project_config import (
     PP_ROOT, PROJECT_ROOT, holiday_mask, is_holiday, normalize_day_type,
     resolve_day_type, select_day_type,
 )
-from tools.make_sample_data import generate
 
 DURATION = "_05_10"
 LABEL = f"daytype-{os.getpid()}"
@@ -34,6 +33,10 @@ PREP = [
     Path("pipeline/step0_collect") / "raw_to_net.py",
 ]
 TARGET_QTY = Path("pipeline/step0_collect") / "calculate_target_qty.py"
+
+# 산출물 뿌리는 `prepared`가 임시 경로로 갈아끼운다(2026-10-08 점검 — test_pipeline과 같은
+# 방식). 기본값을 진짜 경로로 두는 것은 픽스처 없이 읽는 실수가 있으면 드러나게 하려는 것이다.
+_PP_ROOT: Path = PP_ROOT
 
 
 # ---------------- 설정 헬퍼 ----------------
@@ -97,34 +100,43 @@ def test_holiday_mask_matches_scalar_rule():
 
 @pytest.fixture(scope="module")
 def prepared(tmp_path_factory):
-    """합성 데이터로 순수요까지 만들어 둔다(요일 구분과 무관한 단계들)."""
+    """합성 데이터로 순수요까지 만들어 둔다(요일 구분과 무관한 단계들).
+
+    🔴 **산출물은 진짜 `data/`가 아니라 임시 경로에 쌓인다** (2026-10-08 점검).
+    예전에는 `PBR_DB_PATH`만 격리해 이 모듈이 사용자의 `data/pp_data`에 파일을 만들고
+    teardown의 `rglob`으로 치웠다 — test_pipeline이 *"치우는 것보다 애초에 안 만드는
+    것이 낫다"* 며 1.26.188에 버린 방식이 여기에는 남아 있었다.
+    """
+    global _PP_ROOT
     raw_path = tmp_path_factory.mktemp("raw") / "합성_대여이력.csv"
-    # `generate()`는 **이 프로세스에서** `station_stock`을 DB에 쓴다. 모듈 스코프라
-    # 함수 스코프 격리가 아직 안 걸린 때이고, 받아 주는 것은 conftest의 세션
-    # 격리다(1.26.189 — 그 전에는 사용자 DB에 `daytype-*`가 남았다).
-    generate(now=LABEL, period=LABEL, stations=70, days=28,
-             rentals_per_day=400, raw_path=raw_path)
+    data_root = tmp_path_factory.mktemp("data")
+    _PP_ROOT = data_root / "pp_data"
 
     env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8",
+               PBR_DATA_ROOT=str(data_root),
                PBR_DB_PATH=str(tmp_path_factory.mktemp("db") / "daytype.db"))
 
-    # `try`로 감싼다 — `pytest.fail()`이 `yield` 앞이라 준비 단계가 실패하면
-    # teardown에 못 가고, 실제 `data/pp_data`에 잔여물이 남는다(1.26.124).
-    try:
-        for script in PREP:
-            done = subprocess.run(
-                [sys.executable, str(script), "--now", LABEL, "--period", LABEL,
-                 "--duration", DURATION, "--raw-file", str(raw_path)],
-                cwd=PROJECT_ROOT, env=env, capture_output=True, text=True,
-                encoding="utf-8", errors="replace")
-            if done.returncode != 0:
-                pytest.fail(f"{script} 실패\n{done.stdout[-1500:]}\n{done.stderr[-1500:]}")
+    # 합성 데이터도 하위 프로세스로 만든다 — `generate()`를 여기서 부르면 import 시점에
+    # 굳은 `DATA_ROOT`(=진짜 `data/`)에 대여소 파일이 쓰인다.
+    made = subprocess.run(
+        [sys.executable, "tools/make_sample_data.py",
+         "--now", LABEL, "--period", LABEL, "--stations", "70",
+         "--days", "28", "--rentals-per-day", "400", "--raw-file", str(raw_path)],
+        cwd=PROJECT_ROOT, env=env, capture_output=True, text=True,
+        encoding="utf-8", errors="replace")
+    if made.returncode != 0:
+        pytest.fail("합성 데이터 생성 실패:" + made.stdout + made.stderr)
 
-        yield env
-    finally:
-        for path in PP_ROOT.rglob(f"*{LABEL}*"):
-            if path.is_file():
-                path.unlink()
+    for script in PREP:
+        done = subprocess.run(
+            [sys.executable, str(script), "--now", LABEL, "--period", LABEL,
+             "--duration", DURATION, "--raw-file", str(raw_path)],
+            cwd=PROJECT_ROOT, env=env, capture_output=True, text=True,
+            encoding="utf-8", errors="replace")
+        if done.returncode != 0:
+            pytest.fail(f"{script} 실패\n{done.stdout[-1500:]}\n{done.stderr[-1500:]}")
+
+    yield env
 
 
 def _rebal(env, day_type: str) -> pd.DataFrame:
@@ -136,13 +148,13 @@ def _rebal(env, day_type: str) -> pd.DataFrame:
         encoding="utf-8", errors="replace")
     if done.returncode != 0:
         pytest.fail(f"calculate_target_qty({day_type}) 실패\n{done.stderr[-1500:]}")
-    path = PP_ROOT / f"재배치 정보/rebal_qty{DURATION} ({LABEL}).csv"
+    path = _PP_ROOT / f"재배치 정보/rebal_qty{DURATION} ({LABEL}).csv"
     return pd.read_csv(path, encoding="utf-8").set_index("station_id")
 
 
 def test_net_demand_keeps_holidays(prepared):
     """raw_to_net이 휴일을 버리지 않는다(예전 평일 필터 회귀 방지)."""
-    net = pd.read_csv(PP_ROOT / f"순수요/st_net_daily ({LABEL}).csv", encoding="utf-8")
+    net = pd.read_csv(_PP_ROOT / f"순수요/st_net_daily ({LABEL}).csv", encoding="utf-8")
     mask = holiday_mask(net["날짜"])
 
     assert mask.any(), "휴일이 사라졌다 — 평일 필터가 되살아났는지 확인하라"

@@ -4,8 +4,8 @@
 저장소를 바꾸는 작업이므로 값이 달라지면 이관 자체가 실패다.
 
 모든 테스트가 임시 DB를 쓴다(conftest.py의 autouse fixture + 명시적 경로).
-모듈 스코프 픽스처는 함수 스코프 격리보다 먼저 서므로 conftest의 **세션 격리**가
-받는다(1.26.189 — 그 전에는 `sample`이 사용자 DB에 `rentaltest-*`를 남겼다).
+산출물도 임시 자료 폴더(`PBR_DATA_ROOT`)에 쌓인다(2026-10-08 점검 — 그 전에는 사용자의
+`data/pp_data`에 `rentaltest-*`를 만들고 teardown에서 치웠다).
 """
 import os
 import subprocess
@@ -15,25 +15,37 @@ import pandas as pd
 import pytest
 
 import db
-from project_config import PP_ROOT, PROJECT_ROOT
-from tools.make_sample_data import generate
+from project_config import PROJECT_ROOT
 
 PERIOD = f"rentaltest-{os.getpid()}"
 NOW = PERIOD
 DURATION = "_05_10"
 
+# `sample`이 채운다 — 이 모듈의 하위 프로세스가 쓰는 임시 자료 폴더다.
+_DATA_ROOT = None
+
 
 @pytest.fixture(scope="module")
 def sample(tmp_path_factory):
-    """합성 대여이력 CSV와 재고 CSV를 만든다."""
+    """합성 대여이력 CSV와 재고 CSV를 만든다 — 진짜 `data/`가 아니라 임시 폴더에."""
+    global _DATA_ROOT
     raw_path = tmp_path_factory.mktemp("raw") / "합성_대여이력.csv"
-    # `generate()`는 이 프로세스에서 `station_stock`을 DB에 쓴다 — 세션 격리가 받는다.
-    generate(now=NOW, period=PERIOD, stations=40, days=6,
-             rentals_per_day=200, raw_path=raw_path)
-    yield raw_path
-    for path in PP_ROOT.rglob(f"*{PERIOD}*"):
-        if path.is_file():
-            path.unlink()
+    _DATA_ROOT = tmp_path_factory.mktemp("data")
+    # 하위 프로세스로 만든다 — `generate()`를 여기서 부르면 import 시점에 굳은
+    # `DATA_ROOT`(=진짜 `data/`)에 대여소 파일이 쓰인다. 이때 생기는 `station_stock`은
+    # 버리는 DB로 보낸다(아래 동일성 검증은 저마다 제 DB를 쓴다).
+    env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8",
+               PBR_DATA_ROOT=str(_DATA_ROOT),
+               PBR_DB_PATH=str(tmp_path_factory.mktemp("gen") / "gen.db"))
+    made = subprocess.run(
+        [sys.executable, "tools/make_sample_data.py",
+         "--now", NOW, "--period", PERIOD, "--stations", "40",
+         "--days", "6", "--rentals-per-day", "200", "--raw-file", str(raw_path)],
+        cwd=PROJECT_ROOT, env=env, capture_output=True, text=True,
+        encoding="utf-8", errors="replace")
+    if made.returncode != 0:
+        pytest.fail("합성 데이터 생성 실패:" + made.stdout + made.stderr)
+    return raw_path
 
 
 @pytest.fixture(scope="module")
@@ -154,7 +166,7 @@ def test_read_source_falls_back_to_csv(sample, tmp_path):
 
 def _run_step0(script: str, raw_path, db_path) -> None:
     env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8",
-               PBR_DB_PATH=str(db_path))
+               PBR_DATA_ROOT=str(_DATA_ROOT), PBR_DB_PATH=str(db_path))
     completed = subprocess.run(
         [sys.executable, script, "--now", NOW, "--period", PERIOD,
          "--duration", DURATION, "--raw-file", str(raw_path)],
@@ -178,7 +190,7 @@ def test_csv_and_db_paths_produce_identical_output(
 
     같은 스크립트를 CSV 경로(빈 DB)와 DB 경로(적재된 DB)로 각각 실행해 산출물을 비교한다.
     """
-    target = PP_ROOT / output.format(period=PERIOD, now=NOW)
+    target = _DATA_ROOT / "pp_data" / output.format(period=PERIOD, now=NOW)
 
     # 1) CSV 경로 — DB가 비어 있어 폴백한다
     empty_db = tmp_path_factory.mktemp("csvpath") / "empty.db"

@@ -157,7 +157,10 @@ def test_metrics_envelope_reports_source_and_label(client):
 def test_저장된_실행_표의_바로_보기는_화면으로_보낸다(client):
     """사람이 보는 표가 `/api/metrics?…` JSON으로 보내고 있었다 (1.26.264)."""
     html = client.get("/run").text
-    assert f"/kpi?run_label={NEW}" in html.replace("%20", " ") or "/kpi?run_label=" in html
+    # `or "/kpi?run_label=" in html`이 앞 절을 삼켜, 최신 실행의 링크가 사라져도 다른
+    # 실행의 링크 하나만 있으면 통과했다(2026-10-08 점검).
+    from urllib.parse import unquote
+    assert f"/kpi?run_label={NEW}" in unquote(html), "최신 실행의 지표 링크가 없다"
     assert "/orders?run_label=" in html
     assert '/api/metrics?run_label=' not in html, "지표 링크가 아직 JSON으로 간다"
 

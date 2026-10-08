@@ -37,3 +37,25 @@ def test_모듈_스코프_픽스처도_세션_임시_DB를_본다(module_scope_d
 def test_함수_스코프는_여전히_테스트마다_새_DB를_받는다(tmp_path):
     """세션 격리를 더해도 테스트마다 빈 DB를 주는 약속은 그대로다."""
     assert db.active_db_path() == tmp_path / "isolated.db"
+
+
+def test_단계를_띄우는_테스트는_자료_폴더도_임시로_돌린다():
+    """파이프라인 단계를 하위 프로세스로 띄우는 테스트는 `PBR_DATA_ROOT`를 넘긴다 (2026-10-08 점검).
+
+    `PBR_DB_PATH`만 격리하면 산출물 CSV는 사용자의 실제 `data/pp_data`에 쌓인다.
+    test_pipeline은 1.26.188에 고쳤는데 test_day_type · test_rentals · test_reproduce는
+    그대로 남아 teardown의 `rglob`에 기대고 있었다 — 준비 단계가 죽으면 잔여물이 남는다.
+    `generate()`를 이 프로세스에서 부르는 것도 같은 구멍이다(import 시점에 굳은
+    `DATA_ROOT`에 쓴다).
+    """
+    from pathlib import Path
+
+    here = Path(__file__).resolve().parent
+    for path in sorted(here.glob("test_*.py")):
+        if path.name == Path(__file__).name:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "subprocess.run" in text and '"--now"' in text:
+            assert "PBR_DATA_ROOT" in text, f"{path.name}: 단계를 띄우면서 자료 폴더를 격리하지 않는다"
+        assert "make_sample_data import generate" not in text, \
+            f"{path.name}: generate()를 이 프로세스에서 부르면 진짜 data/에 쓴다 — 하위 프로세스로 띄울 것"

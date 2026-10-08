@@ -77,7 +77,10 @@ def test_heaviest_cluster_goes_to_least_loaded(conn):
 
     # 두 번째 회차는 아직 안 나간 V02, V03이 뽑히고,
     # 그중 더 한가한(ID가 앞선) 쪽이 무거운 클러스터를 맡는다.
-    assert mapping[0] < mapping[1] or mapping[0] != mapping[1]
+    # (예전 단정은 `a < b or a != b`라 `a != b`와 같았다 — 한 회차의 두 군집은 어차피
+    #  다른 차량이라 늘 참이다. 2026-10-08 점검)
+    assert sorted(mapping.values()) == ["V02", "V03"], "아직 안 나간 두 대가 뽑혀야 한다"
+    assert mapping[0] < mapping[1], "무거운 군집(0)이 ID가 앞선 쪽에 가야 한다"
     heavy_vehicle = mapping[0]
     assert heavy_vehicle not in ("V01",), "직전에 100분 일한 차량이 또 최다 작업을 맡으면 안 된다"
 

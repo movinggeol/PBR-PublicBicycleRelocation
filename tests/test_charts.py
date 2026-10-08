@@ -595,7 +595,7 @@ def test_빈_상태_문구를_그래프마다_따로_적지_않는다():
     outputs = {
         charts.hbar([], [], title="t"),
         charts.deviation_hbar([], [], title="t"),
-        charts.vbar([], [], title="t") if hasattr(charts, "vbar") else charts._empty(),
+        charts.vbar([], [], title="t"),
     }
     assert len(outputs) == 1, f"그래프마다 빈 상태가 다르다: {outputs}"
 
