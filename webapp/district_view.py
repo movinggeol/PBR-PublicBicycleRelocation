@@ -74,6 +74,17 @@ def _gap(lon: float, lat: float, ring: list) -> float:
 def district_of(lat: float, lon: float) -> Optional[str]:
     if lat is None or lon is None or pd.isna(lat) or pd.isna(lon):
         return None
+    return _district_at(float(lat), float(lon))
+
+
+@lru_cache(maxsize=16384)
+def _district_at(lat: float, lon: float) -> str:
+    """좌표 하나의 구 — 한 번 판정한 좌표는 다시 세지 않는다.
+
+    대여소 좌표는 실행이 달라도 같다. 예전에는 `/maps`에서 회차 단추를 누를 때마다
+    1,300여 곳을 다섯 구의 꼭짓점 수백 개에 다시 대어 0.7초가 들었다(2026-10-08 실측).
+    좌표를 반올림하지 않고 그대로 열쇠로 쓴다 — 경계 위의 점이 다른 구로 넘어가지 않게.
+    """
     for d in districts():
         if any(_inside(lon, lat, r) for r in d["rings"]):
             return d["name"]

@@ -29,7 +29,7 @@ except ModuleNotFoundError:                      # 패키지 경로로 불렸다
 import db
 from project_config import (
     exit_if_help,
-    DATA_ROOT, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DROP_TIME_SEC, PICK_TIME_SEC, PROJECT_ROOT,
+    DATA_ROOT, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DROP_TIME_SEC, PICK_TIME_SEC, 
     ENFORCE_TIME_BUDGET, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY,
     VEHICLE_SPEED_KMPH, format_minutes,
     duration_list, ensure_output_dirs, get_runtime_config, require_columns,
@@ -51,7 +51,7 @@ now = config.now
 #  작업시간은 1.18.6까지 이 파일에 박혀 있어 다른 운영 상수와 따로 놀았다.)
 
 # 한 회차에 차량 1대가 클러스터 1개를 맡고 depot으로 복귀한다(사용자 결정, 1.13.2).
-# 여러 클러스터를 이어 도는 구조는 채택하지 않았다 — docs/구현/FLEET.md '운용 모델' 참고.
+# 여러 클러스터를 이어 도는 구조는 채택하지 않았다 — docs/구현/FLEET.md '운영 모델' 참고.
 
 
 def _travel_sec(km: float) -> float:

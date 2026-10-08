@@ -19,7 +19,7 @@ import pandas as pd
 import db
 from project_config import (
     exit_if_help,
-    DATA_ROOT, PROJECT_ROOT, ensure_output_dirs, get_runtime_config, holiday_mask,
+    DATA_ROOT, ensure_output_dirs, get_runtime_config, holiday_mask,
 )
 
 # to_csv
@@ -46,8 +46,8 @@ def main() -> None:
     # (calculate_target_qty)가 --day-type으로 고른다.
     # 예전에는 여기서 주말을 버렸는데, 그러면 전체 이용의 21~34%가 사라지고
     # 휴일 계획을 아예 만들 수 없었다 (버전관리 1.14.0).
-    d_data = data.copy()
-    d_data['날짜'] = d_data['대여일시'].dt.date
+    # `data`는 이 뒤로 쓰이지 않는다 — 수백만 행을 통째로 복사하지 않고 열 하나만 보탠다.
+    d_data = data.assign(날짜=data['대여일시'].dt.date)
 
     rent = (
         d_data

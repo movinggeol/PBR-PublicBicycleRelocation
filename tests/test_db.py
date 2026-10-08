@@ -589,3 +589,42 @@ def test_도구들이_DB_경로를_짐작하지_않는다():
         assert "db.DB_PATH" not in body, f"{name}이 import 시점 기본값을 찍는다"
         assert "hasattr(db, 'db_path')" not in body, f"{name}에 없는 함수를 보는 폴백이 남아 있다"
         assert "active_db_path" in body, f"{name}이 열린 DB 경로를 쓰지 않는다"
+
+
+def test_distinct_values는_SELECT_DISTINCT와_같다(conn):
+    """인덱스를 건너뛰며 읽어도 `SELECT DISTINCT … ORDER BY`와 같은 값이다 (2026-10-08 점검).
+
+    SQLite의 `DISTINCT`·`COUNT(DISTINCT)`는 인덱스 항목을 전부 훑는다. 대여이력 911만 ·
+    재고 606만 행이 되자 값이 19개 · 1,400개 · 4,400개뿐인 조회가 `/run`을 8~11초,
+    `/collect`를 15~17초 붙잡았다. 값 단위로 건너뛰는 조회로 바꿨고(7초 → 0.03초 이하),
+    여기서는 **빠른 길이 같은 답을 내는지**를 지킨다.
+    """
+    ticks = ["2026-08-24 09:00", "2026-08-24 09:10", "2026-08-25 00:00", "2026-08-26 23:50"]
+    rows = [(tick, f"ST{n:04d}", n) for tick in ticks for n in (1, 2, 3, 7)]
+    conn.executemany(
+        "INSERT INTO stock_history (observed_at, station_id, stock) VALUES (?, ?, ?)", rows)
+    conn.commit()
+
+    def slow(column, where="", params=()):
+        return [r[0] for r in conn.execute(
+            f"SELECT DISTINCT {column} FROM stock_history{where} ORDER BY {column}", params)]
+
+    assert db.distinct_values(conn, "stock_history", "observed_at") == slow("observed_at") == ticks
+    assert db.distinct_values(conn, "stock_history", "station_id") == slow("station_id")
+    assert db.stock_station_count(conn) == 4
+
+    # 범위는 양 끝을 포함한다 — `stock_history_ticks()`의 start · end와 같은 뜻이다
+    got = db.stock_history_tick_times(conn, start="2026-08-24", end="2026-08-25")
+    assert got == db.stock_history_ticks(conn, start="2026-08-24", end="2026-08-25")[
+        "observed_at"].tolist() == ticks[:3]
+    assert db.distinct_values(conn, "stock_history", "observed_at",
+                              lower="2026-08-27") == []
+    assert db.distinct_values(conn, "stock_history", "observed_at",
+                              upper="2026-08-24 09:00") == ticks[:1]
+
+    # 빈 표 · 없는 표 · 식별자가 아닌 이름
+    assert db.distinct_values(conn, "rental_history", "period") == []
+    assert db.rental_periods(conn) == frozenset()
+    assert db.distinct_values(conn, "no_such_table", "x") == []
+    with pytest.raises(ValueError):
+        db.distinct_values(conn, "stock_history; DROP TABLE runs", "x")

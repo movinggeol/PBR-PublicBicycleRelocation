@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import db
 from project_config import (
-    DATA_ROOT, DEFAULT_NOW, DEFAULT_PERIOD, PROJECT_ROOT, ensure_output_dirs, is_holiday,
+    DATA_ROOT, DEFAULT_NOW, DEFAULT_PERIOD, ensure_output_dirs, is_holiday,
 )
 
 # ⚠️ `data/`를 붙이지 마라 — 경로는 `DATA_ROOT` 기준이다(1.26.141).

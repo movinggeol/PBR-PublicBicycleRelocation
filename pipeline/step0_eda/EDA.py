@@ -23,7 +23,6 @@ HTML은 `webapp/charts.py`의 인라인 SVG를 그대로 쓴다 — 그리는 �
 물러선다. 계절성은 한 달만 봐서는 보이지 않기 때문이다.
 """
 import sys
-from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -79,17 +78,6 @@ def _save(fig, name: str) -> Path:
     plt.close(fig)          # 닫지 않으면 그림이 메모리에 쌓인다
     print(f"저장: {path}")
     return path
-
-
-def now_month(df: pd.DataFrame):
-    '''
-    원본 데이터에서 현재 달에 해당하는 데이터만 필터링(1달 단위)
-    '''
-    now = datetime.now()
-    month = now.strftime('%m')
-
-    temp_df = df[df['대여일시'].dt.month == int(month)]
-    print(f"현재({month}월)에 해당하는 데이터로 필터링한 shape : {temp_df.shape}")
 
 
 def month_graph(df: pd.DataFrame):
@@ -304,21 +292,22 @@ def load_history(config) -> pd.DataFrame:
     계절성은 한 달만 봐서는 보이지 않는다. DB에 여러 달이 적재돼 있으면
     전부 읽고, 없으면 원천 CSV 한 기간으로 물러선다.
     """
+    # 한 세션 · 한 쿼리로 읽는다. 예전에는 기간마다 `read_rental_source()`를 불러
+    # 19개 기간이면 연결 19번 · 스키마 확인 19번 · 조회 38번이었다(2026-10-08 점검).
+    # 이 화면이 하는 일은 달 · 시각 · 요일별로 세는 것뿐이라 행 순서는 쓰지 않는다.
+    column = db.RENTAL_COLUMNS["대여일시"]
     try:
         with db.session() as conn:
-            periods = [row[0] for row in conn.execute(
-                "SELECT DISTINCT period FROM rental_history ORDER BY period")]
+            periods = db.distinct_values(conn, "rental_history", "period")
+            frame = (pd.read_sql(f'SELECT {column} AS "대여일시" FROM rental_history', conn)
+                     if periods else pd.DataFrame())
     except Exception as err:            # DB가 없거나 스키마 이전이어도 CSV로 간다
         print(f"[경고] DB 조회 실패({type(err).__name__}) — CSV로 물러섭니다.")
-        periods = []
+        periods, frame = [], pd.DataFrame()
 
     if periods:
         print(f"DB에서 {len(periods)}개 기간을 읽습니다: {periods[0]} ~ {periods[-1]}")
-        frames = []
-        for period in periods:
-            frame, _ = db.read_rental_source(period, columns=["대여일시"])
-            frames.append(frame)
-        return pd.concat(frames, ignore_index=True)
+        return frame
 
     frame, source = db.read_rental_source(
         config.period, csv_path=config.raw_path, columns=["대여일시"])

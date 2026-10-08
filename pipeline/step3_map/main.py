@@ -34,7 +34,7 @@ import db
 '''
 <구조>
 main
- ├─ csv 읽기
+ ├─ 앞 단계 산출물 읽기 (DB 먼저, 없으면 CSV — 1.26.167)
  ├─ API 설정
  └─ make_vrp_map() 호출
         ├─ 지도 생성
@@ -45,7 +45,7 @@ main
 '''
 '''
 <순서>
-VRP 결과(csv) 읽기
+VRP 결과 읽기 (DB 먼저, 없으면 CSV)
     ↓
 클러스터별 경로 생성
     ↓
@@ -275,6 +275,8 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
                 })
                 continue
 
+            # 🔴 여기서 죽는 것이 맞다 — pick_drop에 없는 대여소는 좌표가 없어 그릴 수 없다.
+            #    (아래 팝업 쪽의 `.get()` 폴백은 이 줄을 지난 대여소만 보므로 닿지 않는 방어다.)
             info = station_map[row["to_id"]]
             route_pts.append({
                 "id": row["to_id"],
@@ -394,7 +396,6 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
             ).add_to(fg)
 
         # --------- 마커 + 적재량 ----------
-        visit_counter = {}
         current_load = 0
 
         folium.Marker(
@@ -443,7 +444,8 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
                     "lat": lat,
                     "lon": lon,
                     # 커서 요약에 쓴다 — 기사가 아는 것은 ID가 아니라 이름이다.
-                    # pick_drop에 없는 대여소는 ID로 물러선다.
+                    # pick_drop에 없는 대여소는 ID로 물러선다(위 첫 루프가 먼저 KeyError로
+                    # 멈추므로 지금은 닿지 않는다 — 그 루프가 관대해지면 여기가 받는다).
                     "name": (station_map.get(sid, {}) or {}).get("station_name") or sid,
                     "orders": [],
                     "records": []

@@ -309,7 +309,9 @@ def _snapshot_in_db(label: str) -> bool:
 
         with db.session() as conn:
             for table in SNAPSHOT_TABLES:
-                if db.load_frame(conn, table, run_label=label).empty:
+                # 있는지만 본다 — 예전에는 대여소 1,370여 곳 × 세 표를 DataFrame으로 읽었다.
+                if conn.execute(f"SELECT 1 FROM {table} WHERE run_label = ? LIMIT 1",
+                                (label,)).fetchone() is None:
                     return False
         return True
     except Exception:

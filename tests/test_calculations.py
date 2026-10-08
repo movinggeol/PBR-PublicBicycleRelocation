@@ -1779,3 +1779,23 @@ def test_계산_오류는_다시_시도하지_않고_그대로_올린다(step2, 
         ilp.solve_with_retry(모델이_틀린_문제(), solver=object())
 
     assert 시도["n"] == 1, "계산 오류를 다시 시도했다 — 시간만 버리고 답은 같다"
+
+
+def test_차량당_이동거리_어림은_K로만_갈린다(step1):
+    """순회거리 · depot 거리는 K와 무관하다 — 한 번 구한 값으로도 같은 어림이 나온다.
+
+    `_wanted_vehicles_geo()`가 K=1..n을 돌며 두 값을 n번 다시 구하던 것을 루프 밖으로
+    뺐다(2026-10-08 점검). 값이 한 자리라도 달라지면 K가 달라질 수 있어 **비트 단위로**
+    같은지 본다.
+    """
+    frame = pd.DataFrame({
+        "station_id": [f"S{i}" for i in range(12)],
+        "lat": [36.30 + 0.01 * i for i in range(12)],
+        "lon": [127.33 + 0.007 * ((i * 5) % 12) for i in range(12)],
+        "rebal_qty": [5, -4, 6, -7, 3, -3, 8, -6, 4, -5, 7, -8],
+    })
+    tour_km, depot_km = step1._travel_km_parts(frame)
+
+    for k in (1, 2, 3, 7, 12):
+        assert step1._estimate_travel_km_per_vehicle(frame, k) == tour_km / k + 2 * depot_km
+    assert step1._estimate_travel_km_per_vehicle(frame.iloc[0:0], 3) == 0.0

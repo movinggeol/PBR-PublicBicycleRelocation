@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import db
 import tashu
-from project_config import DATA_ROOT, PROJECT_ROOT, ensure_output_dirs, get_runtime_config, exit_if_help
+from project_config import DATA_ROOT, ensure_output_dirs, get_runtime_config, exit_if_help
 
 # to_csv
 out_file_path = str(DATA_ROOT / "pp_data/대여소별 재고/대여소별_자전거대수 ({now}).csv")

@@ -268,9 +268,14 @@ def tag_runs(groups: List[Dict], labels: Iterable[str]) -> List[Dict]:
 
 
 def latest_outputs(limit_per_category: int = 2) -> List[Dict]:
-    """대시보드 요약용: 카테고리별 최신 파일 일부."""
+    """대시보드 요약용: 카테고리별 최신 파일 일부.
+
+    지도는 `list_maps()`가 아니라 `_scan()`으로 훑는다 — 이 표는 이름과 수정 시각만
+    보여 주는데, `list_maps()`는 지도 파일마다 머리 64KB를 읽어 지문을 계산한다
+    (낡음 표시는 `/maps`의 몫이다. 2026-10-08 점검).
+    """
     summary = []
-    for group in list_maps() + list_csvs():
+    for group in _scan(MAP_CATEGORIES) + list_csvs():
         if group["entries"]:
             summary.append({
                 "title": group["title"],

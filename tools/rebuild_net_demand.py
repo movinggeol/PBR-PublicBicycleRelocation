@@ -27,8 +27,7 @@ RAW_TO_NET = PROJECT_ROOT / "pipeline" / "step0_collect" / "raw_to_net.py"
 def loaded_periods() -> list:
     """rental_history에 적재된 기간 목록."""
     with db.session() as conn:
-        return [row[0] for row in conn.execute(
-            "SELECT DISTINCT period FROM rental_history ORDER BY period")]
+        return db.distinct_values(conn, "rental_history", "period")
 
 
 def day_counts(period: str) -> tuple:

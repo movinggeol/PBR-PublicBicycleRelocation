@@ -15,7 +15,7 @@ from dataclasses import replace
 
 from project_config import (
     exit_if_help,
-    DATA_ROOT, DAY_TYPE_LABELS, MAP_TILES, PICK_HARM_WARN_SHARE, PROJECT_ROOT,
+    DATA_ROOT, DAY_TYPE_LABELS, MAP_TILES, PICK_HARM_WARN_SHARE, 
     TIME_BUDGET_MINUTES,
     VEHICLE_CAPACITY, duration_hours, duration_list, ensure_output_dirs, format_minutes,
     get_runtime_config,
@@ -235,7 +235,7 @@ def load_net_demand() -> pd.DataFrame:
     **계획과 같은 요일 구분만 남긴다.** 평일 계획은 평일 순수요로, 휴일 계획은 휴일
     순수요로 평가해야 한다 — 앞 단계(calculate_target_qty)가 이미 한쪽만 골라
     목표 재고를 잡았기 때문이다. 섞으면 평일 계획을 주말 수요로 채점하게 되고,
-    대여소의 33~37%가 두 구분에서 부호가 반대라 결과가 실제와 달라진다
+    대여소의 32~34%(원본 대여이력 기준 — 깎인 자료로는 33~37%였다)가 두 구분에서 부호가 반대라 결과가 실제와 달라진다
     (experiments/structure/weekend_profile.py, docs/구현/steps/step0_raw.md).
     '''
     frame = pd.DataFrame()
@@ -268,7 +268,7 @@ def load_net_demand() -> pd.DataFrame:
 
 def _simulate_stock(net: pd.DataFrame, initial: pd.Series,
                     capacity: pd.Series, hours: list) -> dict:
-    '''재고 궤적을 **한 번 돌며** 네 가지를 함께 센다 (1.26.101).
+    '''재고 궤적을 **한 번 돌며** 다섯 가지를 함께 센다 (1.26.101).
 
         stock(t+1) = clip(stock(t) - net(t), 0, 거치대 수)
 
@@ -409,7 +409,9 @@ def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
                               on='station_id', how='left')
     stations['parking_lot'] = stations['parking_lot'].fillna(stations['stock'] * 2 + 1)
 
-    # 실제로 옮긴 양. VRP 결과가 없으면(구버전 산출물) 계획량으로 물러선다.
+    # 실제로 옮긴 양. 비는 것은 VRP 산출물의 행이 전부 복귀(return)일 때뿐이다 —
+    # `__main__`은 `route_summary()`가 None이면(VRP 없음 · 구버전) 여기까지 오지 않는다.
+    # 그때는 계획량으로 물러선다(실험이 이 함수를 직접 부를 때의 방어이기도 하다).
     moved = executed_delta(load_vrp_plan(duration))
     if moved.empty:
         print("[안내] VRP 결과가 없어 계획량(rebal_qty)으로 결품을 계산합니다"
@@ -744,7 +746,10 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
          #    막히므로 1대짜리도, 0도, 계획이 오히려 악화시킨 곳(음수)도 모두
          #    같은 크기로 그려진다. 눈금이 "3대"라고 단언하면 그 점들을 전부
          #    3대라고 잘못 읽게 된다 — 크기가 말할 수 있는 것까지만 말한다.
-         (swatch_size_scale([3, 7, 12], ["≤3대", "7대", "12대"]), ""),
+         #
+         # 눈금은 3 · 6 · 9대다(step1 군집 지도와 같은 값). 예전의 '12대'는 **나올 수 없는
+         # 값**이었다 — 개선량은 |rebal_qty|이고 그것은 tanh 포화로 9를 넘지 못한다.
+         (swatch_size_scale([3, 6, 9], ["≤3대", "6대", "9대"]), ""),
          (swatch_circle_dashed(), "점선 = 오히려 나빠진 곳")],
         note="원 크기는 불균형 해소량, 원이 진할수록 개선률이 높습니다.<br>"
              "가장 작은 원은 <b>3대 이하가 모두 같은 크기</b>입니다 — 정확한 값은 "

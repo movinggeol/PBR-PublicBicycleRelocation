@@ -16,9 +16,10 @@
 **여섯 장을 나란히 띄워 비교한 뒤** 채택했다(1.26.79 → 1.26.80). 그 비교가
 아니었으면 못 봤을 것 둘을 짚어 둔다:
 
-- **검정은 어둡게 만들 수 없다.** 8색을 순환하며 한 단계씩 어둡게 하는데
+- **검정은 어둡게 만들 수 없다.** 그때는 8색을 순환하며 한 단계씩 어둡게 했는데
   `#000000`은 0에 무엇을 곱해도 0이라 **군집 7과 15가 같은 색**이었다.
-  `_shift()`가 어두운 색을 밝히는 쪽으로 돌리는 것은 이 때문이다.
+  `_shift()`가 어두운 색을 밝히는 쪽으로 돌리는 것은 이 때문이다. (지금 군집 색은
+  20벌이다 — 1.26.316, 아래 `_CLUSTER_COLORS`. 20개를 넘을 때만 `_shift()`가 돈다.)
 - **범례가 길어지면 지도를 가린다.** 18개 군집을 한 줄씩 세우니 범례가
   610~688px, 화면의 2/3가 됐다. `collapse_after`가 있는 이유다.
 """
@@ -28,20 +29,7 @@ import hashlib
 import re
 import sys
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
-
-# Okabe & Ito(2008)가 제안한, 데이터 시각화에서 널리 쓰이는 공개 색맹 안전
-# 8색이다. 검정은 마커 배경·글자와 겹치기 쉬워 순번을 맨 뒤로 뺐다.
-_OKABE_ITO = [
-    "#E69F00",  # orange
-    "#56B4E9",  # sky blue
-    "#009E73",  # bluish green
-    "#F0E442",  # yellow
-    "#0072B2",  # blue
-    "#D55E00",  # vermillion
-    "#CC79A7",  # reddish purple
-    "#000000",  # black
-]
+from typing import Optional, Sequence, Tuple
 
 # 군집 색 20벌 (1.26.316). Sasha Trubetskoy의 '20가지 서로 다른 색'을 **이웃 순번끼리 색상이
 # 멀어지게** 다시 늘어놓았다. 진한 색을 앞에, 지도 바탕에 묻히는 옅은 색(분홍 · 연보라 · 민트 ·

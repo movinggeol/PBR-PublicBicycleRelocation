@@ -22,7 +22,10 @@ IQR 울타리가 자르는 것은 오류가 아니라 **정상 이용의 상위 
 작업 대상이 13.4% 뒤바뀐다(docs/분석/DECISIONS.md 6-1,
 experiments/structure/outlier_impact.py).
 
-그래서 이 산출물은 **EDA·문서용이다.** 계획은 이 파일을 읽지 않는다.
+그래서 계획은 이 산출물을 읽지 않는다. 🔴 **지금은 읽는 곳이 하나도 없다** (2026-10-08 점검) —
+EDA(`EDA.py`)도 DB의 대여이력을 직접 읽고, 깎았을 때의 영향은 실험이 따로 계산한다. 파이프라인이 EDA
+단계에서 이 스크립트를 옵션 없이 부르면 그때마다 병합본을 다시 깎아 쓴다(1.3GB · 1분 26초,
+docs/분석/DATA_SOURCES.md 4절) — 단계를 걷을지는 사용자 결정 대기다(docs/기록/TODO.md).
 
 실행 예:
     python "pipeline/step0_eda/concat_1year_file.py" --concat --preprocess
@@ -38,7 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pandas as pd
 
-from project_config import DATA_ROOT, PROJECT_ROOT, exit_if_help
+from project_config import DATA_ROOT, exit_if_help
 
 path = str(DATA_ROOT / "raw_data/타슈 대여이력 정보(25.04~26.03)/대전시 공영자전거 타슈 대여이력 정보({period}).csv")
 result_file = str(DATA_ROOT / "raw_data/타슈 대여이력(25.04~26.03).csv")

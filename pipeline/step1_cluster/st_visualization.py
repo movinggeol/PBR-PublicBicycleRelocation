@@ -4,17 +4,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import folium
-from folium import FeatureGroup
-from folium.plugins import FeatureGroupSubGroup
 import pandas as pd
-import numpy as np
 
 import db
 from mapviz import (DROP_LABEL, PICK_LABEL, cluster_color, legend_html,
                     qty_radius, swatch_circle, swatch_size_scale)
 from project_config import (
     exit_if_help,
-    DATA_ROOT, MAP_TILES, PROJECT_ROOT, VEHICLE_CAPACITY,
+    DATA_ROOT, MAP_TILES, VEHICLE_CAPACITY,
     duration_list, ensure_output_dirs, get_runtime_config,
 )
 
@@ -36,20 +33,12 @@ def load_candidates(duration: str) -> pd.DataFrame:
 
     ⚠️ CSV 폴백은 남긴다 — DB 도입(2026-08-07) 이전 산출물은 DB에 아예 없다.
     """
-    frame = pd.DataFrame()
-    try:
-        with db.session() as conn:
-            frame = db.load_frame(conn, 'pick_drop', run_label=now, duration=duration)
-    except Exception as err:
-        print(f"[경고] pick_drop DB 조회 실패: {type(err).__name__}: {err}")
-
-    if not frame.empty:
-        return frame
-
-    path = Path(clustered_file.format(duration=duration, now=now))
-    if path.is_file():
-        return pd.read_csv(path, low_memory=False, encoding='utf-8')
-    return pd.DataFrame()
+    # 읽는 규칙은 `db.read_step_output()` 하나다(1.26.166). 여기는 같은 'DB 먼저 → CSV
+    # 폴백'을 따로 구현하고 있었고, 그쪽에 있는 빈 CSV 보호(1.26.185)가 빠져 있었다.
+    frame, _ = db.read_step_output(
+        'pick_drop', clustered_file.format(duration=duration, now=now),
+        run_label=now, duration=duration)
+    return frame
 
 
 def make_clustered_map(durations: list):

@@ -763,8 +763,7 @@ def fig_8_2():
         print(f"  건너뜀 - 모듈을 못 불러왔습니다: {exc}")
         return
     with db.session() as conn:
-        periods = [r[0] for r in conn.execute(
-            "SELECT DISTINCT period FROM rental_history ORDER BY period")]
+        periods = db.distinct_values(conn, "rental_history", "period")
         cand = hub.candidates(conn, DOCKLESS_PLAN).get("_05_10", set())
         if not periods or not cand:
             print(f"  건너뜀 - 대여이력이나 '{DOCKLESS_PLAN}'의 작업 대상이 DB에 없습니다.")

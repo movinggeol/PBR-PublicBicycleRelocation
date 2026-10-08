@@ -521,12 +521,12 @@ def stock_station_count() -> int:
     """
     try:
         with db.session() as conn:
-            frame = pd.read_sql(
-                "SELECT COUNT(DISTINCT station_id) AS n FROM stock_history", conn)
+            # `COUNT(DISTINCT …)`는 606만 행 인덱스를 통째로 훑어 이 화면을 9초 붙잡았다
+            # (2026-10-08 실측) — 값 단위로 건너뛰는 조회를 쓴다.
+            return db.stock_station_count(conn)
     except Exception as err:
         print(f"[경고] 재고 대여소 수 조회 실패: {type(err).__name__}: {err}")
         return 0
-    return int(frame["n"].iloc[0]) if not frame.empty else 0
 
 
 def periods_with_rentals() -> frozenset:

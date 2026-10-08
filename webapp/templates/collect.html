@@ -6,7 +6,7 @@
 
 <section class="hero">
   <h1>재고 수집</h1>
-  <p class="lead">대여소 재고를 10분마다 받아 쌓은 기록입니다.</p>
+  <p class="lead">대여소 재고를 {% if interval %}{{ interval }}분마다{% else %}주기적으로{% endif %} 받아 쌓은 기록입니다.</p>
 </section>
 
 {% if error %}

@@ -21,7 +21,7 @@ import db
 import demand_model
 from project_config import (
     exit_if_help,
-    DATA_ROOT, PROJECT_ROOT,
+    DATA_ROOT, 
     TARGET_QTY_UPPER_RATIO, TARGET_Z, VEHICLE_CAPACITY,
     duration_hours,
     duration_list,

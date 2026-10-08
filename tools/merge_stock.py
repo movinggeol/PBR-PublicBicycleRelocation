@@ -38,7 +38,6 @@ import pandas as pd
 import db
 from project_config import DATA_ROOT, is_holiday
 
-HISTORY_DIR = DATA_ROOT / "raw_data" / "재고이력"
 CSV_GLOB = "stock_*.csv"
 CSV_COLUMNS = ("observed_at", "station_id", "stock")
 DB_SUFFIXES = (".db", ".sqlite", ".sqlite3")
@@ -215,8 +214,18 @@ def count_new(conn: sqlite3.Connection, history: pd.DataFrame,
         if 프레임.empty:
             return 0
         키 = list(키)
+        # 🔴 **들여오는 범위의 열쇠만** 읽는다 (2026-10-08 점검). 예전에는 WHERE 없이 표
+        #    전체를 파이썬 set으로 올렸다 — `stock_history`가 602만 행이라 며칠치를
+        #    예행하는 데 수백 MB의 튜플 집합을 만들었다. 첫 열쇠(기본키의 앞 열 —
+        #    `observed_at` · `observed_on` · `run_label`)의 최소~최대로 좁힌다. 범위는
+        #    문자열 비교다: 저장도 `str(값)`의 같음으로 가리므로 판정이 갈리지 않고,
+        #    범위 밖의 행은 어차피 후보와 같을 수 없다.
+        첫 = 키[0]
+        값들 = 프레임[첫].astype(str)
         있는_것 = {tuple(str(값) for 값 in 행)
-                 for 행 in conn.execute(f"SELECT {', '.join(키)} FROM {표}")}
+                 for 행 in conn.execute(
+                     f"SELECT {', '.join(키)} FROM {표} WHERE {첫} BETWEEN ? AND ?",
+                     (값들.min(), 값들.max()))}
         후보 = {tuple(str(기록[열]) for 열 in 키)
               for 기록 in 프레임.to_dict("records")}
         return len(후보 - 있는_것)

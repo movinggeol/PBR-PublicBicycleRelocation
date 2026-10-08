@@ -154,13 +154,24 @@ def _hourly() -> pd.DataFrame:
     return _HOURLY
 
 
+_WINDOWS: dict = {}           # 회차 → 접어 둔 날씨 표. 관측 자료와 함께 한 번만 만든다
+
+
 def weather_frame(duration: str) -> pd.DataFrame:
-    """날짜 → 그 창의 날씨 피처. 자료가 없으면 빈 표를 돌려준다."""
-    folded = weather.window_frame(_hourly(), duration)
-    if folded.empty:
-        return pd.DataFrame(columns=["date", *WEATHER_FEATURES])
-    folded["rainy"] = (folded["rain"] >= weather.RAIN_MM).astype(float)
-    return folded[["date", *WEATHER_FEATURES]]
+    """날짜 → 그 창의 날씨 피처. 자료가 없으면 빈 표를 돌려준다.
+
+    회차마다 한 번만 접는다 — 학습(`training_frame`)이 (달 쌍 × 요일 구분 × 회차)마다
+    부르는데, 예전에는 파일 읽기만 한 번이고 5시간 창 집계는 부를 때마다 다시 했다
+    (2026-10-08 점검). 돌려주는 것은 사본이라 받는 쪽이 고쳐도 다음 호출에 새지 않는다.
+    """
+    if duration not in _WINDOWS:
+        folded = weather.window_frame(_hourly(), duration)
+        if folded.empty:
+            _WINDOWS[duration] = pd.DataFrame(columns=["date", *WEATHER_FEATURES])
+        else:
+            folded["rainy"] = (folded["rain"] >= weather.RAIN_MM).astype(float)
+            _WINDOWS[duration] = folded[["date", *WEATHER_FEATURES]]
+    return _WINDOWS[duration].copy()
 
 
 def add_weather(frame: pd.DataFrame, duration: str, date=None) -> pd.DataFrame:

@@ -15,7 +15,7 @@ import pandas as pd
 import db
 from project_config import (
     exit_if_help,
-    DATA_ROOT, PROJECT_ROOT, ensure_output_dirs, get_runtime_config, select_day_type,
+    DATA_ROOT, ensure_output_dirs, get_runtime_config, select_day_type,
 )
 
 # read_csv

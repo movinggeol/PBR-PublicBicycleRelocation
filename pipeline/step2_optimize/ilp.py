@@ -11,7 +11,7 @@ import pulp
 import db
 from project_config import (
     exit_if_help,
-    DATA_ROOT, PROJECT_ROOT, VEHICLE_SPEED_KMPH, duration_list, ensure_output_dirs, get_runtime_config,
+    DATA_ROOT, VEHICLE_SPEED_KMPH, duration_list, ensure_output_dirs, get_runtime_config,
     require_columns, travel_seconds,
 )
 
@@ -148,7 +148,8 @@ def km_to_travel_seconds(km: float, speed_kmph: float = None) -> float:
 
     **계산은 project_config.travel_seconds() 하나가 한다** — ILP와 VRP가 서로
     다른 식을 쓰면 ILP가 고른 조합이 VRP에서는 최소가 아니게 된다(1.13.2에서 겪음).
-    `PBR_USE_ROAD_MODEL=1`이면 실측 기반 '고정비 + 거리비례'로 바뀐다 — 이
+    기본은 실측 기반 '고정비 + 거리비례'(실도로 모형, 1.26.268부터 켜짐)이고
+    `PBR_USE_ROAD_MODEL=0`이면 직선거리 ÷ 속도로 되돌아간다. 실도로 모형은 이
     실행의 `config.day_type`(평일/휴일 계획인지)에 맞는 계수 쌍을 고른다
     (1.26.160). 휴일 계수가 아직 안 채워져 있으면 평일 계수로 폴백한다.
     '''

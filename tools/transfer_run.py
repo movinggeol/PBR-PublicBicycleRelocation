@@ -24,7 +24,7 @@
 ## 무엇을 나르나
 
 `run_label`로 묶이는 테이블 중 `road_leg`를 뺀 전부를 담는다(아래 `RUN_TABLES`의
-**12개** — `runs`부터 `vehicle_assignment`까지).
+**13개** — `runs`부터 `vehicle_assignment`까지. 1.26.308에 `road_path`가 더해졌다).
 `net_demand`는 **담지 않는다** — 기간(`period`) 스코프이고 원천 대여이력에서
 `tools/rebuild_net_demand.py`로 다시 만들 수 있다. 원천 CSV는 어차피 양쪽에
 있어야 한다.
@@ -102,21 +102,22 @@ active_db_path = db.active_db_path
 
 def available_labels(conn) -> pd.DataFrame:
     """이 DB에 있는 실행 라벨과 딸린 행 수."""
-    rows = []
-    for label, period, duration in conn.execute(
-            "SELECT run_label, period, duration FROM runs ORDER BY run_label"):
-        total = 0
-        for table in RUN_TABLES:
-            if table == "runs":
-                continue
-            try:
-                total += conn.execute(
-                    f"SELECT COUNT(*) FROM {table} WHERE run_label = ?",
-                    (label,)).fetchone()[0]
-            except sqlite3.OperationalError:
-                continue
-        rows.append({"실행 라벨": label, "period": period,
-                     "duration": duration, "행": total})
+    # 표마다 한 번씩만 센다(GROUP BY). 예전에는 라벨마다 표 12개에 COUNT를 따로 날려
+    # 81개 실행이면 972번이었다(2026-10-08 점검).
+    totals: dict = {}
+    for table in RUN_TABLES:
+        if table == "runs":
+            continue
+        try:
+            for label, count in conn.execute(
+                    f"SELECT run_label, COUNT(*) FROM {table} GROUP BY run_label"):
+                totals[label] = totals.get(label, 0) + count
+        except sqlite3.OperationalError:
+            continue                    # 이 표는 이 DB에 없다
+    rows = [{"실행 라벨": label, "period": period, "duration": duration,
+             "행": totals.get(label, 0)}
+            for label, period, duration in conn.execute(
+                "SELECT run_label, period, duration FROM runs ORDER BY run_label")]
     return pd.DataFrame(rows)
 
 

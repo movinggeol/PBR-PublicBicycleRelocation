@@ -24,7 +24,7 @@ from project_config import (
     exit_if_help,
     DATA_ROOT, ADJUST_BALANCE_LIMIT, ADJUST_BALANCE_OK, ADJUST_MAX_ITER,
     CLUSTER_ALPHA, CLUSTER_BETA, CLUSTER_GAMMA, CLUSTER_SEED,
-    PROJECT_ROOT, REBAL_MIN_QTY,
+    REBAL_MIN_QTY,
     CLUSTER_IMBALANCE_ALLOWANCE, DEPOT_LAT, DEPOT_LON, DROP_TIME_SEC,
     PICK_TIME_SEC, TIME_BUDGET_MINUTES, TOP_STATION_LIMIT,
     TRAVEL_MIN_PER_STATION, VEHICLES_PER_ROUND,
@@ -133,10 +133,19 @@ def _estimate_travel_km_per_vehicle(pick_drop: pd.DataFrame, k: int,
     변환한다 — K를 정하기 위한 자릿수 어림이지, 실제 경로 계산(haversine 기반)을
     대체하지 않는다.
     """
-    n = len(pick_drop)
-    if n == 0:
+    if len(pick_drop) == 0:
         return 0.0
+    tour_km, depot_km = _travel_km_parts(pick_drop, method)
+    return tour_km / k + 2 * depot_km
 
+
+def _travel_km_parts(pick_drop: pd.DataFrame, method: str = "bhh") -> tuple:
+    """(전체 순회거리, depot까지 평균 편도 거리) — **K와 무관한 두 값**.
+
+    `_wanted_vehicles_geo()`가 K=1..n을 돌며 `_estimate_travel_km_per_vehicle()`을
+    부르면 이 둘을 n번 다시 구했다(후보 100곳이면 100번 — 2026-10-08 점검). K는
+    `tour_km / k + 2 * depot_km`에서만 쓰이므로 여기서 한 번 구해 돌려 쓴다.
+    """
     lat = pick_drop["lat"].to_numpy(dtype=float)
     lon = pick_drop["lon"].to_numpy(dtype=float)
 
@@ -148,7 +157,7 @@ def _estimate_travel_km_per_vehicle(pick_drop: pd.DataFrame, k: int,
     a = np.sin(dlat / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(dlon / 2) ** 2
     depot_km = float((2 * 6371.0 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))).mean())
 
-    return tour_km / k + 2 * depot_km
+    return tour_km, depot_km
 
 # read_csv
 file_path = str(DATA_ROOT / "pp_data/재배치 정보/rebal_qty{duration} ({now}).csv")
@@ -278,8 +287,13 @@ def wanted_vehicles(pick_drop: pd.DataFrame, geo: bool = None) -> int:
     if use_geo:
         return _wanted_vehicles_geo(pick_drop)
 
-    # 처리 대수는 drop 합(= |pick 합|)이다. 앞의 cut_point가 두 쪽을 맞춰 뒀다.
-    # pick·drop을 모두 더하면 한 대를 두 번 세어 2배가 된다.
+    # 처리 대수는 drop 합으로 센다. pick·drop을 모두 더하면 한 대를 두 번 세어 2배가 된다.
+    # ⚠️ "drop 합 = |pick 합|"은 아니다(2026-10-08 점검 — 주석이 그렇게 적고 있었다).
+    #    `select_top_unbalanced_st()`의 cut_point는 누적합이 cut_point **이하**인 행만
+    #    남기므로 한쪽은 그보다 작아질 수 있다(rebal_qty [-7, -7, 5, 5] → pick 7 · drop 10).
+    #    ILP가 실제로 옮기는 것은 군집마다 min(pick, drop)이라 이 값은 **위쪽으로 어긋난다.**
+    # ponytail: K를 정하는 어림이 옮길 수 있는 양보다 크게 잡힐 수 있다 — min(|pick 합|, drop 합)으로
+    #           바꾸면 K가 달라져 원고 수치가 움직이므로, 바꿀 때는 재측정과 함께(docs/기록/TODO.md).
     bikes = float(pick_drop.loc[pick_drop['rebal_qty'] > 0, 'rebal_qty'].sum())
 
     work_min = bikes * (PICK_TIME_SEC + DROP_TIME_SEC) / 60.0
@@ -298,14 +312,15 @@ def _wanted_vehicles_geo(pick_drop: pd.DataFrame) -> int:
     실측(1.26.9)을 따라 K로 나누지만, depot 왕복은 차량마다 **한 번씩 더** 드는
     비용이라 나누지 않는다. K가 클수록 두 항 다 줄거나 그대로이므로 시간은
     K에 대해 단조 감소한다 — 예산을 넘지 않는 가장 작은 K를 앞에서부터 찾는다.
-    `travel_seconds()`를 거치므로 `USE_ROAD_MODEL`을 켜면 이 추정도 같은
-    고정비+거리비례 식을 자동으로 쓴다.
+    `travel_seconds()`를 거치므로 이 추정도 계획과 같은 이동시간 식을 쓴다 — 기본은
+    고정비+거리비례(실도로 모형, 1.26.268부터 켜짐)이고 `PBR_USE_ROAD_MODEL=0`이면 상수 속도다.
     """
     bikes = float(pick_drop.loc[pick_drop['rebal_qty'] > 0, 'rebal_qty'].sum())
     n = len(pick_drop)
 
+    tour_km, depot_km = _travel_km_parts(pick_drop)     # K와 무관 — 루프 밖에서 한 번
     for k in range(1, n + 1):
-        travel_km = _estimate_travel_km_per_vehicle(pick_drop, k)
+        travel_km = tour_km / k + 2 * depot_km
         vehicle_min = (
             bikes / k * (PICK_TIME_SEC + DROP_TIME_SEC) / 60.0
             + travel_seconds(travel_km, day_type=config.day_type) / 60.0

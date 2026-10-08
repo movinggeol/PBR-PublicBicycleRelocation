@@ -1,7 +1,7 @@
 """타슈 재고 시계열 수집기 — 창·간격은 등록 인자가 정한다 (docs/구현/COLLECTOR.md).
 
-운영 등록은 **매일(휴일 포함) 07~23시·10분**이고, 인자를 주지 않았을 때의
-파라미터 기본값은 평일 09~17시다.
+운영 등록은 **매일(휴일 포함) 00:00–23:50·10분**(24시간 — 2026-09-14, 1.26.206)이고,
+인자를 주지 않았을 때의 파라미터 기본값은 평일 09~17시다.
 
 **한 번 실행 = 한 틱.** 창 밖이면 아무 것도 하지 않고 끝난다. Windows 작업
 스케줄러는 요일만 알고 **공휴일을 모르므로**, 휴일을 거르는 실질적 방어선은
@@ -155,9 +155,9 @@ def window_state(stamp: datetime, start: clock, end: clock, interval: int,
 
     | 옵션 | 평일 | 휴일 | 쓰는 곳 |
     | --- | --- | --- | --- |
-    | (없음) | ✅ | ❌ | A PC — 지금까지의 동작 |
-    | `include_holidays` | ✅ | ✅ | 한 대로 전부 |
-    | `holidays_only` | ❌ | ✅ | **B PC — 휴일만 맡는다** |
+    | (없음) | ✅ | ❌ | 파라미터 기본값 — 지금 운영에서는 쓰지 않는다 |
+    | `include_holidays` | ✅ | ✅ | **두 PC 모두 이것이다**(2026-09-03부터, 두_PC_작업.md 0장) |
+    | `holidays_only` | ❌ | ✅ | 옛 B PC 휴일 전담 분담용 — 2026-09-03에 폐기했다 |
 
     `holidays_only`가 이기므로 둘을 같이 줘도 모순되지 않는다(argparse가 애초에
     막지만, 함수만 직접 부르는 경우를 위해 여기서도 정한다).
@@ -476,15 +476,18 @@ def coverage(start: clock, end: clock, interval: int) -> pd.DataFrame:
     화면은 둘을 섞어 "누적 16일"이라고만 말해 **휴일이 몇 날인지 이 표로는 셀
     수 없었다**(실제로 임시 SQL을 짜야 알았다).
     """
+    # 틱의 **시각만** 읽는다 — 이 표는 틱마다 몇 곳이 들어왔는지를 쓰지 않는다. 예전에는
+    # `stock_history_ticks()`로 틱별 행 수까지 세느라 606만 행을 훑었다(웹 `/collect`가
+    # 그 일로 7초, 2026-10-08 실측).
     with db.session() as conn:
-        ticks = db.stock_history_ticks(conn)
+        ticks = db.stock_history_tick_times(conn)
     failures = failure_ticks()
     columns = ["날짜", "요일", "틱", "기대", "결측", "실패",
                "구간", "덮은 시간", "상태"]
-    if ticks.empty:
+    if not ticks:
         return pd.DataFrame(columns=columns)
 
-    stamps = pd.to_datetime(ticks["observed_at"])
+    stamps = pd.to_datetime(pd.Series(ticks))
     moment = datetime.now()
     today = moment.date()
     now = moment.time()
@@ -614,7 +617,8 @@ def build_parser() -> argparse.ArgumentParser:
                       help="평일에 더해 휴일에도 수집한다(창은 그대로 지킨다)")
     days.add_argument("--holidays-only", action="store_true",
                       help="휴일에만 수집하고 평일은 건너뛴다. "
-                           "두 번째 PC가 휴일을 맡는 구성용(COLLECTOR.md 11장)")
+                           "두 번째 PC가 휴일만 맡던 옛 분담용 — 2026-09-03에 폐기했고 "
+                           "지금은 두 PC 모두 --include-holidays다(두_PC_작업.md 0장)")
     parser.add_argument("--dry-run", action="store_true",
                         help="호출만 하고 저장하지 않는다")
     parser.add_argument("--status", action="store_true",

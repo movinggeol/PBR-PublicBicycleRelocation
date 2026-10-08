@@ -427,8 +427,8 @@ CREATE TABLE IF NOT EXISTS demand_backtest (
 );
 
 -- 재고 시계열 (1.20.0, docs/구현/COLLECTOR.md).
--- tools/collect_stock.py가 등록된 창(운영: 매일 07:00–23:00,
--- docs/구현/두_PC_작업.md 0장)에서 10분마다 한 틱씩 쌓는다.
+-- tools/collect_stock.py가 등록된 창(운영: 매일 00:00–23:50 — 24시간·휴일 포함,
+-- 2026-09-14부터 · docs/구현/두_PC_작업.md 0장)에서 10분마다 한 틱씩 쌓는다.
 -- 파이프라인 실행과 무관한 관측 기록이라 run_label이 없다 — 축은 (시각, 대여소)다.
 -- day_type·duration을 컬럼으로 두지 않는 이유: observed_at에서 파생되는 값이고,
 -- 요일 판정은 project_config.holiday_mask() 하나가 독점해야 하기 때문이다.
@@ -1305,6 +1305,24 @@ def stock_history_ticks(conn: sqlite3.Connection, start: Optional[str] = None,
         " GROUP BY observed_at ORDER BY observed_at ASC", conn, params=params)
 
 
+def stock_history_tick_times(conn: sqlite3.Connection, start: Optional[str] = None,
+                             end: Optional[str] = None) -> list:
+    """수집된 틱의 시각 목록(오름차순) — **틱마다 몇 곳인지는 세지 않는다.**
+
+    `stock_history_ticks()`는 틱별 대여소 수까지 세느라 표의 모든 행(606만)을 훑는다.
+    수집 현황(`collect_stock.coverage()`)은 *어느 틱이 있는가* 만 보므로 이쪽을 쓴다 —
+    `distinct_values()`가 기본키를 틱 단위로 건너뛰어, 훑는 양이 틱 수(수천)로 준다.
+    """
+    return distinct_values(conn, "stock_history", "observed_at",
+                           lower=_day_bounds(start, end=False),
+                           upper=_day_bounds(end, end=True))
+
+
+def stock_station_count(conn: sqlite3.Connection) -> int:
+    """수집된 재고가 있는 대여소 수. `COUNT(DISTINCT station_id)`와 같은 값이다."""
+    return len(distinct_values(conn, "stock_history", "station_id"))
+
+
 def load_kpi(conn: sqlite3.Connection, run_label: Optional[str] = None,
              duration: Optional[str] = None) -> pd.DataFrame:
     """지표를 읽는다(run_label 사전 역순 — 최신순이 아니다, `latest_label()` 참고).
@@ -1370,7 +1388,14 @@ def sync_fleet(conn: sqlite3.Connection, size: int = None) -> None:
 def vehicle_workload(conn: sqlite3.Connection, only_active: bool = True) -> pd.DataFrame:
     """차량별 누적 작업량. 한 번도 안 나간 차량도 0으로 포함한다.
 
-    컬럼: vehicle_id, active, rounds, bikes, distance_km, minutes, last_run, last_duration
+    컬럼: vehicle_id, active, rounds, bikes, distance_km, minutes
+
+    ⚠️ **'최근 배정'은 여기서 내지 않는다** (2026-10-08 점검). 예전에는 `MAX(run_label)` ·
+    `MAX(duration)`을 `last_run` · `last_duration`으로 붙였는데, 둘 다 사전순 MAX라
+    최근이 아니었고 **기록에 없는 (실행, 회차) 조합**을 만들었다(21대가 전부
+    `sweep-21 _20_05`였는데 그 실행에는 `_20_05`가 없었다). 유일한 소비자
+    `webapp/store.py`가 두 칸을 버리고 `created_at` 순으로 다시 구하고 있었다 —
+    그쪽 `vehicles()`가 정본이다.
     """
     where = "WHERE v.active = 1" if only_active else ""
     return pd.read_sql(f"""
@@ -1379,9 +1404,7 @@ def vehicle_workload(conn: sqlite3.Connection, only_active: bool = True) -> pd.D
                COUNT(a.vehicle_id)                AS rounds,
                COALESCE(SUM(a.bikes), 0)          AS bikes,
                ROUND(COALESCE(SUM(a.distance_km), 0), 2) AS distance_km,
-               ROUND(COALESCE(SUM(a.minutes), 0), 1)     AS minutes,
-               MAX(a.run_label)                   AS last_run,
-               MAX(a.duration)                    AS last_duration
+               ROUND(COALESCE(SUM(a.minutes), 0), 1)     AS minutes
         FROM vehicle v
         LEFT JOIN vehicle_assignment a ON a.vehicle_id = v.vehicle_id
         {where}
@@ -1709,17 +1732,57 @@ def rental_count(conn: sqlite3.Connection, period: str) -> int:
     return row[0] if row else 0
 
 
+def distinct_values(conn: sqlite3.Connection, table: str, column: str,
+                    lower: Optional[str] = None, upper: Optional[str] = None) -> list:
+    """`SELECT DISTINCT column`의 값을 **인덱스를 건너뛰며** 읽는다(오름차순).
+
+    🔴 **왜 있나 (2026-10-08 실측).** SQLite의 `SELECT DISTINCT`·`COUNT(DISTINCT)`는
+    인덱스가 있어도 그 인덱스의 **항목을 전부** 훑는다. 원본 19개월을 적재한 뒤
+    `rental_history`가 911만 행, `stock_history`가 606만 행이 되자 값이 19개 ·
+    1,400개 · 6,000개뿐인 조회가 화면을 붙잡았다 — `/run` 8~11초(`DISTINCT period`),
+    `/collect` 15~17초(`COUNT(DISTINCT station_id)`와 틱 목록), 디스크 캐시가 데워진
+    뒤에도 각각 1초씩이다.
+
+    값 하나를 읽고 *그보다 큰 가장 작은 값*으로 건너뛰면 인덱스 탐색이 **값의 수만큼**만
+    든다(loose index scan — SQLite는 스스로 이렇게 하지 않아 재귀 CTE로 적는다).
+    결과는 `SELECT DISTINCT … ORDER BY`와 같다.
+
+    ⚠️ `column`이 **인덱스의 첫 열**이어야 빠르다(아니면 건너뛸 때마다 표를 훑는다).
+    지금 쓰는 셋은 모두 그렇다 — `rental_history(period)` · `stock_history(observed_at,
+    …)`(기본키) · `stock_history(station_id, …)`. NULL은 세지 않는다.
+
+    `lower` · `upper`는 값의 범위(양 끝 포함)다. 표가 없으면 빈 목록이다.
+    """
+    for name in (table, column):
+        if not name.replace("_", "").isalnum():
+            raise ValueError(f"식별자가 아닙니다: {name!r}")
+    first = f"SELECT MIN({column}) FROM {table}"
+    params: list = []
+    if lower is not None:
+        first += f" WHERE {column} >= ?"
+        params.append(lower)
+    tail = ""
+    if upper is not None:
+        tail = " AND x <= ?"
+        params.append(upper)
+    try:
+        rows = conn.execute(
+            f"WITH RECURSIVE seen(x) AS ({first} UNION ALL"
+            f" SELECT (SELECT MIN({column}) FROM {table} WHERE {column} > seen.x)"
+            f" FROM seen WHERE seen.x IS NOT NULL)"
+            f" SELECT x FROM seen WHERE x IS NOT NULL{tail}", params).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [row[0] for row in rows]
+
+
 def rental_periods(conn: sqlite3.Connection) -> frozenset:
     """대여이력이 DB에 적재된 기간 전체.
 
     `read_rental_source()`는 이 목록에 있는 기간이면 CSV 경로를 아예 안 본다
     (DB 우선). 웹 폼이 "이 기간은 CSV를 안 씁니다"를 알리려면 이 목록이 필요하다.
     """
-    try:
-        rows = conn.execute("SELECT DISTINCT period FROM rental_history").fetchall()
-    except sqlite3.OperationalError:
-        return frozenset()
-    return frozenset(row[0] for row in rows)
+    return frozenset(distinct_values(conn, "rental_history", "period"))
 
 
 def read_rental_source(period: str, csv_path: Optional[Path] = None,
