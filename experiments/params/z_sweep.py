@@ -35,6 +35,7 @@ import pandas as pd
 
 import db
 from backtest_demand import DURATIONS, consecutive_pairs, daily_window_demand
+from experiments._shared import default_run_label, resolve_run_label
 from pipeline.step0_collect.calculate_target_qty import compute_rebal_qty
 from project_config import DAY_TYPES, normalize_day_type, select_day_type
 
@@ -124,9 +125,7 @@ def load_station_stats(conn, period: str, duration: str, run_label: str,
 
     # 라벨을 안 주면 **계획 실행 중에서** 고른다 — 종류를 안 가리면 파라미터
     # 스윕 스냅샷(`sweep-10`, 재고 −10.4%)을 집는다 (1.26.132).
-    info = db.load_frame(conn, "station_info",
-                         **({"run_label": run_label} if run_label
-                            else {"kinds": ("plan",)}))
+    info = db.load_frame(conn, "station_info", run_label=run_label or default_run_label(conn))
     if info.empty:
         # 예전에는 없는 라벨이어도 빈 병합이 통과해 **비용 표가 통째로 0**으로
         # 나왔다(1.26.39에서 발견). 조용히 틀린 답을 내느니 멈춘다.
@@ -157,10 +156,11 @@ def main() -> int:
     durations = [args.duration] if args.duration else DURATIONS
     day_type = normalize_day_type(args.day_type)
 
+    # 기본은 가장 최근 **계획**이다 — 예전의 `MAX(run_label)`은 문자열 최대라 08-24의
+    # 스윕 실행 `sweep-10`을 골랐다(1.26.281). 1장 표는 `--run-label "2026-08-11 real"`.
+    # 없는 라벨이면 순수요를 읽기 전에 여기서 멈춘다. 고른 라벨은 아래 머리줄이 찍는다.
+    run_label = resolve_run_label(args.run_label, announce=False)
     with db.session() as conn:
-        # 기본은 가장 최근 **계획**이다 — 예전의 `MAX(run_label)`은 문자열 최대라 08-24의
-        # 스윕 실행 `sweep-10`을 골랐다(1.26.281). 1장 표는 `--run-label "2026-08-11 real"`.
-        run_label = args.run_label or db.latest_label(conn, "station_info", kinds=("plan",))
         periods = [r[0] for r in conn.execute("SELECT DISTINCT period FROM net_demand").fetchall()]
         net = {p: select_day_type(db.load_frame(conn, "net_demand", period=p),
                                   "date", day_type)

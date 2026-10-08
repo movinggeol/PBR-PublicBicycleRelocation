@@ -50,10 +50,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import project_config  # noqa: E402,F401  — 콘솔 인코딩을 먼저 맞춘다(— · 이모지)
-from project_config import DATA_ROOT, duration_hours, is_holiday  # noqa: E402
+from project_config import (  # noqa: E402
+    DATA_ROOT, DURATIONS, duration_start_hour, is_holiday,
+)
 
 TASK_PREFIX = "PBR-sameday-"
-DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
 # 순수요 기간 — 지금 DB에서 가장 최근 달이고, 2026-09-22 휴일 계획도 이 달로 세웠다.
 PERIOD = "26년 03월"
 OFFSET_MIN = 3
@@ -63,7 +64,7 @@ LOG_DIR = DATA_ROOT / "logs" / "sameday"
 
 def start_hour(duration: str) -> int:
     """회차가 시작하는 시(時). `_20_05`는 20이다."""
-    return duration_hours(duration)[0]
+    return duration_start_hour(duration)
 
 
 def label_for(day: date, duration: str, day_type: str, tag: str = "") -> str:

@@ -61,13 +61,12 @@ import pandas as pd  # noqa: E402
 import db  # noqa: E402
 import stockout_forecast as sf  # noqa: E402
 from pipeline.step0_collect import calculate_target_qty as target_mod  # noqa: E402
-from project_config import (DATA_ROOT, DEFAULT_PERIOD, REBAL_MIN_QTY, duration_hours, holiday_mask,  # noqa: E402
-                            select_day_type)
+from project_config import (DATA_ROOT, DAY_TYPE_LABELS, DEFAULT_PERIOD, DURATIONS, REBAL_MIN_QTY,  # noqa: E402
+                            TICKS_PER_HOUR, duration_start_hour, holiday_mask, select_day_type)
 
 TICK = pd.Timedelta(minutes=sf.TICK_MINUTES)
 
-# ── 사전 등록 (EXPERIMENTS 47장)
-DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
+# ── 사전 등록 (EXPERIMENTS 47장) — 회차는 네 회차 전부다(`project_config.DURATIONS`)
 HORIZONS = (6, 18, 30)                   # 1 · 3 · 5시간
 MAIN_HORIZONS = (18, 30)                 # 판정 지평
 MIN_OBSERVED = 0.8                       # 창의 10분 칸 중 관측 비율
@@ -76,7 +75,7 @@ PICK_SAFE_FLOOR = 0.90                   # 5시간 수거 무해율 하한
 SAT_RATIO = 0.9                          # 포화 = 거치대의 90% 이상(11번과 같다) — 찍기만
 JUMP = 5                                 # 사후 진단: 10분 사이 이만큼 움직이면 트럭의 흔적으로 본다(등록 뒤 추가)
 SEED = 42
-DAY_TYPES = {"weekday": "평일", "holiday": "휴일"}
+DAY_TYPES = DAY_TYPE_LABELS              # 요일 구분 → 표시 이름. 다른 실험이 `pv.DAY_TYPES`로 읽어 이름을 남긴다
 
 
 def quiet(func, *args, **kwargs):
@@ -297,7 +296,7 @@ def report(rows: pd.DataFrame, day_type: str, verdict: bool) -> dict:
         drop_ok = plan_d > b0 and plan_d > b1_d and p_drop < SIGN_P
         pick_ok = safe >= b1_safe and (h != 30 or safe >= PICK_SAFE_FLOOR)
         results[h] = (drop_ok, pick_ok)
-        print(f"\n### {h // 6}시간 뒤 ({h}틱)")
+        print(f"\n### {h // TICKS_PER_HOUR}시간 뒤 ({h}틱)")
         print(f"  배송 적중 (t에 재고 > 0) : 계획 {plan_d:.1%} ({int(d['배송적중'].sum()):,}/{int(d['배송수'].sum()):,})"
               f" · B1 지금 재고 규칙 {b1_d:.1%} · B0 무작위 {b0:.1%}")
         print(f"    회차 부호 검정(계획 > B1): {wins}승 {losses}패 {len(d) - wins - losses}무 · 단측 p = {p_drop:.4f}")
@@ -338,7 +337,7 @@ def report(rows: pd.DataFrame, day_type: str, verdict: bool) -> dict:
         for dur, gg in g.groupby("회차"):
             dd = gg[gg["배송수"] > 0]
             pp = gg[gg["수거수"] > 0]
-            print(f"    {h // 6}시간 {dur}: 배송 {rate(dd['배송적중'].sum(), dd['배송수'].sum()):.1%} / "
+            print(f"    {h // TICKS_PER_HOUR}시간 {dur}: 배송 {rate(dd['배송적중'].sum(), dd['배송수'].sum()):.1%} / "
                   f"{rate(dd['B1배송적중'].sum(), dd['배송수'].sum()):.1%} / {rate(gg['B0적중'].sum(), gg['B0풀'].sum()):.1%}"
                   f" · 수거 {rate(pp['수거무해'].sum(), pp['수거수'].sum()):.1%} / "
                   f"{rate(pp['B1수거무해'].sum(), pp['B1수거수'].sum()):.1%} ({len(gg)})")
@@ -389,7 +388,7 @@ def real_plans(conn, grid: pd.DataFrame) -> None:
         print(f"  {DAY_TYPES.get(day_type, day_type)} — 계획 {used}건(t 관측 있음)")
         for h in HORIZONS:
             a = acc[h]
-            print(f"    {h // 6}시간: 배송 적중 {rate(a['dhit'], a['d']):.1%} ({a['dhit']}/{a['d']}, 이미 빈 곳 {a['d0']}) · "
+            print(f"    {h // TICKS_PER_HOUR}시간: 배송 적중 {rate(a['dhit'], a['d']):.1%} ({a['dhit']}/{a['d']}, 이미 빈 곳 {a['d0']}) · "
                   f"수거 무해 {rate(a['psafe'], a['p']):.1%} ({a['psafe']}/{a['p']})")
 
 
@@ -439,7 +438,7 @@ def main(argv=None) -> int:
             for dur in DURATIONS:
                 if dur not in refs[dt]:
                     continue
-                t = pd.Timestamp(day) + pd.Timedelta(hours=duration_hours(dur)[0])
+                t = pd.Timestamp(day) + pd.Timedelta(hours=duration_start_hour(dur))
                 if t not in index:
                     continue
                 s0 = grid.iloc[index[t]].dropna()
@@ -471,7 +470,7 @@ def main(argv=None) -> int:
     print("\n## 판정 (사전 등록: 평일 3 · 5시간에서 배송 · 수거 모두 통과하면 '증명')")
     for h in MAIN_HORIZONS:
         drop_ok, pick_ok = verdicts[h]
-        print(f"  {h // 6}시간: 배송 {'✅' if drop_ok else '❌'} · 수거 {'✅' if pick_ok else '❌'}")
+        print(f"  {h // TICKS_PER_HOUR}시간: 배송 {'✅' if drop_ok else '❌'} · 수거 {'✅' if pick_ok else '❌'}")
     proven = all(all(verdicts[h]) for h in MAIN_HORIZONS)
     print(f"  → {'✅ 증명 — 계획의 진단이 몇 시간 뒤 실제와 맞았고, 지금 재고 규칙보다 낫다' if proven else '❌ 증명 안 됨 — 못 넘은 칸을 그대로 적는다'}")
     return 0

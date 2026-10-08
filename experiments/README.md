@@ -18,6 +18,13 @@ experiments/
 `diagnostic/`의 스크립트들이 `sys.path`에 `baseline/`을 넣거나 `importlib`으로 경로를
 직접 지정해 부르기도 합니다. **그 함수들의 시그니처를 바꾸면 갈래를 넘어 깨집니다.**
 
+**실험끼리 나눠 쓰는 함수는 `experiments/_shared.py` 한 곳에 있습니다**(2026-10-08 — 위 개수에는
+들지 않습니다). `load_baseline()`(대조군 모듈을 경로로 싣기) · `resolve_run_label()`(재고 스냅샷 라벨 —
+못 찾으면 멈춘다) · `default_run_label()`(라벨을 안 줬을 때의 기본 실행)이고, 저장소 루트를 `sys.path`에
+넣은 뒤 `from experiments._shared import …`로 부릅니다. 스크립트마다 복사해 들고 있다가 한 벌만
+고쳐진 일이 있어 모았습니다(1.26.281 → 1.26.341). 거리 · 재고 틱 · 회차와 요일 목록 · 회차 시작
+시각은 `project_config`의 것을 씁니다 — 복사본이 다시 생기면 `tests/test_experiment_guards.py`가 막습니다.
+
 > 새 실험을 추가할 때: 어느 갈래인지 정하고, 스크립트 맨 위의 `sys.path.insert`는
 > `parents[2]`(저장소 루트)를 가리켜야 합니다. 한 칸 깊어졌기 때문입니다.
 

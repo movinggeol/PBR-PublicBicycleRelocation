@@ -320,6 +320,9 @@ def main():
     durations = [d.strip() for d in args.duration.split(",") if d.strip()]
 
     step1 = bc.load_step1()
+    # 순수요를 읽는 요일(아래 `args.day_type`)과 ILP·VRP·군집 모듈의 요일을 맞춘다(1.26.281) — 안 맞추면 `--day-type`을
+    # 안 줬을 때 모듈은 오늘 달력을 따른다. 지금은 휴일 이동 계수가 평일로 폴백해 어느 날 돌려도 수치는 같다.
+    bc.align_day_type(args.day_type, bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
     solver = bc.ilp_mod.build_solver()
     net, st_info, warmup = bc.load_inputs(args.period, args.run_label, args.day_type,
                                           args.warmup_days, args.warmup_period)

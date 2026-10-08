@@ -35,9 +35,11 @@ import numpy as np
 import pandas as pd
 
 import db
+from project_config import STOCK_TICK_MINUTES
 
-# 수집 간격(분). 한 틱이 10분이므로 horizon 6 = 1시간 뒤를 묻는다.
-TICK_MINUTES = 10
+# 수집 간격(분). 한 틱이 10분이므로 horizon 6 = 1시간 뒤를 묻는다. 값은 `project_config` 한 곳에 있고,
+# 다른 실험이 `sf.TICK_MINUTES`로 읽으므로 이름은 여기 남긴다.
+TICK_MINUTES = STOCK_TICK_MINUTES
 
 # 사전 등록 기본값 (ML_계획.md 4-1). 바꿔 돌릴 수는 있으나, **기본값을 바꾼 뒤
 # 이겼다고 말하지 않는다** — 결과를 보고 조건을 고르는 것과 같아진다.

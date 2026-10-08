@@ -37,7 +37,7 @@ import pandas as pd  # noqa: E402
 import db  # noqa: E402
 import saturation_forecast as satf  # noqa: E402
 import stockout_forecast as sf  # noqa: E402
-from project_config import DEFAULT_PERIOD, REBAL_MIN_QTY, holiday_mask  # noqa: E402
+from project_config import DEFAULT_PERIOD, REBAL_MIN_QTY, TICKS_PER_HOUR, holiday_mask  # noqa: E402
 
 TICK = pd.Timedelta(minutes=sf.TICK_MINUTES)
 
@@ -101,7 +101,7 @@ def build_rows(stock: pd.DataFrame, targets: dict, capacity: pd.Series, mu_weekd
 
     # 순수요 누적: 지금 재고 − 앞으로 k틱의 평균 순유출(평일 · 운영 기간). 통계에 없는 대여소는 유출 0
     outflow_table = satf.window_outflow(mu_weekday, horizon).reindex(stations).fillna(0.0).to_numpy()
-    slot = (ts.hour * 6 + ts.minute // sf.TICK_MINUTES).to_numpy()
+    slot = (ts.hour * TICKS_PER_HOUR + ts.minute // sf.TICK_MINUTES).to_numpy()
     outflow = outflow_table[:, slot].T                                   # (T, N)
 
     gap = target - S
@@ -161,7 +161,7 @@ def evaluate(train: pd.DataFrame, test: pd.DataFrame, name: str, horizon: int) -
              "④ GBM": prob}
     scores = {k: sf.brier(v, y) for k, v in preds.items()}
     win = all(scores["④ GBM"] < scores[k] for k in ("① 지속", "② 과거 빈도", "③ 순수요 누적"))
-    print(f"\n### {name} · {horizon}틱({horizon * 10}분) 뒤 — 검증 {len(y):,}행 · 실제 비율 {y.mean():.1%}")
+    print(f"\n### {name} · {horizon}틱({horizon * sf.TICK_MINUTES}분) 뒤 — 검증 {len(y):,}행 · 실제 비율 {y.mean():.1%}")
     best = min(scores[k] for k in ("① 지속", "② 과거 빈도", "③ 순수요 누적"))
     for k, b in scores.items():
         print(f"  {k:<10} {b:.4f}" + ("" if k.startswith("⓪") else f"   (세 베이스 중 최선 대비 {(b / best - 1) * 100:+.1f}%)"))

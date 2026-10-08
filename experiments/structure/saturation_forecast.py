@@ -43,10 +43,9 @@ import pandas as pd  # noqa: E402
 
 import db  # noqa: E402
 import stockout_forecast as sf  # noqa: E402
-from project_config import DEFAULT_PERIOD, holiday_mask  # noqa: E402
+from project_config import DEFAULT_PERIOD, TICKS_PER_HOUR, holiday_mask  # noqa: E402
 
 TICK_MINUTES = sf.TICK_MINUTES
-TICKS_PER_HOUR = 60 // TICK_MINUTES
 SLOTS_PER_DAY = 24 * TICKS_PER_HOUR
 
 # ── 사전 등록 (ML_후보_10 1번) — 결과를 보고 바꾸지 않는다

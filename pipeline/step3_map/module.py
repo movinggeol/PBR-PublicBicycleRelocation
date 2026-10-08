@@ -96,11 +96,18 @@ def start_time_for(duration: str, when=None, day_type: str = "weekday") -> str:
 
 
 def _duration_first_hour(duration):
-    """`_05_10` → 5. 형식이 다르면 None."""
+    """`_05_10` → 5. 형식이 다르면 None(호출부가 `FALLBACK_START_TIME`으로 넘어간다).
+
+    시각을 읽는 것은 `project_config.duration_start_hour()`다 — 예전에는 여기서 정규식으로
+    문자열을 다시 팠다(2026-10-08). 형식 판정만 남긴다: 지도는 회차 이름이 낯설어도 그려져야 한다.
+    """
     import re
 
-    match = re.match(r"_(\d{2})_(\d{2})$", str(duration or ""))
-    return int(match.group(1)) if match else None
+    from project_config import duration_start_hour
+
+    if not re.fullmatch(r"_\d{2}_\d{2}", str(duration or "")):
+        return None
+    return duration_start_hour(duration)
 
 
 

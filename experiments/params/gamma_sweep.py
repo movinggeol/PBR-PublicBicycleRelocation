@@ -32,6 +32,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "baseline"))
 
 import baseline_compare as bc  # noqa: E402
+from experiments._shared import resolve_run_label  # noqa: E402  (루트는 위 import가 sys.path에 넣는다)
 
 
 def main():
@@ -54,22 +55,19 @@ def main():
     day_type = bc.normalize_day_type(args.day_type)
 
     step1 = bc.load_step1()
+    # 순수요를 읽는 요일(아래 `day_type`)과 ILP·VRP·군집 모듈의 요일을 맞춘다(1.26.281) — 안 맞추면 `--day-type`을
+    # 안 줬을 때 모듈은 오늘 달력을 따른다. 지금은 휴일 이동 계수가 평일로 폴백해 어느 날 돌려도 수치는 같다.
+    bc.align_day_type(day_type, bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
     solver = bc.ilp_mod.build_solver()
     baseline_gamma = step1.CLUSTER_GAMMA
 
     # 재고 스냅샷을 고정한다. 예전에는 ""를 넘겨 **말없이 최신 라벨**을 썼는데,
     # 그러면 같은 명령이 다른 날 다른 값을 내고 다른 실험과 기준이 갈린다
     # (DECISIONS.md 6-B: 백분율은 기준 스냅샷과 함께 인용한다).
-    with bc.db.session() as conn:
-        # 기본은 가장 최근 **계획**이다. 예전의 `MAX(run_label)`은 문자열 최대라 08-24의
-        # 스윕 실행 `sweep-10`을 말없이 골랐다(1.26.281). 논문 수치는 라벨을 고정해 잰다
-        # (`--run-label "2026-08-11 real"`, EXPERIMENTS 머리말).
-        run_label = args.run_label or bc.db.latest_label(conn, "station_info", kinds=("plan",))
-        available = [r[0] for r in conn.execute(
-            "SELECT DISTINCT run_label FROM station_info ORDER BY 1")]
-    if run_label not in available:
-        raise SystemExit(f"station_info에 '{run_label}' 실행이 없습니다."
-                         f" --run-label 로 고르십시오: {available}")
+    # 기본은 가장 최근 **계획**이다. 예전의 `MAX(run_label)`은 문자열 최대라 08-24의
+    # 스윕 실행 `sweep-10`을 말없이 골랐다(1.26.281). 논문 수치는 라벨을 고정해 잰다
+    # (`--run-label "2026-08-11 real"`, EXPERIMENTS 머리말). 고른 라벨은 아래 머리줄이 찍는다.
+    run_label = resolve_run_label(args.run_label, announce=False)
 
     total_runs = len(periods) * len(gammas) * len(seeds) * len(durations)
     print(f"γ {len(gammas)}개 × 달 {len(periods)}개 × 씨앗 {len(seeds)}개"

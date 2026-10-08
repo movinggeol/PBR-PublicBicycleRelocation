@@ -36,7 +36,7 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
 import db  # noqa: E402
-from project_config import holiday_mask  # noqa: E402
+from project_config import haversine_km, holiday_mask  # noqa: E402
 
 # ── 사전 등록 (EXPERIMENTS 44장) — 결과를 보고 바꾸지 않는다
 SAME_PLACE_M = 50.0                     # 좌표가 이 안이면 같은 자리
@@ -98,10 +98,9 @@ def load_rentals(conn, months=None) -> tuple:
 
 
 def haversine_m(lat1, lon1, lat2, lon2) -> np.ndarray:
-    lat1, lon1, lat2, lon2 = (np.radians(np.asarray(v, dtype=float)) for v in (lat1, lon1, lat2, lon2))
-    a = (np.sin((lat2 - lat1) / 2) ** 2
-         + np.cos(lat1) * np.cos(lat2) * np.sin((lon2 - lon1) / 2) ** 2)
-    return 2 * 6_371_000 * np.arcsin(np.sqrt(a))
+    """두 지점 사이 거리(m). 식은 `project_config.haversine_km()` 하나다 — 여기서는 float 배열로 맞추고
+    단위만 바꾼다(`bike_turnover.py`도 이것을 부른다)."""
+    return haversine_km(*(np.asarray(v, dtype=float) for v in (lat1, lon1, lat2, lon2))) * 1000
 
 
 def build_pairs(df: pd.DataFrame) -> pd.DataFrame:

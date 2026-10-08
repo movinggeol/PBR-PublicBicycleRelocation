@@ -234,12 +234,12 @@ def window_frame(hourly: pd.DataFrame, duration: str) -> pd.DataFrame:
             columns=["date", "rain", "temp", "wind", "humid", "snow", "hours"])
 
     hours = duration_hours(duration)
-    start, end = int(duration.split("_")[1]), int(duration.split("_")[2])
+    start = hours[0]
 
     frame = hourly[hourly["time"].dt.hour.isin(hours)].copy()
     frame["date"] = frame["time"].dt.normalize()
-    if start > end:  # 자정을 넘긴 창의 새벽 몫은 전날 밤에 붙인다
-        frame.loc[frame["time"].dt.hour < end, "date"] -= timedelta(days=1)
+    if hours[-1] < start:  # 자정을 넘긴 창의 새벽 몫(시작 시각보다 이른 시)은 전날 밤에 붙인다
+        frame.loc[frame["time"].dt.hour < start, "date"] -= timedelta(days=1)
 
     folded = frame.groupby("date").agg(
         rain=("rain", "sum"),

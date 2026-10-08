@@ -839,6 +839,9 @@ def _canon_round(duration: str = "_05_10") -> dict | None:
     try:
         bc = _load_experiment("baseline_compare", "experiments/baseline/baseline_compare.py")
         step1 = bc.load_step1()
+        # 순수요를 읽는 요일(아래 "weekday")과 ILP·VRP·군집 모듈의 요일을 맞춘다(1.26.281) — 안 맞추면 모듈은
+        # 그림을 그리는 날의 달력을 따른다. 지금은 휴일 이동 계수가 평일로 폴백해 어느 날 그려도 같다.
+        bc.align_day_type("weekday", bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
         solver = bc.ilp_mod.build_solver()
         net, info, warm = bc.quiet(bc.load_inputs, CANON_PERIOD, CANON_LABEL, "weekday",
                                    bc.DEFAULT_WARMUP_DAYS, "")

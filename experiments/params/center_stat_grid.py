@@ -53,7 +53,6 @@ litmus: **재배치 '전' 결품이 방법에 따라 움직이면 그 비교는 
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import io
 import sys
 from pathlib import Path
@@ -65,6 +64,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 import demand_model  # noqa: E402
+from experiments._shared import load_baseline  # noqa: E402
 from pipeline.step0_collect.calculate_target_qty import duration_columns  # noqa: E402
 
 # 정규분포에서 MAD × 1.4826 이 sigma의 일치추정량이다(1 / 0.6745).
@@ -72,15 +72,6 @@ MAD_TO_SIGMA = 1.4826
 
 # 기본 z 격자 — 18장이 쓴 좁은 격자와 같다(양쪽을 같은 자로 재려고).
 Z_GRID = [1.65, 1.80, 1.99, 2.10, 2.33]
-
-
-def load_baseline():
-    path = ROOT / "experiments" / "baseline" / "baseline_compare.py"
-    spec = importlib.util.spec_from_file_location("baseline_compare", path)
-    bc = importlib.util.module_from_spec(spec)
-    sys.modules["baseline_compare"] = bc
-    spec.loader.exec_module(bc)
-    return bc
 
 
 # ------------------------------------------------------------------ 중심 통계
@@ -146,6 +137,9 @@ def build_candidates_median(bc, net, st_info, duration, z, warmup,
 
 def measure(bc, args) -> pd.DataFrame:
     step1 = bc.load_step1()
+    # 순수요를 읽는 요일(아래 `args.day_type`)과 ILP·VRP·군집 모듈의 요일을 맞춘다(1.26.281) — 안 맞추면 `--day-type`을
+    # 안 줬을 때 모듈은 오늘 달력을 따른다. 지금은 휴일 이동 계수가 평일로 폴백해 어느 날 돌려도 수치는 같다.
+    bc.align_day_type(args.day_type, bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
     solver = bc.ilp_mod.build_solver()
     net, st_info, warmup = bc.load_inputs(
         args.period, args.run_label, args.day_type, args.warmup_days, "")

@@ -12,6 +12,7 @@ import db
 from project_config import (
     exit_if_help,
     DATA_ROOT, VEHICLE_SPEED_KMPH, duration_list, ensure_output_dirs, get_runtime_config,
+    haversine_km,           # 예전에는 이 파일에 있었다 — `ilp.haversine_km`으로 읽는 곳(vrp · 실험)이 그대로 통한다
     require_columns, travel_seconds,
 )
 
@@ -119,28 +120,6 @@ def build_solver(msg: bool = False, time_limit: int = SOLVER_TIME_LIMIT_SEC,
         "CBC 솔버를 찾지 못했습니다. `pip install pulp[cbc]`로 설치한 뒤 다시 실행하세요."
         " (PuLP 4.0부터 PULP_CBC_CMD가 없어져 CBC를 따로 받아야 합니다 —"
         " docs/기록/TODO.md P2-B)")
-
-
-def haversine_km(lat1, lon1, lat2, lon2) -> float:
-    '''
-    위도와 경도를 이용해 두 지점 사이의 실제 지구 곡면 거리(km)를 계산
-    (대여소 A - 대여소 B) 사이의 실제 거리
-    '''
-    R = 6371.0
-    
-    p1 = np.radians(lat1)
-    p2 = np.radians(lat2)
-    
-    dlat = p2 - p1
-    dlon = np.radians(lon2 - lon1)
-    
-    a = np.sin(dlat/2)**2 + np.cos(p1)*np.cos(p2)*np.sin(dlon/2)**2
-    
-    # 중심각 계산 (지구 기준 두 점 사이의 각도)
-    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1-a))
-
-    # 최종 거리 (실제 지표면 길이(호의 길이)) (d = R * c)
-    return float(R*c)
 
 
 def km_to_travel_seconds(km: float, speed_kmph: float = None) -> float:

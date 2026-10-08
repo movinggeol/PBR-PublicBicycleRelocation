@@ -49,11 +49,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd
 
 import db
-from project_config import (DURATIONS, REBAL_MIN_QTY, duration_hours, is_holiday,
-                            select_day_type)
+from project_config import (DURATIONS, REBAL_MIN_QTY, STOCK_TICK_MINUTES, TICKS_PER_HOUR,
+                            duration_hours, duration_start_hour, is_holiday, select_day_type)
 
-# 수집 간격(분). 한 틱이 대표하는 시간이 곧 결품 시간의 단위다.
-TICK_MINUTES = 10
+# 수집 간격(분). 한 틱이 대표하는 시간이 곧 결품 시간의 단위다. 값은 `project_config` 한 곳에 있다.
+TICK_MINUTES = STOCK_TICK_MINUTES
 
 # 그 날(또는 그 회차)이 '촘촘하다'고 볼 기준 — **잰 창의 비율로 판정한다.**
 #
@@ -147,7 +147,7 @@ def duration_complete_days(frame: pd.DataFrame, hours: list) -> list:
     part = frame[frame["시각"].isin(hours)]
     if part.empty:
         return []
-    per_hour = 60 // TICK_MINUTES
+    per_hour = TICKS_PER_HOUR
     need = max(int(len(hours) * per_hour * COMPLETE_DAY_RATIO), 1)
     ticks = part.groupby("날짜")["관측"].nunique()
     return sorted(ticks[ticks >= need].index)
@@ -557,7 +557,7 @@ def _save_calibration(rows: list, day_type: str, window) -> None:
 def same_day_start(created_at, duration: str) -> tuple:
     """계획을 세운 날의 회차 시작 시각과, 그 시각보다 **몇 분 늦게** 세웠는지."""
     made = pd.Timestamp(created_at).to_pydatetime()
-    start = datetime.combine(made.date(), clock(duration_hours(duration)[0]))
+    start = datetime.combine(made.date(), clock(duration_start_hour(duration)))
     return start, (made - start).total_seconds() / 60
 
 
@@ -711,7 +711,7 @@ def compare_same_day(day_type: str, run_label: str = None,
         print(f"(같은 시각 비교: {what}이 없습니다 — tools/sameday_plan.py로 세웁니다)")
         return []
 
-    per_hour = 60 // TICK_MINUTES
+    per_hour = TICKS_PER_HOUR
     # 이틀치 재고 시계열은 **날짜마다 한 번만** 읽는다 (2026-10-08 점검). 같은 날의 네 회차가
     # 같은 범위(그날 ~ +2일)를 쓰는데 실행마다 다시 읽어, 평일 22회차에 22번을 읽고 있었다.
     # 읽는 범위가 날짜 문자열로 정해지므로 날짜가 열쇠다 — 창으로 자르는 것은 아래에서 실행마다 한다.

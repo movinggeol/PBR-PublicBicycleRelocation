@@ -37,21 +37,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import pandas as pd
 
-from project_config import REBAL_MIN_QTY, TOP_STATION_LIMIT, holiday_mask
+from project_config import (
+    DURATIONS, REBAL_MIN_QTY, STOCK_TICK_MINUTES, TICKS_PER_HOUR, TOP_STATION_LIMIT,
+    duration_hours, holiday_mask,
+)
 from webapp import store
 
 HORIZONS = (1, 3)                 # 시간 — ML 14번이 잰 두 지평만 연다
 STALE_MINUTES = 60                # 마지막 관측이 이보다 오래되면 목록을 내지 않는다
-TICK_MINUTES = 10
-DURATIONS = (("_05_10", 5, 10), ("_10_15", 10, 15), ("_15_20", 15, 20), ("_20_05", 20, 29))
 
 # ML 14번의 실측(EXPERIMENTS 46장) — 평일 검증 4일, 매 시각 상위 50곳 중 실제 대상 비율. 화면이 근거로 보여 준다
 VALIDATED_TOP50 = {1: {"수거": 95.3, "배송": 99.4}, 3: {"수거": 85.8, "배송": 97.3}}
 
 
 def duration_of(hour: int) -> str:
-    for name, start, end in DURATIONS:
-        if start <= hour < end or start <= hour + 24 < end:
+    for name in DURATIONS:
+        if hour % 24 in duration_hours(name):
             return name
     return "_20_05"
 
@@ -61,8 +62,8 @@ def expected_outflow(mu: pd.DataFrame, start: pd.Timestamp, hours: int) -> pd.Se
 
     한 시간의 평균을 그 시간의 10분 칸 여섯에 고르게 나눈다 — ML 14번 베이스라인 ③과 같은 식이다.
     """
-    per_hour = 60 // TICK_MINUTES
-    slot = start.hour * per_hour + start.minute // TICK_MINUTES
+    per_hour = TICKS_PER_HOUR
+    slot = start.hour * per_hour + start.minute // STOCK_TICK_MINUTES
     slots = (slot + np.arange(hours * per_hour)) % (24 * per_hour)
     hours_idx = slots // per_hour
     rate = mu.reindex(columns=range(24)).fillna(0.0).to_numpy(dtype=float) / per_hour

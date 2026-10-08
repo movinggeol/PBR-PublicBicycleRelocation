@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 import contextlib
-import importlib.util
 import io
 import json
 import os
@@ -28,11 +27,8 @@ SEEDS = [int(s) for s in os.environ["PBR_EXP_SEEDS"].split(",")]
 
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf):          # 파이프라인 수다를 삼킨다
-    spec = importlib.util.spec_from_file_location(
-        "baseline_compare", ROOT / "experiments" / "baseline" / "baseline_compare.py")
-    bc = importlib.util.module_from_spec(spec)
-    sys.modules["baseline_compare"] = bc
-    spec.loader.exec_module(bc)
+    from experiments._shared import load_baseline
+    bc = load_baseline()
 
     step1 = bc.load_step1()
     # 순수요를 읽는 요일(아래 "weekday")과 ILP·VRP·군집 모듈의 요일을 맞춘다(1.26.281) — 안 맞추면 모듈은

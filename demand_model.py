@@ -34,7 +34,7 @@ import numpy as np
 import pandas as pd
 
 import weather
-from project_config import DATA_ROOT, DAY_TYPES, duration_hours, select_day_type
+from project_config import DATA_ROOT, DAY_TYPES, DURATIONS, duration_hours, select_day_type
 
 MODEL_PATH = DATA_ROOT / "models" / "target_quantile.pkl"
 
@@ -45,8 +45,6 @@ MODEL_PATH = DATA_ROOT / "models" / "target_quantile.pkl"
 # 베이스라인을 이기지 못했다(0.93/0.95/0.97 전부 확인).
 # 자세한 경위: docs/분석/DEMAND_DISTRIBUTION.md 5장.
 TARGET_QUANTILE = 0.95
-
-DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
 
 # 계획 대상 **날짜**의 날씨. 위 피처들과 성격이 다르다 — 대여소마다가 아니라
 # 날마다 달라지고, 도시 전체에 같은 값이 들어간다(관측소가 대전에 하나뿐이다).

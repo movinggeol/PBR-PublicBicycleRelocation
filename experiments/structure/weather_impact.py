@@ -34,10 +34,9 @@ import pandas as pd
 import db
 import demand_model
 import weather
-from project_config import duration_hours, holiday_mask, select_day_type
+from project_config import DAY_TYPES, duration_hours, holiday_mask, select_day_type
 
 WINDOWS = ("_05_10", "_10_15", "_15_20")
-DAY_TYPES = ("weekday", "holiday")
 RAIN_MM = weather.RAIN_MM   # '비 온 날' 문턱. 정의는 weather.py 하나다
 FOLDS = 5
 MIN_DEMAND = 2.0   # 작업 대상 대여소 문턱 (|mu| > 2) — 전체 평균은 결론을 뒤집는다

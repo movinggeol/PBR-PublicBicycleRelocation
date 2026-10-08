@@ -124,6 +124,16 @@ DEFAULT_NOW = os.getenv("PBR_NOW", "2026-05-21 18")
 # 창마다 수요 방향이 반대라 섞어서 평균 내지 않는다(docs/분석/KPI.md).
 # `_20_05`는 자정을 넘긴다 — 시간 목록을 만드는 곳은 duration_hours() 하나다.
 DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
+
+# ---- 재고 수집 틱 ----
+# `stock_history`는 10분마다 한 틱씩 쌓인다(tools/collect_stock.py의 `DEFAULT_INTERVAL` ·
+# 등록된 작업의 `--interval`, docs/구현/COLLECTOR.md). **분석 쪽이 이 간격을 읽는 곳은
+# 여기 하나다** — 예전에는 실험 넷과 웹 화면이 10을 따로 박고, 시간당 틱 수 6도 세 곳에
+# 숫자로 박혀 있었다(2026-10-08 점검). 수집 간격을 바꾸면 여기와 수집기 기본값을 함께 바꾼다
+# (tests/test_stock_history.py가 둘이 같은지 본다).
+STOCK_TICK_MINUTES = 10
+TICKS_PER_HOUR = 60 // STOCK_TICK_MINUTES
+
 DURATION_LABELS = {
     "_05_10": "05~10시 (출근)",
     "_10_15": "10~15시 (낮)",
@@ -492,6 +502,41 @@ def travel_seconds(km: float, speed_kmph: float = None,
             fixed, speed = ROAD_FIXED_SEC_WEEKDAY, ROAD_SPEED_KMPH_WEEKDAY
         return fixed + km * 3600.0 / speed
     return km / speed_kmph * 3600.0
+
+
+EARTH_RADIUS_KM = 6371.0
+
+
+def haversine_km(lat1, lon1, lat2, lon2):
+    """두 지점 사이의 대원거리(km). **거리를 재는 곳은 여기 하나다** (2026-10-08).
+
+    이동시간은 `travel_seconds()` 하나로 모여 있었는데 그 입력인 거리는 아홉 곳이 따로
+    구현하고 있었다(ILP · step3 지도 · step1의 두 벌 · 도로 수집기 · 실험 넷). 반지름은 모두
+    6371.0이었지만 식이 `arcsin(√a)` · `arctan2(√a, √(1−a))` · `math` · `numpy`로 갈려
+    마지막 자리가 서로 달랐다.
+
+    🔴 **식의 모양을 바꾸지 마라.** 이것은 ILP · VRP가 쓰던 `ilp.haversine_km()`의 연산을
+    순서까지 그대로 옮긴 것이다 — 계획의 이동시간이 이 값에서 나오므로 마지막 비트가 달라지면
+    동률을 가르는 자리에서 계획이 갈릴 수 있다. `tests/test_calculations.py`가 옛 식과
+    비트 단위로 같은지 본다.
+
+    스칼라를 주면 `float`, 배열(넘파이 · 판다스)을 주면 같은 모양의 배열을 돌려준다 — 브로드캐스트가
+    되므로 `haversine_km(lat[:, None], lon[:, None], lat[None, :], lon[None, :])`가 쌍 거리 행렬이다.
+    """
+    # 넘파이를 여기서 읽는다 — `project_config`는 의존성 없이 import되는 자리(커밋 훅 등)에서도
+    # 읽히므로 모듈 머리에 두지 않는다.
+    import numpy as np
+
+    p1 = np.radians(lat1)
+    p2 = np.radians(lat2)
+
+    dlat = p2 - p1
+    dlon = np.radians(lon2 - lon1)
+
+    a = np.sin(dlat/2)**2 + np.cos(p1)*np.cos(p2)*np.sin(dlon/2)**2
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1-a))
+    km = EARTH_RADIUS_KM*c
+    return float(km) if np.ndim(km) == 0 else km
 
 
 # 자전거 1대를 싣고/내리는 데 걸리는 시간(초). VRP의 작업시간 계산에 쓴다.
@@ -981,6 +1026,15 @@ def duration_hours(duration: str) -> list:
     """
     start, end = int(duration.split("_")[1]), int(duration.split("_")[2])
     return list(range(start, end)) if start < end else         list(range(start, 24)) + list(range(0, end))
+
+
+def duration_start_hour(duration: str) -> int:
+    """회차가 시작하는 시(時). `_05_10` → 5, 자정을 넘는 `_20_05` → 20.
+
+    `duration_hours()`의 첫 값이다. 같은 계산이 다섯 벌이었고 그중 하나는 정규식으로
+    문자열을 다시 팠다(2026-10-08 점검) — 회차의 시각을 읽는 곳을 이 둘로 모은다.
+    """
+    return duration_hours(duration)[0]
 
 
 def duration_list(config: RuntimeConfig) -> Tuple[str, ...]:

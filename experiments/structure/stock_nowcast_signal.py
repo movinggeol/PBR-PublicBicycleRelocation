@@ -45,10 +45,10 @@ import numpy as np
 import pandas as pd
 
 import db
-from project_config import DURATIONS, REBAL_MIN_QTY, holiday_mask, latest_period
+from project_config import (DURATIONS, REBAL_MIN_QTY, STOCK_TICK_MINUTES, TICKS_PER_HOUR, duration_hours,
+                            duration_start_hour, holiday_mask, latest_period)
 
-TICK_MIN = 10
-START_HOURS = {"_05_10": 5, "_10_15": 10, "_15_20": 15, "_20_05": 20}
+TICK_MIN = STOCK_TICK_MINUTES
 
 
 def load_stock(conn, min_ticks: int) -> pd.DataFrame:
@@ -82,14 +82,12 @@ def hourly_mu(conn, period: str) -> pd.DataFrame:
 
 def window_mu(mu: pd.DataFrame, duration: str) -> pd.Series:
     """창 안 순수요 평균의 절댓값 — 작업 대상급을 가르는 자."""
-    start = START_HOURS[duration]
-    hours = [(start + i) % 24 for i in range(9 if duration == "_20_05" else 5)]
-    return mu[hours].sum(axis=1).abs()
+    return mu[duration_hours(duration)].sum(axis=1).abs()
 
 
 def build_rows(wide: pd.DataFrame, mu: pd.DataFrame, duration: str, lead: int) -> pd.DataFrame:
     """(날짜, 대여소)마다 계획 시각(t0)의 정보와 회차 시작 재고(타깃)를 만든다."""
-    start = START_HOURS[duration]
+    start = duration_start_hour(duration)
     at_start = wide[(wide.index.hour == start) & (wide.index.minute == 0)]
     rows = []
     for ts in at_start.index:
@@ -157,7 +155,7 @@ def evaluate(rows: pd.DataFrame, target_like: pd.Series, seed: int = 42) -> dict
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--leads", default="1,2,3", help="계획 시각이 회차 시작 몇 시간 전인가")
-    ap.add_argument("--min-ticks", type=int, default=100, help="하루 최소 틱 수(24시간=144)")
+    ap.add_argument("--min-ticks", type=int, default=100, help=f"하루 최소 틱 수(24시간={24 * TICKS_PER_HOUR})")
     ap.add_argument("--period", default=None, help="순수요 통계 기간(기본 latest_period)")
     ap.add_argument("--durations", default=",".join(DURATIONS))
     args = ap.parse_args(argv)

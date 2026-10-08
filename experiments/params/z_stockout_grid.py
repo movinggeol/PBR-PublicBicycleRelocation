@@ -54,7 +54,6 @@ B2(z=0)를 만들고 있었으므로, **z만 격자로 바꾸면 되는 구조�
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import sys
 from pathlib import Path
 
@@ -67,20 +66,7 @@ from project_config import (                    # noqa: E402
     CLUSTER_GAMMA, DEFAULT_PERIOD, DEFAULT_WARMUP_DAYS, TARGET_Z,
     TIME_BUDGET_MINUTES, normalize_day_type,
 )
-
-
-def load_baseline():
-    """`baseline_compare.py`를 모듈로 불러온다 — 측정 함수를 그대로 쓰기 위해서다.
-
-    파일 이름이 식별자로 쓸 수 있는 형태라 일반 import도 되지만, experiments/의
-    분류 폴더가 패키지가 아니므로 경로로 직접 읽는다.
-    """
-    path = ROOT / "experiments" / "baseline" / "baseline_compare.py"
-    spec = importlib.util.spec_from_file_location("baseline_compare", path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["baseline_compare"] = module
-    spec.loader.exec_module(module)
-    return module
+from experiments._shared import load_baseline   # noqa: E402
 
 
 Z_GRID = [1.65, 1.80, 1.99, 2.10, 2.33]
@@ -214,6 +200,9 @@ def main():
 
     bc = load_baseline()
     step1 = bc.load_step1()
+    # 순수요를 읽는 요일(아래 `args.day_type`)과 ILP·VRP·군집 모듈의 요일을 맞춘다(1.26.281) — 안 맞추면 `--day-type`을
+    # 안 줬을 때 모듈은 오늘 달력을 따른다. 지금은 휴일 이동 계수가 평일로 폴백해 어느 날 돌려도 수치는 같다.
+    bc.align_day_type(args.day_type, bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
     solver = bc.ilp_mod.build_solver()          # 파이프라인과 같은 솔버 설정
     net, st_info, warmup = bc.load_inputs(
         args.period, args.run_label, args.day_type,

@@ -27,7 +27,7 @@ from project_config import (
     exit_if_help,
     DATA_ROOT, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, MAP_TILES, PROJECT_ROOT,
     VEHICLE_CAPACITY,
-    duration_list, ensure_output_dirs, get_runtime_config,
+    duration_list, ensure_output_dirs, get_runtime_config, haversine_km,
 )
 import db
 
@@ -128,18 +128,6 @@ def visit_tooltip(records: list, station_name: str) -> str:
     return head + "<br>" + "<br>".join(lines)
 
 
-def _haversine_km(lat1, lon1, lat2, lon2) -> float:
-    """두 지점의 직선거리(km). ILP·VRP가 쓰는 것과 같은 계산이다."""
-    import math
-
-    r = 6371.0
-    p1, p2 = math.radians(float(lat1)), math.radians(float(lat2))
-    dp = p2 - p1
-    dl = math.radians(float(lon2) - float(lon1))
-    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 2 * r * math.asin(min(1.0, math.sqrt(h)))
-
-
 def _road_legs(cluster: int, route_pts: list, elapsed_sec: list,
                start_time: str = None) -> list:
     """TMAP이 준 누적 소요를 **구간별 실측**으로 풀어 낸다 (1.23.2).
@@ -177,7 +165,7 @@ def _road_legs(cluster: int, route_pts: list, elapsed_sec: list,
             "to_id": b.get("id"),
             "from_lat": a.get("lat"), "from_lon": a.get("lon"),
             "to_lat": b.get("lat"), "to_lon": b.get("lon"),
-            "straight_km": round(_haversine_km(
+            "straight_km": round(haversine_km(
                 a["lat"], a["lon"], b["lat"], b["lon"]), 4),
             "road_sec": round(gap, 1),
             # 언제 잰 값인지 남긴다. 배율은 교통 상황에 따라 달라지므로

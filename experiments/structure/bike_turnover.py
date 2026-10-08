@@ -39,7 +39,7 @@ import pandas as pd  # noqa: E402
 import db  # noqa: E402
 import rebalance_trace as rt  # noqa: E402
 import weather  # noqa: E402
-from project_config import holiday_mask  # noqa: E402
+from project_config import DURATIONS, duration_start_hour, holiday_mask  # noqa: E402
 
 # ── 사전 등록 (EXPERIMENTS 44장)
 HORIZON_H = 3
@@ -52,7 +52,7 @@ GBM_PARAMS = dict(max_iter=200, learning_rate=0.1, max_depth=6, random_state=0)
 
 WEATHER_COLS = ["temp", "rain", "wind", "humid", "snow"]
 FEATURES = ["시", "요일", "달", "대여소비율", "대여소시비율", "대여소일평균대여", *WEATHER_COLS]
-ROUND_START_H = {"_05_10": 5, "_10_15": 10, "_15_20": 15, "_20_05": 20}
+ROUND_START_H = {d: duration_start_hour(d) for d in DURATIONS}     # 회차 → 시작 시(5 · 10 · 15 · 20)
 
 
 # ───────────────────────────────────────────── 표본 · 라벨

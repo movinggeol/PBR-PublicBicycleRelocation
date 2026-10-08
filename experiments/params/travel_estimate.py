@@ -37,18 +37,8 @@ import pandas as pd
 
 import db
 from project_config import (
-    DROP_TIME_SEC, PICK_TIME_SEC, TRAVEL_MIN_PER_STATION,
+    DROP_TIME_SEC, PICK_TIME_SEC, TRAVEL_MIN_PER_STATION, haversine_km,
 )
-
-
-def haversine_km(lat1, lon1, lat2, lon2):
-    """두 점 사이 거리(km). step2와 같은 공식을 쓴다."""
-    radius = 6371.0
-    p1, p2 = np.radians(lat1), np.radians(lat2)
-    dp = p2 - p1
-    dl = np.radians(lon2) - np.radians(lon1)
-    a = np.sin(dp / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(dl / 2) ** 2
-    return 2 * radius * np.arcsin(np.sqrt(a))
 
 
 def spread_km(points: pd.DataFrame) -> float:

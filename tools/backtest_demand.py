@@ -30,11 +30,10 @@ import pandas as pd
 import db
 import demand_model
 from project_config import (
-    DAY_TYPE_AUTO, DAY_TYPES, TARGET_Z, duration_hours, normalize_day_type,
+    DAY_TYPE_AUTO, DAY_TYPES, DURATIONS, TARGET_Z, duration_hours, normalize_day_type,
     select_day_type,
 )
 
-DURATIONS = ["_05_10", "_10_15", "_15_20", "_20_05"]
 
 
 def window_hours(duration: str) -> list:
@@ -136,7 +135,7 @@ def main() -> int:
                         help="검증 달 첫 N일로 계절 배율 보정 (기본 0 = 끔). 권장 14")
     args, _ = parser.parse_known_args()
 
-    durations = [args.duration] if args.duration else DURATIONS
+    durations = [args.duration] if args.duration else list(DURATIONS)
     day_type = normalize_day_type(args.day_type)
 
     with db.session() as conn:

@@ -45,6 +45,7 @@ sys.path.insert(0, str(ROOT))
 # 그래야만 했던 이유는 `vrp.py`·`top_st_clustering.py`가 형제 모듈을 맨 이름으로
 # 부르고 있어서였고, 그 두 줄을 고치자 이 우회가 필요 없어졌다.
 import db                                                                # noqa: E402
+from experiments._shared import default_run_label                        # noqa: E402
 from pipeline.step0_collect import calculate_target_qty as target_mod    # noqa: E402
 from pipeline.step2_optimize import ilp as ilp_mod                       # noqa: E402
 from pipeline.step2_optimize import vrp as vrp_mod                       # noqa: E402
@@ -131,7 +132,7 @@ def _report_snapshot(info, run_label, period, net) -> None:
     label = run_label
     if not label:
         with db.session() as conn:
-            label = db.latest_label(conn, "station_info", kinds=("plan",))
+            label = default_run_label(conn)
     kind = db.classify_run_label(label)
     stock = int(info["stock"].sum()) if "stock" in info else -1
     print(f"[스냅샷] 대여소 정보 = '{label}' ({kind}) · "
@@ -160,9 +161,9 @@ def load_inputs(period, run_label, day_type, warmup_days, warmup_period):
         # ⚠️ `db.load_frame`과 `latest_label`은 처음부터 `kinds`를 받고 있었다 —
         #    **아무도 넘기지 않았을 뿐이다.** 여기 한 곳을 고치면 이 함수를
         #    쓰는 실험 19개가 함께 고쳐진다.
+        # 기본 실행을 고르는 규칙(가장 최근 계획)은 `experiments/_shared.py`의 `default_run_label()` 하나다.
         info = db.load_frame(conn, "station_info",
-                             **({"run_label": run_label} if run_label
-                                else {"kinds": ("plan",)}))
+                             run_label=run_label or default_run_label(conn))
         warmup = pd.DataFrame()
         if warmup_days > 0 and warmup_period and warmup_period != period:
             warmup = db.load_frame(conn, "net_demand", period=warmup_period)

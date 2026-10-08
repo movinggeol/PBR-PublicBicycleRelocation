@@ -42,9 +42,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import project_config  # noqa: F401,E402  (cp949 출력 가드 — 1.26.194)
 import db  # noqa: E402
+from project_config import STOCK_TICK_MINUTES  # noqa: E402
 
-# 솎아서 흉내 낼 간격들(분). 10분이 기준이다.
-STEPS = (10, 20, 30, 60, 180)
+# 솎아서 흉내 낼 간격들(분). 맨 앞이 기준 — 지금의 수집 간격(10분)이다.
+STEPS = (STOCK_TICK_MINUTES, 20, 30, 60, 180)
 # 하루 전체를 견줄 수 있을 만큼 모인 날만 센다 — 반쪽짜리 날은 비율을 흔든다.
 MIN_TICKS_PER_DAY = 40
 NIGHT_HOURS = range(0, 5)          # 00~05시 — 간격을 늘리자는 후보 구간
@@ -72,7 +73,7 @@ def hourly_change(by_tick: dict) -> dict:
     per_hour: dict = defaultdict(list)
     for before, after in zip(ticks, ticks[1:]):
         start, end = _at(before), _at(after)
-        if (end - start).total_seconds() != 600:      # 연속한 10분 쌍만
+        if (end - start).total_seconds() != STOCK_TICK_MINUTES * 60:      # 연속한 10분 쌍만
             continue
         a, b = by_tick[before], by_tick[after]
         per_hour[start.hour].append(sum(1 for s in a.keys() & b.keys() if a[s] != b[s]))

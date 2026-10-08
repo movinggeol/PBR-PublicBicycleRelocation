@@ -28,7 +28,7 @@ from project_config import (
     CLUSTER_IMBALANCE_ALLOWANCE, DEPOT_LAT, DEPOT_LON, DROP_TIME_SEC,
     PICK_TIME_SEC, TIME_BUDGET_MINUTES, TOP_STATION_LIMIT,
     TRAVEL_MIN_PER_STATION, VEHICLES_PER_ROUND,
-    duration_list, ensure_output_dirs, get_runtime_config, require_columns,
+    duration_list, ensure_output_dirs, get_runtime_config, haversine_km, require_columns,
     travel_seconds,
 )
 
@@ -50,13 +50,14 @@ GEO_METHODS = ("bhh", "nn", "mst")
 
 
 def _pairwise_km(lat, lon):
-    """좌표 배열의 모든 쌍 거리(km) 행렬. 후보 90여 곳 규모라 비용이 문제 안 된다."""
-    lat_r, lon_r = np.radians(lat), np.radians(lon)
-    dlat = lat_r[:, None] - lat_r[None, :]
-    dlon = lon_r[:, None] - lon_r[None, :]
-    a = (np.sin(dlat / 2) ** 2
-         + np.cos(lat_r)[:, None] * np.cos(lat_r)[None, :] * np.sin(dlon / 2) ** 2)
-    return 2 * 6371.0 * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))
+    """좌표 배열의 모든 쌍 거리(km) 행렬. 후보 90여 곳 규모라 비용이 문제 안 된다.
+
+    거리 식은 `project_config.haversine_km()` 하나다(2026-10-08). 예전에는 여기와 아래 depot
+    거리가 각자 식을 들고 있었다(`arcsin` · `arctan2`) — 둘 다 **K를 기하로 어림하는 경로
+    (`PBR_WANTED_VEHICLES_GEO`, 기본 꺼짐)에서만** 쓰여 계획의 기본 경로에는 닿지 않는다.
+    """
+    lat, lon = np.asarray(lat, dtype=float), np.asarray(lon, dtype=float)
+    return haversine_km(lat[:, None], lon[:, None], lat[None, :], lon[None, :])
 
 
 def _nn_tour_km(dist) -> float:
@@ -151,11 +152,7 @@ def _travel_km_parts(pick_drop: pd.DataFrame, method: str = "bhh") -> tuple:
 
     tour_km = total_tour_km(pick_drop, method)
 
-    dlat = np.radians(lat - DEPOT_LAT)
-    dlon = np.radians(lon - DEPOT_LON)
-    p1, p2 = np.radians(DEPOT_LAT), np.radians(lat)
-    a = np.sin(dlat / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(dlon / 2) ** 2
-    depot_km = float((2 * 6371.0 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))).mean())
+    depot_km = float(haversine_km(DEPOT_LAT, DEPOT_LON, lat, lon).mean())
 
     return tour_km, depot_km
 

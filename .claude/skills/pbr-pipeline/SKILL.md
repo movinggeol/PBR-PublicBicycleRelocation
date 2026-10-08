@@ -18,7 +18,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 1249개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 1270개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -86,6 +86,14 @@ pipeline/step4_metrics  : imbalance
   넣었다가 27개가 깨져 되돌렸고, 1.26.141에서 44곳을 모두 고친 뒤에야 열었다.
   **반쯤 듣는 격리 스위치는 *지켜 주는 척하는 장치*라 더 나쁘다.**
 - 산출물을 쓰는 스크립트는 저장 전에 `ensure_output_dirs()`를 호출한다.
+- **거리 · 재고 틱 · 회차 시각은 `project_config`의 것을 쓴다** (1.26.343) —
+  `haversine_km()`(스칼라 · 배열 겸용), `STOCK_TICK_MINUTES` · `TICKS_PER_HOUR`,
+  `DURATIONS` · `duration_hours()` · `duration_start_hour()`. 스크립트에 6371 · 10분 ·
+  회차 튜플을 다시 적지 마라 — 통합 전 거리 식이 아홉 벌이었고 서로 *"같은 공식"* 이라
+  적어 두고도 마지막 자리가 달랐다. 실험이 `baseline_compare`를 읽거나 기본 실행을
+  고를 때는 실험 공용 모듈을 쓴다(복사본 넷에 고침이 안 번진 일이 있었다, 1.26.341).
+  🔴 `haversine_km()`의 **식 모양을 바꾸지 마라** — 계획의 이동시간이 이 값에서 나와
+  테스트가 옛 ILP 식과 비트 단위로 대조한다.
 
 ## ⚠️ 함정 (반드시 확인)
 
@@ -356,7 +364,7 @@ python tools/gate_a_compare.py <off 폴더> <on 폴더>  # 끈/켠 결과 장별
 ## 테스트
 
 ```powershell
-python -m pytest                 # 1249개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 1270개, 약 100초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

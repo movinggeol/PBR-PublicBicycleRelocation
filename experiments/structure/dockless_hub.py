@@ -84,7 +84,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import project_config  # noqa: F401  (cp949 콘솔에서 '—'·이모지가 죽지 않게 먼저 거친다)
+import project_config  # (cp949 콘솔에서 '—'·이모지가 죽지 않게 먼저 거친다)
 import pandas as pd
 
 import db
@@ -113,12 +113,8 @@ def endpoint_counts(conn, periods: list) -> pd.Series:
     return both[both.index.notna()].sort_values(ascending=False)
 
 
-DURATION_HOURS = {
-    "_05_10": [5, 6, 7, 8, 9],
-    "_10_15": [10, 11, 12, 13, 14],
-    "_15_20": [15, 16, 17, 18, 19],
-    "_20_05": [20, 21, 22, 23, 0, 1, 2, 3, 4],
-}
+# 회차 → 그 창의 시(時) 목록. `_20_05`는 자정을 넘긴다 — 만드는 곳은 `duration_hours()` 하나다.
+DURATION_HOURS = {d: project_config.duration_hours(d) for d in project_config.DURATIONS}
 
 
 def demand_scores(conn, periods: list) -> pd.Series:

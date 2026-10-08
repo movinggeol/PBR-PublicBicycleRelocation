@@ -95,14 +95,10 @@ import io, json, sys, contextlib
 from pathlib import Path
 ROOT = Path(sys.argv[1])
 sys.path.insert(0, str(ROOT))
-import importlib.util
-path = ROOT / "experiments" / "baseline" / "baseline_compare.py"
-spec = importlib.util.spec_from_file_location("baseline_compare", path)
-bc = importlib.util.module_from_spec(spec)
-sys.modules["baseline_compare"] = bc
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf):          # 파이프라인 수다를 삼킨다
-    spec.loader.exec_module(bc)
+    from experiments._shared import load_baseline
+    bc = load_baseline()
     args = json.loads(sys.argv[2])
     step1 = bc.load_step1()
     # 부모의 --day-type은 `python -c` 자식의 argv에 없다 — 순수요를 읽는 요일과 ILP·VRP·군집

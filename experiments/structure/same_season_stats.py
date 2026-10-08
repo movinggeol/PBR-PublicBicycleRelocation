@@ -62,8 +62,8 @@ import demand_model  # noqa: E402
 import history_window as hw  # noqa: E402
 import plan_validity as pv  # noqa: E402
 import stockout_forecast as sf  # noqa: E402
-from project_config import (DATA_ROOT, DEFAULT_PERIOD, REBAL_MIN_QTY, TARGET_Z, duration_hours,  # noqa: E402
-                            holiday_mask, select_day_type)
+from project_config import (DATA_ROOT, DEFAULT_PERIOD, REBAL_MIN_QTY, TARGET_Z, TICKS_PER_HOUR,  # noqa: E402
+                            duration_hours, duration_start_hour, holiday_mask, select_day_type)
 
 # ── 사전 등록 (EXPERIMENTS 50장)
 LAGS = range(1, 8)                       # 공개 지연 1~7개월
@@ -240,7 +240,7 @@ def observed(sanity: bool, until: str):
         for dur in pv.DURATIONS:
             if dur not in refs[dt]:
                 continue
-            t = pd.Timestamp(day) + pd.Timedelta(hours=duration_hours(dur)[0])
+            t = pd.Timestamp(day) + pd.Timedelta(hours=duration_start_hour(dur))
             if t not in index:
                 continue
             i = index[t]
@@ -253,7 +253,7 @@ def observed(sanity: bool, until: str):
             m = abs_month(project_config.period_label(t))
             key = f"{day} {dur}"
             # ⓐ 예측 — 창 처음 ~ 끝의 관측 재고 변화
-            n = len(duration_hours(dur)) * 6
+            n = len(duration_hours(dur)) * TICKS_PER_HOUR
             win = grid.iloc[i:i + n + 1]
             if len(win) == n + 1:
                 ends = win.iloc[[0, -1]]
@@ -314,7 +314,7 @@ def report_observed(fc: pd.DataFrame, rows: pd.DataFrame, dt: str):
     print(f"\n### ⓑ 계획 — 47장 하네스, 후보마다 자기 계획")
     lifts, safes = {}, {}
     for h in pv.HORIZONS:
-        print(f"  {h // 6}시간 뒤")
+        print(f"  {h // TICKS_PER_HOUR}시간 뒤")
         for c in CANDS:
             g = r[(r["지평"] == h) & (r["후보"] == c)]
             d = g[g["배송수"] > 0]

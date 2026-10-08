@@ -47,7 +47,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import importlib.util
 import io
 import json
 import os
@@ -65,6 +64,7 @@ sys.path.insert(0, str(ROOT))
 # 나갔다(2026-09-14 예행 로그 한 파일에 인코딩이 둘). 거기에 '—' 하나만 들어가도
 # 죽는다 — 출력 순서에 기대지 않고 처음부터 거친다.
 import project_config  # noqa: F401,E402
+from experiments._shared import load_baseline  # noqa: E402
 
 WORKER = Path(__file__).with_name("_limit_plan_worker.py")
 
@@ -111,12 +111,7 @@ def evaluate(rows, limits, args) -> pd.DataFrame:
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         os.environ["PBR_TOP_STATION_LIMIT"] = str(max(limits))
-        spec = importlib.util.spec_from_file_location(
-            "baseline_compare",
-            ROOT / "experiments" / "baseline" / "baseline_compare.py")
-        bc = importlib.util.module_from_spec(spec)
-        sys.modules["baseline_compare"] = bc
-        spec.loader.exec_module(bc)
+        bc = load_baseline()
 
         step1 = bc.load_step1()
         net, st_info, warmup = bc.load_inputs(

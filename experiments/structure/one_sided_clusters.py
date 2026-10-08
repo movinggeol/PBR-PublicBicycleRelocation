@@ -37,7 +37,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "baseline"))
 
-import project_config  # noqa: E402,F401  — 콘솔 인코딩을 먼저 맞춘다(— · 이모지)
+import project_config  # noqa: E402  — 콘솔 인코딩을 먼저 맞춘다(— · 이모지)
 import baseline_compare as bc  # noqa: E402
 
 CANONICAL = "2026-08-11 real"
@@ -53,13 +53,6 @@ def one_sided(clustered: pd.DataFrame) -> list:
     return out
 
 
-def _km(lat1, lon1, lat2, lon2):
-    lat1, lon1, lat2, lon2 = map(np.radians, (lat1, lon1, lat2, lon2))
-    a = (np.sin((lat2 - lat1) / 2) ** 2
-         + np.cos(lat1) * np.cos(lat2) * np.sin((lon2 - lon1) / 2) ** 2)
-    return 6371.0 * 2 * np.arcsin(np.sqrt(a))
-
-
 def merge_one_sided(clustered: pd.DataFrame) -> pd.DataFrame:
     """한쪽짜리 군집의 대여소마다, **부호가 반대이고 다른 군집에 있는** 가장 가까운 대여소의
     군집으로 옮긴다. 짝이 될 상대 곁으로 보내야 ILP가 계획을 낼 수 있다."""
@@ -72,7 +65,8 @@ def merge_one_sided(clustered: pd.DataFrame) -> pd.DataFrame:
         partners = others[np.sign(others["rebal_qty"]) == -np.sign(row["rebal_qty"])]
         if partners.empty:
             continue
-        dist = _km(row["lat"], row["lon"], partners["lat"].to_numpy(), partners["lon"].to_numpy())
+        dist = project_config.haversine_km(row["lat"], row["lon"],
+                                           partners["lat"].to_numpy(), partners["lon"].to_numpy())
         frame.at[idx, "cluster"] = partners["cluster"].iloc[int(np.argmin(dist))]
     return frame
 

@@ -46,7 +46,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import importlib.util
 import io
 import sys
 from pathlib import Path
@@ -61,19 +60,11 @@ sys.path.insert(0, str(ROOT))
 # 🔴 한 글자에 UnicodeEncodeError). project_config를 거치면 _force_utf8_output()이
 # 돈다 — 저장소가 이 함정을 막아 둔 단일 지점이다.
 import project_config  # noqa: E402
+from experiments._shared import load_baseline  # noqa: E402
 
 # 순회 항으로 바꿀 때 함께 볼 γ 후보. 현행 3000은 메도이드 거리합 기준이라
 # 그대로 쓰면 비중이 어긋난다 — 넓게 훑는다.
 GAMMA_TOUR = [100, 300, 1000, 3000]
-
-
-def load_baseline():
-    path = ROOT / "experiments" / "baseline" / "baseline_compare.py"
-    spec = importlib.util.spec_from_file_location("baseline_compare", path)
-    bc = importlib.util.module_from_spec(spec)
-    sys.modules["baseline_compare"] = bc
-    spec.loader.exec_module(bc)
-    return bc
 
 
 def patch_tour_term(adjust_mod, step1):

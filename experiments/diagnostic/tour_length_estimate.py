@@ -40,35 +40,8 @@ sys.path.insert(0, str(ROOT / "experiments" / "baseline"))
 import pandas as pd
 
 import baseline_compare as bc
+from experiments._shared import resolve_run_label
 from project_config import VEHICLE_SPEED_KMPH
-
-def resolve_run_label(label=None):
-    """재고 스냅샷 라벨을 정한다 — **못 찾으면 멈춘다.**
-
-    `db.load_frame()`은 라벨이 비면 `latest_label()`로 **말없이 최신**을 쓴다.
-    그러면 같은 명령이 다른 날 다른 재고로 돌고 결과에 그 사실이 남지 않는다
-    (1.26.58에서 `gamma_sweep.py`가, 그 전에 `z_sweep.py`가 이 결함으로 걸렸다).
-    판정 기준은 "인자가 있는가"가 아니라 **"못 찾았을 때 멈추는가"** 다.
-
-    라벨을 안 주면 가장 최근 **계획** 실행을 쓴다(`gamma_sweep.py`가 1.26.281에 고친 방식).
-    예전 기본값은 `ORDER BY 1`의 마지막, 곧 **사전순 최대**라 실험 라벨(`sweep-10`·
-    `obs-cmp-…`)이 날짜 라벨을 이겼다 — 스윕 스냅샷은 재고가 10.4% 적다(2026-10-08 점검).
-    """
-    import db
-    with db.session() as conn:
-        available = [r[0] for r in conn.execute(
-            "SELECT DISTINCT run_label FROM station_info ORDER BY 1")]
-        latest_plan = db.latest_label(conn, "station_info", kinds=("plan",))
-    if not available:
-        raise SystemExit("station_info가 비어 있습니다. 파이프라인을 한 번 돌리십시오.")
-    chosen = label or latest_plan
-    if chosen not in available:
-        raise SystemExit(f"station_info에 '{chosen}' 실행이 없습니다."
-                         f" --run-label 로 고르십시오: {available}")
-    print(f"[스냅샷] station_info run_label = '{chosen}'"
-          f"{' (기본: 가장 최근 계획)' if not label else ''}")
-    return chosen
-
 
 PERIODS = ("25년 09월", "25년 11월", "26년 01월", "26년 03월")
 DURATIONS = ("_05_10", "_10_15", "_15_20")

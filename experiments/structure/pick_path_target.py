@@ -47,8 +47,8 @@ import pandas as pd  # noqa: E402
 import db  # noqa: E402
 import plan_validity as pv  # noqa: E402
 import stockout_forecast as sf  # noqa: E402
-from project_config import (REBAL_MIN_QTY, TARGET_QTY_UPPER_RATIO, TARGET_Z,  # noqa: E402
-                            VEHICLE_CAPACITY, duration_hours, holiday_mask)
+from project_config import (REBAL_MIN_QTY, TARGET_QTY_UPPER_RATIO, TARGET_Z, TICKS_PER_HOUR,  # noqa: E402
+                            VEHICLE_CAPACITY, duration_hours, duration_start_hour, holiday_mask)
 
 # ── 사전 등록 (EXPERIMENTS 49장)
 HORIZONS = (6, 18, 30)
@@ -129,7 +129,7 @@ def main(argv=None) -> int:
         for dur in pv.DURATIONS:
             if dur not in refs[dt]:
                 continue
-            t = pd.Timestamp(day) + pd.Timedelta(hours=duration_hours(dur)[0])
+            t = pd.Timestamp(day) + pd.Timedelta(hours=duration_start_hour(dur))
             if t not in index:
                 continue
             s0 = grid.iloc[index[t]].dropna()
@@ -199,7 +199,7 @@ def main(argv=None) -> int:
             empty = {k: gh[f"빈시간_{k}"].sum() / n for k in ("원래", "새", "균등")}
             sat = {k: gh[f"포화남음_{k}"].sum() / n for k in ("원래", "새", "균등")}
             res[h] = (r, p)
-            print(f"\n### {h // 6}시간 — 원래 수거 대여소 {n:,}곳")
+            print(f"\n### {h // TICKS_PER_HOUR}시간 — 원래 수거 대여소 {n:,}곳")
             print(f"  무해율: 원래 {r['원래']:.1%} · **새 안 {r['새']:.1%}** · 같은 총량 균등 축소 {r['균등']:.1%}")
             print(f"    회차 부호 검정(새 안 > 균등): {wins}승 {losses}패 {len(gh) - wins - losses}무 · 단측 p = {p:.4f}")
             if len(gh) > 1:

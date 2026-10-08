@@ -45,11 +45,10 @@ import project_config  # noqa: E402  — 콘솔 인코딩을 먼저 맞춘다(�
 import baseline_compare as bc  # noqa: E402
 import db  # noqa: E402
 import stockout_forecast as sf  # noqa: E402
-from project_config import (DEFAULT_PERIOD, DURATIONS, REBAL_MIN_QTY,  # noqa: E402
-                            TOP_STATION_LIMIT, duration_hours, is_holiday)
+from project_config import (DEFAULT_PERIOD, DURATIONS, REBAL_MIN_QTY, TICKS_PER_HOUR,  # noqa: E402
+                            TOP_STATION_LIMIT, duration_hours, duration_start_hour, is_holiday)
 
 TICK_MINUTES = sf.TICK_MINUTES
-TICKS_PER_HOUR = 60 // TICK_MINUTES
 
 # ── 사전 등록 (ML_고도화_계획 3장 F2) — 결과를 보고 바꾸지 않는다
 PICK_EMPTY_CUT = 0.5          # A1: 수거 후보에서 뺄 확률
@@ -122,7 +121,7 @@ def a2_select(rebal, st_info, p_window: pd.Series) -> pd.DataFrame:
 # ───────────────────────────────────────────── 자료
 
 def round_start(day, duration: str) -> datetime:
-    return datetime.combine(day, clock(duration_hours(duration)[0]))
+    return datetime.combine(day, clock(duration_start_hour(duration)))
 
 
 def window_ticks(duration: str) -> int:

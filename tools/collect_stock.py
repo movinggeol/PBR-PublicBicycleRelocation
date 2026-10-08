@@ -33,10 +33,11 @@ import pandas as pd
 
 import db
 import tashu
-from project_config import DATA_ROOT, is_holiday
+from project_config import DATA_ROOT, STOCK_TICK_MINUTES, is_holiday
 
 DEFAULT_WINDOW = "09:00-17:00"
-DEFAULT_INTERVAL = 10
+# 틱 간격의 정본은 `project_config.STOCK_TICK_MINUTES`다 — 분석 쪽(실험 · 웹)이 같은 값을 읽는다.
+DEFAULT_INTERVAL = STOCK_TICK_MINUTES
 
 # 원천 관측이라 pp_data(산출물)가 아니라 raw_data에 둔다.
 # 파이프라인 산출물이 아니므로 ensure_output_dirs()에 얹지 않고 여기서 만든다.

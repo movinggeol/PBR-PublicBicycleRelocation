@@ -1799,3 +1799,102 @@ def test_차량당_이동거리_어림은_K로만_갈린다(step1):
     for k in (1, 2, 3, 7, 12):
         assert step1._estimate_travel_km_per_vehicle(frame, k) == tour_km / k + 2 * depot_km
     assert step1._estimate_travel_km_per_vehicle(frame.iloc[0:0], 3) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# 거리 · 틱 · 회차 시각 — 공용 정의 (2026-10-08 통합)
+# ---------------------------------------------------------------------------
+
+def _옛_ilp_거리(lat1, lon1, lat2, lon2):
+    """통합 전 `ilp.haversine_km()`의 연산을 그대로 든 대조용 사본. 고치지 마라."""
+    R = 6371.0
+    p1 = np.radians(lat1)
+    p2 = np.radians(lat2)
+    dlat = p2 - p1
+    dlon = np.radians(lon2 - lon1)
+    a = np.sin(dlat/2)**2 + np.cos(p1)*np.cos(p2)*np.sin(dlon/2)**2
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1-a))
+    return float(R*c)
+
+
+def test_공용_거리_함수는_옛_ILP_식과_비트까지_같다():
+    """`project_config.haversine_km()`은 ILP · VRP가 쓰던 식을 순서까지 옮긴 것이다.
+
+    계획의 이동시간이 이 값에서 나온다 — `≈`가 아니라 `==`로 본다. 식의 모양(`arctan2` →
+    `arcsin`, `radians(lon2 - lon1)` → `radians(lon2) - radians(lon1)`)을 바꾸면 마지막 자리가
+    달라져, 동률을 가르는 자리에서 계획이 갈릴 수 있다(통합 전 아홉 벌이 그렇게 서로 달랐다).
+    """
+    from project_config import haversine_km
+
+    rng = np.random.default_rng(20261008)
+    점 = rng.uniform([36.20, 127.25, 36.20, 127.25], [36.50, 127.55, 36.50, 127.55], size=(5000, 4))
+    for lat1, lon1, lat2, lon2 in 점:
+        assert haversine_km(lat1, lon1, lat2, lon2) == _옛_ilp_거리(lat1, lon1, lat2, lon2)
+    assert haversine_km(36.35, 127.38, 36.35, 127.38) == 0.0
+    assert isinstance(haversine_km(36.3, 127.3, 36.4, 127.4), float), "스칼라에는 float를 준다"
+
+
+def test_공용_거리_함수는_배열을_주면_칸마다_같은_값을_낸다(step1):
+    """배열 · 브로드캐스트 경로가 스칼라 경로와 같은 값을 낸다 — step1의 쌍 거리 행렬이 이것을 쓴다."""
+    from project_config import haversine_km
+
+    lat = np.array([36.30, 36.35, 36.41, 36.33])
+    lon = np.array([127.33, 127.40, 127.36, 127.45])
+    행렬 = step1._pairwise_km(lat, lon)
+
+    assert 행렬.shape == (4, 4)
+    for i in range(4):
+        for j in range(4):
+            assert 행렬[i, j] == haversine_km(lat[i], lon[i], lat[j], lon[j])
+    assert (np.diag(행렬) == 0.0).all()
+    한줄 = haversine_km(36.35, 127.38, pd.Series(lat), pd.Series(lon))
+    assert list(한줄) == [haversine_km(36.35, 127.38, a, b) for a, b in zip(lat, lon)]
+
+
+def test_거리를_재는_식은_한_곳에만_있다():
+    """지구 반지름 6371을 든 식이 `project_config.py` 밖에 다시 생기면 실패한다.
+
+    통합 전에는 ILP · step3 지도 · step1(두 벌) · 도로 수집기가 각자 식을 들고 있었고 주석은 서로
+    *"같은 공식"* 이라 적었지만 마지막 자리가 달랐다. 실험 폴더는 `test_experiment_guards.py`가 본다.
+    """
+    남은곳 = []
+    for 폴더 in ("pipeline", "tools", "webapp"):
+        for path in (PROJECT_ROOT / 폴더).rglob("*.py"):
+            if "6371" in path.read_text(encoding="utf-8"):
+                남은곳.append(str(path.relative_to(PROJECT_ROOT)))
+    for path in PROJECT_ROOT.glob("*.py"):
+        # weather.py의 6371.00877은 기상청 격자 변환식의 상수다 — 거리 계산이 아니다.
+        if path.name not in ("project_config.py", "weather.py") and "6371" in path.read_text(encoding="utf-8"):
+            남은곳.append(path.name)
+    assert not 남은곳, f"거리 식의 복사본: {남은곳} — project_config.haversine_km()을 쓴다"
+
+
+def test_회차_시작_시각과_틱은_공용_정의에서_나온다():
+    """회차 시작 시(時)는 `duration_hours()`의 첫 값이고, 수집기의 기본 간격은 분석 쪽 틱과 같다."""
+    import importlib
+
+    from project_config import (
+        DURATIONS, STOCK_TICK_MINUTES, TICKS_PER_HOUR, duration_hours, duration_start_hour,
+    )
+
+    assert [duration_start_hour(d) for d in DURATIONS] == [5, 10, 15, 20]
+    for d in DURATIONS:
+        assert duration_start_hour(d) == duration_hours(d)[0]
+    assert STOCK_TICK_MINUTES * TICKS_PER_HOUR == 60
+
+    sys.path.insert(0, str(PROJECT_ROOT / "tools"))
+    collect_stock = importlib.import_module("collect_stock")
+    assert collect_stock.DEFAULT_INTERVAL == STOCK_TICK_MINUTES, \
+        "수집 간격과 분석의 틱이 갈렸다 — 결품 시간이 틱 수 × 간격으로 계산된다"
+
+    import demand_model
+    from webapp import upcoming_view
+    # 다른 테스트가 project_config를 다시 읽으면 튜플이 새로 만들어져 `is`로는 못 본다 — 값과 소스로 본다.
+    assert demand_model.DURATIONS == DURATIONS
+    for 파일 in ("demand_model.py", "tools/sameday_plan.py", "tools/backtest_demand.py",
+               "webapp/upcoming_view.py"):
+        소스 = (PROJECT_ROOT / 파일).read_text(encoding="utf-8")
+        assert not [줄 for 줄 in 소스.splitlines() if 줄.startswith("DURATIONS = ")], \
+            f"{파일}이 회차 목록을 다시 들고 있다"
+    assert [upcoming_view.duration_of(h) for h in (5, 9, 10, 14, 15, 19, 20, 23, 0, 4)] == \
+        ["_05_10", "_05_10", "_10_15", "_10_15", "_15_20", "_15_20", "_20_05", "_20_05", "_20_05", "_20_05"]

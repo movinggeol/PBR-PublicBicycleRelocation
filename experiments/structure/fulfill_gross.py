@@ -46,7 +46,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import sys
 from pathlib import Path
 
@@ -56,16 +55,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 import db  # noqa: E402
+from experiments._shared import load_baseline  # noqa: E402
 from pipeline.step0_collect.calculate_target_qty import duration_columns  # noqa: E402
-
-
-def load_baseline():
-    path = ROOT / "experiments" / "baseline" / "baseline_compare.py"
-    spec = importlib.util.spec_from_file_location("baseline_compare", path)
-    bc = importlib.util.module_from_spec(spec)
-    sys.modules["baseline_compare"] = bc
-    spec.loader.exec_module(bc)
-    return bc
 
 
 def gross_rentals(period: str) -> pd.DataFrame:

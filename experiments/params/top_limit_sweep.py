@@ -50,7 +50,7 @@ import db
 from project_config import (
     CLUSTER_IMBALANCE_ALLOWANCE, DROP_TIME_SEC, PICK_TIME_SEC, REBAL_MIN_QTY,
     TIME_BUDGET_MINUTES, TRAVEL_MIN_PER_STATION, VEHICLES_PER_ROUND,
-    duration_hours,
+    duration_hours, haversine_km,
 )
 
 WINDOWS = ("_05_10", "_10_15", "_15_20")
@@ -99,14 +99,6 @@ def select(plan: pd.DataFrame, limit: int) -> pd.DataFrame:
     pick = pick[pick["rebal_qty"].cumsum().abs() <= cut]
     drop = drop[drop["rebal_qty"].cumsum() <= cut]
     return pd.concat([pick, drop], ignore_index=True)
-
-
-def haversine_km(lat1, lon1, lat2, lon2):
-    radius = 6371.0
-    p1, p2 = np.radians(lat1), np.radians(lat2)
-    a = (np.sin((p2 - p1) / 2) ** 2
-         + np.cos(p1) * np.cos(p2) * np.sin(np.radians(lon2 - lon1) / 2) ** 2)
-    return 2 * radius * np.arcsin(np.sqrt(a))
 
 
 def spread_km(points: pd.DataFrame) -> float:

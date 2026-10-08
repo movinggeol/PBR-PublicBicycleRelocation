@@ -76,7 +76,6 @@
 import argparse
 import hashlib
 import json
-import math
 import random
 import re
 import sys
@@ -95,7 +94,7 @@ from dotenv import load_dotenv
 import db
 from project_config import (
     DATA_ROOT, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, DURATIONS, PROJECT_ROOT,
-    is_holiday,
+    haversine_km, is_holiday,
 )
 
 sys.path.insert(0, str(ROOT / "pipeline" / "step3_map"))
@@ -136,16 +135,6 @@ PANEL_SEED = 42
 LOG_DIR = DATA_ROOT / "raw_data" / "도로이력"
 RUN_HEAD = "===== 시작 "
 RUN_TAIL = "===== 끝 "
-
-
-def haversine_km(lat1, lon1, lat2, lon2) -> float:
-    """두 점 사이 거리(km). step2·step3과 같은 공식."""
-    radius = 6371.0
-    p1, p2 = math.radians(float(lat1)), math.radians(float(lat2))
-    dp = p2 - p1
-    dl = math.radians(float(lon2) - float(lon1))
-    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 2 * radius * math.asin(min(1.0, math.sqrt(h)))
 
 
 # ---------------------------------------------------------------- 패널

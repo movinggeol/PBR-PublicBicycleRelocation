@@ -2029,28 +2029,12 @@ def test_같은_시각_비교는_재고_시계열을_날짜마다_한_번만_읽
     assert rows["추석 05시"]["real_empty"] == pytest.approx(50.0)  # 05:00 틱에 A만 비었다
 
 
-_스냅샷_복사본 = ("experiments/diagnostic/tour_length_estimate.py",
-                  "experiments/params/cluster_count_sweep.py",
-                  "experiments/params/wanted_vehicles_geo_sweep.py")
+def _실험_공용():
+    """`experiments/_shared.py` — 실험끼리 나눠 쓰는 것의 정본(2026-10-08 통합)."""
+    return _load_experiment("experiments/_shared.py")
 
 
-def _함수_원문(relpath: str, name: str) -> str:
-    import ast
-
-    source = (PROJECT_ROOT / relpath).read_text(encoding="utf-8")
-    node = next(n for n in ast.parse(source).body
-                if isinstance(n, ast.FunctionDef) and n.name == name)
-    return ast.get_source_segment(source, node)
-
-
-def test_스냅샷_기본값은_사전순_최대가_아니라_가장_최근_계획이다(capsys):
-    """`resolve_run_label()` 세 복사본의 기본값이 `ORDER BY 1`의 마지막이었다 (2026-10-08 점검).
-
-    `gamma_sweep.py`·`z_sweep.py`는 1.26.281에 고쳤는데 **복사본 셋에는 닿지 않았다** — 실험
-    라벨(`sweep-10`)은 `'s' > '2'`라 어떤 날짜 라벨도 이기고, 그 스냅샷은 재고가 10.4% 적다.
-    공용 모듈로 모으기 전까지는 셋이 **같은 글자**인지를 여기서 지킨다(안내 문구의 옵션 이름만 다르다 —
-    인자를 안 받는 두 스크립트에 `--run-label`로 고르라고 하면 통하지 않는다).
-    """
+def _스냅샷_둘을_심는다():
     import db
 
     with db.session() as conn:
@@ -2063,20 +2047,76 @@ def test_스냅샷_기본값은_사전순_최대가_아니라_가장_최근_계�
             }]), run_label=label)
         assert db.latest_label(conn, "station_info") == "sweep-10", "전제 — 종류를 안 가리면 실험이 이긴다"
 
-    tour = _load_experiment(_스냅샷_복사본[0])
-    assert tour.resolve_run_label() == "2026-08-11 real"
-    assert "가장 최근 계획" in capsys.readouterr().out, "기본값으로 골랐다는 것을 찍어야 한다"
-    assert tour.resolve_run_label("sweep-10") == "sweep-10"    # 고르면 고른 대로
-    with pytest.raises(SystemExit) as err:
-        tour.resolve_run_label("없는라벨")
-    assert "없는라벨" in str(err.value) and "sweep-10" in str(err.value)
 
-    정본 = _함수_원문(_스냅샷_복사본[0], "resolve_run_label")
-    assert "--run-label 로 고르십시오" in 정본
-    for relpath in _스냅샷_복사본[1:]:
-        사본 = _함수_원문(relpath, "resolve_run_label")
-        assert "PBR_RUN_LABEL=… 로 고르십시오" in 사본, f"{relpath}: 받지 않는 옵션으로 고르라고 안내한다"
-        assert 사본.replace("PBR_RUN_LABEL=…", "--run-label") == 정본, f"{relpath}: 복사본이 갈라졌다"
+def test_스냅샷_기본값은_사전순_최대가_아니라_가장_최근_계획이다(capsys):
+    """`resolve_run_label()` 세 복사본의 기본값이 `ORDER BY 1`의 마지막이었다 (2026-10-08 점검).
+
+    `gamma_sweep.py`·`z_sweep.py`는 1.26.281에 고쳤는데 **복사본 셋에는 닿지 않았다** — 실험
+    라벨(`sweep-10`)은 `'s' > '2'`라 어떤 날짜 라벨도 이기고, 그 스냅샷은 재고가 10.4% 적다.
+    지금은 공용 모듈의 함수 하나다. 안내 문구의 옵션 이름은 부르는 쪽이 정한다 — 인자를 안 받는 두
+    스크립트에 `--run-label`로 고르라고 하면 통하지 않는다.
+    """
+    import db
+
+    _스냅샷_둘을_심는다()
+    공용 = _실험_공용()
+
+    assert 공용.resolve_run_label() == "2026-08-11 real"
+    assert "가장 최근 계획" in capsys.readouterr().out, "기본값으로 골랐다는 것을 찍어야 한다"
+    assert 공용.resolve_run_label("sweep-10") == "sweep-10"    # 고르면 고른 대로
+    assert "가장 최근 계획" not in capsys.readouterr().out
+    assert 공용.resolve_run_label(announce=False) == "2026-08-11 real"
+    assert capsys.readouterr().out == "", "스스로 라벨을 찍는 스크립트(gamma_sweep · z_sweep)에는 조용해야 한다"
+    with db.session() as conn:
+        assert 공용.default_run_label(conn) == "2026-08-11 real"
+        assert 공용.default_run_label(conn, "vrp_plan") is None, "빈 표에서는 None — 부르는 쪽이 멈춘다"
+
+    with pytest.raises(SystemExit) as err:
+        공용.resolve_run_label("없는라벨")
+    assert "없는라벨" in str(err.value) and "sweep-10" in str(err.value)
+    assert "--run-label 로 고르십시오" in str(err.value)
+    with pytest.raises(SystemExit) as err:
+        공용.resolve_run_label("없는라벨", hint="PBR_RUN_LABEL=…")
+    assert "PBR_RUN_LABEL=… 로 고르십시오" in str(err.value)
+
+    # 부르는 쪽 — argparse가 없는 둘은 환경변수 이름으로 안내하게 넘긴다.
+    for relpath in ("experiments/params/cluster_count_sweep.py",
+                    "experiments/params/wanted_vehicles_geo_sweep.py"):
+        source = (PROJECT_ROOT / relpath).read_text(encoding="utf-8")
+        assert "resolve_run_label(__import__('os').environ.get('PBR_RUN_LABEL'), hint=\"PBR_RUN_LABEL=…\")" \
+            in source, f"{relpath}: 받지 않는 옵션으로 고르라고 안내한다"
+
+
+def test_스냅샷이_하나도_없으면_파이프라인을_돌리라고_말하고_멈춘다():
+    """표가 비었을 때와 라벨이 없을 때는 처방이 다르다(1.26.54) — 빈 DB에서는 고를 라벨이 없다."""
+    공용 = _실험_공용()
+
+    with pytest.raises(SystemExit) as err:
+        공용.resolve_run_label()
+    assert "비어 있습니다" in str(err.value)
+    with pytest.raises(SystemExit) as err:
+        공용.resolve_run_label("2026-08-11 real")
+    assert "비어 있습니다" in str(err.value), "빈 DB에서 '--run-label 로 고르십시오: []'라고 안내하면 고를 것이 없다"
+
+
+def test_대조군_모듈은_공용_함수로_싣고_맨_이름_import와_같은_인스턴스다():
+    """`load_baseline()`이 `sys.modules["baseline_compare"]`에 올려 두어야, 그 뒤에 맨 이름으로 부르는
+    실험 모듈(`import baseline_compare as bc`)이 같은 인스턴스를 받는다 — 둘로 갈리면 분모 감시 같은
+    모듈 전역이 따로 논다."""
+    공용 = _실험_공용()
+    전 = sys.modules.get("baseline_compare")
+    try:
+        bc = 공용.load_baseline()
+        assert sys.modules["baseline_compare"] is bc
+        assert Path(bc.__file__) == PROJECT_ROOT / "experiments" / "baseline" / "baseline_compare.py"
+        import baseline_compare
+        assert baseline_compare is bc
+        assert bc.default_run_label.__name__ == "default_run_label", "대조군도 기본 실행을 공용 규칙으로 고른다"
+    finally:
+        if 전 is None:
+            sys.modules.pop("baseline_compare", None)
+        else:
+            sys.modules["baseline_compare"] = 전
 
 
 @pytest.mark.parametrize("relpath, day_type", [
@@ -2087,6 +2127,16 @@ def test_스냅샷_기본값은_사전순_최대가_아니라_가장_최근_계�
     ("experiments/params/_limit_plan_worker.py", '"weekday"'),
     ("experiments/params/_convention_worker.py", '"weekday"'),
     ("experiments/params/limit_fleet_grid.py", 'args["day_type"]'),
+    # 아래 아홉은 `--day-type`(기본 weekday)을 받는다 — 주면 argv로 모듈까지 흐르지만 안 주면 오늘 달력이었다.
+    ("experiments/baseline/gamma_recheck.py", "args.day_type"),
+    ("experiments/baseline/ortools_gap.py", "args.day_type"),
+    ("experiments/baseline/repeat_eval.py", "args.day_type"),
+    ("experiments/diagnostic/stage_timing.py", "args.day_type"),
+    ("experiments/params/center_stat_grid.py", "args.day_type"),
+    ("experiments/params/gamma_sweep.py", "day_type"),
+    ("experiments/params/z_fixedpop_grid.py", "args.day_type"),
+    ("experiments/params/z_stockout_grid.py", "args.day_type"),
+    ("experiments/structure/multi_cluster_route.py", "args.day_type"),
 ])
 def test_계획을_다시_푸는_실험은_순수요와_같은_요일로_모듈을_맞춘다(relpath, day_type):
     """순수요는 평일로 읽는데 ILP·VRP·군집 모듈의 `config.day_type`은 오늘 달력이었다 (2026-10-08 점검).
@@ -2125,3 +2175,184 @@ def test_고장_수거의_통합_비교는_실험이_아니라_가장_최근_계
     assert 'db.latest_label(conn, "vrp_plan", kinds=("plan",))' in body
     assert body.index("if not label:") < body.index("integration_overlap(conn, broken, label)"), (
         "실행이 하나도 없으면 겹침을 재기 전에 멈춰야 한다")
+
+
+# ───────────────────────────── 2026-10-08 공용 함수 통합 — 복사본이 다시 생기지 않게
+
+_공용_모듈 = PROJECT_ROOT / "experiments" / "_shared.py"
+
+
+def _실험_소스():
+    """`experiments/` 아래 파이썬 파일의 (상대 경로, 원문, 구문 트리) — 공용 모듈은 뺀다."""
+    import ast
+
+    for path in sorted((PROJECT_ROOT / "experiments").rglob("*.py")):
+        if path == _공용_모듈:
+            continue
+        source = path.read_text(encoding="utf-8")
+        yield path.relative_to(PROJECT_ROOT).as_posix(), source, ast.parse(source)
+
+
+def test_실험_공용_함수의_복사본이_공용_모듈_밖에_없다():
+    """`load_baseline()` 열 벌 · `resolve_run_label()` 세 벌을 `experiments/_shared.py`로 모았다.
+
+    1.26.281의 고침이 복사본에 닿지 않아 1.26.341에서 다시 고친 것이 통합의 이유다. 같은 이름의
+    함수를 다시 정의하거나, `baseline_compare.py`를 `importlib`으로 직접 싣는 코드(문자열로 든
+    `python -c` 자식 포함)가 실험 폴더에 생기면 실패한다.
+    """
+    import ast
+
+    assert {"load_baseline", "resolve_run_label", "default_run_label"} <= {
+        n.name for n in ast.parse(_공용_모듈.read_text(encoding="utf-8")).body
+        if isinstance(n, ast.FunctionDef)}, "전제 — 정본이 공용 모듈에 있다"
+
+    위반 = []
+    for relpath, source, tree in _실험_소스():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name in (
+                    "load_baseline", "resolve_run_label", "default_run_label"):
+                위반.append(f"{relpath}:{node.lineno} def {node.name}")
+        for 줄번호, 줄 in enumerate(source.splitlines(), 1):
+            if "spec_from_file_location" in 줄 and "baseline_compare" in source[
+                    source.index(줄):source.index(줄) + 200]:
+                위반.append(f"{relpath}:{줄번호} baseline_compare를 직접 싣는다")
+    assert not 위반, "실험 공용 함수의 복사본 — `from experiments._shared import …`를 쓴다:\n  " + "\n  ".join(위반)
+
+
+def test_실험이_기본_실행을_고르는_식을_station_info에_다시_쓰지_않는다():
+    """재고 스냅샷(`station_info`)의 기본 실행은 `default_run_label()` 하나가 고른다.
+
+    `db.latest_label(conn, "station_info", kinds=("plan",))`를 스크립트마다 적어 두면, 기본값을
+    정본으로 못박는 결정(docs/기록/TODO.md)이 났을 때 고칠 곳이 다시 여럿이 된다. 종류를 안 가리는
+    `db.latest_label(conn, "station_info")`(그 실행의 좌표를 읽는 폴백)와 다른 표의 기본 실행은 보지 않는다.
+    """
+    import re
+
+    식 = re.compile(r'latest_label\(\s*conn,\s*"station_info",\s*kinds=|'
+                    r'load_frame\(\s*conn,\s*"station_info",\s*kinds=')
+    위반 = [f"{relpath}:{source[:m.start()].count(chr(10)) + 1}"
+            for relpath, source, _tree in _실험_소스() for m in 식.finditer(source)]
+    # saturation_forecast · cross_station은 통합 범위 밖이라 남겨 두었다 — 늘어나지 않는지만 본다.
+    남겨둔곳 = {"experiments/structure/saturation_forecast.py", "experiments/structure/cross_station.py"}
+    새로생긴곳 = [v for v in 위반 if v.rsplit(":", 1)[0] not in 남겨둔곳]
+    assert not 새로생긴곳, f"기본 실행을 고르는 식의 복사본: {새로생긴곳} — `default_run_label(conn)`을 쓴다"
+
+
+def test_실험이_거리_식을_다시_들지_않는다():
+    """지구 반지름을 든 식이 실험 폴더에 다시 생기면 실패한다 — `project_config.haversine_km()` 하나다.
+
+    통합 전에는 `top_limit_sweep` · `travel_estimate` · `one_sided_clusters` · `rebalance_trace`가
+    각자 `arcsin` 꼴을 들고 있었다(파이프라인 쪽은 `tests/test_calculations.py`가 본다). 옮기며 맞대
+    보니 차이는 최대 2.3e-12 km(2 nm — 경도를 라디안으로 바꾼 뒤 빼던 두 벌에서 가장 컸다)이고, 대여이력
+    19개월의 직전 반납 → 다음 대여 911만 쌍에서 50 m 문턱 판정이 뒤집히는 쌍은 없었다.
+    """
+    위반 = [relpath for relpath, source, _tree in _실험_소스()
+            if any(글자 in source for 글자 in ("6371", "6_371", "arcsin"))]
+    assert not 위반, f"거리 식의 복사본: {위반} — project_config.haversine_km()을 쓴다(미터는 × 1000)"
+
+    rt = _load_experiment("experiments/structure/rebalance_trace.py")
+    from project_config import haversine_km
+
+    assert rt.haversine_m(36.35, 127.38, 36.36, 127.39) == haversine_km(36.35, 127.38, 36.36, 127.39) * 1000
+    한줄 = rt.haversine_m(pd.Series([36.35, None]), pd.Series([127.38, 127.38]), [36.36, 36.36], [127.39, 127.39])
+    assert 한줄.shape == (2,) and 한줄[0] == rt.haversine_m(36.35, 127.38, 36.36, 127.39)
+    assert pd.isna(한줄[1]), "좌표가 빈 쌍은 NaN으로 남아야 '같은 자리' 판정(< 50 m)에서 빠진다"
+
+
+def test_실험이_틱_간격과_시간당_틱_수를_숫자로_박지_않는다():
+    """재고 틱은 `project_config.STOCK_TICK_MINUTES`(10분) · `TICKS_PER_HOUR`(6) 한 곳에 있다.
+
+    통합 전에는 `TICK_MINUTES = 10`이 세 벌, `60 // TICK_MINUTES`가 네 벌, 숫자 6이 열 자리에
+    박혀 있었다(`ts.hour * 6` · `len(duration_hours(dur)) * 6` · `h // 6`). 재고 시계열을 다루는
+    파일(이름에 TICK이 나오는 파일)에서 틱 상수를 숫자로 정하거나 6을 곱하고 나누면 실패한다.
+    **지평 · 지연처럼 틱 수로 등록한 실험 조건**(`HORIZONS = (6, 18, 30)` · `shift(6)`)은 보지 않는다.
+    """
+    import ast
+
+    def 숫자(node, *값):
+        return isinstance(node, ast.Constant) and type(node.value) is int and node.value in 값
+
+    위반 = set()
+    for relpath, source, tree in _실험_소스():
+        for node in ast.walk(tree):
+            # ① 틱 상수를 숫자(또는 60 // …)로 정한다 — 어느 파일이든
+            if isinstance(node, ast.Assign) and any(
+                    isinstance(t, ast.Name) and ("TICK_MIN" in t.id or t.id in ("TICKS_PER_HOUR", "SLOTS_PER_HOUR"))
+                    for t in node.targets):
+                if 숫자(node.value, 6, 10) or (isinstance(node.value, ast.BinOp) and 숫자(node.value.left, 60)):
+                    위반.add(f"{relpath}:{node.lineno} {ast.get_source_segment(source, node)}")
+            if "TICK" not in source:
+                continue
+            # ② 재고 시계열을 다루는 파일에서 6을 곱하거나 나눈다 · 60을 나눈다 · 600초와 견준다.
+            #    구문 트리로 본다 — f-string 안의 `{h // 6}`은 줄 단위 검색으로는 `#` 뒤에 숨는다.
+            if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Mult, ast.FloorDiv, ast.Div)) and (
+                    숫자(node.right, 6) or 숫자(node.left, 6)
+                    or (숫자(node.left, 60) and not isinstance(node.op, ast.Mult))):
+                위반.add(f"{relpath}:{node.lineno} {ast.get_source_segment(source, node)}")
+            if isinstance(node, ast.Compare) and any(숫자(c, 600) for c in node.comparators):
+                위반.add(f"{relpath}:{node.lineno} {ast.get_source_segment(source, node)}")
+    위반 = sorted(위반)
+    assert not 위반, ("틱 간격 · 시간당 틱 수를 숫자로 박았다 — project_config의 STOCK_TICK_MINUTES · "
+                      "TICKS_PER_HOUR를 쓴다:\n  " + "\n  ".join(위반))
+
+    sf = _load_experiment("experiments/structure/stockout_forecast.py")
+    import project_config
+    assert sf.TICK_MINUTES == project_config.STOCK_TICK_MINUTES, "다른 실험이 `sf.TICK_MINUTES`로 읽는다"
+
+
+def test_실험이_회차와_요일_목록을_다시_들지_않는다():
+    """네 회차 · 요일 구분 · 요일 표시 이름은 `project_config`의 `DURATIONS` · `DAY_TYPES` ·
+    `DAY_TYPE_LABELS`다. 실험이 같은 목록(네 회차를 키로 든 사전 포함)을 리터럴로 다시 적으면 실패한다.
+
+    **낮 세 회차만 일부러 쓰는 목록**(`("_05_10", "_10_15", "_15_20")`)과 argparse의
+    `choices=["weekday", "holiday"]`는 보지 않는다 — 앞은 실험의 조건이고 뒤는 대입이 아니다.
+    """
+    import ast
+
+    from project_config import DAY_TYPE_LABELS, DAY_TYPES, DURATIONS
+
+    def 리터럴(node):
+        try:
+            return ast.literal_eval(node)
+        except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+            return None
+
+    위반 = []
+    for relpath, _source, tree in _실험_소스():
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+                continue
+            값 = 리터럴(node.value)
+            if isinstance(값, (tuple, list)) and tuple(값) in (tuple(DURATIONS), tuple(DAY_TYPES)):
+                위반.append(f"{relpath}:{node.lineno} 목록 {tuple(값)}")
+            elif isinstance(값, dict) and (값 == DAY_TYPE_LABELS or set(값) == set(DURATIONS)):
+                위반.append(f"{relpath}:{node.lineno} 사전 {sorted(값)}")
+    assert not 위반, "회차 · 요일 목록의 복사본 — project_config의 것을 쓴다:\n  " + "\n  ".join(위반)
+
+    pv = _load_experiment("experiments/structure/plan_validity.py")
+    assert tuple(pv.DURATIONS) == tuple(DURATIONS) and pv.DAY_TYPES == DAY_TYPE_LABELS, \
+        "다른 실험이 `pv.DURATIONS` · `pv.DAY_TYPES`로 읽는다 — 이름은 남기고 값은 공용 정의다"
+
+
+def test_실험이_회차_시작_시를_제_손으로_뽑지_않는다():
+    """회차가 시작하는 시(時)는 `project_config.duration_start_hour()`다.
+
+    `duration_hours(d)[0]`이 여섯 자리, 시작 시를 든 사전이 두 벌(`stock_nowcast_signal.START_HOURS` ·
+    `bike_turnover.ROUND_START_H`) 있었다. 같은 꼴이 다시 생기면 실패한다.
+    """
+    import ast
+
+    위반 = []
+    for relpath, _source, tree in _실험_소스():
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Call)
+                    and getattr(node.value.func, "id", getattr(node.value.func, "attr", "")) == "duration_hours"
+                    and isinstance(node.slice, ast.Constant) and node.slice.value == 0):
+                위반.append(f"{relpath}:{node.lineno}")
+    assert not 위반, f"`duration_hours(…)[0]` — duration_start_hour()를 쓴다: {위반}"
+
+    sns = _load_experiment("experiments/structure/stock_nowcast_signal.py")
+    mu = pd.DataFrame([[float(h) for h in range(24)]], columns=range(24))
+    # 옛 식: 시작 시부터 5시간(`_20_05`는 9시간)을 24로 접어 더했다.
+    assert sns.window_mu(mu, "_05_10").iloc[0] == sum(range(5, 10))
+    assert sns.window_mu(mu, "_20_05").iloc[0] == sum([20, 21, 22, 23, 0, 1, 2, 3, 4])

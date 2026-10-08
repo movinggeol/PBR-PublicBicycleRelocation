@@ -41,7 +41,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import importlib.util
 import io
 import json
 import os
@@ -59,6 +58,7 @@ sys.path.insert(0, str(ROOT))
 # 🔴 한 글자에 UnicodeEncodeError). project_config를 거치면 _force_utf8_output()이
 # 돈다 — 저장소가 이 함정을 막아 둔 단일 지점이다.
 import project_config  # noqa: F401,E402
+from experiments._shared import load_baseline  # noqa: E402
 
 WORKER = Path(__file__).with_name("_convention_worker.py")
 
@@ -112,12 +112,7 @@ def evaluate(rows, args) -> pd.DataFrame:
     """**중립 모집단(전체 대여소)** 위에서 다시 평가한다."""
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        spec = importlib.util.spec_from_file_location(
-            "baseline_compare",
-            ROOT / "experiments" / "baseline" / "baseline_compare.py")
-        bc = importlib.util.module_from_spec(spec)
-        sys.modules["baseline_compare"] = bc
-        spec.loader.exec_module(bc)
+        bc = load_baseline()
         net, st_info, _w = bc.load_inputs(
             args.period, args.run_label, "weekday", 14, "")
 

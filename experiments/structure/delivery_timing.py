@@ -55,6 +55,7 @@ import pandas as pd  # noqa: E402
 import db  # noqa: E402
 import stockout_forecast as sf  # noqa: E402
 from observed_stockout import RENTAL_SWAP_AT, is_same_day_plan  # noqa: E402
+from project_config import DAY_TYPE_LABELS  # noqa: E402
 
 TICK = pd.Timedelta(minutes=sf.TICK_MINUTES)
 WINDOW_TICKS = 30              # 5시간
@@ -62,7 +63,7 @@ MIN_OBSERVED = 0.8             # 창의 10분 칸 중 관측 비율
 EARLY = pd.Timedelta(minutes=30)
 SHIFT_THRESHOLD = 0.05         # ②가 이만큼(%p) 이상이면 출발 당기기를 후보로
 DEADLINES = (60, 90, 120)
-DAY_TYPES = {"weekday": "평일", "holiday": "휴일"}
+DAY_TYPES = DAY_TYPE_LABELS    # 요일 구분 → 표시 이름
 
 
 def plan_start(label: str) -> pd.Timestamp:
