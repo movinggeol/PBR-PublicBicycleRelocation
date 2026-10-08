@@ -35,9 +35,7 @@ import io
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
-import pulp
 
 ROOT = Path(__file__).resolve().parents[2]      # experiments/<분류>/ 아래에 있다
 sys.path.insert(0, str(ROOT))
@@ -72,7 +70,15 @@ ST_INFO_COLUMNS = ["station_id", "station_name", "lat", "lon", "parking_lot",
 
 
 def load_step1():
-    """step1 군집 모듈을 불러온다 (파일명이 숫자로 시작해 일반 import가 안 된다)."""
+    """step1 군집 모듈을 **경로로 직접** 실어, 부를 때마다 새 모듈 객체를 돌려준다.
+
+    일반 import도 된다 — 파일명 앞의 숫자 접두는 1.18.8에서 뗐다
+    (`pipeline.step1_cluster.top_st_clustering`). importlib으로 싣는 꼴은 그때의 흔적이고,
+    지금 남은 효과는 `sys.modules`에 올리지 않은 **독립 인스턴스**를 받는다는 것이다 —
+    실험이 이 모듈의 전역(`CLUSTER_GAMMA` · `wanted_vehicles` · `config`)을 갈아 끼워도
+    같은 프로세스에서 패키지 경로로 import한 쪽(테스트 · 다른 실험)으로 새지 않는다
+    (`tests/test_calculations.py`의 `_load`와 같은 까닭).
+    """
     path = ROOT / "pipeline" / "step1_cluster" / "top_st_clustering.py"
     spec = importlib.util.spec_from_file_location("top_st_clustering", path)
     module = importlib.util.module_from_spec(spec)

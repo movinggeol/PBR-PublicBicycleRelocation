@@ -49,7 +49,7 @@ except ImportError:  # pragma: no cover
         "  .\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt")
 
 from project_config import (  # noqa: E402
-    DEPOT_LAT, DEPOT_LON, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY, VEHICLE_SPEED_KMPH,
+    DEPOT_LAT, DEPOT_LON, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY,
 )
 
 haversine_km = bc.ilp_mod.haversine_km

@@ -712,17 +712,27 @@ def compare_same_day(day_type: str, run_label: str = None,
         return []
 
     per_hour = 60 // TICK_MINUTES
+    # 이틀치 재고 시계열은 **날짜마다 한 번만** 읽는다 (2026-10-08 점검). 같은 날의 네 회차가
+    # 같은 범위(그날 ~ +2일)를 쓰는데 실행마다 다시 읽어, 평일 22회차에 22번을 읽고 있었다.
+    # 읽는 범위가 날짜 문자열로 정해지므로 날짜가 열쇠다 — 창으로 자르는 것은 아래에서 실행마다 한다.
+    obs_by_day = {}
     rows = []
     for run in runs.itertuples(index=False):
         hours = duration_hours(run.duration)
         start, end = same_day_window(run.start, run.duration)
-        with db.session() as conn:
-            obs = db.load_stock_history(conn, start=start.strftime("%Y-%m-%d"),
-                                        end=(start + timedelta(days=2)).strftime("%Y-%m-%d"))
+        day = start.date()
+        if day not in obs_by_day:
+            with db.session() as conn:
+                loaded = db.load_stock_history(
+                    conn, start=start.strftime("%Y-%m-%d"),
+                    end=(start + timedelta(days=2)).strftime("%Y-%m-%d"))
+            if not loaded.empty:
+                loaded["관측"] = pd.to_datetime(loaded["observed_at"])
+            obs_by_day[day] = loaded
+        obs = obs_by_day[day]
         own = target_stations(run.run_label, run.duration)
         if obs.empty or not own:
             continue
-        obs["관측"] = pd.to_datetime(obs["observed_at"])
         window = obs[(obs["관측"] >= start) & (obs["관측"] < end)]
         ticks = window["관측"].nunique()
         need = int(len(hours) * per_hour * COMPLETE_DAY_RATIO)

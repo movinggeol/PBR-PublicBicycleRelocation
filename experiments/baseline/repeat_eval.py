@@ -97,6 +97,10 @@ def summarize(frame, reference="B0"):
                이동km=("km", "mean"),
                최장분=("max_min", "mean"),
                초과=("over", "mean"))
+    if "bikes_done" in frame.columns:
+        # 끝낸 대수 = 차량마다 min(실은 것, 내린 것)(1.26.338). `처리대수`는 실은 대수라,
+        # 예산에 끊겨 싣고 돌아오는 방법(그리디)에서는 둘이 갈린다.
+        agg.update(끝낸대수=("bikes_done", "mean"))
     if "saturation_after" in frame.columns:
         agg.update(포화_평균=("saturation_after", "mean"),
                    포화_표준편차=("saturation_after", "std"),

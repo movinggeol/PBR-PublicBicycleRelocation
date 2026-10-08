@@ -35,7 +35,7 @@ sys.path.insert(0, str(ROOT))
 import pandas as pd
 
 import db
-from project_config import REBAL_MIN_QTY, duration_hours
+from project_config import duration_hours
 
 WINDOWS = ("_05_10", "_10_15", "_15_20")
 

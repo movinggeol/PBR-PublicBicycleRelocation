@@ -35,10 +35,10 @@ import pandas as pd
 
 import db
 from backtest_demand import DURATIONS, consecutive_pairs, daily_window_demand
+from pipeline.step0_collect.calculate_target_qty import compute_rebal_qty
 from project_config import DAY_TYPES, normalize_day_type, select_day_type
 
 Z_GRID = [1.28, 1.65, 1.80, 1.99, 2.10, 2.33, 2.58]
-MAX_CAPACITY = 10
 
 
 def limit_days(net: dict, days: int, seed: int) -> dict:
@@ -84,18 +84,15 @@ def coverage_by_z(net: dict, pairs: list, duration: str) -> pd.DataFrame:
 # ---------- 2. 비용: z별 작업량 ----------
 
 def rebal_qty_by_z(stats: pd.DataFrame, z: float) -> pd.DataFrame:
-    """calculate_target_qty.calculate_rebal_qty와 같은 계산 (z만 바꿔가며)."""
-    out = stats.copy()
-    positive = out["mu"] >= 0
+    """운영 함수 `calculate_target_qty.compute_rebal_qty()`를 z만 바꿔 가며 부른다.
 
-    out.loc[positive, "target_qty"] = out.loc[positive, "mu"] + z * out.loc[positive, "sigma"]
-    out.loc[~positive, "target_qty"] = out.loc[~positive, "stock"] + out.loc[~positive, "mu"]
-    out["target_qty"] = out["target_qty"].clip(lower=0, upper=out["parking_lot"] * 1.5)
-
-    raw = out["target_qty"] - out["stock"]
-    eased = MAX_CAPACITY * np.tanh(raw / MAX_CAPACITY)
-    out["rebal_qty"] = np.where(eased >= 0, np.floor(eased), np.ceil(eased)).astype(int)
-    return out
+    예전에는 같은 식을 여기 복사해 두고 적재 용량 10과 상한 배수 1.5를 숫자로 박았다 —
+    `PBR_VEHICLE_CAPACITY`·`PBR_TARGET_QTY_UPPER_RATIO`로 값을 바꾸면 파이프라인과 어긋났다
+    (2026-10-08 점검). 기본값에서 두 구현은 한 행도 다르지 않다 — 합성 30곳과 실자료
+    1,338곳 × z 여섯 값으로 맞대 봤고, `tests/test_experiment_guards.py`가 옛 식을 대조용으로
+    들고 지킨다. 운영 함수는 받은 표에 열을 **써넣으므로** 복사해서 넘긴다.
+    """
+    return compute_rebal_qty(stats.copy(), z=z)
 
 
 def workload(frame: pd.DataFrame) -> dict:

@@ -40,7 +40,7 @@
 
 사용법:
     python experiments/params/cluster_time_term.py
-    python experiments/params/cluster_time_term.py --period "26년 03월" --run-label "sweep-10"
+    python experiments/params/cluster_time_term.py --period "26년 03월" --run-label "2026-08-11 real"
 """
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ sys.path.insert(0, str(ROOT))
 # 늦게 부르므로, 그 전에 찍는 문구가 cp949로 인코딩돼 죽었다(2026-09-12 실측:
 # 🔴 한 글자에 UnicodeEncodeError). project_config를 거치면 _force_utf8_output()이
 # 돈다 — 저장소가 이 함정을 막아 둔 단일 지점이다.
-import project_config  # noqa: F401,E402
+import project_config  # noqa: E402
 
 # 순회 항으로 바꿀 때 함께 볼 γ 후보. 현행 3000은 메도이드 거리합 기준이라
 # 그대로 쓰면 비중이 어긋난다 — 넓게 훑는다.
@@ -192,6 +192,9 @@ def main() -> int:
     with contextlib.redirect_stdout(buf):
         bc = load_baseline()
         step1 = bc.load_step1()
+        # 순수요를 읽는 요일(measure()의 "weekday")과 ILP·VRP·군집 모듈의 요일을 맞춘다(1.26.281) — 안 맞추면 모듈은
+        # 오늘 달력을 따른다. 지금은 휴일 이동 계수가 평일로 폴백해 어느 날 돌려도 수치는 같다.
+        project_config.align_day_type("weekday", bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
         from pipeline.step1_cluster import adjust_module
 
     rows = []

@@ -46,9 +46,7 @@
 from __future__ import annotations
 
 import argparse
-import os
 import random
-import shutil
 import sqlite3
 import statistics
 import sys

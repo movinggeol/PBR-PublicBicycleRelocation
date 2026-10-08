@@ -72,7 +72,13 @@ WINDOWS = ("_05_10", "_10_15", "_15_20")
 
 
 def load_step1():
-    """step1은 파일명이 숫자로 시작해 일반 import가 안 된다."""
+    """step1 군집 모듈을 **경로로 직접** 싣는다 — `baseline_compare.load_step1()`의 사본이다.
+
+    일반 import도 된다(숫자 접두는 1.18.8에서 뗐다 — `pipeline.step1_cluster.top_st_clustering`).
+    importlib으로 싣는 꼴은 그때의 흔적이고, 저쪽과 달리 `sys.modules["top_st_clustering"]`에
+    올린다. ⚠️ 이 파일 안에서 지금 부르는 곳은 없다(2026-10-08 점검 — 쪼개기는 저장된
+    `ilp_plan`을 읽어 VRP만 다시 푼다).
+    """
     path = ROOT / "pipeline" / "step1_cluster" / "top_st_clustering.py"
     spec = importlib.util.spec_from_file_location("top_st_clustering", path)
     module = importlib.util.module_from_spec(spec)

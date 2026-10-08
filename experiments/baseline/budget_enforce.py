@@ -35,7 +35,7 @@ import pandas as pd
 import db
 from pipeline.step2_optimize import vrp as vrp_mod                     # noqa: E402  (step2)
 from project_config import (                       # noqa: E402
-    DURATIONS, TIME_BUDGET_MINUTES, align_day_type, get_runtime_config,
+    TIME_BUDGET_MINUTES, align_day_type,
 )
 
 WINDOWS = ("_05_10", "_10_15", "_15_20")

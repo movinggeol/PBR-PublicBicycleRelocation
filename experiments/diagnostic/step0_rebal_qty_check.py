@@ -24,7 +24,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from project_config import (  # noqa: E402
-    DATA_ROOT, PROJECT_ROOT, REBAL_MIN_QTY, duration_list, get_runtime_config,
+    DATA_ROOT, REBAL_MIN_QTY, duration_list, exit_if_help, get_runtime_config,
 )
 
 FILE_PATH = str(DATA_ROOT / "pp_data/재배치 정보/rebal_qty{duration} ({now}).csv")
@@ -59,4 +59,5 @@ def main():
 
 
 if __name__ == "__main__":
+    exit_if_help(__doc__)      # 공용 파서는 add_help=False다 — 안 부르면 --help가 계산으로 흘러간다
     main()

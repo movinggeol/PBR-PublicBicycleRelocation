@@ -26,7 +26,6 @@ ROOT = Path(__file__).resolve().parents[2]      # experiments/<분류>/ 아래�
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
 
-import numpy as np
 import pandas as pd
 
 import db

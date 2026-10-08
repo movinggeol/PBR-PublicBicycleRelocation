@@ -2,7 +2,7 @@
 
 `wanted_vehicles()`가 작업량으로 K를 정하는데, **그 K가 최선인지는 재 본 적이
 없었다.** 파이프라인의 물량 손실을 추적하다 나온 물음이다 —
-군집화 → ILP에서 **28%가 사라진다**(docs/분석/EXPERIMENTS.md 5-B장).
+군집화 → ILP에서 **20~26%가 사라진다**(docs/분석/EXPERIMENTS.md 5-B장).
 
     ILP는 군집 **안에서만** 옮긴다 → 군집이 작을수록 한쪽이 남는다
     군집을 키우면 그 안에서 수급이 맞아 버리는 양이 준다
@@ -33,23 +33,31 @@ def resolve_run_label(label=None):
     그러면 같은 명령이 다른 날 다른 재고로 돌고 결과에 그 사실이 남지 않는다
     (1.26.58에서 `gamma_sweep.py`가, 그 전에 `z_sweep.py`가 이 결함으로 걸렸다).
     판정 기준은 "인자가 있는가"가 아니라 **"못 찾았을 때 멈추는가"** 다.
+
+    라벨을 안 주면 가장 최근 **계획** 실행을 쓴다(`gamma_sweep.py`가 1.26.281에 고친 방식).
+    예전 기본값은 `ORDER BY 1`의 마지막, 곧 **사전순 최대**라 실험 라벨(`sweep-10`·
+    `obs-cmp-…`)이 날짜 라벨을 이겼다 — 스윕 스냅샷은 재고가 10.4% 적다(2026-10-08 점검).
     """
     import db
     with db.session() as conn:
         available = [r[0] for r in conn.execute(
             "SELECT DISTINCT run_label FROM station_info ORDER BY 1")]
+        latest_plan = db.latest_label(conn, "station_info", kinds=("plan",))
     if not available:
         raise SystemExit("station_info가 비어 있습니다. 파이프라인을 한 번 돌리십시오.")
-    chosen = label or available[-1]
+    chosen = label or latest_plan
     if chosen not in available:
         raise SystemExit(f"station_info에 '{chosen}' 실행이 없습니다."
-                         f" --run-label 로 고르십시오: {available}")
+                         f" PBR_RUN_LABEL=… 로 고르십시오: {available}")
     print(f"[스냅샷] station_info run_label = '{chosen}'"
-          f"{' (기본: 최신)' if not label else ''}")
+          f"{' (기본: 가장 최근 계획)' if not label else ''}")
     return chosen
 
 
 step1 = bc.load_step1(); solver = bc.ilp_mod.build_solver()
+# 순수요를 읽는 요일(아래 'weekday')과 ILP·VRP·군집 모듈의 요일을 맞춘다(1.26.281) — 안 맞추면 모듈은
+# 오늘 달력을 따른다. 지금은 휴일 이동 계수가 평일로 폴백해 어느 날 돌려도 수치는 같다.
+bc.align_day_type('weekday', bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
 orig = step1.wanted_vehicles
 PERIODS = ('25년 09월', '25년 11월', '26년 01월', '26년 03월')
 SEEDS = (42, 7)

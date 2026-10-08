@@ -41,12 +41,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import numpy as np
 import pandas as pd
 
 import db
 from project_config import (
-    DURATIONS, REBAL_MIN_QTY, TARGET_Z, duration_hours, select_day_type,
+    REBAL_MIN_QTY, TARGET_Z, duration_hours, select_day_type,
 )
 
 # EDA와 **같은 판정식**(두 컬럼의 IQR × 1.5)을 쓴다. 다만 울타리를 구하는 모집단이

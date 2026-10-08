@@ -841,7 +841,8 @@ def main() -> None:
                         help=f"적재 용량 (기본 {VEHICLE_CAPACITY}는 **상한**이고"
                              " 통상은 7대다 — 둘 다 돌려 볼 것)")
     parser.add_argument("--run-label", default="",
-                        help="통합 비교에 쓸 재배치 실행 (기본: vrp_plan 최신)")
+                        help="통합 비교에 쓸 재배치 실행 (기본: vrp_plan이 있는 가장 최근"
+                             " **계획** 실행 — 실험 라벨은 고르지 않는다)")
     parser.add_argument("--audit", action="store_true",
                         help="탐지 방법의 근거를 되짚는다")
     parser.add_argument("--audit-only", action="store_true",
@@ -963,14 +964,19 @@ def main() -> None:
         print("\n  읽는 법: 임계치를 올리면 이동거리(대당km)는 줄고 방치 시간은 는다.")
         print("  더 올려도 대당km가 안 줄어드는 지점이 무릎이다.")
 
-        label = args.run_label or pd.read_sql(
-            "SELECT run_label FROM vrp_plan ORDER BY run_label DESC LIMIT 1",
-            conn)["run_label"].iloc[0]
-        integration_overlap(conn, broken, label)
+        # 사전순 MAX를 쓰지 않는다 — 실험 라벨(`sweep-21`·`obs-cmp-…`)이 날짜 라벨을 이겨
+        # '최신 계획'이 아니라 실험의 경로와 겹침을 쟀다(2026-10-08 점검, 1.26.281과 같은 부류).
+        label = args.run_label or db.latest_label(conn, "vrp_plan", kinds=("plan",))
 
+        # ② 표는 ③보다 먼저 남긴다 — 아래에서 멈춰도 잰 것을 잃지 않게.
         if args.out:
             table.to_csv(args.out, index=False, encoding="utf-8-sig")
             print(f"\n저장: {args.out}")
+
+        if not label:
+            raise SystemExit("vrp_plan이 비어 있습니다 — 통합 비교(③)에 쓸 재배치 실행이 없습니다."
+                             " 파이프라인을 한 번 돌리십시오.")
+        integration_overlap(conn, broken, label)
 
 
 if __name__ == "__main__":

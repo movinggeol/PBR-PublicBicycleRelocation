@@ -1,4 +1,3 @@
-import pandas as pd
 K = 5
 cluster_move_count = {k: 0 for k in range(K)}
 print(cluster_move_count)

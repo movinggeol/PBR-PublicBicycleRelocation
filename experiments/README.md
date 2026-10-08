@@ -1,7 +1,8 @@
 # experiments/
 
-파이프라인에 속하지 않는 검증·실험 스크립트 모음입니다. **29개**가 되면서 **성격별로
-다섯 갈래로 나눴습니다**(1.20.7).
+파이프라인에 속하지 않는 검증·실험 스크립트 모음입니다. 1.20.7에 29개가 되면서 **성격별로
+다섯 갈래로 나눴고**, 지금은 **73개**입니다(2026-10-08 기준 — params 19 · baseline 6 ·
+structure 39 · diagnostic 6 · learning 3. params의 둘은 사람이 직접 띄우지 않는 워커입니다).
 
 ```text
 experiments/
@@ -44,7 +45,7 @@ experiments/
 | `wanted_vehicles_geo_sweep.py` | 대여소 수 대신 후보 집합의 기하(BHH 근사)로 `K`를 정하면 나은가 | 채택 보류(5-H장) — 뒤이어 `tour_length_estimate.py`(diagnostic/)가 **세 어림 모두 현행보다 못함**을 확인(13장) |
 | `cluster_time_term.py` | 군집 목적함수의 거리 항을 메도이드 거리합 대신 **순회거리**로 바꾸면 나은가 | 예산 초과는 줄어도 **결품이 는다** — 맞바꿈, 채택 안 함(21장) |
 | `convention_sweep.py` | 관행값 넷(`REBAL_MIN_QTY`·`ADJUST_MAX_ITER`·`ADJUST_BALANCE_OK`·`ADJUST_BALANCE_LIMIT`)이 결품에 영향을 주나 | **셋은 씨앗 잡음에 묻혀 무의미, `REBAL_MIN_QTY`만 유의하나 문턱 1~3은 평지** → 넷 다 현행 유지(19장) |
-| `road_time_model.py` | 이동시간 계수를 쌓인 실측(고정 패널)으로 다시 추정하면 날짜·회차에 안정적인가 | 두 기준(표본 밖 MAE −20% 이상·날짜별 변동계수 15% 미만)은 **이미 통과**(MAE −25%대, 변동계수 2%대). 사전 등록한 **10일 표본 조건(09-02부터)을 아직 못 채워** 채택 안 함(20-A장) |
+| `road_time_model.py` | 이동시간 계수를 쌓인 실측(고정 패널)으로 다시 추정하면 날짜·회차에 안정적인가 | ✅ **세 기준 통과 (2026-09-15) · 채택** — 날짜별 변동계수 고정비 2.0% · 속도 0.9% · 판정용 10일(09-02부터) · 표본 밖 MAE 275.2 → 205.0초(−25.5%) · 재추정 **320.4초 + 32.11 km/h**. 채택 승인(09-16) 뒤 **기본값 켬**(1.26.268, 끄기 `PBR_USE_ROAD_MODEL=0`). 휴일(게이트 B)도 통과(10-04, 309.5초 + 32.33 km/h)했으나 기본값은 아직 평일 계수로 폴백 — EXPERIMENTS 9장. (5일째에는 두 기준만 넘어 채택하지 않았다 — 20-A장) |
 
 `_convention_worker.py`·`_limit_plan_worker.py`는 표에 올리지 않았습니다 — 각각
 `convention_sweep.py`·`limit_fixedpop_grid.py`가 셀 하나를 별도 프로세스로 돌리려고
@@ -69,6 +70,13 @@ python experiments/params/z_fixedpop_grid.py --z-grid wide `
 돌지 않습니다 — `python tools/transfer_run.py --import <파일>`로 먼저 옮기십시오
 (EXPERIMENTS.md 1장 상자).
 
+**스냅샷 라벨을 안 주면 가장 최근 *계획* 실행을 고릅니다**(`db.latest_label(…, kinds=("plan",))`
+— 사전순 최대가 아닙니다. 그것은 `sweep-10` 같은 실험 라벨을 집습니다). `z_sweep.py`·
+`gamma_sweep.py`(1.26.281)에 이어 `cluster_count_sweep.py`·`wanted_vehicles_geo_sweep.py`·
+`diagnostic/tour_length_estimate.py`·`structure/broken_collect.py`도 그렇게 맞췄습니다(2026-10-08).
+`cluster_count_sweep.py`·`wanted_vehicles_geo_sweep.py`는 인자를 받지 않으므로 라벨은 환경변수
+`PBR_RUN_LABEL`로 고릅니다. 기본값은 **계획을 다시 돌리면 바뀌므로** 문서에 실을 값은 라벨을 못박으십시오.
+
 ## baseline/ — 대조군 비교와 반복 실행 (논문용, 결과는 [../docs/분석/EXPERIMENTS.md](../docs/분석/EXPERIMENTS.md) 5장)
 
 제안 방법이 **단순한 방법보다 정말 나은지**를 재는 자리입니다. 그전까지 모든 수치는
@@ -85,10 +93,6 @@ python experiments/params/z_fixedpop_grid.py --z-grid wide `
 
 `ortools_gap.py`(와 그것을 자식 프로세스로 부르는 `ortools_gap_seeds.py`)가 쓰는
 `ortools`는 2026-09-12부터 `requirements.txt` 기본 의존성입니다 — 따로 설치할 것이 없습니다.
-
-```powershell
-# ortools는 2026-09-12부터 requirements.txt에 있다 — 따로 설치할 것 없다
-```
 
 ```powershell
 python experiments/baseline/baseline_compare.py --period "25년 11월" --plan-basis
@@ -137,7 +141,7 @@ python experiments/baseline/repeat_eval.py --periods "25년 09월,25년 10월,25
 | `budget_split.py` | 예산 초과 군집을 **쪼개면** 예산을 지키나 | 🔴 **지키는 것처럼 보이지만 일을 버린다** — 좌표로 가르면 ILP가 짝지은 pick↔drop이 깨져 **4.5~22.1%를 못 옮긴다.** 배율 1.32에서는 21대를 다 써도 초과가 남는다. 쪼개려면 **ILP를 다시 풀어야** 한다(26장) |
 | `f2_candidate_priority.py` | **결품 확률로 작업 대상의 순서를 바꾸면** 결품이 줄까 (ML 고도화 F2 — A1 필터 · A2 가중을 현행과 같은 군집·ILP·VRP로) | ⏳ **착수 점검(10-08, 평일 14일)** — A1·A2 모두 결품이 준다(p<0.001)지만 A1은 옮긴 대수 −39%, 구간 검사 7/8 ❌. 판정은 10-16 뒤 `--out`을 주고 다시 돈다. EXPERIMENTS 41장 |
 | `saturation_forecast.py` | **대여소가 N틱 뒤에 거치대의 90% 이상 차 있을 확률**을 맞힐 수 있나 (ML 11번 · F3 1단계 — 9번의 거울) | ✅ **모형 단계 통과** (2026-09-29) — Brier 0.0242로 지속 0.0293 · 순수요 누적 0.0291 · 과거 빈도 0.0621을 모두 이기고, 평소 빈도 구간 · 거치대 크기마다 이긴다. 순수요 누적(F1의 교훈으로 더한 베이스라인)은 지속과 같았다. 첫 실행은 누출 검사가 오경보를 냈다(문턱이 결품 라벨에 박혀 있었다 — 고침). 해석은 EXPERIMENTS 43장 |
-| `delivery_timing.py` | **배송 · 수거가 대여소가 비기(차기) 전에 닿았나** — 실제 동시각 계획의 VRP 도착 시각을 그 뒤 관측 재고의 처음 빈(찬) 칸과 같은 정류장에서 맞댄다. 30분 일찍 출발하면 · 마지막 배송 목표 60/90/120분 | ⏳ **등록 · 예비** (2026-10-08) — 집 PC 평일 5회차: 늦은 배송 53.4% · 30분 일찍 출발 −20.5%p · 빈 시각 중앙 60분. 판정은 회사 PC 평일 22회차. EXPERIMENTS 51장 |
+| `delivery_timing.py` | **배송 · 수거가 대여소가 비기(차기) 전에 닿았나** — 실제 동시각 계획의 VRP 도착 시각을 그 뒤 관측 재고의 처음 빈(찬) 칸과 같은 정류장에서 맞댄다. 30분 일찍 출발하면 · 마지막 배송 목표 60/90/120분 | ✅ **판정 (회사 PC 평일 22회차, 2026-10-08)** — 늦은 배송 **52.0%** · 30분 일찍 출발 **−23.8%p → 출발 당기기 후보** · 빈 시각 중앙 60분 → **마지막 배송 목표 60분** · 배송 정류장의 54%는 시작에 이미 비어 있음(예비 — 집 PC 평일 5회차: 53.4% · −20.5%p · 60분). EXPERIMENTS 51장 |
 | `forecast_learning_curve.py` | **재고를 더 모으면 결품 · 포화 예측(ML 9 · 11번)이 좋아지나** — 검증 4일을 고정하고 학습 날만 3 → 17일로 늘린다(평일 · 12~16시 · 두 원점 · 씨앗 셋) | ✅ **좋아진다** (2026-10-04) — k=5 → 최대 k에서 결품 GBM −7.2% · −7.8%, 포화 −13.0% · −16.4%(두 원점), k=10 뒤로는 1% 안팎으로 평평. 포화는 3일 학습이면 지속 규칙에 진다. 예상 셋 중 둘이 틀렸다 — EXPERIMENTS 48장 |
 | `f3_drop_saturation.py` | **곧 찰 곳에 배송하지 않으면** 포화가 줄까 (ML 고도화 F3 — C1 필터 · C2 가중 · 비-ML 짝 C1N을 현행과 같은 군집·ILP·VRP로) | ⏳ **등록 · 하네스 점검 끝**(한 회차) — (가) 현행 대비 · (나) C1N 대비. 채택 판정은 평일 20일 뒤. 해석은 EXPERIMENTS 43장 |
 | `rebalance_trace.py` | **공사가 실제로 어디서 빼서 어디에 채웠나** — 대여이력의 `bike_no` 사슬(반납한 곳 ≠ 다음 대여한 곳)로 19개월의 재배치를 복원하고, 규모 · 시각 · 표적성(순공급 대 순유출 ρ) · 정본 계획과의 겹침을 잰다 | ✅ **복원했다** (2026-10-04) — 19개월 공사 이동 60,366건 · 평일 하루 평균 약 115대 · 불균형을 부분적으로 따라감(평일 ρ 0.46, 19개월 모두 0.36~0.53 · 휴일 0.23). 배송은 이용량 상위보다도 계획과 덜 닮았다. EXPERIMENTS 44장 1부 |

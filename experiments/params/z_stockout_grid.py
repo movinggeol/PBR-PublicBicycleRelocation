@@ -63,7 +63,6 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[2]      # experiments/<분류>/ 아래에 있다
 sys.path.insert(0, str(ROOT))
 
-import db                                       # noqa: E402
 from project_config import (                    # noqa: E402
     CLUSTER_GAMMA, DEFAULT_PERIOD, DEFAULT_WARMUP_DAYS, TARGET_Z,
     TIME_BUDGET_MINUTES, normalize_day_type,

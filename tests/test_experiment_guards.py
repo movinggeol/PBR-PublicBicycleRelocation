@@ -1904,3 +1904,224 @@ def test_예산_강제의_미집행은_싣고_돌아온_것까지_센다():
     got = be.summarize(result, planned_bikes=10)
 
     assert (got["실은대수"], got["옮긴대수"], got["미집행"]) == (8, 5, 5)
+
+
+# ───────────────────────────── 2026-10-08 전체 점검에서 고친 실험 하네스 다섯
+
+def _load_experiment(relpath: str):
+    """`experiments/` 아래 스크립트 하나를 독립 모듈로 싣는다."""
+    path = PROJECT_ROOT / relpath
+    spec = importlib.util.spec_from_file_location(f"_점검_{path.stem}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _z_격자_옛_식(stats: pd.DataFrame, z: float) -> pd.DataFrame:
+    """`z_sweep.rebal_qty_by_z()`가 2026-10-08까지 들고 있던 식 **그대로** — 대조용 사본이다.
+
+    적재 용량 10과 상한 배수 1.5가 숫자로 박혀 있다. 운영 함수의 식을 바꾸면 이 사본과
+    갈라져 아래 테스트가 깨진다 — 그때는 1장(z 격자)의 비용 표가 옛 식의 값이라는 뜻이다.
+    """
+    import numpy as np
+
+    out = stats.copy()
+    positive = out["mu"] >= 0
+    out.loc[positive, "target_qty"] = out.loc[positive, "mu"] + z * out.loc[positive, "sigma"]
+    out.loc[~positive, "target_qty"] = out.loc[~positive, "stock"] + out.loc[~positive, "mu"]
+    out["target_qty"] = out["target_qty"].clip(lower=0, upper=out["parking_lot"] * 1.5)
+    raw = out["target_qty"] - out["stock"]
+    eased = 10 * np.tanh(raw / 10)
+    out["rebal_qty"] = np.where(eased >= 0, np.floor(eased), np.ceil(eased)).astype(int)
+    return out
+
+
+def test_z_격자의_작업량은_운영_함수를_부르고_옛_식과_같은_값을_낸다():
+    """z 격자가 식을 **복사해** 들고 있었다 — 용량 10 · 상한 1.5를 숫자로 박은 채 (2026-10-08 점검).
+
+    `PBR_VEHICLE_CAPACITY`나 `PBR_TARGET_QTY_UPPER_RATIO`를 바꾸면 파이프라인과 어긋난다.
+    운영 함수 `compute_rebal_qty()`를 부르게 바꾸면서, 기본값에서는 **한 행도 달라지지 않는다**는
+    것을 여기 남긴다. 합성 30곳에 경계를 심었다 — mu = 0 · 상한 절단 · 0 절단 · tanh 포화(±200대) ·
+    정수 경계 · 거치대 결측.
+    """
+    import numpy as np
+
+    import project_config
+    from pipeline.step0_collect.calculate_target_qty import compute_rebal_qty
+
+    assert (project_config.VEHICLE_CAPACITY, project_config.TARGET_QTY_UPPER_RATIO) == (10, 1.5), (
+        "전제 — 옛 식의 숫자는 기본값이다. 환경변수로 바꾼 채 돌리면 이 대조는 뜻이 없다")
+    zs = _load_experiment("experiments/params/z_sweep.py")
+
+    rng = np.random.default_rng(20261008)
+    n = 30
+    stats = pd.DataFrame({
+        "station_id": [f"ST{i:04d}" for i in range(n)],
+        "mu": np.round(rng.normal(0, 6, n), 3),
+        "sigma": np.round(rng.uniform(0, 8, n), 3),
+        "parking_lot": rng.integers(5, 40, n).astype(float),
+        "stock": rng.integers(0, 45, n).astype(float),
+    })
+    경계 = [(0.0, 0.0, 10, 0), (40.0, 10.0, 10, 0), (-30.0, 2.0, 20, 5), (300.0, 0.0, 400, 0),
+            (-1.0, 0.0, 400, 300), (5.0, 0.0, 30, 5), (3.0, 1.0, float("nan"), 2)]
+    for i, row in enumerate(경계):
+        stats.loc[i, ["mu", "sigma", "parking_lot", "stock"]] = row
+    처음 = stats.copy()
+
+    for z in (0.0, 1.28, 1.65, 1.99, 2.58):
+        got = zs.rebal_qty_by_z(stats, z)
+        옛 = _z_격자_옛_식(stats, z)
+        pd.testing.assert_series_equal(got["rebal_qty"], 옛["rebal_qty"])
+        pd.testing.assert_series_equal(got["target_qty"], 옛["target_qty"])
+        pd.testing.assert_frame_equal(got, compute_rebal_qty(stats.copy(), z=z))
+    pd.testing.assert_frame_equal(stats, 처음)          # 운영 함수는 받은 표에 써넣는다 — 복사해 넘겨야 한다
+    끝 = zs.rebal_qty_by_z(stats, 1.99)["rebal_qty"]
+    assert (끝.max(), 끝.min()) == (10, -9), "tanh 포화 · 수거 쪽 경계가 표본에서 빠졌다"
+    assert not hasattr(zs, "MAX_CAPACITY"), "용량을 다시 숫자로 박았다"
+
+
+def test_같은_시각_비교는_재고_시계열을_날짜마다_한_번만_읽는다(obs, monkeypatch, capsys):
+    """같은 날의 회차들이 같은 이틀치 창을 쓰는데 실행마다 다시 읽고 있었다 (2026-10-08 점검 —
+    평일 22회차에 22번, 서로 다른 날은 6일). 날짜별로 한 번 읽어 나눠 쓴다.
+
+    🔴 **나눠 써도 회차마다 자기 창으로 잘라야 한다** — 한 날의 두 회차가 서로의 결품을 넘겨받으면
+    안 된다. `A`는 05시대 6틱(1.0시간) · 10~11시대 12틱(2.0시간)만 비고 `B`는 비지 않는다.
+    """
+    import db
+
+    _seed_same_day("추석 05시", "2026-09-25 05:03:10")
+    _seed_same_day("추석 10시", "2026-09-25 10:03:10", duration="_10_15")
+    _seed_same_day("이튿날 05시", "2026-09-26 05:03:10")
+    with db.session() as conn:
+        conn.executemany(
+            "INSERT INTO rebalance_plan (run_label, duration, station_id, stock, rebal_qty)"
+            " VALUES (?, ?, ?, ?, ?)",
+            [(label, duration, station, 3, qty)
+             for label, duration in (("추석 05시", "_05_10"), ("추석 10시", "_10_15"),
+                                     ("이튿날 05시", "_05_10"))
+             for station, qty in (("A", 5), ("B", -4))])
+        for day in ("2026-09-25", "2026-09-26"):
+            for hour in range(5, 15):
+                for minute in range(0, 60, 10):
+                    빔 = day == "2026-09-25" and hour in (5, 10, 11)
+                    db.save_stock_snapshot(
+                        conn, f"{day} {hour:02d}:{minute:02d}:00",
+                        pd.DataFrame({"station_id": ["A", "B"], "stock": [0 if 빔 else 4, 4]}))
+
+    읽은_범위 = []
+    진짜 = db.load_stock_history
+
+    def 세며_읽기(conn, *args, **kwargs):
+        읽은_범위.append((kwargs.get("start"), kwargs.get("end")))
+        return 진짜(conn, *args, **kwargs)
+
+    monkeypatch.setattr(obs.db, "load_stock_history", 세며_읽기)
+
+    rows = {r["run_label"]: r for r in obs.compare_same_day("holiday")}
+    capsys.readouterr()
+
+    assert sorted(읽은_범위) == [("2026-09-25", "2026-09-27"), ("2026-09-26", "2026-09-28")], (
+        "실행 셋에 날짜는 둘이다 — 날짜마다 한 번만 읽어야 한다")
+    assert rows["추석 05시"]["관측"] == pytest.approx(0.5)       # (1.0 + 0) / 2곳
+    assert rows["추석 10시"]["관측"] == pytest.approx(1.0)       # (2.0 + 0) / 2곳 — 05시대가 섞이지 않았다
+    assert rows["이튿날 05시"]["관측"] == pytest.approx(0.0)
+    assert [rows[k]["ticks"] for k in ("추석 05시", "추석 10시", "이튿날 05시")] == [30, 30, 30]
+    assert rows["추석 05시"]["real_empty"] == pytest.approx(50.0)  # 05:00 틱에 A만 비었다
+
+
+_스냅샷_복사본 = ("experiments/diagnostic/tour_length_estimate.py",
+                  "experiments/params/cluster_count_sweep.py",
+                  "experiments/params/wanted_vehicles_geo_sweep.py")
+
+
+def _함수_원문(relpath: str, name: str) -> str:
+    import ast
+
+    source = (PROJECT_ROOT / relpath).read_text(encoding="utf-8")
+    node = next(n for n in ast.parse(source).body
+                if isinstance(n, ast.FunctionDef) and n.name == name)
+    return ast.get_source_segment(source, node)
+
+
+def test_스냅샷_기본값은_사전순_최대가_아니라_가장_최근_계획이다(capsys):
+    """`resolve_run_label()` 세 복사본의 기본값이 `ORDER BY 1`의 마지막이었다 (2026-10-08 점검).
+
+    `gamma_sweep.py`·`z_sweep.py`는 1.26.281에 고쳤는데 **복사본 셋에는 닿지 않았다** — 실험
+    라벨(`sweep-10`)은 `'s' > '2'`라 어떤 날짜 라벨도 이기고, 그 스냅샷은 재고가 10.4% 적다.
+    공용 모듈로 모으기 전까지는 셋이 **같은 글자**인지를 여기서 지킨다(안내 문구의 옵션 이름만 다르다 —
+    인자를 안 받는 두 스크립트에 `--run-label`로 고르라고 하면 통하지 않는다).
+    """
+    import db
+
+    with db.session() as conn:
+        db.record_run(conn, "2026-08-11 real", kind=None)
+        db.record_run(conn, "sweep-10", kind=None)             # 나중에 · 사전순으로도 뒤
+        for label in ("2026-08-11 real", "sweep-10"):
+            db.save_frame(conn, "station_info", pd.DataFrame([{
+                "station_id": "ST0001", "station_name": "가", "lat": 36.0,
+                "lon": 127.0, "stock": 5, "parking_lot": 10,
+            }]), run_label=label)
+        assert db.latest_label(conn, "station_info") == "sweep-10", "전제 — 종류를 안 가리면 실험이 이긴다"
+
+    tour = _load_experiment(_스냅샷_복사본[0])
+    assert tour.resolve_run_label() == "2026-08-11 real"
+    assert "가장 최근 계획" in capsys.readouterr().out, "기본값으로 골랐다는 것을 찍어야 한다"
+    assert tour.resolve_run_label("sweep-10") == "sweep-10"    # 고르면 고른 대로
+    with pytest.raises(SystemExit) as err:
+        tour.resolve_run_label("없는라벨")
+    assert "없는라벨" in str(err.value) and "sweep-10" in str(err.value)
+
+    정본 = _함수_원문(_스냅샷_복사본[0], "resolve_run_label")
+    assert "--run-label 로 고르십시오" in 정본
+    for relpath in _스냅샷_복사본[1:]:
+        사본 = _함수_원문(relpath, "resolve_run_label")
+        assert "PBR_RUN_LABEL=… 로 고르십시오" in 사본, f"{relpath}: 받지 않는 옵션으로 고르라고 안내한다"
+        assert 사본.replace("PBR_RUN_LABEL=…", "--run-label") == 정본, f"{relpath}: 복사본이 갈라졌다"
+
+
+@pytest.mark.parametrize("relpath, day_type", [
+    ("experiments/params/cluster_time_term.py", '"weekday"'),
+    ("experiments/diagnostic/tour_length_estimate.py", '"weekday"'),
+    ("experiments/params/cluster_count_sweep.py", "'weekday'"),
+    ("experiments/params/wanted_vehicles_geo_sweep.py", "'weekday'"),
+    ("experiments/params/_limit_plan_worker.py", '"weekday"'),
+    ("experiments/params/_convention_worker.py", '"weekday"'),
+    ("experiments/params/limit_fleet_grid.py", 'args["day_type"]'),
+])
+def test_계획을_다시_푸는_실험은_순수요와_같은_요일로_모듈을_맞춘다(relpath, day_type):
+    """순수요는 평일로 읽는데 ILP·VRP·군집 모듈의 `config.day_type`은 오늘 달력이었다 (2026-10-08 점검).
+
+    지금은 휴일 이동 계수가 평일로 폴백해 값이 같다 — **휴일 계수를 채우는 날** 휴일에 돌린 격자만
+    조용히 달라진다(1.26.281이 대조군 쪽에서 막은 것의 짝). 모듈 수준에서 바로 도는 스크립트와
+    `python -c` 문자열이 섞여 있어 import해서 볼 수 없으므로 원문으로 본다: `load_inputs()`에
+    넘기는 요일과 `align_day_type()`에 넘기는 요일이 같은 식이어야 한다.
+    """
+    import re
+
+    source = (PROJECT_ROOT / relpath).read_text(encoding="utf-8")
+    맞춤 = re.findall(r"align_day_type\(\s*([^,]+),\s*bc\.ilp_mod, bc\.vrp_mod, bc\.kpi_mod, step1\)",
+                      source)
+    읽기 = re.findall(r"bc\.load_inputs\(\s*[^,]+,\s*[^,]+,\s*([^,]+),", source)
+
+    assert 맞춤 == [day_type], "ILP·VRP·채점·군집 네 모듈을 한 번 맞춰야 한다"
+    assert 읽기 and set(읽기) == {day_type}, "순수요를 읽는 요일과 모듈에 맞춘 요일이 다르다"
+
+
+def test_고장_수거의_통합_비교는_실험이_아니라_가장_최근_계획과_맞댄다():
+    """`broken_collect.py`가 `--run-label`을 비우면 `vrp_plan`의 **사전순 최대**를 골랐다
+    (2026-10-08 점검) — `sweep-21`·`obs-cmp-…` 같은 실험 라벨이 날짜 라벨을 이겨, '재배치와 얼마나
+    겹치나'(③)를 실험의 경로에 대고 쟀다. 표가 비었으면 `.iloc[0]`의 IndexError 대신 까닭을 말하고 멈춘다.
+    """
+    import ast
+
+    source = (PROJECT_ROOT / "experiments" / "structure" / "broken_collect.py").read_text(encoding="utf-8")
+    main = next(n for n in ast.parse(source).body
+                if isinstance(n, ast.FunctionDef) and n.name == "main")
+    sql = [n.value for n in ast.walk(main)
+           if isinstance(n, ast.Constant) and isinstance(n.value, str) and "ORDER BY run_label" in n.value]
+    assert not sql, f"사전순으로 실행을 고른다: {sql}"
+
+    body = ast.get_source_segment(source, main)
+    assert 'db.latest_label(conn, "vrp_plan", kinds=("plan",))' in body
+    assert body.index("if not label:") < body.index("integration_overlap(conn, broken, label)"), (
+        "실행이 하나도 없으면 겹침을 재기 전에 멈춰야 한다")

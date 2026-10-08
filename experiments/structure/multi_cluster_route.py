@@ -40,8 +40,7 @@ sys.path.insert(0, str(ROOT / "experiments" / "baseline"))
 import baseline_compare as bc  # noqa: E402
 
 from project_config import (  # noqa: E402
-    DEFAULT_PERIOD, DEFAULT_WARMUP_DAYS, DEPOT_LAT, DEPOT_LON,
-    TIME_BUDGET_MINUTES, VEHICLES_PER_ROUND,
+    DEFAULT_PERIOD, DEFAULT_WARMUP_DAYS, TIME_BUDGET_MINUTES, VEHICLES_PER_ROUND,
 )
 
 haversine_km = bc.ilp_mod.haversine_km
