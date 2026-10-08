@@ -1812,6 +1812,15 @@ def test_배송_도착은_작업_전_시각이고_처음_빈_칸과_맞대어_�
     assert dtm.late_rate(frame, pd.Timedelta(minutes=30)) == (0, 2), "30분 당기면 A(10:05 도착)는 제때다"
 
 
+def test_배송_도착_판정은_계획이_선_대여이력을_가른다():
+    """등록이 *"원본 이후 계획만 따로도 찍는다"* 고 했는데 스크립트가 찍지 않았다(1.26.336).
+    경계는 회사 PC 본 DB를 원본으로 바꾼 09-28 15:24 — 15:03 계획은 깎임, 20:03 계획은 원본이다."""
+    from experiments.structure import delivery_timing as dtm
+
+    assert dtm.plan_input("2026-09-28 15:03:04") == "깎임"
+    assert dtm.plan_input("2026-09-28 20:03:03") == "원본"
+
+
 def test_수거는_거치대에_닿으면_늦고_관측이_모자란_정류장은_세지_않는다():
     from experiments.structure import delivery_timing as dtm
 

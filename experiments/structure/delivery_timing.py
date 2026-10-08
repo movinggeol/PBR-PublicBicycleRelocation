@@ -54,7 +54,7 @@ import pandas as pd  # noqa: E402
 
 import db  # noqa: E402
 import stockout_forecast as sf  # noqa: E402
-from observed_stockout import is_same_day_plan  # noqa: E402
+from observed_stockout import RENTAL_SWAP_AT, is_same_day_plan  # noqa: E402
 
 TICK = pd.Timedelta(minutes=sf.TICK_MINUTES)
 WINDOW_TICKS = 30              # 5시간
@@ -158,6 +158,14 @@ def deadline_verdict(median_min: float) -> int:
     return DEADLINES[-1]
 
 
+def plan_input(created_at) -> str:
+    """그 계획이 선 대여이력 — 회사 PC 본 DB를 원본으로 바꾼 시각(09-28 15:24)보다 먼저면 '깎임'.
+
+    등록이 *"본판정에서는 원본 이후 계획만 따로도 찍는다"* 고 적었다(1.26.336에 채웠다).
+    """
+    return "원본" if pd.Timestamp(created_at) >= pd.Timestamp(RENTAL_SWAP_AT) else "깎임"
+
+
 def load_plans(conn) -> pd.DataFrame:
     runs = pd.read_sql("SELECT run_label, day_type, created_at FROM runs"
                        " WHERE kind = 'plan' AND run_label LIKE '%동시각%'", conn)
@@ -168,8 +176,8 @@ def load_plans(conn) -> pd.DataFrame:
     for _, r in runs.iterrows():
         for dur in vrp.loc[vrp["run_label"] == r["run_label"], "duration"].unique():
             if is_same_day_plan(r["created_at"], dur, r["day_type"]):
-                keep.append((r["run_label"], dur, r["day_type"]))
-    return vrp, pd.DataFrame(keep, columns=["run_label", "duration", "day_type"])
+                keep.append((r["run_label"], dur, r["day_type"], plan_input(r["created_at"])))
+    return vrp, pd.DataFrame(keep, columns=["run_label", "duration", "day_type", "입력"])
 
 
 def vehicle_times(vrp: pd.DataFrame) -> pd.DataFrame:
@@ -250,9 +258,11 @@ def main(argv=None) -> int:
         stops = stops_with_arrival(sub, start)
         got = classify(stops, grid, caps[p["run_label"]], start)
         got["day_type"] = p["day_type"]
+        got["입력"] = p["입력"]
         frames.append(got)
         times = vehicle_times(sub)
         times["day_type"] = p["day_type"]
+        times["입력"] = p["입력"]
         timings.append(times)
     frame = pd.concat(frames, ignore_index=True)
     times = pd.concat(timings, ignore_index=True)
@@ -260,8 +270,16 @@ def main(argv=None) -> int:
     # 판정 표본은 회사 PC의 동시각 계획 전부다 — 이 PC(평일 5회차)는 예비라 judge를 끈다.
     judge = len(plans[plans["day_type"] == "weekday"]) >= 20
     for dt, name in DAY_TYPES.items():
-        report(frame[frame["day_type"] == dt], times[times["day_type"] == dt].drop(columns="day_type"),
+        report(frame[frame["day_type"] == dt],
+               times[times["day_type"] == dt].drop(columns=["day_type", "입력"]),
                f"{name} {int((plans['day_type'] == dt).sum())}회차", judge and dt == "weekday")
+    # 등록: 본판정에서는 원본 대여이력 뒤에 선 계획만 따로도 찍는다 — 판정은 위의 전체로만 한다.
+    fresh = plans[(plans["day_type"] == "weekday") & (plans["입력"] == "원본")]
+    if judge and 0 < len(fresh) < int((plans["day_type"] == "weekday").sum()):
+        pick = (frame["day_type"] == "weekday") & (frame["입력"] == "원본")
+        tpick = (times["day_type"] == "weekday") & (times["입력"] == "원본")
+        report(frame[pick], times[tpick].drop(columns=["day_type", "입력"]),
+               f"평일 중 원본 대여이력 뒤 {len(fresh)}회차", False)
     if not judge:
         print("\n⚠️ 평일 동시각 계획이 20회차 미만이라 **예비**다 — 판정은 회사 PC의 계획 전부로 한다(사전 등록).")
     return 0
