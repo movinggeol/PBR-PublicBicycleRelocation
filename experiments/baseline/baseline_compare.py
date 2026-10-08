@@ -414,13 +414,27 @@ def stockout_population(net, population, duration) -> int:
 
 
 def route_stats(routes):
-    """이동거리·최장 소요시간·예산 초과 건수·처리 대수(pick 기준)."""
+    """이동거리·최장 소요시간·예산 초과 건수·처리 대수.
+
+    처리 대수는 **두 가지로** 싣는다.
+
+    - `bikes` — 실은 대수(pick 합). 원고 <표 6-3>·<표 6-4>가 실은 정의라 그대로 둔다.
+    - `bikes_done` — **옮겨 끝낸** 대수 = 차량마다 min(실은 것, 내린 것)(함정 13).
+
+    🔴 둘이 갈리는 것은 시간 예산에 끊기는 방법뿐이다(2026-10-08 점검). 제안 방법은
+    ILP가 짝지어 두 값이 같지만, 그리디 배분(B1)은 예산 120분 앞에서 끊겨 **싣고
+    돌아오는** 자전거가 있다 — 25년 11월 평일 세 회차에서 337 · 232 · 256대를 실어
+    248 · 182 · 213대만 내렸다. `bikes`만 보면 B1이 제안 방법(301 · 209 · 216)보다
+    더 많이 옮긴 것으로 읽히는데, 끝낸 대수로는 반대다.
+    """
     if routes.empty:
-        return {"bikes": 0, "km": 0.0, "max_min": 0.0, "over": 0, "vehicles": 0}
+        return {"bikes": 0, "bikes_done": 0, "km": 0.0, "max_min": 0.0, "over": 0,
+                "vehicles": 0}
     minutes = routes.groupby("cluster")["cum_sec"].max() / 60
     picked = routes[routes["action"] == "pick"]["qty"].sum()
     return {
         "bikes": int(picked),
+        "bikes_done": int(vrp_mod.moved_bikes(routes).sum()),
         "km": float(routes["distance_km"].sum()),
         "max_min": float(minutes.max()),
         "over": int((minutes > TIME_BUDGET_MINUTES).sum()),
@@ -497,7 +511,9 @@ def run_duration(net, st_info, warmup, duration, args, step1, solver):
             row["plan_after"] = plan_after
 
         results.append(row)
-        print(f"  {LABELS[name]:<34} 처리 {row['bikes']:>4d}대"
+        carried = row["bikes"] - row["bikes_done"]
+        note = f"(싣고 돌아옴 {carried}대)" if carried else ""
+        print(f"  {LABELS[name]:<34} 처리 {row['bikes']:>4d}대{note}"
               f"  결품 {before:.2f}h → {after:.2f}h"
               f"  포화 {sim['saturation_before']:.2f}h"
               f" → {sim['saturation_after']:.2f}h")
@@ -516,7 +532,7 @@ def show(frame, plan_basis):
         print("\n" + "-" * 108)
         print(f"[{duration}]  대조군 비교 — 결품 시간과 **포화 시간을 함께** (대여소·일 평균)")
         print("-" * 108)
-        header = (f"{'방법':<34}{'처리대수':>8}{'이동km':>9}{'최장분':>8}"
+        header = (f"{'방법':<34}{'실은대수':>8}{'끝낸대수':>8}{'이동km':>9}{'최장분':>8}"
                   f"{'초과':>5}{'결품h':>8}{'감소':>8}{'감소율':>8}"
                   f"{'포화h':>8}{'포화Δ':>8}")
         if plan_basis:
@@ -528,7 +544,8 @@ def show(frame, plan_basis):
             rate = (drop / origin * 100) if origin else float("nan")
             sat = getattr(row, "saturation_after", float("nan"))
             sat_delta = (sat - origin_sat) if origin_sat is not None else float("nan")
-            line = (f"{LABELS[row.method]:<34}{row.bikes:>8d}{row.km:>9.1f}"
+            done = getattr(row, "bikes_done", row.bikes)     # 옛 CSV에는 없는 열이다
+            line = (f"{LABELS[row.method]:<34}{row.bikes:>8d}{int(done):>8d}{row.km:>9.1f}"
                     f"{row.max_min:>8.1f}{row.over:>5d}"
                     f"{row.stockout_after:>8.2f}{drop:>8.2f}{rate:>7.1f}%"
                     f"{sat:>8.2f}{sat_delta:>+8.2f}")

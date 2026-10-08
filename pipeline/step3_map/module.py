@@ -78,8 +78,8 @@ def start_time_for(duration: str, when=None, day_type: str = "weekday") -> str:
     날짜는 **다음 `day_type`**을 쓴다 — 과거 날짜를 넣으면 TMAP이 그날의 실제
     이력이 아니라 요일·시간대 패턴으로 답하기 때문에, 평일 계획은 평일 교통량을,
     휴일 계획은 휴일 교통량을 받아야 한다(1.26.158에서 `day_type`을 추가하기
-    전까지는 **항상 다음 평일**이었다 — 파이프라인 호출부가 여전히 기본값을
-    쓰므로 그 동작은 그대로다).
+    전까지는 **항상 다음 평일**이었다. 파이프라인 호출부는 2026-10-08까지 기본값을
+    써서 휴일 계획도 평일 교통량을 받았다 — 지금은 `config.day_type`을 넘긴다).
     """
     from datetime import datetime, timedelta
 
@@ -313,7 +313,14 @@ def call_tmap_chunked(start, end, via_points, headers=None, url=None, max_via=No
     클러스터 크기(최대 26곳)에서는 분할이 일어나지 않는다.
     """
     if max_via is None:
-        max_via = MAX_VIA if url is not None else _max_via(pick_endpoint(len(via_points)))
+        # 엔드포인트를 고정했으면 **그 엔드포인트의** 상한을 따른다. 예전에는 가장
+        # 큰 상한(200)을 써서 routeSequential30에 31곳 넘게 한 번에 보낼 수 있었다.
+        # 표에 없는 주소(사용자 지정)만 예전처럼 가장 큰 상한으로 본다.
+        if url is None:
+            max_via = _max_via(pick_endpoint(len(via_points)))
+        else:
+            known = [e for e in ENDPOINTS if e.url == url]
+            max_via = _max_via(known[0]) if known else MAX_VIA
 
     if len(via_points) <= max_via:
         return [call_tmap_sequential(start, end, via_points, headers=headers, url=url,

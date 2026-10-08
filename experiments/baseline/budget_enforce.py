@@ -109,11 +109,16 @@ def summarize(result: pd.DataFrame, planned_bikes: int) -> dict:
     if result.empty:
         return {}
     per_cluster = result.groupby("cluster")["cum_sec"].max() / 60.0
-    moved = int(result.loc[result["action"] == "pick", "qty"].sum())
+    # 집행량 = 군집마다 min(실은 것, 내린 것). pick만 세면 예산에 끊겨 **싣고 돌아온**
+    # 자전거가 옮긴 것으로 잡혀 미집행이 작게 나온다(2026-10-08 점검). 예전 값(pick 합)과
+    # 견줄 수 있게 `실은대수`를 함께 싣는다 — 둘의 차가 싣고 돌아온 대수다.
+    moved = int(vrp_mod.moved_bikes(result).sum())
+    picked = int(result.loc[result["action"] == "pick", "qty"].sum())
     return {
         "군집": len(per_cluster),
         "최장분": float(per_cluster.max()),
         "초과": int((per_cluster > TIME_BUDGET_MINUTES).sum()),
+        "실은대수": picked,
         "옮긴대수": moved,
         "미집행": planned_bikes - moved,
         "거리km": float(result["distance_km"].sum()),
@@ -197,7 +202,7 @@ def main() -> int:
     print()
 
     print(f"{'시간대':8} {'구분':10} {'군집':>4} {'최장분':>7} {'초과':>4} "
-          f"{'옮긴대수':>8} {'미집행':>7} {'거리km':>8}")
+          f"{'실은대수':>8} {'옮긴대수':>8} {'미집행':>7} {'거리km':>8}")
     rows, 빈회차 = [], []
     for duration in durations:
         plan = load_plan(label, duration)
@@ -214,7 +219,8 @@ def main() -> int:
                 continue
             rows.append({"시간대": duration, "구분": name, **summary})
             print(f"{duration:8} {name:10} {summary['군집']:4d} {summary['최장분']:7.1f} "
-                  f"{summary['초과']:4d} {summary['옮긴대수']:8d} {summary['미집행']:7d} "
+                  f"{summary['초과']:4d} {summary['실은대수']:8d} {summary['옮긴대수']:8d} "
+                  f"{summary['미집행']:7d} "
                   f"{summary['거리km']:8.1f}")
 
     if not rows:

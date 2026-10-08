@@ -281,7 +281,10 @@ def test_kpi_summary_written(pipeline_run, smoke_db):
 
     # 다른 산출물과 숫자가 맞아야 한다
     plan = pd.read_csv(_out("VRP/VRP_plan{duration} ({label}).csv"), encoding="utf-8")
-    assert row["bikes_moved"] == plan[plan["action"] == "pick"]["qty"].sum()
+    picked = plan[plan["action"] == "pick"].groupby("cluster")["qty"].sum()
+    dropped = plan[plan["action"] == "drop"].groupby("cluster")["qty"].sum()
+    assert picked.equals(dropped), "예산을 걸지 않은 계획은 군집마다 실은 것과 내린 것이 같다"
+    assert row["bikes_moved"] == picked.sum()
     assert row["clusters"] == plan["cluster"].nunique()
 
 

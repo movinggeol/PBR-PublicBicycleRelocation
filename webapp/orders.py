@@ -133,6 +133,10 @@ def build(run_label: Optional[str] = None, duration: Optional[str] = None,
             })
 
         work = rows[rows["action"] != "return"]
+        # 지시서의 `bikes`는 **지시량(실을 대수 합)** 이다 — 기사가 실어야 하는 수다.
+        # 집행량(`vehicle_assignment.bikes` · `kpi_summary.bikes_moved`)은 군집마다
+        # min(실은 것, 내린 것)으로 세므로, 예산에 끊겨 싣고 돌아오는 계획에서는 두
+        # 값이 갈린다. 현장 앱은 그 둘을 `bikes`와 `moved_plan`으로 따로 싣는다.
         picked = rows[rows["action"] == "pick"]["qty"].sum() if "qty" in rows else 0
         orders.append({
             "vehicle_id": key if group_key == "vehicle_id" else "",

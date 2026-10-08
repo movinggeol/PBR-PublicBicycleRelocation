@@ -67,7 +67,10 @@ def test_order_sheet_follows_the_visit_order(planned):
     assert [stop["action_label"] for stop in first["stops"]] == ["수거", "배송", "차고지 복귀"]
     assert [stop["load_after"] for stop in first["stops"]] == [6, 0, 0]
     assert first["stations"] == 2, "차고지 복귀는 들른 곳으로 세지 않는다"
-    assert first["bikes"] == 6, "옮긴 대수는 pick 기준이다(pick+drop이면 2배가 된다)"
+    assert first["bikes"] == 6, "지시량은 한 번만 센다(pick+drop이면 2배가 된다)"
+    # V02는 4대를 싣고 내린 곳 없이 돌아온다. 지시서의 `bikes`는 **실을 대수**라 4다 —
+    # 집행량(min(실은 것, 내린 것) = 0)은 step2·step4와 현장 앱의 `moved_plan`이 센다.
+    assert sheets[1]["bikes"] == 4
     assert first["minutes"] == pytest.approx(500 / 60, abs=0.1), "복귀까지가 소요시간이다"
     assert first["returns"] is True
 

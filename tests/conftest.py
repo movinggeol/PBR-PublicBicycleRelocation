@@ -67,6 +67,9 @@ def isolate_job_registry(tmp_path, monkeypatch):
     try:
         from webapp import jobs
     except ImportError:      # webapp을 안 쓰는 테스트(의존성 없는 환경 포함)
+        # 제너레이터 픽스처는 값을 한 번은 내야 한다 — 그냥 return하면 pytest가
+        # "did not yield a value"로 **모든 테스트를 에러로** 끝낸다.
+        yield
         return
 
     registry = tmp_path / "webapp"

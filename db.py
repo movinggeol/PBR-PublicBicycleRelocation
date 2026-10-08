@@ -809,14 +809,22 @@ def record_run(conn: sqlite3.Connection, run_label: str, period: Optional[str] =
     짐작과 다르게 정정해 둔 실행이 조용히 원래대로 돌아간다 —
     `tools/csv_to_db.py`가 `kind` 없이 재적재하면 실제로 그렇게 됐다.
     `ensure_run()`이 COALESCE로 지키는 것과 같은 규칙을 여기서도 지킨다.
+
+    ⚠️ **`created_at`도 덮어쓰지 않는다** (2026-10-08 점검). `latest_label()`이
+    이 값의 순서로 '최신 계획'을 고르는데, 부르는 곳이 `tools/csv_to_db.py`
+    하나뿐이라 **옛 실행의 CSV를 다시 적재하면 그 실행이 최신이 됐다** — 웹 첫
+    화면의 '마지막 계획'이 다섯 달 전 실행으로 바뀐다. 실행을 옮기는 다른 도구
+    (`transfer_run.py`)는 원본 시각을 그대로 넣는다. 처음 보는 라벨만 지금 시각을
+    받는다.
     """
     conn.execute(
         "INSERT OR REPLACE INTO runs"
         " (run_label, period, duration, raw_file, day_type, kind, created_at)"
         " VALUES (?, ?, ?, ?, ?,"
         "         COALESCE(?, (SELECT kind FROM runs WHERE run_label = ?)),"
-        "         datetime('now', 'localtime'))",
-        (run_label, period, duration, raw_file, day_type, kind, run_label),
+        "         COALESCE((SELECT created_at FROM runs WHERE run_label = ?),"
+        "                  datetime('now', 'localtime')))",
+        (run_label, period, duration, raw_file, day_type, kind, run_label, run_label),
     )
     conn.commit()
 

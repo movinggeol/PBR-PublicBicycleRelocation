@@ -214,7 +214,10 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
     unique_clusters = sorted(vrp_plan['cluster'].unique())
     # 이 회차의 교통량 기준 시각. 클러스터마다 다시 구하면 자정을 넘길 때
     # 앞뒤 클러스터가 다른 날을 보게 된다 — 한 번만 정하고 돌려 쓴다.
-    tmap_start_time = start_time_for(duration)
+    # 요일 구분을 넘긴다 — 안 넘기면 휴일 계획도 '다음 평일' 교통량으로 답을 받아
+    # 평일·휴일이 섞인다(2026-10-08 점검. `runs.day_type`은 holiday인데 `road_leg`의
+    # start_time은 평일이었다).
+    tmap_start_time = start_time_for(duration, day_type=config.day_type)
 
     # 경로 색은 mapviz.cluster_color()가 정한다 — 세 지도가 한 벌을 쓴다.
     # 예전 목록은 red/darkred, green/darkgreen/lightgreen처럼 인접한 색이

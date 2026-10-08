@@ -319,13 +319,32 @@ def run_vrp_plan(ilp_plan: pd.DataFrame, duration: str):
     db.save_output("vrp_plan", vrp_result, run_label=now, duration=duration)
 
 
+def moved_bikes(vrp_result: pd.DataFrame) -> pd.Series:
+    """군집별로 **재배치를 끝낸** 자전거 수 = min(실은 것, 내린 것).
+
+    평소에는 ILP가 수거와 배송을 짝지어 두므로 둘이 같다. 갈리는 것은 시간 예산을
+    제약으로 건 실행(`--enforce-time-budget`)이다 — `greedy_route()`가 예산을 넘는
+    작업 앞에서 끊으면 차는 **실은 채로 돌아오는데**, pick만 세면 그것도 "옮겼다"가
+    된다(2026-10-08 점검: 수거 5대 → 복귀뿐인 경로가 `bikes=5`로 저장됐다).
+    규칙은 `experiments/structure/budget_split.py`의 `moved_bikes()`와 같다.
+    """
+    work = vrp_result[vrp_result["action"].isin(["pick", "drop"])]
+    if work.empty:
+        return pd.Series(dtype=int, name="qty").rename_axis("cluster")
+    by_action = (work.groupby(["cluster", "action"])["qty"].sum()
+                 .unstack(fill_value=0)
+                 .reindex(columns=["pick", "drop"], fill_value=0))
+    return by_action.min(axis=1).astype(int).rename("qty")
+
+
 def cluster_workload(vrp_result: pd.DataFrame) -> pd.DataFrame:
     """클러스터별 작업량(방문 대여소 수·옮긴 자전거 수·이동거리·소요시간).
 
     `bikes`는 **실제로 옮긴 자전거 수**다. 한 대는 한 번 실리고 한 번 내려지므로
     pick과 drop의 qty를 모두 더하면 2배가 된다(ILP 계획 대수와 어긋남).
-    그래서 pick만 센다. 반면 작업시간은 수거·배송이 각각 드는 게 맞으므로
-    `work_sec`는 두 동작을 모두 반영한다.
+    그래서 **군집마다 min(실은 것, 내린 것)** 으로 센다(`moved_bikes()`).
+    반면 작업시간은 수거·배송이 각각 드는 게 맞으므로 `work_sec`는 두 동작을
+    모두 반영한다.
     """
     if vrp_result.empty:
         return pd.DataFrame(columns=["cluster", "stations", "bikes", "distance_km", "minutes"])
@@ -335,9 +354,7 @@ def cluster_workload(vrp_result: pd.DataFrame) -> pd.DataFrame:
         stations=("to_id", "nunique"),
     ).reset_index()
 
-    moved = (vrp_result[vrp_result["action"] == "pick"]
-             .groupby("cluster")["qty"].sum()
-             .rename("bikes").reset_index())
+    moved = moved_bikes(vrp_result).rename("bikes").reset_index()
     summary = summary.merge(moved, on="cluster", how="left")
     summary["bikes"] = summary["bikes"].fillna(0).astype(int)
 

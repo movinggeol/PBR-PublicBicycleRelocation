@@ -1021,6 +1021,43 @@ def test_route_extras_counts_empty_running_and_returns(step4, tmp_path, monkeypa
     assert extras["bikes_per_minute"] == pytest.approx(5 / 25)
 
 
+def test_싣고_돌아온_자전거는_옮긴_대수가_아니다(step2, step4):
+    """옮긴 대수 = 군집마다 min(실은 것, 내린 것) (2026-10-08 점검, 함정 13).
+
+    시간 예산을 제약으로 걸면 `greedy_route()`가 예산을 넘는 작업 앞에서 끊고,
+    차는 **실은 채로** 돌아온다. pick만 세면 그것이 `vehicle_assignment.bikes`와
+    `kpi_summary.bikes_moved`에 "옮겼다"로 남는다 — 수거 5대 → 복귀뿐인 경로가
+    5대로 저장됐다. 평소(ILP가 짝지은 계획)에는 두 값이 같아 드러나지 않는다.
+    """
+    _, vrp = step2
+    routes = pd.DataFrame([
+        # 군집 0: 5대를 싣고 예산에 끊겨 그대로 돌아온다
+        (0, "A", "pick", 5, 3.0, 300.0, 150.0, 450.0),
+        (0, "DEPOT", "return", 0, 3.0, 300.0, 0.0, 750.0),
+        # 군집 1: 7대를 싣고 4대만 내렸다
+        (1, "B", "pick", 7, 2.0, 200.0, 150.0, 350.0),
+        (1, "C", "drop", 4, 2.0, 200.0, 150.0, 700.0),
+        (1, "DEPOT", "return", 0, 2.0, 200.0, 0.0, 900.0),
+        # 군집 2: 정상 — 실은 만큼 내렸다
+        (2, "D", "pick", 6, 1.0, 100.0, 150.0, 250.0),
+        (2, "E", "drop", 6, 1.0, 100.0, 150.0, 500.0),
+        (2, "DEPOT", "return", 0, 1.0, 100.0, 0.0, 600.0),
+    ], columns=["cluster", "to_id", "action", "qty", "distance_km", "travel_sec",
+                "work_sec", "cum_sec"])
+
+    assert vrp.moved_bikes(routes).to_dict() == {0: 0, 1: 4, 2: 6}
+    assert step4.moved_bikes(routes).to_dict() == {0: 0, 1: 4, 2: 6},         "step2와 step4가 다른 규칙으로 센다 — 두 산출물의 숫자가 갈린다"
+
+    workload = vrp.cluster_workload(routes).set_index("cluster")
+    assert workload["bikes"].to_dict() == {0: 0, 1: 4, 2: 6}
+    assert workload.loc[0, "stations"] == 1, "들른 곳은 그대로 센다"
+
+    # 작업이 하나도 없는 산출물(복귀뿐)에서도 죽지 않는다
+    only_return = routes[routes["action"] == "return"]
+    assert vrp.moved_bikes(only_return).empty
+    assert vrp.cluster_workload(only_return).empty, "들른 곳이 없는 군집은 요약에 없다"
+
+
 def test_route_extras_is_silent_when_it_cannot_measure(step4, tmp_path, monkeypatch):
     """산출물이 없거나 구버전이면 지표를 **빼고** 넘긴다 — 0으로 지어내지 않는다."""
     monkeypatch.setattr(step4, "vrp_plan_file", str(tmp_path / "없는파일.csv"))

@@ -191,7 +191,7 @@ def summarize(routes, label):
         "차고지_비중": round(depot_km / total_km * 100, 1) if total_km else 0.0,
         "최장_분": round(float(minutes.max()), 1),
         "예산초과": int((minutes > TIME_BUDGET_MINUTES).sum()),
-        "대수": int(routes[routes["action"] == "pick"]["qty"].sum()),
+        "대수": int(bc.vrp_mod.moved_bikes(routes).sum()),
     }
 
 

@@ -147,6 +147,22 @@ def demand_satisfaction(reloc: pd.DataFrame):
     return temp
 
 
+def moved_bikes(vrp: pd.DataFrame) -> pd.Series:
+    """군집별로 재배치를 끝낸 자전거 수 = min(실은 것, 내린 것).
+
+    step2 `vrp.moved_bikes()`와 같은 규칙이다(step 스크립트는 서로 import하지
+    않는다). 평소에는 pick 합과 같고, 시간 예산을 제약으로 건 실행에서만 갈린다 —
+    예산에 끊긴 차는 실은 채로 돌아온다(pbr-pipeline 함정 13).
+    """
+    work = vrp[vrp['action'].isin(['pick', 'drop'])]
+    if work.empty:
+        return pd.Series(dtype=int, name='qty').rename_axis('cluster')
+    by_action = (work.groupby(['cluster', 'action'])['qty'].sum()
+                 .unstack(fill_value=0)
+                 .reindex(columns=['pick', 'drop'], fill_value=0))
+    return by_action.min(axis=1).astype(int).rename('qty')
+
+
 def route_summary(duration: str):
     '''
     VRP 결과(거리·시간 컬럼 포함)로 클러스터별 총 이동거리·운행시간을 집계한다.
@@ -163,13 +179,13 @@ def route_summary(duration: str):
         return
 
     # 방문수는 depot 복귀를 빼고 실제로 들른 대여소 수,
-    # 처리대수는 pick 기준(pick+drop을 더하면 한 대를 두 번 세어 2배가 된다).
+    # 처리대수는 군집마다 min(실은 것, 내린 것)이다(pick+drop을 더하면 한 대를 두 번
+    # 세어 2배가 되고, pick만 세면 예산에 끊겨 싣고 돌아온 것도 옮긴 것이 된다).
     # step2의 vehicle_assignment와 같은 기준이라 두 산출물의 숫자가 맞는다.
     visited = vrp[vrp['action'] != 'return']
     summary = visited.groupby('cluster').agg(방문수=('to_id', 'nunique')).reset_index()
 
-    moved = (vrp[vrp['action'] == 'pick'].groupby('cluster')['qty']
-             .sum().rename('처리대수').reset_index())
+    moved = moved_bikes(vrp).rename('처리대수').reset_index()
 
     totals = vrp.groupby('cluster').agg(
         총이동거리_km=('distance_km', 'sum'),
@@ -510,7 +526,7 @@ def route_extras(duration: str) -> dict:
             elif row['action'] == 'drop':
                 load -= int(row['qty'])
 
-    moved = int(vrp[vrp['action'] == 'pick']['qty'].sum())
+    moved = int(moved_bikes(vrp).sum())
     return {
         'travel_time_ratio': float(vrp['travel_sec'].sum() / total_seconds),
         'empty_distance_ratio': (float(empty_km / total_distance)

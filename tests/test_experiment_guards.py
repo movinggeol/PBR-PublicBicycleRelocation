@@ -1868,3 +1868,39 @@ def test_F2_나빠진_구간을_이름과_값으로_돌려준다(f2):
 
     assert got == [("[0.00,0.20)", 0.5, 0.4)]            # 둘 다 0인 구간은 건너뛴다
     assert (not f2.bins_not_worse(pair, names)) == bool(got)
+
+
+def test_싣고_돌아온_자전거를_실은_대수와_따로_센다(bc):
+    """대조군 표의 `bikes`(실은 대수)와 `bikes_done`(옮겨 끝낸 대수)을 가른다 (2026-10-08 점검).
+
+    그리디 배분(B1)은 예산 120분 앞에서 끊겨 싣고 돌아오는 자전거가 있다 — 25년 11월
+    평일 세 회차에서 337 · 232 · 256대를 실어 248 · 182 · 213대만 내렸다. 실은 대수만
+    보면 B1이 제안 방법(301 · 209 · 216)보다 더 많이 옮긴 것으로 읽힌다.
+    """
+    routes = pd.DataFrame([
+        (0, "pick", 7, 2.0, 600.0), (0, "drop", 4, 2.0, 1200.0), (0, "return", 0, 2.0, 1500.0),
+        (1, "pick", 6, 1.0, 300.0), (1, "drop", 6, 1.0, 600.0), (1, "return", 0, 1.0, 700.0),
+    ], columns=["cluster", "action", "qty", "distance_km", "cum_sec"])
+
+    stats = bc.route_stats(routes)
+
+    assert stats["bikes"] == 13, "원고 <표 6-3>의 정의(실은 대수)를 바꿨다"
+    assert stats["bikes_done"] == 10, "끝낸 대수는 차량마다 min(실은 것, 내린 것)이다"
+    assert bc.route_stats(routes.iloc[0:0])["bikes_done"] == 0
+
+
+def test_예산_강제의_미집행은_싣고_돌아온_것까지_센다():
+    """`budget_enforce.summarize()`의 집행량은 min(실은 것, 내린 것)이다 (2026-10-08 점검).
+
+    pick만 세면 원본 19개월 계획에서 못 옮기는 물량이 4.5%(33/726)로 나오는데, 예산에
+    끊겨 싣고 돌아온 34대를 빼면 9.2%(67/726)다.
+    """
+    from experiments.baseline import budget_enforce as be
+
+    result = pd.DataFrame([
+        (0, "pick", 8, 3.0, 900.0), (0, "drop", 5, 3.0, 1800.0), (0, "return", 0, 3.0, 2400.0),
+    ], columns=["cluster", "action", "qty", "distance_km", "cum_sec"])
+
+    got = be.summarize(result, planned_bikes=10)
+
+    assert (got["실은대수"], got["옮긴대수"], got["미집행"]) == (8, 5, 5)

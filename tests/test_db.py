@@ -249,6 +249,34 @@ def test_record_run_keeps_the_kind_a_person_pinned(conn):
     assert kind == "plan"
 
 
+def test_record_run은_옛_실행을_최신으로_만들지_않는다(conn):
+    """재적재가 `created_at`을 지금으로 바꾸지 않는다 (2026-10-08 점검).
+
+    `latest_label()`은 `created_at` 순서로 '최신 계획'을 고른다. `record_run()`을
+    부르는 곳은 `tools/csv_to_db.py` 하나인데, 예전에는 **옛 실행의 CSV를 다시
+    적재하면 그 실행이 최신이 됐다** — 웹 첫 화면의 '마지막 계획'이 옛 실행으로
+    바뀐다. 실행을 옮기는 `transfer_run.py`는 원본 시각을 그대로 넣는다.
+    """
+    conn.execute("INSERT INTO runs (run_label, created_at) VALUES (?, ?)",
+                 ("옛 실행", "2026-05-21 18:00:00"))
+    conn.execute("INSERT INTO runs (run_label, created_at) VALUES (?, ?)",
+                 ("새 실행", "2026-10-01 05:03:00"))
+    conn.commit()
+
+    db.record_run(conn, run_label="옛 실행", period="25년 11월", duration="_05_10")
+
+    created = dict(conn.execute("SELECT run_label, created_at FROM runs"))
+    assert created["옛 실행"] == "2026-05-21 18:00:00"
+    newest = conn.execute(
+        "SELECT run_label FROM runs ORDER BY created_at DESC LIMIT 1").fetchone()[0]
+    assert newest == "새 실행", "재적재한 옛 실행이 최신이 됐다"
+
+    # 처음 보는 라벨은 지금 시각을 받는다
+    db.record_run(conn, run_label="처음", period="25년 11월")
+    assert conn.execute("SELECT created_at FROM runs WHERE run_label = '처음'"
+                        ).fetchone()[0] > "2026-10-01"
+
+
 def test_record_run_takes_an_explicit_kind(conn):
     """넘긴 종류는 이긴다 — 지키는 것은 '모를 때'뿐이다."""
     db.ensure_run(conn, "R9", period="25년 11월")

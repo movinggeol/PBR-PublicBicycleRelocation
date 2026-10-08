@@ -162,6 +162,40 @@ def test_chunking_uses_the_chosen_endpoint_limit():
     assert sent[0].endswith("routeSequential100")
 
 
+def test_고정한_엔드포인트의_상한으로_나눈다():
+    """`url`로 엔드포인트를 고정하면 **그 엔드포인트의** 상한으로 나눈다 (2026-10-08 점검).
+
+    예전에는 고정하면 가장 큰 상한(200)을 써서 routeSequential30에 경유지 40곳을
+    한 번에 보냈다. 지금 군집은 최대 26곳이라 걸리지 않았을 뿐이다.
+    """
+    module = load_module()
+    sent = []
+    module.requests.post = fake_post(sent)
+    thirty = next(e for e in module.ENDPOINTS if e.max_via == 30)
+
+    module.call_tmap_chunked(*_args(40), headers={}, url=thirty.url)
+
+    assert len(sent) == 2, "30곳 상한인 엔드포인트에 40곳을 한 번에 보냈다"
+    assert all(u == thirty.url for u in sent)
+
+
+def test_파이프라인은_요일_구분을_넘겨_출동_날짜를_고른다():
+    """step3가 `start_time_for()`에 `day_type`을 넘긴다 (2026-10-08 점검).
+
+    안 넘기면 휴일 계획의 경로도 '다음 평일' 교통량으로 계산된다 — 실행은 휴일인데
+    `road_leg`의 start_time은 평일이라 평일·휴일이 섞였다.
+    """
+    import ast
+
+    tree = ast.parse((MODULE_PATH.parent / "main.py").read_text(encoding="utf-8"))
+    calls = [node for node in ast.walk(tree)
+             if isinstance(node, ast.Call)
+             and getattr(node.func, "id", "") == "start_time_for"]
+    assert calls, "step3가 start_time_for()를 부르지 않는다"
+    for call in calls:
+        assert "day_type" in {kw.arg for kw in call.keywords},             "day_type 없이 부르면 휴일 계획이 평일 교통량을 받는다"
+
+
 def test_reset_clears_exhausted_endpoints():
     """호출 수 초기화는 소진 표시도 함께 지운다(다음 실행을 오염시키지 않도록)."""
     module = load_module()
@@ -444,7 +478,7 @@ def test_출동_시각이_회차마다_다르다(monkeypatch):
 
 def test_출동_날짜는_평일이다():
     """주말은 교통량이 다르다 — day_type을 안 주면(기본 weekday) 토·일이 나오면
-    안 된다. 파이프라인 호출부(pipeline/step3_map/main.py)는 지금도 이 기본값만 쓴다."""
+    안 된다."""
     from datetime import datetime
 
     module = load_module()
