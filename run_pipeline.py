@@ -57,8 +57,10 @@ STAGES = {
         Path("pipeline/step0_collect") / "extract_parking_lot.py",
         Path("pipeline/step0_collect") / "api_to_info.py",
     ],
+    # `concat_1year_file.py`(병합 · IQR 이상치 제거)는 2026-10-08에 여기서 뺐다. 옵션 없이 불리면
+    # 12개월 병합본을 다시 깎아 1.3GB를 쓰는데(1분 26초) **그 파일을 읽는 곳이 없었다** — 계획은
+    # 이상치 필터를 걸지 않기로 했고(1.20.8) EDA도 DB를 읽는다. 스크립트는 손으로 돌리는 도구로 남는다.
     "eda": [
-        Path("pipeline/step0_eda") / "concat_1year_file.py",
         Path("pipeline/step0_eda") / "EDA.py",
     ],
     "preprocess": [

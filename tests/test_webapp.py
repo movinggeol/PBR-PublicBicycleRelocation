@@ -493,6 +493,9 @@ def test_시간대마다_되풀이되는_단계_목록이_코드와_맞는다():
     # 전처리로 새어 **켠 실행 하나가 전처리를 30배로** 부풀린다.
     eda = {f"{p.parent.name}/{p.name}" for p in run_pipeline.STAGES["eda"]}
     assert eda == set(jobs.EDA_STAGE)
+    # 걷어 낸 단계는 실행기에 없어야 한다 — 다시 넣었는데 여기 남아 있으면 그 시간이 말없이 버려진다.
+    모든단계 = {f"{p.parent.name}/{p.name}" for 묶음 in run_pipeline.STAGES.values() for p in 묶음}
+    assert not (모든단계 & set(jobs.RETIRED_STAGE))
 
 
 def test_감시_스레드가_사용자의_실행_이력에_쓰지_않는다(monkeypatch):
@@ -3922,12 +3925,14 @@ def test_EDA는_전처리에_섞이지_않고_따로_센다(monkeypatch, tmp_pat
 
     model = jobs.estimate_model()
     assert model["수집"] == 19.0, "수집 단계를 못 읽었다(경로 표기)"
-    assert model["전처리"] == 10.6, "EDA가 전처리로 새었다"
-    assert model["EDA"] == 328.0, "켠 실행이 있는데 EDA 계수가 없다"
+    assert model["전처리"] == 10.6, "EDA나 걷어 낸 단계가 전처리로 새었다"
+    # 병합 · 이상치 제거 단계(174초)는 2026-10-08에 EDA 경로에서 뺐다 — 옛 로그에 남은 그 시간은
+    # EDA 예상에도 전처리에도 들어가지 않는다. 이제 돌지 않는 단계다.
+    assert model["EDA"] == 154.0, "켠 실행이 있는데 EDA 계수가 없거나, 걷어 낸 단계를 셌다"
 
     생략 = jobs.estimate_seconds(model, 4)                      # 폼 기본값: EDA 생략
     켬 = jobs.estimate_seconds(model, 4, skip_eda=False)
-    assert 켬 - 생략 == 328.0, "EDA를 켜도 예상이 그대로다"
+    assert 켬 - 생략 == 154.0, "EDA를 켜도 예상이 그대로다"
     assert not jobs.eda_unknown(model, skip_eda=False)
 
 

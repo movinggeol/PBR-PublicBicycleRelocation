@@ -205,8 +205,14 @@ API_STAGE = frozenset({
 # 켠 채 시간대 넷을 돌았는데, 이 두 단계가 **5분 28초**로 전체 8분 35초의
 # 64%였다 — 화면은 "(예상 6.3분)"이라 적고 있었다.
 EDA_STAGE = frozenset({
-    "step0_eda/concat_1year_file.py",
     "step0_eda/EDA.py",
+})
+
+# 예전 실행의 로그에만 나오는 단계 — **세지 않는다.** `concat_1year_file.py`는 2026-10-08에
+# EDA 경로에서 뺐다(읽는 곳이 없는 1.3GB 파일을 다시 쓰던 단계, 1분 26초~3분). 이제 돌지 않는
+# 단계의 시간을 EDA 예상에 넣으면 부풀고, 그냥 두면 '전처리'로 샌다 — 그래서 따로 걸러 버린다.
+RETIRED_STAGE = frozenset({
+    "step0_eda/concat_1year_file.py",
 })
 
 # 로그 끝의 단계별 소요 표를 읽는다. "1.5초" 와 "5분 58초" 두 꼴이 모두 나온다.
@@ -282,7 +288,7 @@ def run_shape(job: "Job") -> Optional[Dict[str, float]]:
         "EDA": sum(v for k, v in timings.items() if k in EDA_STAGE),
         "전처리": sum(v for k, v in timings.items()
                    if k not in API_STAGE and k not in EDA_STAGE
-                   and k not in DURATION_SCALED),
+                   and k not in RETIRED_STAGE and k not in DURATION_SCALED),
         "시간대당": scaled / len(durations),
     }
 

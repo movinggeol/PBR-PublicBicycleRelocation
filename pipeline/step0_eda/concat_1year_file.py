@@ -9,8 +9,8 @@
 
     1회 통과 470,381행(94.1%) → 2회 453,559 → 3회 435,299 → 4회 424,911
 
-**네 번 돌리면 원본의 15%가 사라진다.** 그런데 이 스크립트는 `--skip-eda` 없이
-`python run_pipeline.py`를 치면 매번 실행되고, 대상은 1.5GB짜리 원천 이력이며
+**네 번 돌리면 원본의 15%가 사라진다.** 그런데 이 스크립트는 2026-10-08까지 `--skip-eda` 없이
+`python run_pipeline.py`를 치면 매번 실행됐고, 대상은 1.5GB짜리 원천 이력이며
 백업은 없다. 그래서 결과를 **별도 파일**(`… (이상치 제거).csv`)에 쓴다 —
 입력이 늘 원본이므로 몇 번을 돌려도 같은 값이 나온다.
 
@@ -22,16 +22,16 @@ IQR 울타리가 자르는 것은 오류가 아니라 **정상 이용의 상위 
 작업 대상이 13.4% 뒤바뀐다(docs/분석/DECISIONS.md 6-1,
 experiments/structure/outlier_impact.py).
 
-그래서 계획은 이 산출물을 읽지 않는다. 🔴 **지금은 읽는 곳이 하나도 없다** (2026-10-08 점검) —
-EDA(`EDA.py`)도 DB의 대여이력을 직접 읽고, 깎았을 때의 영향은 실험이 따로 계산한다. 파이프라인이 EDA
-단계에서 이 스크립트를 옵션 없이 부르면 그때마다 병합본을 다시 깎아 쓴다(1.3GB · 1분 26초,
-docs/분석/DATA_SOURCES.md 4절) — 단계를 걷을지는 사용자 결정 대기다(docs/기록/TODO.md).
+그래서 계획은 이 산출물을 읽지 않는다. 🔴 **읽는 곳이 하나도 없다** (2026-10-08 점검) —
+EDA(`EDA.py`)도 DB의 대여이력을 직접 읽고, 깎았을 때의 영향은 실험이 따로 계산한다. 그런데도
+파이프라인이 EDA 단계에서 이 스크립트를 옵션 없이 불러 그때마다 병합본을 다시 깎아 썼다(1.3GB ·
+1분 26초, docs/분석/DATA_SOURCES.md 4절). **그래서 2026-10-08에 `run_pipeline.STAGES`에서 뺐다**
+(사용자 결정). 지금은 손으로 돌리는 도구다 — 파이프라인은 이 파일을 부르지 않는다.
 
 실행 예:
     python "pipeline/step0_eda/concat_1year_file.py" --concat --preprocess
     python "pipeline/step0_eda/concat_1year_file.py" --preprocess
-옵션 없이 실행하면(파이프라인 기본) 병합 파일이 있을 때만 이상치 제거를 수행하고,
-없으면 건너뛴다(전체 파이프라인 중단 방지).
+옵션 없이 실행하면 병합 파일이 있을 때만 이상치 제거를 수행하고, 없으면 건너뛴다.
 """
 import argparse
 import sys
@@ -139,7 +139,7 @@ if __name__ == "__main__":
     if args.preprocess:
         preprocessing(result_file)
     elif not args.concat:
-        # 옵션 없이 실행된 경우(파이프라인 기본): 병합 파일이 있으면 이상치 제거, 없으면 건너뜀
+        # 옵션 없이 실행된 경우: 병합 파일이 있으면 이상치 제거, 없으면 건너뜀
         if Path(result_file).exists():
             preprocessing(result_file)
         else:
