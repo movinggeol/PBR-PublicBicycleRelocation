@@ -217,3 +217,33 @@ def test_그림자는_토큰으로만_쓴다():
         assert "box-shadow: var(--shadow-float)" in body, sel
     tip = next(b for _, s, b in _rules(base) if s == "#tipbox" and "box-shadow" in b)
     assert "var(--shadow-float-sm)" in tip
+
+
+# ─────────────────────────── 모바일 — 누르는 면 44px ───────────────────────────
+
+def test_현장_앱의_누르는_면은_44px이다():
+    """2026-10-10 모바일 실측에서 넷이 모자랐다 — 체크 원 40(덧면 `inset: -7px`이 테두리 안쪽 26px 기준이라
+    44가 안 됐다) · 방문지 이름 35 · 앱 이름 42 · 내 정보 선택 상자 40. 덧면은 **가운데에서 22px씩**
+    (`inset: calc(50% - 22px)`)으로 잡아 보이는 크기 · 테두리와 상관없이 44px이 되게 한다."""
+    rules = {sel: body for path in FIELD for _, sel, body in _rules(_styles(path))}
+    for sel in (".m-check::after", ".m-pin::after"):
+        assert "inset: calc(50% - 22px)" in rules[sel], sel
+    assert "height: 44px" in rules[".m-stop-main::after"]
+    assert "min-height: 44px" in rules[".m-brand"]
+    assert "min-height: 44px" in rules[".m-input"]
+    for path in FIELD:
+        assert not re.search(r"::after\s*\{[^}]*inset:\s*-\d", _styles(path)), (
+            f"{path.name}: 고정값 inset 덧면 — 테두리 안쪽 기준이라 44px이 안 된다")
+
+
+def test_관제_화면_좁은_폭의_누르는_면은_44px이다():
+    """좁은 화면에서 설명 풍선 딱지 19곳(15px) · 표 안 종류 고르기 10곳(24px) · 쪽 넘기기 `btn sm`(42.8px) ·
+    사용 안내의 홀로 선 링크 다섯(14~20px)이 모자랐다."""
+    rules = {sel: body for _, sel, body in _rules(_styles(TEMPLATES / "base.html"))}
+    assert "padding: 15px 0" in rules["[data-narrow] .tip"]
+    assert "min-height: 44px" in rules["[data-narrow] .kind-form select"]
+    assert "min-height: 44px" in rules["[data-narrow] .pager button, [data-narrow] .pager a"]
+    assert "[data-narrow] .step-state a" in "".join(rules)
+    # 딱지 점선이 테두리면 위 여백만큼 글자에서 떨어진다 — 글자 밑줄로 긋는다
+    tip = "".join(b for _, sel, b in _rules(_styles(TEMPLATES / "base.html")) if sel == ".tip")
+    assert "border-bottom" not in tip and "underline dotted" in tip

@@ -802,14 +802,16 @@
        overflow가 걸린 표 안에서 잘린다.
        터치에서는 뜨지 않으므로 **보조 설명만** 담는다. 꼭 필요한 정보는
        본문에 적는다. */
+    /* 점선은 테두리가 아니라 글자 밑줄로 긋는다 — 좁은 화면에서 누르는 면을 위아래 여백으로 키울 때
+       (아래 모바일 절) 테두리였다면 선이 여백만큼 내려가 글자에서 떨어진다. */
     .tip {
-      border-bottom: 1px dotted var(--ink-4); cursor: help;
+      text-decoration: underline dotted var(--ink-4); text-decoration-thickness: 1px; cursor: help;
       text-underline-offset: 3px;
     }
     /* .tip은 <span>이라 기본으로는 키보드 초점을 못 받는다 — 스크립트가
        tabIndex를 붙인다(아래). 밑줄과 겹치지 않게 자리를 살짝 띄운다. */
     .tip:focus-visible { outline: 2px solid var(--blue-focus); outline-offset: 2px; border-radius: 2px; }
-    th .tip { border-bottom-color: var(--ink-4); }
+    th .tip { text-decoration-color: var(--ink-4); }
     /* ⚠️ 예전에는 늘 **어두운 상자**였다(라이트 모드=검정 바탕, 다크 모드=흰
        바탕 — 페이지와 반대로 뒤집혀 있었다). 페이지의 다른 카드(`.card`)와
        똑같이 **화면 테마를 따라가는 카드**로 바꿨다(2026-09-12 결정) — 라이트
@@ -1255,11 +1257,17 @@
     /* 표 밖의 짧은 링크 묶음도 같다 (1.26.315) — 홈 카드 바닥 '성과 지표 · 작업지시서 · 지도',
        지도 밑 '크게 보기 · 새 창', 지시서 제목 옆 '이 회차 지도'가 높이 14px이었다(실측).
        문장 속 링크는 WCAG 2.5.8의 인라인 예외라 두고, 단추처럼 쓰는 묶음(.keep-links)만 키운다. */
-    [data-narrow] .keep-links a, [data-narrow] .card-foot a {
+    [data-narrow] .keep-links a, [data-narrow] .card-foot a, [data-narrow] .step-state a {
       display: inline-block; padding: 14px 2px; margin: -14px 0;
     }
+    /* 설명 풍선 딱지(타일 이름 · 표 머리)는 누르면 고정된다 — 높이 15px이었다(2026-10-10 모바일 실측 19곳).
+       글줄 안 요소라 위아래 여백은 줄 높이를 바꾸지 않고 누르는 면만 넓힌다(글자 15 + 30 = 45px). */
+    [data-narrow] .tip { padding: 15px 0; }
+    /* 표 안의 종류 고르기(실행 화면의 실행 목록) — 24px이었다. */
+    [data-narrow] .kind-form select { min-height: 44px; }
     [data-narrow] .chip { padding: 12px 14px; min-height: 44px; }
-    [data-narrow] .pager button, [data-narrow] .pager a { padding: 12px 14px; }
+    /* 14px 단추(`btn sm`)는 이 여백으로 42.8px이라 높이를 따로 묶는다(/vehicles 쪽 넘기기). */
+    [data-narrow] .pager button, [data-narrow] .pager a { padding: 12px 14px; min-height: 44px; }
     [data-narrow] .table-open { padding: 13px 4px; }
     /* 폼·카드 안의 평범한 <button>(실행 등)도 44px을 채운다. */
     [data-narrow] button:not(.btn):not(.theme-toggle):not(.m-sortbar button):not(.tipclose) { min-height: 44px; }

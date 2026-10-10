@@ -122,6 +122,8 @@
     .m-hit { position: relative; }
     .m-hit::after { content: ""; position: absolute; left: 0; right: 0; top: 50%;
                     height: 44px; transform: translateY(-50%); }
+    /* 짧은 링크 묶음('관제 지시서 · 경로 지도') — 글자 높이 14px이던 것을 누르는 면만 44px로. */
+    .m-links a { display: inline-block; padding: 14px 2px; margin: -14px 0; }
     a { color: var(--m-accent); text-decoration: none; }
     b, strong { font-weight: 600; }   /* 브라우저 기본(bolder → 700)을 쓰지 않는다 — 700은 제목 몫이다 */
     :focus-visible { outline: 2px solid var(--m-accent-focus); outline-offset: 2px; border-radius: 4px; }
@@ -155,7 +157,7 @@
     }
     .m-brand {
       font-size: var(--m-fs-head); font-weight: 700; letter-spacing: -.4px; color: var(--m-ink);
-      padding: 10px 0; margin-right: auto;
+      display: inline-flex; align-items: center; min-height: 44px; margin-right: auto;   /* 누르는 면 44 — 42px이었다 */
     }
     .m-chip {
       display: inline-flex; align-items: center; gap: 4px; min-height: 30px;
@@ -286,6 +288,10 @@
     .m-pin.is-current { width: 32px; height: 32px; font-size: var(--m-fs-name);
                         background: var(--m-ink); color: var(--m-card); }
     .m-pin.is-done { opacity: .45; }
+    /* 보이는 원은 24 · 32px, 누르는 면은 44px(덧면). 원 안쪽 기준으로 가운데에서 22px씩 —
+       테두리 3px을 뺀 안쪽 상자에 inset을 고정값으로 주면 44가 안 된다(체크 원이 그래서 40px이었다). */
+    .m-pin { position: relative; }
+    .m-pin::after { content: ""; position: absolute; inset: calc(50% - 22px); border-radius: 50%; }
     .m-depot {
       display: flex; align-items: center; justify-content: center; height: 22px;
       padding: 0 8px; border-radius: 6px; background: var(--m-ink); color: var(--m-card);
@@ -393,7 +399,7 @@
     .m-field > span { display: block; font-size: var(--m-fs-sub); color: var(--m-ink-3); margin-bottom: var(--m-sp-xs); }
     /* 16px 미만이면 iOS 사파리가 입력칸을 누를 때 화면을 확대한다 — 이것만은 줄이지 않는다. */
     .m-input {
-      width: 100%; min-height: 40px; padding: 6px 12px; border-radius: var(--r-sm);
+      width: 100%; min-height: 44px; padding: 6px 12px; border-radius: var(--r-sm);   /* 손가락 — 관제 넓은 화면만 40 */
       border: 1px solid var(--m-line); background: var(--m-card); color: var(--m-ink);
       font: inherit; font-size: var(--m-fs-input);
     }

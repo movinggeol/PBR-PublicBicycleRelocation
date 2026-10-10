@@ -266,11 +266,12 @@
     <p style="font-size:var(--fs-ui); color:var(--ink-3); margin:0">
       대여소를 어떤 순서로 들르는지 지도 위에 그린 것입니다. <b>기사에게 줄 수량표는
       옆의 작업지시서</b>입니다. 지도는 새 창으로 열어 인쇄하거나 화면째 전달할 수 있습니다.</p>
-    <p style="margin:var(--sp-sm) 0 0"><a href="/maps">지도 보기 →</a></p>
+    <p class="keep-links" style="margin:var(--sp-sm) 0 0"><a href="/maps">지도 보기 →</a></p>
   </div>
   <div class="card">
     <h3>📋 작업지시서 — 기사에게 줄 종이</h3>
-    <p style="font-size:var(--fs-ui); color:var(--ink-3); margin:0">
+    {# .muted — 문장 속 '현장 앱 경로 화면' 링크에 밑줄을 둔다(색만으로는 회색 글과 갈리지 않는다, axe link-in-text-block). #}
+    <p class="muted" style="font-size:var(--fs-ui); margin:0">
       차량 한 대가 한 장입니다. 들를 순서·대여소·싣고 내릴 수량·차에 남는 대수가
       표로 나옵니다. <b>인쇄하면 차량마다 쪽이 나뉩니다.</b>
       출발 직전에 <b>“지금 재고와 대조하기”</b>를 누르면 계획 대상 대여소만
@@ -278,14 +279,14 @@
       <a href="/m/route">현장 앱 경로 화면</a>에서 <b>“지금 재고로 재판정”</b>을 누르면
       끝낸 곳은 빼고 남은 대여소만 다시 판정합니다 — 앞에서 덜 실었으면 뒤에서
       내릴 수 있는 대수도 그만큼 줄여 셉니다.</p>
-    <p style="margin:var(--sp-sm) 0 0"><a href="/orders">작업지시서 보기 →</a></p>
+    <p class="keep-links" style="margin:var(--sp-sm) 0 0"><a href="/orders">작업지시서 보기 →</a></p>
   </div>
   <div class="card">
     <h3>📊 성과 지표 — 이 계획이 쓸 만한가</h3>
     <p style="font-size:var(--fs-ui); color:var(--ink-3); margin:0">
       계획이 목표를 얼마나 채웠는지, 그러려고 얼마나 움직였는지입니다.
       <b>지난 실행과 견줘</b> 이번 조건이 나은지 판단할 때 봅니다.</p>
-    <p style="margin:var(--sp-sm) 0 0"><a href="/kpi">지표 보기 →</a></p>
+    <p class="keep-links" style="margin:var(--sp-sm) 0 0"><a href="/kpi">지표 보기 →</a></p>
   </div>
 </div>
 

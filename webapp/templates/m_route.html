@@ -29,7 +29,10 @@
     .m-num.home { border-radius: 7px; border-color: var(--m-ink); font-size: var(--m-fs-tab); width: auto;
                   padding: 0 4px; }
     .m-stop-main { display: block; min-width: 0; padding: 0; border: 0; background: none;
-                   color: inherit; font: inherit; text-align: left; cursor: pointer; }
+                   color: inherit; font: inherit; text-align: left; cursor: pointer; position: relative; }
+    /* 이름 두 줄이 35px — 줄(최소 44px) 안에서 누르는 면만 44px로 늘린다. */
+    .m-stop-main::after { content: ""; position: absolute; left: 0; right: 0; top: 50%;
+                          height: 44px; transform: translateY(-50%); }
     .m-stop-main .name { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: var(--m-fs-name); }
     .m-stop-main .name > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis;
                                              white-space: nowrap; }
@@ -40,7 +43,8 @@
       background: var(--m-card); color: transparent; display: flex; align-items: center;
       justify-content: center; cursor: pointer; flex: 0 0 auto; padding: 0;
     }
-    .m-check::after { content: ""; position: absolute; inset: -7px; }
+    /* inset은 테두리 안쪽 상자(26px) 기준이라 −7px이면 40px이었다 — 가운데에서 22px씩으로 44px. */
+    .m-check::after { content: ""; position: absolute; inset: calc(50% - 22px); }
     .m-check svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2.6;
                    stroke-linecap: round; stroke-linejoin: round; }
     .m-check[aria-pressed="true"] { border-color: var(--m-good); background: var(--m-good-soft);

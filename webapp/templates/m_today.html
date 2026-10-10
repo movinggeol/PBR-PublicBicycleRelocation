@@ -65,7 +65,7 @@
   {%- for v in plan.vehicles if v.id != mine %}{% include "_m_route_row.html" %}{% endfor %}
 </ul>
 <p class="hint" id="filter-empty" hidden>이 상태의 경로가 없습니다.</p>
-<p class="hint"><a href="{{ links.orders }}">관제 지시서</a> · <a href="{{ links.maps }}">경로 지도</a></p>
+<p class="hint m-links"><a href="{{ links.orders }}">관제 지시서</a> · <a href="{{ links.maps }}">경로 지도</a></p>
 {% endif %}
 {% endblock %}
 
