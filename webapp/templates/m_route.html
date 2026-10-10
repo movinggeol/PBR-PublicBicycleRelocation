@@ -12,25 +12,25 @@
     .m-leg-row { display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: center;
                  gap: 8px; min-height: 34px; }
     .m-leg-row + .m-leg-row { border-top: 1px solid var(--m-line-soft); }
-    .m-leg-k { font-size: 11px; font-weight: 600; color: var(--m-ink-3); }
+    .m-leg-k { font-size: var(--m-fs-tag); font-weight: 600; color: var(--m-ink-3); }
     .m-leg-v { min-width: 0; display: flex; align-items: baseline; gap: 6px; }
-    .m-leg-v b { flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: 14px; overflow: hidden;
+    .m-leg-v b { flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: var(--m-fs-name); overflow: hidden;
                  text-overflow: ellipsis; white-space: nowrap; }
-    .m-leg-v span { flex: 0 0 auto; font-size: 12px; color: var(--m-ink-3); white-space: nowrap; }
-    .m-route-head { display: flex; align-items: center; gap: 6px; font-size: 12.5px;
+    .m-leg-v span { flex: 0 0 auto; font-size: var(--m-fs-sub); color: var(--m-ink-3); white-space: nowrap; }
+    .m-route-head { display: flex; align-items: center; gap: 6px; font-size: var(--m-fs-sub);
                     color: var(--m-ink-2); margin: 0 0 6px; flex-wrap: wrap; }
-    .m-route-head b { color: var(--m-ink); font-size: 14px; }
+    .m-route-head b { color: var(--m-ink); font-size: var(--m-fs-name); }
     .m-stops .m-row { grid-template-columns: auto minmax(0, 1fr) auto; }
     .m-num {
       display: flex; align-items: center; justify-content: center; width: 24px; height: 24px;
       border-radius: 50%; border: 3px solid var(--c); background: var(--m-card);
-      font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0;
+      font-size: var(--m-fs-tag); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0;
     }
-    .m-num.home { border-radius: 7px; border-color: var(--m-ink); font-size: 10px; width: auto;
-                  padding: 0 5px; }
+    .m-num.home { border-radius: 7px; border-color: var(--m-ink); font-size: var(--m-fs-tab); width: auto;
+                  padding: 0 4px; }
     .m-stop-main { display: block; min-width: 0; padding: 0; border: 0; background: none;
                    color: inherit; font: inherit; text-align: left; cursor: pointer; }
-    .m-stop-main .name { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14px; }
+    .m-stop-main .name { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: var(--m-fs-name); }
     .m-stop-main .name > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis;
                                              white-space: nowrap; }
     /* 보이는 원 30px · 누르는 면 44px(덧면). */
@@ -47,10 +47,10 @@
                                     color: var(--m-good); }
     /* 지금 할 곳 — 왼쪽 막대 + '다음' 딱지(색만으로 말하지 않는다). */
     .m-stop.is-current { box-shadow: inset 3px 0 0 var(--m-accent); }
-    .m-stop.is-done .m-stop-main .name { color: var(--m-ink-3); font-weight: 500; }
+    .m-stop.is-done .m-stop-main .name { color: var(--m-ink-3); font-weight: 400; }
     .m-stop [data-flag]:empty { display: none; }
     /* 지금 재고 재판정 — 방문지 아래 한 줄(번호 원 자리만큼 들여 이름에 맞춘다). */
-    .m-live { margin: 0 0 6px 32px; font-size: 12px; line-height: 1.45; color: var(--m-ink-2); }
+    .m-live { margin: 0 0 6px 32px; font-size: var(--m-fs-sub); line-height: 1.45; color: var(--m-ink-2); }
     .m-live[hidden] { display: none; }
     .m-live .m-badge { margin-right: 4px; vertical-align: 1px; }
     .m-live .advice { display: block; color: var(--m-ink-3); }

@@ -77,6 +77,9 @@
     }
     a { color: var(--blue); text-decoration: none; }
     a:hover { text-decoration: underline; }
+    /* 굵기는 400 · 600 둘뿐이다(DESIGN.md 'UI 기준표'). 브라우저 기본 `<b>`는 bolder라 700, 600 안에
+       들면 900이 됐다 — 강조 글자 300여 곳이 기준 밖이었다(2026-10-10 재점검). */
+    b, strong { font-weight: 600; }
     :focus-visible { outline: 2px solid var(--blue-focus); outline-offset: 2px; border-radius: 4px; }
 
     /* 건너뛰기 링크 — 평소엔 화면 밖, 키보드로 첫 Tab을 누르면 나타난다.
@@ -119,12 +122,12 @@
        내비 한 줄의 높이까지 어긋났다. 접히지 않게 두고 줄지도 않게 한다. */
     .theme-toggle {
       background: transparent; border: 0; color: var(--on-dark);
-      font-size: 13px; cursor: pointer; padding: 4px; line-height: 1;
+      font-size: var(--fs-fine); cursor: pointer; padding: 4px; line-height: 1;
       opacity: .85; border-radius: var(--r-sm);
       white-space: nowrap; flex-shrink: 0;
     }
     .theme-toggle:hover { opacity: 1; }
-    .theme-toggle:active { transform: scale(.95); }
+    .theme-toggle:active { transform: scale(.97); }
 
     /* ════════ 2단: 작업 흐름 내비 (오프화이트, 반투명 + 블러) ════════ */
     .flow-nav {
@@ -167,12 +170,15 @@
       max-width: 1200px; margin: 0 auto; padding: 10px var(--sp-lg);
       display: flex; gap: 2px; align-items: center; flex-wrap: wrap;
     }
+    /* 작업 흐름 알약과 **크기 · 굵기가 같다**(높이 33 · 현재 600). 예전에는 5px 여백에 현재 500이라
+       2px 낮고 덜 굵었다(2026-10-10 점검). 올렸을 때 바탕은 둘이 다르다 — 흐름 줄은 오프화이트
+       위라 `--pearl`, 이 줄은 흰 면 위라 `--parchment`. 바탕과 같은 색을 올리면 안 보인다. */
     .group-nav a {
       color: var(--ink-3); font-size: var(--fs-ui); letter-spacing: -.224px;
-      padding: 5px 12px; border-radius: var(--r-pill); white-space: nowrap;
+      padding: 6px 12px; border-radius: var(--r-pill); white-space: nowrap;
     }
     .group-nav a:hover { color: var(--ink); background: var(--parchment); text-decoration: none; }
-    .group-nav a[aria-current] { color: var(--on-blue); background: var(--blue); font-weight: 500; }
+    .group-nav a[aria-current] { color: var(--on-blue); background: var(--blue); font-weight: 600; }
     .group-nav a[aria-current]:hover { color: var(--on-blue); background: var(--blue); }
 
     /* ════════ 하단 탭 막대 — 좁은 화면 전용 (1.26.195) ════════
@@ -186,8 +192,8 @@
     .tabbar { display: none; }
     .tabbar a {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 2px; min-height: 56px; padding: 6px 2px 5px;
-      color: var(--ink-3); font-size: 11px; letter-spacing: -.1px; line-height: 1.2;
+      gap: 2px; min-height: 56px; padding: 6px 2px;
+      color: var(--ink-3); font-size: var(--fs-fine); letter-spacing: -.08px; line-height: 1.2;
       text-decoration: none; white-space: nowrap;
     }
     .tabbar svg {
@@ -198,7 +204,7 @@
     .tabbar a[aria-current] {
       color: var(--blue); font-weight: 600; box-shadow: inset 0 2px 0 var(--blue);
     }
-    .tabbar .step-no { font-variant-numeric: tabular-nums; margin-right: 3px; }
+    .tabbar .step-no { font-variant-numeric: tabular-nums; margin-right: 4px; }
     .tabbar a:focus-visible {
       outline: 2px solid var(--blue-focus); outline-offset: -4px; border-radius: var(--r-sm);
     }
@@ -217,6 +223,13 @@
       letter-spacing: 0; color: var(--ink-3); margin: 0; max-width: 62ch;
     }
     .hero .actions { display: flex; gap: var(--sp-sm); flex-wrap: wrap; margin-top: var(--sp-lg); }
+    /* 작업 화면 히어로 — 첫 화면에 일을 담는 화면(현황판 `/` · 실행 `/run`)은 제목을 절 제목 크기로
+       줄인다(1.26.309 · 1.26.315). ⚠️ **여기 한 벌만 둔다.** 화면 쪽 `head_extra`에 `.home-hero h1`처럼
+       같은 특이도로 적으면 이 파일보다 먼저 실려 진다 — 현황판의 압축이 그래서 한 번도 먹지 않았다
+       (제목 40px 그대로, 2026-10-10 점검). */
+    .hero.compact { padding: var(--sp-lg) 0 var(--sp-md); }
+    .hero.compact h1 { font-size: var(--fs-h2); margin: 0 0 4px; }
+    .hero.compact .lead { font-size: var(--fs-body); }
     /* hero 밖에서도 단추 묶음을 쓴다(작업지시서의 '다시 조회'·'대조 끄기').
        예전에는 .hero 안에서만 flex가 걸려, 밖에 두면 단추가 줄바꿈 없이 붙고
        바로 아래 .section-lead의 음수 여백이 글자를 단추 위로 끌어올렸다. */
@@ -231,7 +244,9 @@
     h3 { font-size: var(--fs-h3); font-weight: 600; letter-spacing: -.374px; margin: 0 0 var(--sp-xs); }
     .section-lead { color: var(--ink-3); font-size: var(--fs-ui); margin: -6px 0 var(--sp-sm); max-width: 70ch; }
     .muted { color: var(--ink-3); }
-    .hint { color: var(--ink-4); font-size: var(--fs-fine); line-height: 1.5; }
+    /* 자간을 **직접** 준다 — 부모 것을 물려받아 같은 12px 힌트가 −0.224 · −0.374 · −0.4 세 가지였다
+       (163곳, 2026-10-10 점검). 12px의 자간은 표 머리 · 칩 · 딱지와 같은 −0.08이다. */
+    .hint { color: var(--ink-4); font-size: var(--fs-fine); line-height: 1.5; letter-spacing: -.08px; }
     /* 문장 속에 섞인 링크는 평범한 글과 색만 다르다 — 밑줄은 :hover에서만
        붙는다(위의 기본 a 규칙). 표 안 단독 링크("보기" 등)는 옆에 비교할 글이
        없어 문제가 안 되지만, 설명문 한가운데 링크가 박힌 곳은 색맹이면 hover
@@ -308,19 +323,19 @@
     /* 지표 5개가 1200px 안에서 한 줄에 들어가도록 맞춘 크기다.
        최소 폭을 키우거나 값 글자를 키우면 4+1로 접힌다. */
     .tiles {
-      display: grid; gap: 10px; margin-bottom: var(--sp-md);
+      display: grid; gap: var(--sp-sm); margin-bottom: var(--sp-md);
       grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
     }
     .tile {
       background: var(--surface); border: 1px solid var(--hairline);
-      border-radius: var(--r-lg); padding: 13px 16px 15px;
+      border-radius: var(--r-lg); padding: 16px;
     }
     .tile .label {
       font-size: var(--fs-fine); font-weight: 600; color: var(--ink-3);
       letter-spacing: -.08px; margin: 0 0 4px; line-height: 1.4;
     }
     .tile .value {
-      font-size: 26px; font-weight: 600; letter-spacing: -.6px;
+      font-size: var(--fs-stat); font-weight: 600; letter-spacing: -.6px;
       line-height: 1.15; margin: 0; color: var(--ink);
       font-variant-numeric: tabular-nums;
     }
@@ -335,11 +350,12 @@
       font-size: var(--fs-fine); font-weight: 400; color: var(--ink-4);
       letter-spacing: -.08px; margin-left: 2px;
     }
-    .tile .sub { margin: 5px 0 0; color: var(--ink-4); font-size: 11px; line-height: 1.45; }
+    .tile .sub { margin: 4px 0 0; color: var(--ink-4); font-size: var(--fs-fine); line-height: 1.45;
+                 letter-spacing: -.08px; }
     /* 증감은 ▲/▼ 기호를 함께 붙인다 — 색만으로 방향을 말하지 않는다.
        클래스 이름이 good/bad인 이유: 결품 시간은 내려가는 게 좋은 값이라
        up/down으로 이름 붙이면 뜻이 뒤집힌다. */
-    .delta { font-size: 11px; font-weight: 600; margin-left: 5px; white-space: nowrap; letter-spacing: 0; }
+    .delta { font-size: var(--fs-fine); font-weight: 600; margin-left: 4px; white-space: nowrap; letter-spacing: 0; }
     .delta.good { color: var(--good-ink); }
     .delta.bad { color: var(--critical-ink); }
 
@@ -363,7 +379,7 @@
       padding: var(--sp-sm) var(--sp-md); margin-bottom: var(--sp-md);
       color: var(--ink); font-size: var(--fs-ui); line-height: 1.5;
     }
-    .alert::before { content: "⚠"; color: var(--warning-ink); font-weight: 700; flex: none; }
+    .alert::before { content: "⚠"; color: var(--warning-ink); font-weight: 600; flex: none; }
     .alert.bad { background: var(--critical-soft); }
     .alert.bad::before { content: "⚠"; color: var(--critical-ink); }
     .alert.ok { background: var(--good-soft); }
@@ -388,6 +404,8 @@
       background: var(--parchment); position: sticky; top: 0; z-index: 1;
     }
     tbody tr:last-child td { border-bottom: 0; }
+    /* 행 머리(`th scope=row`, /guide의 표)는 브라우저 기본이 bold(700)였다 — 굵기는 400 · 600 둘뿐이다. */
+    tbody th { font-weight: 600; }
     tbody tr:hover td { background: var(--pearl); }
     /* 숫자 열은 내용만큼만 차지하게 하고, 남는 폭은 .grow를 단 글자 열이 가져간다.
        안 그러면 열 사이가 휑하게 벌어져 머리글과 값이 눈으로 안 이어진다. */
@@ -510,7 +528,7 @@
     .kind-form select {
       font: inherit; font-size: var(--fs-fine); color: var(--ink-2);
       background: var(--surface); border: 1px solid var(--hairline);
-      border-radius: var(--r-sm); padding: 3px 6px; cursor: pointer;
+      border-radius: var(--r-sm); padding: 3px 8px; cursor: pointer;
     }
     .kind-form select:focus-visible { outline: 2px solid var(--blue-focus); outline-offset: 1px; }
     /* 히트 영역. 8px 점을 정확히 짚게 만들지 않는다(약 24px). */
@@ -548,15 +566,15 @@
     }
     /* 발산 척도 범례. 히트맵과 반드시 함께 낸다 — 색만으로 값을 읽게 두지 않는다. */
     .viz-scale {
-      display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
+      display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
       font-size: var(--fs-fine); color: var(--ink-3); margin: var(--sp-xs) 0 0;
     }
     .viz-scale i { width: 16px; height: 10px; border-radius: 2px; display: inline-block; }
     .viz-scale span { margin: 0 6px; }
     /* 색 사다리는 통째로 줄을 바꾼다. 9칸을 flex 항목으로 흩어 두면 좁은
        화면에서 사다리 가운데가 끊겨 두 줄로 잘린다 — 그러면 척도가 아니다. */
-    .viz-ramp { display: inline-flex; gap: 3px; margin: 0 6px; }
-    .viz-scale-note { font-size: var(--fs-fine); color: var(--ink-4); margin: 3px 0 0; }
+    .viz-ramp { display: inline-flex; gap: 4px; margin: 0 6px; }
+    .viz-scale-note { font-size: var(--fs-fine); color: var(--ink-4); margin: 4px 0 0; }
     /* '표로 보기'는 **그래프를 대신 읽는 보조 수단**이다. 펴도 카드가 표 길이만큼
        늘어나면 그래프가 화면 밖으로 밀려나 오히려 읽기 나빠진다(1.21.2).
        그래서 편 표는 카드 안에서 **제 높이를 갖고 스스로 스크롤**한다. */
@@ -570,7 +588,7 @@
       appearance: none; background: none; border: 0; padding: 2px 0;
       font-family: inherit; font-size: var(--fs-fine); color: var(--blue);
       letter-spacing: -.08px; cursor: pointer;
-      display: inline-flex; align-items: center; gap: 5px;
+      display: inline-flex; align-items: center; gap: 6px;
     }
     .table-open::before {
       content: ""; width: 9px; height: 9px; flex: none;
@@ -601,7 +619,7 @@
       min-width: min(260px, calc(100vw - 2 * var(--sp-md)));
       max-width: min(560px, calc(100vw - 2 * var(--sp-md)));
       background: var(--surface); border: 1px solid var(--hairline);
-      border-radius: var(--r-lg); box-shadow: 0 12px 40px rgba(0, 0, 0, .22);
+      border-radius: var(--r-lg); box-shadow: var(--shadow-float);
       display: flex; flex-direction: column; max-height: min(70vh, 34rem);
     }
     .table-panel[hidden] { display: none; }
@@ -649,29 +667,30 @@
 
     /* ════════ 버튼 — 두 문법뿐: 파란 알약(동작) / 조밀한 사각(유틸리티) ════════ */
     .btn {
-      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
       background: var(--blue); color: var(--on-blue); border: 1px solid var(--blue);
       padding: 11px 22px; border-radius: var(--r-pill);
       font-size: var(--fs-body); font-weight: 400; letter-spacing: -.374px;
       font-family: inherit; line-height: 1.2; cursor: pointer; text-decoration: none;
     }
-    .btn:hover { background: var(--blue-focus); border-color: var(--blue-focus); text-decoration: none; color: var(--on-blue); }
-    .btn:active { transform: scale(.95); }   /* 시스템 전체 공통 눌림 반응 */
+    /* 올림 색은 초점 색이 아니라 따로 둔다 — 다크에서는 --blue-focus가 --blue와 같아 올려도 그대로였다. */
+    .btn:hover { background: var(--blue-hover); border-color: var(--blue-hover); text-decoration: none; color: var(--on-blue); }
+    .btn:active { transform: scale(.97); }   /* 시스템 전체 공통 눌림 반응 — 현장 앱과 같은 값 */
     .btn:focus-visible { outline: 2px solid var(--blue-focus); outline-offset: 3px; }
-    .btn:disabled { background: var(--ink-4); border-color: var(--ink-4); cursor: not-allowed; transform: none; }
     .btn.ghost { background: transparent; color: var(--blue); border-color: var(--blue); }
     .btn.ghost:hover { background: color-mix(in srgb, var(--blue) 8%, transparent); color: var(--blue); }
     .btn.danger { background: var(--critical); border-color: var(--critical); color: var(--on-critical); }
     .btn.danger:hover { background: var(--critical-ink); border-color: var(--critical-ink); color: var(--on-critical); }
+    /* 작은 단추는 이 한 벌이다 — 작업 흐름 줄의 '계획 실행'도 `btn sm`을 쓴다. 예전에는 그 단추만
+       `.flow-nav .btn`으로 7 · 18을 따로 줬고, 쓰는 곳이 없는 `.btn.util`도 남아 있었다(2026-10-10). */
     .btn.sm { padding: 7px 16px; font-size: var(--fs-ui); letter-spacing: -.224px; }
-    /* 조밀한 사각 유틸리티 — 글로벌 내비의 'Sign In' 계열 */
-    .btn.util {
-      background: var(--ink); border-color: var(--ink); color: var(--canvas);
-      border-radius: var(--r-sm); padding: 8px 15px;
-      font-size: var(--fs-ui); letter-spacing: -.224px;
+    /* 비활성은 한 벌이다(DESIGN.md 'UI 기준표' 상태) — 옅은 면 · 흐린 글자 · 헤어라인. 현장 앱 단추와 같다.
+       ghost · danger보다 뒤에 둬야 이긴다(특이도가 같다).
+       예전에는 회색 채움(단추) · 투명도 .35(칩) · 투명도 .55(입력칸)로 셋이었다. */
+    .btn:disabled, .btn:disabled:hover, .chip:disabled, .chip:disabled:hover {
+      background: var(--surface-2); border-color: var(--hairline); color: var(--ink-4);
+      cursor: not-allowed; transform: none; opacity: 1;
     }
-    .btn.util:hover { background: var(--ink-2); border-color: var(--ink-2); color: var(--canvas); }
-    .flow-nav .btn { padding: 7px 18px; font-size: var(--fs-ui); letter-spacing: -.224px; }
 
     /* ════════ 폼 ════════ */
     .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-md); }
@@ -686,12 +705,15 @@
       border: 1px solid var(--hairline); border-radius: var(--r-md);
       font-size: var(--fs-ui); font-family: inherit; letter-spacing: -.224px;
       background: var(--surface); color: var(--ink);
+      /* 글 입력칸은 38px, 선택 상자는 40px이라 한 줄에 서면 바닥이 2px 어긋났다(/run, 2026-10-10).
+         선택 상자는 글꼴 줄 높이를 따로 잡아 2px 크다 — 낮은 쪽을 올려 맞춘다. */
+      min-height: 40px;
     }
     .field input:hover, .field select:hover { border-color: var(--ink-4); }
     /* 값이 있어도 쓰이지 않는 칸(예: DB에 이미 있는 기간의 원천 CSV, 1.26.184)임을
        "안 보이는 규칙"으로 남기지 않는다 — 흐리고 손을 못 대게 해 눈으로도 알린다. */
     .field input:disabled, .field select:disabled {
-      opacity: .55; cursor: not-allowed; background: var(--surface-2); color: var(--ink-3);
+      cursor: not-allowed; background: var(--surface-2); color: var(--ink-4); border-color: var(--hairline);
     }
     .field input:focus, .field select:focus {
       outline: 0; border-color: var(--blue-focus);
@@ -803,7 +825,7 @@
       padding: 9px 12px; border-radius: var(--r-lg);
       pointer-events: none; opacity: 0; transform: translateY(3px);
       transition: opacity .12s ease, transform .12s ease;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, .22);
+      box-shadow: var(--shadow-float-sm);
       white-space: normal; text-align: left; font-weight: 400;
     }
     /* ── 수치용 배치, 헤더 + 본문 (1.26.175 · 1.26.177)
@@ -828,8 +850,8 @@
        바로 되돌린다 — 예약값은 한 곳(여기)에서만 적는다. */
     #tipbox.rich { padding: 10px 12px 11px; padding-right: 30px; }
     #tipbox .tip-title {
-      display: block; font-size: 11px; color: var(--ink-4);
-      letter-spacing: 0;
+      display: block; font-size: var(--fs-fine); color: var(--ink-4);
+      letter-spacing: -.08px;
     }
     #tipbox.rich .tip-title { margin-bottom: 6px; }
     /* 헤더와 본문을 가르는 선. 상자 테두리까지 통으로 긋는다 — 닫기 단추가
@@ -841,12 +863,12 @@
        `display: block`이 없으면 선이 사실상 폭 0으로 사라진다. */
     #tipbox .tip-divider { display: block; height: 1px; background: var(--hairline); margin: 0 -30px 8px -12px; }
     #tipbox.rich .tip-body {
-      display: block; font-size: 17px; font-weight: 600; line-height: 1.25;
+      display: block; font-size: var(--fs-h3); font-weight: 600; line-height: 1.25;
       letter-spacing: -.3px; font-variant-numeric: tabular-nums;
     }
     #tipbox .tip-sub {
-      display: block; font-size: 11px; color: var(--ink-4);
-      line-height: 1.45; margin-top: 3px;
+      display: block; font-size: var(--fs-fine); color: var(--ink-4); letter-spacing: -.08px;
+      line-height: 1.45; margin-top: 4px;
       /* 덧말이 길면(산점도의 실행 이름) 상자가 옆으로 늘어나지 않게 접는다. */
       max-width: 240px;
     }
@@ -920,7 +942,7 @@
     }
     .toc ol { list-style: none; margin: 0; padding: 0; }
     .toc a {
-      display: block; padding: 5px 0; font-size: var(--fs-fine);
+      display: block; padding: 6px 0; font-size: var(--fs-fine);
       line-height: 1.4; color: var(--ink-3); text-decoration: none;
       letter-spacing: -.08px;
       /* 긴 절 이름("실행·회차별 지표")이 세로로 서지 않게 한다. */
@@ -934,7 +956,7 @@
        (DESIGN.md 규칙 5, 색맹·흑백 인쇄에서도 갈린다). */
     .toc a[aria-current] {
       color: var(--blue); font-weight: 600;
-      box-shadow: inset 2px 0 0 var(--blue); padding-left: 9px; margin-left: -11px;
+      box-shadow: inset 2px 0 0 var(--blue); padding-left: 10px; margin-left: -12px;
     }
     @media print { .toc { display: none !important; } }
     /* 좁은 화면에는 차례가 설 자리가 없다. */
@@ -965,7 +987,8 @@
     .row { display: flex; gap: var(--sp-sm); align-items: center; flex-wrap: wrap; }
     code {
       font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-      font-size: .88em; background: var(--parchment); padding: 1px 5px;
+      /* 12px 힌트 안에서 .88em이면 10.56px이 된다 — 작은 글자 아래로는 내리지 않는다. */
+      font-size: max(var(--fs-fine), .88em); background: var(--parchment); padding: 1px 4px;
       border-radius: 5px; letter-spacing: 0;
     }
     .filterbar {
@@ -1014,7 +1037,7 @@
       width: min(40rem, calc(100vw - 2 * var(--sp-md)));
       max-height: min(60vh, 30rem); overflow: auto; padding: var(--sp-sm);
       background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-lg);
-      box-shadow: 0 12px 40px rgba(0, 0, 0, .22);
+      box-shadow: var(--shadow-float);
     }
     details.pick-sm .pick-panel { width: min(24rem, calc(100vw - 2 * var(--sp-md))); }
     .pick-group + .pick-group, .pick-all + .pick-group, .pick-all + .pick-items {
@@ -1096,19 +1119,17 @@
        .paged는 조작부가 실제로 붙었을 때만 스크립트가 단다 — 한 쪽이면
        선이 뜬금없이 남는다. */
     .paged tbody tr:last-child td { border-bottom: 1px solid var(--divider-soft); }
-    .pager button.chip { font-family: inherit; line-height: 1.2; cursor: pointer; }
+    .pager button.chip { font-family: inherit; line-height: 1.2; }
+    .pager button.chip:enabled { cursor: pointer; }   /* 끝 쪽(비활성)에서는 위 '단추' 절의 not-allowed */
     /* 끝 쪽에서는 누를 수 없다. 색만으로 말하지 않도록 disabled 속성을 함께 건다
        — 보조기기가 읽어 주고 키보드 초점도 건너뛴다. */
-    .pager button.chip:disabled {
-      opacity: .35; cursor: default;
-      background: var(--surface); color: var(--ink-4);
-    }
+    /* 모양은 위 '단추' 절의 비활성 한 벌(.chip:disabled)이 맡는다. */
     .pager-status {
       font-size: var(--fs-fine); color: var(--ink-4);
       font-variant-numeric: tabular-nums; min-width: 5.5rem; text-align: center;
     }
 
-    /* 지도는 이 앱의 '제품 사진'이다 — 시스템에 단 하나뿐인 그림자를 여기에 쓴다 */
+    /* 지도는 이 앱의 '제품 사진'이다 — 하나뿐인 제품 그림자를 여기에 쓴다(떠 있는 층의 두 단은 따로) */
     iframe.map-frame {
       width: 100%; height: 76vh; border: 0;
       border-radius: var(--r-lg); background: var(--canvas);
@@ -1125,7 +1146,7 @@
     .map-preview .map-frame { height: 69vh; min-height: 420px; }
     .map-preview figcaption { display: block; margin-top: var(--sp-xs); }
     .back { display: inline-block; margin-top: var(--sp-lg); font-size: var(--fs-ui); }
-    .preview-table { font-size: 13px; }
+    .preview-table { font-size: var(--fs-fine); }
 
     /* ════════ 바닥글 ════════ */
     footer.site {
@@ -1327,7 +1348,7 @@
       min-width: 50px;
     }
     .copy-btn:hover { background: var(--parchment); }
-    .copy-btn:active { transform: scale(.95); }
+    .copy-btn:active { transform: scale(.97); }
     /* 됐는지 안 됐는지를 **색만으로 말하지 않는다** — 글자가 바뀐다
        ("복사됨"/"길게 눌러 복사"). 색은 거들 뿐이다(DESIGN.md 규칙 5). */
     .copy-btn[data-copied="ok"] { color: var(--good-ink); border-color: var(--good-ink); }
@@ -1367,7 +1388,7 @@
     .m-fold > summary { display: none; }
     [data-narrow] .m-fold > summary {
       display: block; cursor: pointer; padding: 12px var(--sp-md);
-      font-size: var(--fs-ui); color: var(--blue); font-weight: 500;
+      font-size: var(--fs-ui); color: var(--blue); font-weight: 600;
       border: 1px solid var(--hairline); border-radius: var(--r-md);
       background: var(--surface); list-style: none;
       margin-bottom: var(--sp-sm);
@@ -1496,7 +1517,7 @@
          data-tip="계산 결과 CSV.">
         <span class="step-no">3</span>데이터</a>
     </div>
-    <a class="btn" href="/run#run"
+    <a class="btn sm" href="/run#run"
        data-tip="새 계획을 세웁니다.">계획 실행</a>
   </div>
 </nav>

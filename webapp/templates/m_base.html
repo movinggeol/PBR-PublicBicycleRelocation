@@ -73,8 +73,29 @@
       --m-danger-soft: var(--critical-soft);
       --m-pick: var(--pick-ink);          /* 수거 (범주색 — 글자와 함께만) */
       --m-drop: var(--drop-ink);          /* 배송 */
-      --m-shadow-map: var(--shadow-product); /* 시스템에 하나뿐인 그림자 — 지도에만 */
+      --m-shadow-map: var(--shadow-product); /* 하나뿐인 제품 그림자 — 지도에만 */
       --m-bar-h: 48px;                    /* 탭 막대 높이(윗선 1px 별도) — 누르는 면 44px 이상 */
+
+      /* 글자 크기 — 역할마다 한 값(docs/구현/DESIGN.md 'UI 기준표' 현장 앱, 2026-10-10).
+         규칙마다 날값을 쓰던 때는 14벌이었다(12.5 · 11.5 · 10.5 · 13.5 같은 반 픽셀까지).
+         새 크기가 필요하면 규칙에 값을 바로 쓰지 말고 여기에 역할부터 더한다. */
+      --m-fs-big: 26px;                   /* 큰 숫자 */
+      --m-fs-title: 24px;                 /* 화면 제목 */
+      --m-fs-head: 16px;                  /* 앱 이름 · 프로필 이름 */
+      --m-fs-input: 16px;                 /* 입력칸 — 16 미만이면 iOS 사파리가 누를 때 화면을 확대한다 */
+      --m-fs-body: 15px;                  /* 본문 · 목록 · 단추 · 절 제목 */
+      --m-fs-name: 14px;                  /* 이름 강조 · 지도 풍선 · 빈 자리 안내 */
+      --m-fs-small: 13px;                 /* 작은 단추 · 칩 · 분할 단추 · 끝 숫자 */
+      --m-fs-sub: 12px;                   /* 보조 글 · 힌트 · 메타 · 알림 */
+      --m-fs-tag: 11px;                   /* 딱지 · 타일 이름 · 짧은 이름표 · 지도 번호 */
+      --m-fs-tab: 10px;                   /* 탭 이름 · 지도 출처 */
+
+      /* 덩어리 사이 여백 — 관제 화면(--sp-*)보다 한 단 조밀하다(1.26.308 밀도).
+         요소 안쪽 여백은 기준표의 값을 그대로 쓴다. */
+      --m-sp-xs: 4px;                     /* 글줄 사이 */
+      --m-sp-sm: 8px;                     /* 카드 · 목록 · 알림 사이 */
+      --m-sp-md: 12px;                    /* 절 사이 · 본문 양옆 · 제목 위 */
+      --m-sp-lg: 16px;                    /* 위 막대 양옆 */
     }
 
     /* ── 기본 ── */
@@ -93,7 +114,7 @@
       /* 밀도 (1.26.308, 사용자 요청 — "패널이 필요 이상으로 커서 한눈에 안 들어온다, 스크롤을
          줄여 달라"). 본문 15px · 제목 24px · 카드 여백 12px로 줄였다. 누르는 것은 **보이는
          크기만** 줄이고 터치 면은 `.m-hit`(아래)로 44px을 지킨다. */
-      font-size: 15px; line-height: 1.4; letter-spacing: -.24px;
+      font-size: var(--m-fs-body); line-height: 1.4; letter-spacing: -.24px;
       -webkit-font-smoothing: antialiased;
       -webkit-tap-highlight-color: transparent;
     }
@@ -102,6 +123,7 @@
     .m-hit::after { content: ""; position: absolute; left: 0; right: 0; top: 50%;
                     height: 44px; transform: translateY(-50%); }
     a { color: var(--m-accent); text-decoration: none; }
+    b, strong { font-weight: 600; }   /* 브라우저 기본(bolder → 700)을 쓰지 않는다 — 700은 제목 몫이다 */
     :focus-visible { outline: 2px solid var(--m-accent-focus); outline-offset: 2px; border-radius: 4px; }
     .sr-only {
       position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
@@ -110,7 +132,7 @@
     .skip-link {
       position: absolute; top: -60px; left: 12px; z-index: 300;
       background: var(--m-ink); color: var(--m-card); padding: 13px 16px;
-      border-radius: var(--r-sm); font-size: 14px;
+      border-radius: var(--r-sm); font-size: var(--m-fs-name);
     }
     .skip-link:focus { top: 8px; }
     .num { font-variant-numeric: tabular-nums; }
@@ -128,17 +150,17 @@
       .m-bar { background: var(--m-bar); }
     }
     .m-bar-inner {
-      max-width: 520px; margin: 0 auto; padding: 0 16px; min-height: 44px;
-      display: flex; align-items: center; gap: 12px;
+      max-width: 520px; margin: 0 auto; padding: 0 var(--m-sp-lg); min-height: 44px;
+      display: flex; align-items: center; gap: var(--m-sp-md);
     }
     .m-brand {
-      font-size: 16px; font-weight: 700; letter-spacing: -.4px; color: var(--m-ink);
+      font-size: var(--m-fs-head); font-weight: 700; letter-spacing: -.4px; color: var(--m-ink);
       padding: 10px 0; margin-right: auto;
     }
     .m-chip {
-      display: inline-flex; align-items: center; gap: 5px; min-height: 30px;
+      display: inline-flex; align-items: center; gap: 4px; min-height: 30px;
       padding: 0 11px; border-radius: var(--r-pill); border: 1px solid var(--m-line);
-      background: var(--m-card); color: var(--m-ink); font-size: 13px; font-weight: 600;
+      background: var(--m-card); color: var(--m-ink); font-size: var(--m-fs-small); font-weight: 600;
       letter-spacing: -.2px; white-space: nowrap;
     }
     .m-chip.is-empty { color: var(--m-accent); font-weight: 400; }
@@ -148,37 +170,39 @@
     /* ── 본문 ── */
     main {
       max-width: 520px; margin: 0 auto;
-      padding: 0 12px calc(var(--m-bar-h) + 1px + env(safe-area-inset-bottom, 0px) + 12px);
+      padding: 0 var(--m-sp-md) calc(var(--m-bar-h) + 1px + env(safe-area-inset-bottom, 0px) + var(--m-sp-md));
     }
     /* 제목 — 큰 글자일수록 자간을 조인다(Apple 문법). 한 화면에 더 담으려고 24px. */
-    .m-title { font-size: 24px; font-weight: 700; letter-spacing: -.6px; line-height: 1.2;
-               margin: 12px 0 0; }
-    .m-sub { font-size: 12.5px; color: var(--m-ink-3); margin: 1px 0 8px; letter-spacing: -.15px; }
+    .m-title { font-size: var(--m-fs-title); font-weight: 700; letter-spacing: -.6px; line-height: 1.2;
+               margin: var(--m-sp-md) 0 0; }
+    .m-sub { font-size: var(--m-fs-sub); color: var(--m-ink-3); margin: 1px 0 var(--m-sp-sm); letter-spacing: -.15px; }
     .m-sub a, .hint a, .empty a, .m-note a, .m-alert a { text-decoration: underline; }
-    .m-section { font-size: 15px; font-weight: 700; letter-spacing: -.3px; margin: 14px 0 6px; }
-    .m-section-row { display: flex; align-items: baseline; gap: 10px; margin: 14px 0 6px; }
+    .m-section { font-size: var(--m-fs-body); font-weight: 700; letter-spacing: -.3px; margin: var(--m-sp-md) 0 6px; }
+    .m-section-row { display: flex; align-items: baseline; gap: 10px; margin: var(--m-sp-md) 0 6px; }
     .m-section-row .m-section { margin: 0 auto 0 0; }
-    .m-section-row a { font-size: 13px; padding: 12px 0; margin: -12px 0; }
-    .hint { font-size: 11.5px; color: var(--m-ink-4); margin: 4px 0 0; letter-spacing: -.1px; }
-    .m-note { font-size: 12.5px; color: var(--m-ink-3); margin: 0; }
-    .empty { color: var(--m-ink-3); font-size: 14px; margin: 0; }
+    .m-section-row a { font-size: var(--m-fs-small); padding: 12px 0; margin: -12px 0; }
+    .hint { font-size: var(--m-fs-sub); color: var(--m-ink-4); margin: var(--m-sp-xs) 0 0; letter-spacing: -.15px; }
+    .m-note { font-size: var(--m-fs-sub); color: var(--m-ink-3); margin: 0; }
+    .empty { color: var(--m-ink-3); font-size: var(--m-fs-name); margin: 0; }
 
     /* ── 카드 · 요약 띠 ── 모서리는 11px(묶음 목록과 같은 iOS 문법 — 18px은 이 밀도에 둥글다). */
     .m-card {
       background: var(--m-card); border: 1px solid var(--m-line);
-      border-radius: var(--r-md); padding: 10px 12px; margin-bottom: 8px;
+      border-radius: var(--r-md); padding: 10px 12px; margin-bottom: var(--m-sp-sm);
     }
     .m-card > :first-child { margin-top: 0; }
     .m-card > :last-child { margin-bottom: 0; }
     .m-card.flush { padding: 0; overflow: hidden; }
-    .m-card-title { font-size: 12.5px; font-weight: 600; color: var(--m-ink-3); margin: 0 0 4px;
+    .m-card-title { font-size: var(--m-fs-sub); font-weight: 600; color: var(--m-ink-3); margin: 0 0 var(--m-sp-xs);
                     letter-spacing: -.15px; }
     /* 타일 셋을 **카드 한 장의 세 칸**으로 — 테두리 셋이 한 줄의 높이를 두 배로 썼다. */
-    .m-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 8px;
+    .m-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: var(--m-sp-sm);
                background: var(--m-card); border: 1px solid var(--m-line); border-radius: var(--r-md); }
-    .m-tile { padding: 7px 10px 8px; min-width: 0; }
+    .m-tile { padding: 8px 10px; min-width: 0; }
     .m-tile + .m-tile { border-left: 1px solid var(--m-line-soft); }
-    .m-tile .label { font-size: 11px; color: var(--m-ink-3); letter-spacing: -.1px; }
+    .m-tile .label { font-size: var(--m-fs-tag); color: var(--m-ink-3); letter-spacing: -.1px; }
+    /* 타일 값만 폭을 따라 16~19px로 움직인다 — 세 칸에 '2시간 10분'이 들어가야 해서다(기준표의
+       '타일 값' 줄, 별칭 층에 두지 않는 하나뿐인 크기). */
     .m-tile .value { font-size: clamp(16px, 4.8vw, 19px); font-weight: 700; letter-spacing: -.4px;
                      line-height: 1.2; margin-top: 1px; font-variant-numeric: tabular-nums;
                      white-space: nowrap; }
@@ -186,9 +210,9 @@
        `keep-all`이 있어야 공백에서만 접힌다 — 없으면 한글은 음절 사이도 줄 바꿈 자리라
        '2시간 10 / 분'으로 숫자와 단위가 갈렸다(360px 스크린샷). */
     .m-tile .value.wrap { white-space: normal; word-break: keep-all; }
-    .m-tile .value small { font-size: 11px; font-weight: 500; letter-spacing: -.1px;
+    .m-tile .value small { font-size: var(--m-fs-tag); font-weight: 400; letter-spacing: -.1px;
                            color: var(--m-ink-2); margin: 0 1px; }
-    .m-tile .sub { font-size: 10.5px; color: var(--m-ink-4); margin-top: 1px; white-space: nowrap;
+    .m-tile .sub { font-size: var(--m-fs-tag); color: var(--m-ink-4); margin-top: 1px; white-space: nowrap;
                    overflow: hidden; text-overflow: ellipsis; }
 
     /* ── 분할 컨트롤 (회차 · 진행 상태) — 누르는 것이라 알약, 그림자 대신 테두리.
@@ -196,14 +220,14 @@
     .m-seg {
       display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
       gap: 2px; padding: 2px; border-radius: var(--r-pill); background: var(--m-fill);
-      border: 1px solid var(--m-line-soft); margin: 0 0 8px;
+      border: 1px solid var(--m-line-soft); margin: 0 0 var(--m-sp-sm);
     }
     .m-seg a, .m-seg button {
       position: relative;
       display: flex; align-items: center; justify-content: center; gap: 4px;
       min-height: 30px; padding: 0 6px; border-radius: var(--r-pill);
       border: 1px solid transparent; background: transparent; color: var(--m-ink-2);
-      font: inherit; font-size: 13px; letter-spacing: -.2px; white-space: nowrap;
+      font: inherit; font-size: var(--m-fs-small); letter-spacing: -.2px; white-space: nowrap;
       cursor: pointer; text-decoration: none;
     }
     .m-seg a::after, .m-seg button::after { content: ""; position: absolute; left: 0; right: 0;
@@ -211,28 +235,28 @@
     .m-seg [aria-current], .m-seg [aria-pressed="true"] {
       background: var(--m-card); border-color: var(--m-line); color: var(--m-ink); font-weight: 600;
     }
-    .m-seg .count { font-size: 11.5px; color: var(--m-ink-4); font-variant-numeric: tabular-nums; }
+    .m-seg .count { font-size: var(--m-fs-sub); color: var(--m-ink-4); font-variant-numeric: tabular-nums; }
     .m-seg [aria-pressed="true"] .count { color: var(--m-ink-3); }
     /* 제목 줄 오른쪽에 붙는 거르기 — 줄 하나를 아낀다. */
     .m-section-row { align-items: center; }
     .m-section-row .m-seg-inline { margin: 0; flex: 0 1 auto; grid-auto-columns: auto; }
-    .m-seg-inline button { padding: 0 9px; min-height: 26px; font-size: 12px; }
-    .m-row-done { font-size: 11px; font-weight: 500; color: var(--m-ink-3); font-variant-numeric: tabular-nums; }
+    .m-seg-inline button { padding: 0 10px; min-height: 26px; font-size: var(--m-fs-sub); }
+    .m-row-done { font-size: var(--m-fs-tag); font-weight: 600; color: var(--m-ink-3); font-variant-numeric: tabular-nums; }
 
     /* ── 지도 — 시스템에서 그림자를 받는 유일한 것 ── */
     .m-map {
-      position: relative; height: 210px; margin-bottom: 4px;
+      position: relative; height: 210px; margin-bottom: var(--m-sp-xs);
       border-radius: var(--r-md); overflow: hidden; background: var(--m-fill);
       border: 1px solid var(--m-line); box-shadow: var(--m-shadow-map);
     }
     .m-map.tall { height: 250px; }
-    .m-credit { font-size: 10px; color: var(--m-ink-4); margin: 0 0 8px; text-align: right;
+    .m-credit { font-size: var(--m-fs-tab); color: var(--m-ink-4); margin: 0 0 var(--m-sp-sm); text-align: right;
                 line-height: 1.35; }
     .m-credit a { color: inherit; }
     .m-credit-note { color: var(--m-ink-3); }
     .m-map-fallback {
       position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-      padding: 24px; text-align: center; font-size: 14px; color: var(--m-ink-3);
+      padding: 24px; text-align: center; font-size: var(--m-fs-name); color: var(--m-ink-3);
     }
     .m-map .leaflet-container, .m-map.leaflet-container { font: inherit; background: var(--m-fill); }
     .leaflet-popup-content-wrapper { border-radius: var(--r-md); background: var(--m-card);
@@ -241,9 +265,9 @@
     /* 확대·축소 단추는 Leaflet 기본이 30×30px이다 (1.26.315 실측). 둘이 위아래로 붙어
        있어 .m-hit 같은 덧면을 쓰면 서로 겹치므로, 단추 자체를 44px로 키운다. */
     .m-map .leaflet-control-zoom a { width: 44px; height: 44px; line-height: 44px; font-size: 20px; }
-    .leaflet-popup-content { margin: 12px 14px; font-size: 14px; line-height: 1.45; letter-spacing: -.2px; }
-    .leaflet-popup-content .pop-title { font-weight: 600; font-size: 15px; }
-    .leaflet-popup-content .pop-meta { color: var(--m-ink-3); font-size: 13px; }
+    .leaflet-popup-content { margin: 12px 16px; font-size: var(--m-fs-name); line-height: 1.45; letter-spacing: -.2px; }
+    .leaflet-popup-content .pop-title { font-weight: 600; font-size: var(--m-fs-body); }
+    .leaflet-popup-content .pop-meta { color: var(--m-ink-3); font-size: var(--m-fs-small); }
     .leaflet-popup-content dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px;
                                 margin: 6px 0 0; }
     .leaflet-popup-content dt { color: var(--m-ink-3); }
@@ -255,21 +279,21 @@
       display: flex; align-items: center; justify-content: center;
       width: 24px; height: 24px; border-radius: 50%;
       background: var(--m-card); color: var(--m-ink); border: 3px solid var(--c);
-      font-size: 11px; font-weight: 700; letter-spacing: 0; font-variant-numeric: tabular-nums;
+      font-size: var(--m-fs-tag); font-weight: 700; letter-spacing: 0; font-variant-numeric: tabular-nums;
     }
     /* 지금 갈 곳 — **잉크 채움**. 강조색 테두리로 두었더니 수거 테두리(#0072B2)와 같은
        파랑이라 3번이 지금인지 수거인지 갈리지 않았다(390px 실측). 크기도 함께 키운다. */
-    .m-pin.is-current { width: 32px; height: 32px; font-size: 14px;
+    .m-pin.is-current { width: 32px; height: 32px; font-size: var(--m-fs-name);
                         background: var(--m-ink); color: var(--m-card); }
     .m-pin.is-done { opacity: .45; }
     .m-depot {
       display: flex; align-items: center; justify-content: center; height: 22px;
-      padding: 0 7px; border-radius: 6px; background: var(--m-ink); color: var(--m-card);
-      font-size: 11px; font-weight: 600; white-space: nowrap; letter-spacing: -.1px;
+      padding: 0 8px; border-radius: 6px; background: var(--m-ink); color: var(--m-card);
+      font-size: var(--m-fs-tag); font-weight: 600; white-space: nowrap; letter-spacing: -.1px;
     }
 
     /* ── 묶음 목록 (iOS 설정 앱의 inset grouped) ── */
-    .m-list { list-style: none; margin: 0 0 8px; padding: 0; background: var(--m-card);
+    .m-list { list-style: none; margin: 0 0 var(--m-sp-sm); padding: 0; background: var(--m-card);
               border: 1px solid var(--m-line); border-radius: var(--r-md); overflow: hidden; }
     .m-list > li + li { border-top: 1px solid var(--m-line-soft); }
     .m-row {
@@ -279,16 +303,19 @@
     a.m-row:active, button.m-row:active { background: var(--m-fill); }
     button.m-row { width: 100%; border: 0; background: transparent; font: inherit; text-align: left;
                    cursor: pointer; }
+    /* 줄 단추는 이름 · 메타 · 딱지가 제 색을 따로 가져 '흐린 글자' 한 벌로는 못 흐린다 — 비활성은
+       줄 전체를 흐린다(기준표 상태의 예외 한 줄). 누름 반응도 없앤다. */
     button.m-row:disabled { opacity: .55; cursor: not-allowed; }
+    button.m-row:disabled:active { background: transparent; }
     .m-row .main { min-width: 0; }
     .m-row .name { font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
                    line-height: 1.3; }
     .m-row .meta, .m-row .chain { display: block; }
-    .m-row .meta { font-size: 12px; color: var(--m-ink-3); letter-spacing: -.15px; line-height: 1.35;
+    .m-row .meta { font-size: var(--m-fs-sub); color: var(--m-ink-3); letter-spacing: -.15px; line-height: 1.35;
                    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .m-row .chain { font-size: 11.5px; color: var(--m-ink-4); letter-spacing: -.1px;
+    .m-row .chain { font-size: var(--m-fs-sub); color: var(--m-ink-4); letter-spacing: -.15px;
                     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .m-row .end { display: flex; align-items: center; gap: 6px; color: var(--m-ink-3); font-size: 13px;
+    .m-row .end { display: flex; align-items: center; gap: 6px; color: var(--m-ink-3); font-size: var(--m-fs-small);
                   font-variant-numeric: tabular-nums; white-space: nowrap; }
     .m-chev { width: 7px; height: 12px; fill: none; stroke: var(--m-ink-4); stroke-width: 2;
               stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
@@ -300,8 +327,8 @@
 
     /* ── 딱지 — 색만으로 말하지 않는다: 늘 글자와 함께 ── */
     .m-badge {
-      display: inline-flex; align-items: center; gap: 3px; padding: 0 6px;
-      border-radius: var(--r-pill); font-size: 10.5px; font-weight: 600; letter-spacing: -.1px;
+      display: inline-flex; align-items: center; gap: 4px; padding: 0 6px;
+      border-radius: var(--r-pill); font-size: var(--m-fs-tag); font-weight: 600; letter-spacing: -.1px;
       line-height: 1.55; white-space: nowrap; border: 1px solid transparent;
     }
     .m-badge.is-todo { color: var(--m-ink-3); border-color: var(--m-line); }
@@ -317,21 +344,21 @@
     .m-progress { height: 6px; border-radius: var(--r-pill); background: var(--m-track); overflow: hidden; }
     .m-progress > span { display: block; height: 100%; width: 0; border-radius: inherit;
                          background: var(--c, var(--m-accent)); transition: width .25s ease; }
-    .m-big { font-size: 26px; font-weight: 700; letter-spacing: -.6px; line-height: 1.15;
+    .m-big { font-size: var(--m-fs-big); font-weight: 700; letter-spacing: -.6px; line-height: 1.15;
              font-variant-numeric: tabular-nums; }
-    .m-kv { display: flex; justify-content: space-between; gap: 10px; font-size: 12px;
-            color: var(--m-ink-3); margin-top: 5px; }
+    .m-kv { display: flex; justify-content: space-between; gap: 10px; font-size: var(--m-fs-sub);
+            color: var(--m-ink-3); margin-top: var(--m-sp-xs); }
     .m-kv b { color: var(--m-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
     /* 두 칸 나란히 — 진행 현황의 '대여소 기준 · 대수 기준'처럼 짝인 숫자. */
-    .m-duo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
-    .m-duo .m-card { margin-bottom: 8px; }
+    .m-duo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--m-sp-sm); }
+    .m-duo .m-card { margin-bottom: var(--m-sp-sm); }
 
     /* ── 단추 ── */
     .m-btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 6px;
       min-height: 44px; padding: 0 16px; border-radius: var(--r-pill);
       border: 1px solid var(--m-accent); background: var(--m-accent); color: var(--m-on-accent);
-      font: inherit; font-size: 15px; letter-spacing: -.24px; cursor: pointer; text-decoration: none;
+      font: inherit; font-size: var(--m-fs-body); letter-spacing: -.24px; cursor: pointer; text-decoration: none;
     }
     .m-btn:active { transform: scale(.97); }
     .m-btn.ghost { background: var(--m-card); color: var(--m-accent); border-color: var(--m-line); }
@@ -342,7 +369,7 @@
     .m-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9;
                  stroke-linecap: round; stroke-linejoin: round; }
     /* 작은 단추 — 보이는 높이 32px, 누르는 면 44px(.m-hit와 같은 덧면). */
-    .m-btn.small { position: relative; min-height: 32px; font-size: 13px; padding: 0 12px; }
+    .m-btn.small { position: relative; min-height: 32px; font-size: var(--m-fs-small); padding: 0 12px; }
     .m-btn.small::after { content: ""; position: absolute; left: 0; right: 0; top: 50%;
                           height: 44px; transform: translateY(-50%); }
     .m-btn.small svg { width: 15px; height: 15px; }
@@ -352,7 +379,7 @@
     .m-actions {
       position: sticky; bottom: calc(var(--m-bar-h) + 1px + env(safe-area-inset-bottom, 0px));
       z-index: 30; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
-      gap: 8px; padding: 6px 0; margin: 0 0 2px;
+      gap: var(--m-sp-sm); padding: 6px 0; margin: 0 0 2px;
       background: color-mix(in srgb, var(--m-bg) 88%, transparent);
       -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
     }
@@ -361,23 +388,23 @@
     }
 
     /* ── 폼 ── */
-    .m-field { display: block; margin: 0 0 8px; }
+    .m-field { display: block; margin: 0 0 var(--m-sp-sm); }
     .m-field.tight { margin: 0; }
-    .m-field > span { display: block; font-size: 12px; color: var(--m-ink-3); margin-bottom: 4px; }
+    .m-field > span { display: block; font-size: var(--m-fs-sub); color: var(--m-ink-3); margin-bottom: var(--m-sp-xs); }
     /* 16px 미만이면 iOS 사파리가 입력칸을 누를 때 화면을 확대한다 — 이것만은 줄이지 않는다. */
     .m-input {
-      width: 100%; min-height: 40px; padding: 7px 11px; border-radius: var(--r-sm);
+      width: 100%; min-height: 40px; padding: 6px 12px; border-radius: var(--r-sm);
       border: 1px solid var(--m-line); background: var(--m-card); color: var(--m-ink);
-      font: inherit; font-size: 16px;
+      font: inherit; font-size: var(--m-fs-input);
     }
     textarea.m-input { min-height: 72px; resize: vertical; line-height: 1.4; }
-    .m-inline { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+    .m-inline { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--m-sp-sm); align-items: center; }
     /* 글 한 줄 + 오른쪽 작은 단추 */
-    .m-line { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+    .m-line { display: flex; align-items: center; gap: var(--m-sp-sm); margin: 0 0 var(--m-sp-sm); }
     .m-line > :first-child { flex: 1 1 auto; min-width: 0; }
 
     /* ── 알림 줄 ── */
-    .m-alert { border-radius: var(--r-sm); padding: 6px 10px; font-size: 12.5px; margin: 0 0 8px; }
+    .m-alert { border-radius: var(--r-sm); padding: 6px 10px; font-size: var(--m-fs-sub); margin: 0 0 var(--m-sp-sm); }
     .m-alert.warn { background: var(--m-warn-soft); color: var(--m-ink); }
     .m-alert.good { background: var(--m-good-soft); color: var(--m-ink); }
     .m-alert.bad { background: var(--m-danger-soft); color: var(--m-ink); }
@@ -400,8 +427,8 @@
                     grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .m-tabs a {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 1px; min-height: var(--m-bar-h); padding: 4px 2px 3px;
-      color: var(--m-ink-3); font-size: 10px; letter-spacing: -.1px; line-height: 1.2;
+      gap: 1px; min-height: var(--m-bar-h); padding: 4px 2px;
+      color: var(--m-ink-3); font-size: var(--m-fs-tab); letter-spacing: -.1px; line-height: 1.2;
       white-space: nowrap;
     }
     .m-tabs svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7;

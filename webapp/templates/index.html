@@ -3,10 +3,7 @@
 {% block head_extra %}
 <style>
   /* '계획 실행' 단추가 1440×900·1366×768에서도 첫 화면에 들도록 (1.26.315) — 히어로를 첫 화면처럼
-     한 줄 크기로 줄이고, 짧은 칸 다섯(이름·기간·요일·차량·상한)을 한 줄에 세운다. */
-  .hero.run-hero { padding: var(--sp-lg) 0 var(--sp-md); }
-  .hero.run-hero h1 { font-size: var(--fs-h2); margin: 0 0 4px; }
-  .hero.run-hero .lead { font-size: var(--fs-body); }
+     한 줄 크기로 줄이고(base.html `.hero.compact`), 짧은 칸 다섯(이름·기간·요일·차량·상한)을 한 줄에 세운다. */
   .form-grid.run-form-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
   /* '생략' 묶음과 단추 줄 사이의 두 번째 구분선은 뺀다 — 둘은 한 덩어리(실행 직전 선택)다. */
   .checks.run-skip + .form-foot { margin-top: 0; padding-top: 0; border-top: 0; }
@@ -17,7 +14,7 @@
 <div data-toc="이 화면의 절" hidden></div>
 
 {# 히어로의 '지난 결과 보기 · 사용 안내' 단추는 뺐다 — 바로 위 내비(2 결과 · 사용 안내)와 같은 길이다. #}
-<section class="hero run-hero">
+<section class="hero compact">
   <h1>재배치 계획을 세웁니다</h1>
   <p class="lead">지금 재고와 지난 이용 기록으로 어디서 몇 대를 옮길지 계산합니다.</p>
 </section>

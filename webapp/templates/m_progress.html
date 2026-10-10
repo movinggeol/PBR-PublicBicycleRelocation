@@ -8,10 +8,10 @@
 {% block title %}진행 현황 · PBR 현장 앱{% endblock %}
 {% block style_extra %}
     .m-bars li { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto;
-                 align-items: center; gap: 8px; padding: 7px 12px; min-height: 32px; }
-    .m-bars .who { font-weight: 600; font-size: 13.5px; display: flex; align-items: center; gap: 5px;
+                 align-items: center; gap: var(--m-sp-sm); padding: 8px 12px; min-height: 32px; }
+    .m-bars .who { font-weight: 600; font-size: var(--m-fs-name); display: flex; align-items: center; gap: 4px;
                    white-space: nowrap; }
-    .m-bars .num { font-size: 12px; color: var(--m-ink-3); white-space: nowrap; text-align: right;
+    .m-bars .num { font-size: var(--m-fs-sub); color: var(--m-ink-3); white-space: nowrap; text-align: right;
                    min-width: 68px; }
     .m-bars .num b { color: var(--m-ink); font-weight: 600; }
 {% endblock %}
