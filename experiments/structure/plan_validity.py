@@ -26,6 +26,9 @@
   찍기만   : 이미 비어 있던 배송 대여소의 빈 시간 비율 · 수거 대여소의 포화(거치대 90%) 도달 · 회차별 표 ·
              실제 동시각 계획(kind = plan, 라벨 '동시각')의 차량 계획(vrp_plan) 대여소로 같은 지표
 
+정정 (1.26.347) — 수거 무해의 '최저 ≥ q'는 남은 재고가 정확히 0이 되는 순간도 무해로 셌다. 괄호의 뜻('0이 안 됐을 것')과
+  같은 파일의 '빼 갔다면 비었을 시간'(0을 빔으로 셈)에 맞춰 '최저 − q ≥ 1'로 센 값을 [정정] 줄로 함께 찍는다. 등록 줄은 그대로다.
+
 사후 진단 (등록 뒤 추가 · 판정 아님 — 1.26.321) — 첫 실측에서 수거가 5시간 기준에 못 미쳐(무해 64.8%) 까닭을 보려고
   목표 재고 식의 두 갈래(mu < 0 · mu ≥ 0)별 무해, 빼 갔다면 비었을 시간, 공사 트럭의 흔적(10분에 JUMP대 이상 변화)을
   더 찍는다. 판정 줄의 수치는 이것을 더하기 전과 한 자리도 같다.
@@ -208,6 +211,9 @@ def score_instance(rebal: pd.Series, s0: pd.Series, cap: pd.Series, ws, rng, mu:
     row["수거수"] = int(pick.sum())
     row["수거대수"] = float(q.sum())
     row["수거무해"] = int((lo[pick] >= q).sum())
+    # 정정(1.26.347) — 0 = 빔. 위 '수거무해'(최저 ≥ q)는 남은 재고가 정확히 0이 되는 순간도 무해로 셌다(등록 그대로 둔다).
+    # 아래 '빼 갔다면 비었을 시간'은 처음부터 0을 빔으로 셌다(le(q)) — 정정판은 그쪽과 같은 자를 쓴다
+    row["수거무해0"] = int((lo[pick] > q).sum())
     row["수거포화"] = int(sat[pick].sum())
     # 사후 진단(등록 뒤 추가 · 판정 아님) — 목표 재고 식의 두 갈래(mu ≥ 0: mu + z·sigma / mu < 0: 재고 + mu)별 무해와
     # 해의 크기(수거량을 뺀 궤적이 0 이하인 칸의 비율 = 빼 갔다면 비었을 시간)
@@ -217,6 +223,8 @@ def score_instance(rebal: pd.Series, s0: pd.Series, cap: pd.Series, ws, rng, mu:
     row["수거_mu음수_무해"] = int((lo[neg] >= q[neg[pick]]).sum()) if neg.any() else 0
     row["수거_mu양수"] = int(pos.sum())
     row["수거_mu양수_무해"] = int((lo[pos] >= q[pos[pick]]).sum()) if pos.any() else 0
+    row["수거_mu음수_무해0"] = int((lo[neg] > q[neg[pick]]).sum()) if neg.any() else 0
+    row["수거_mu양수_무해0"] = int((lo[pos] > q[pos[pick]]).sum()) if pos.any() else 0
     win = ws[4]
     if pick.any():
         below = win[q.index].le(q, axis=1).where(win[q.index].notna())
@@ -232,6 +240,7 @@ def score_instance(rebal: pd.Series, s0: pd.Series, cap: pd.Series, ws, rng, mu:
     row["수거_흔적"] = int((pick & jump_down).sum())
     row["수거_흔적없음"] = int(clean.sum())
     row["수거_흔적없음_무해"] = int((lo[clean] >= q[clean[pick]]).sum()) if clean.any() else 0
+    row["수거_흔적없음_무해0"] = int((lo[clean] > q[clean[pick]]).sum()) if clean.any() else 0
     miss = drop & ~hit0
     row["배송빗나감"] = int(miss.sum())
     row["배송빗나감_흔적"] = int((miss & jump_up).sum())
@@ -242,9 +251,10 @@ def score_instance(rebal: pd.Series, s0: pd.Series, cap: pd.Series, ws, rng, mu:
         row["B1수거수"] = int(len(qb))
         row["B1수거대수"] = float(qb.sum())
         row["B1수거무해"] = int((lo[qb.index] >= qb).sum())
+        row["B1수거무해0"] = int((lo[qb.index] > qb).sum())
         row["B1수거포화"] = int(sat[qb.index].sum())
     else:
-        row.update({"B1수거수": 0, "B1수거대수": 0.0, "B1수거무해": 0, "B1수거포화": 0})
+        row.update({"B1수거수": 0, "B1수거대수": 0.0, "B1수거무해": 0, "B1수거무해0": 0, "B1수거포화": 0})
     row["전체수"] = int(ok.sum())
     row["전체포화"] = int(sat[ok].sum())
     return row
@@ -304,6 +314,15 @@ def report(rows: pd.DataFrame, day_type: str, verdict: bool) -> dict:
         print(f"  수거 무해 : 계획 {safe:.1%} ({int(pk['수거무해'].sum()):,}/{int(pk['수거수'].sum()):,}곳 · "
               f"{pk['수거대수'].sum():,.0f}대) · B1 고정 여유 {b1_safe:.1%} "
               f"({int(pk['B1수거수'].sum()):,}곳 · {pk['B1수거대수'].sum():,.0f}대)")
+        safe0 = rate(pk["수거무해0"].sum(), pk["수거수"].sum())
+        b1_safe0 = rate(pk["B1수거무해0"].sum(), pk["B1수거수"].sum())
+        pick_ok0 = safe0 >= b1_safe0 and (h != 30 or safe0 >= PICK_SAFE_FLOOR)
+        print(f"  [정정 1.26.347] 수거 무해(0 = 빔 — 최저 − q ≥ 1) : 계획 {safe0:.1%} "
+              f"({int(pk['수거무해0'].sum()):,}/{int(pk['수거수'].sum()):,}곳) · B1 고정 여유 {b1_safe0:.1%} · mu < 0 "
+              f"{rate(pk['수거_mu음수_무해0'].sum(), pk['수거_mu음수'].sum()):.1%} · mu ≥ 0 "
+              f"{rate(pk['수거_mu양수_무해0'].sum(), pk['수거_mu양수'].sum()):.1%} · 트럭 흔적 없는 곳 "
+              f"{rate(pk['수거_흔적없음_무해0'].sum(), pk['수거_흔적없음'].sum()):.1%}"
+              + (f" → 등록 판정을 이 자로 대면 수거 {'✅' if pick_ok0 else '❌'}" if verdict and h in MAIN_HORIZONS else ""))
         print(f"  수거 대여소 포화 도달 : 계획 {sat_p:.1%} · B1 {sat_b1:.1%} · 전체 대여소 {sat_all:.1%}")
         print(f"  [사후 진단] 수거 무해 — mu < 0(목표 = 재고 + mu) "
               f"{rate(pk['수거_mu음수_무해'].sum(), pk['수거_mu음수'].sum()):.1%} ({int(pk['수거_mu음수'].sum()):,}곳) · "
@@ -318,8 +337,9 @@ def report(rows: pd.DataFrame, day_type: str, verdict: bool) -> dict:
             lo_d, hi_d = boot_ci(d, "배송적중", "배송수")
             lo_x, hi_x = boot_ci(d, "배송적중", "배송수", "B1배송적중")
             lo_p, hi_p = boot_ci(pk, "수거무해", "수거수")
+            lo_0, hi_0 = boot_ci(pk, "수거무해0", "수거수")
             print(f"  [인용] 95% 구간(회차 재표집 2,000번) — 배송 적중 {lo_d:.1%}~{hi_d:.1%} · 계획 − B1 "
-                  f"{lo_x * 100:+.1f}~{hi_x * 100:+.1f}%p · 수거 무해 {lo_p:.1%}~{hi_p:.1%}")
+                  f"{lo_x * 100:+.1f}~{hi_x * 100:+.1f}%p · 수거 무해 {lo_p:.1%}~{hi_p:.1%} · [정정] 0 = 빔 {lo_0:.1%}~{hi_0:.1%}")
         if verdict:
             print(f"  → 배송 {'✅' if drop_ok else '❌'} · 수거 {'✅' if pick_ok else '❌'}"
                   + ("" if h in MAIN_HORIZONS else "  (1시간은 판정 아님)"))
@@ -340,7 +360,9 @@ def report(rows: pd.DataFrame, day_type: str, verdict: bool) -> dict:
             print(f"    {h // TICKS_PER_HOUR}시간 {dur}: 배송 {rate(dd['배송적중'].sum(), dd['배송수'].sum()):.1%} / "
                   f"{rate(dd['B1배송적중'].sum(), dd['배송수'].sum()):.1%} / {rate(gg['B0적중'].sum(), gg['B0풀'].sum()):.1%}"
                   f" · 수거 {rate(pp['수거무해'].sum(), pp['수거수'].sum()):.1%} / "
-                  f"{rate(pp['B1수거무해'].sum(), pp['B1수거수'].sum()):.1%} ({len(gg)})")
+                  f"{rate(pp['B1수거무해'].sum(), pp['B1수거수'].sum()):.1%} ({len(gg)})"
+                  f" · [정정] 0 = 빔 {rate(pp['수거무해0'].sum(), pp['수거수'].sum()):.1%} / "
+                  f"{rate(pp['B1수거무해0'].sum(), pp['B1수거수'].sum()):.1%}")
     return results
 
 

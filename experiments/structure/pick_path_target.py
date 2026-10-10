@@ -27,6 +27,9 @@
 알려진 한계 — 옮길 수 있는 양은 시 전체 min(Σ수거, Σ배송)이라 군집 · ILP · 시간 예산이 실제로 고르는 양의 상한이다.
 통계는 26년 03월이고 관측은 9월이다(47장과 같다).
 
+정정 (1.26.347) — 무해의 '최저 ≥ q'는 남은 재고가 정확히 0이 되는 순간도 무해로 셌다(47장과 같은 자). '최저 − q ≥ 1'로 센
+값을 [정정] 줄로 함께 찍는다. 등록 줄과 판정은 그대로다.
+
 실행:
     python experiments/structure/pick_path_target.py            # 판정
     python experiments/structure/pick_path_target.py --sanity   # 결과 없이 입력만 점검
@@ -161,6 +164,8 @@ def main(argv=None) -> int:
                 row = dict(base, 지평=h, 모집단=int(keep.sum()))
                 for name, v in qq.items():
                     row[f"무해_{name}"] = int((lo[v.index] >= v).sum())
+                    # 정정(1.26.347) — 0 = 빔. 수거하지 않게 된 곳(v = 0)은 등록대로 무해로 센다
+                    row[f"무해0_{name}"] = int(((v == 0) | (lo[v.index] > v)).sum())
                     w = win[v.index]
                     below = w.le(v, axis=1).where(w.notna()) & (v > 0)
                     row[f"빈시간_{name}"] = float((below.sum() / w.notna().sum()).sum())
@@ -207,6 +212,16 @@ def main(argv=None) -> int:
                 c, d2 = pv.boot_ci(gh, "무해_새", "모집단", "무해_균등")
                 print(f"  [인용] 95% 구간(회차 재표집 2,000번) — 새 안 무해 {a:.1%}~{b:.1%} · 새 안 − 균등 "
                       f"{c * 100:+.1f}~{d2 * 100:+.1f}%p")
+            r0 = {k: gh[f"무해0_{k}"].sum() / n for k in ("원래", "새", "균등")}
+            w0 = int((gh["무해0_새"] / gh["모집단"].replace(0, np.nan) > gh["무해0_균등"] / gh["모집단"].replace(0, np.nan)).sum())
+            l0 = int((gh["무해0_새"] / gh["모집단"].replace(0, np.nan) < gh["무해0_균등"] / gh["모집단"].replace(0, np.nan)).sum())
+            line = (f"  [정정 1.26.347] 무해율(0 = 빔 — 최저 − q ≥ 1): 원래 {r0['원래']:.1%} · 새 안 {r0['새']:.1%} · "
+                    f"균등 {r0['균등']:.1%} · 부호 검정(새 안 > 균등) {w0}승 {l0}패 · 단측 p = {pv.sign_test(w0, l0):.4f}")
+            if len(gh) > 1:
+                a0, b0 = pv.boot_ci(gh, "무해0_새", "모집단")
+                c0, d0 = pv.boot_ci(gh, "무해0_새", "모집단", "무해0_균등")
+                line += f" · 새 안 {a0:.1%}~{b0:.1%} · 새 안 − 균등 {c0 * 100:+.1f}~{d0 * 100:+.1f}%p"
+            print(line)
             print(f"  빼 갔다면 비었을 시간(창 대비): 원래 {empty['원래']:.1%} · 새 안 {empty['새']:.1%} · 균등 {empty['균등']:.1%}")
             print(f"  수거 뒤에도 포화(관측 최고 − q ≥ 거치대 90%): 원래 {sat['원래']:.1%} · 새 안 {sat['새']:.1%} · 균등 {sat['균등']:.1%}")
         if dt == "weekday":
