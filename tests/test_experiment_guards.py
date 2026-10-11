@@ -1870,6 +1870,74 @@ def test_F2_나빠진_구간을_이름과_값으로_돌려준다(f2):
     assert (not f2.bins_not_worse(pair, names)) == bool(got)
 
 
+# ───────────────────────────── F2 덧붙임 (41장) — A1의 작업 목록을 53장의 자로 채점한다
+
+@pytest.fixture(scope="module")
+def f2w():
+    return _load_experiment("experiments/structure/f2_worklist_score.py")
+
+
+def test_F2_관측_채점은_대조군_모듈을_한_벌만_쓴다(f2w):
+    """요일 맞추기(`align_day_type`)와 계획은 53장 하네스의 대조군 모듈 한 벌로 한다. 41장 하네스(f2)는 따로
+    baseline_compare를 import하므로(다른 테스트가 먼저 캐시하면 다른 벌이 된다) 그 모듈에 기대는 함수를 부르면
+    한쪽만 평일 계수를 본다 — 이 스크립트가 f2의 `bc`를 쓰지 않는지 소스로 본다."""
+    import inspect
+
+    assert f2w.bc is f2w.wv.bc
+    assert "f2.bc" not in inspect.getsource(f2w)
+
+
+def test_F2_관측_채점의_U는_P의_수거만_A1의_총량으로_줄이고_늘리지는_않는다(f2w):
+    p = pd.Series({"D1": 5.0, "D2": 3.0, "K1": -6.0, "K2": -3.0, "K3": -1.0})
+    a1 = pd.Series({"D1": 4.0, "K4": -5.0})
+
+    got = f2w.uniform_to(p, a1)
+
+    assert -got[got < 0].sum() == 5                       # A1의 수거 총량
+    assert set(got[got < 0].index) <= {"K1", "K2", "K3"}   # 고르는 곳은 P 그대로
+    assert got["D1"] == 5.0 and got["D2"] == 3.0          # 배송은 P 그대로
+    more = pd.Series({"K9": -20.0})
+    assert f2w.uniform_to(p, more).equals(p)              # A1이 더 빼면 P 그대로
+
+
+def test_F2_관측_채점의_읽기는_모든_조합에_이름이_있다(f2w):
+    import itertools
+
+    names = {f2w.reading(*marks) for marks in itertools.product([True, False], repeat=4)}
+    assert len(names) == 8                                 # ⓐ✗는 ⓑⓒ와 무관하게 한 이름 · ⓓ는 꼬리를 붙인다
+    assert f2w.reading(True, True, True, True) == "관측으로도 A1의 수거가 덜 해친다 — 53장의 약점을 메운다"
+    assert f2w.reading(False, True, True, False).endswith("배송 적중을 1%p 넘게 판다")
+
+
+def test_F2_관측_채점은_회차마다_수거_무해를_견주고_합친_비율도_앞서야_한다(f2w):
+    def rows(method, safe, picks=10, hit=5):
+        return [{"회차키": f"d{i}", "지평": 18, "방법": method, "수거곳": picks, "수거무해": s, "수거무해보조": s,
+                 "수거무해47": s, "수거대수": 30, "배송곳": 8, "배송대수": 30, "배송수": 8, "배송적중": hit}
+                for i, s in enumerate(safe)]
+
+    g = pd.DataFrame(rows("A1", [9] * 6) + rows("U", [7] * 6) + rows("A1H", [9] * 6)
+                     + rows("S", [8] * 6) + rows("P", [7] * 6))
+
+    v = f2w.judge(g)
+
+    assert v["a"] and v["a_sign"][:2] == (6, 0)           # 6승 0패 → p = 1/64
+    assert not v["b"]                                      # 과거 빈도 짝과 비기면 ML의 몫이 없다
+    assert v["c"] and v["d"]
+
+
+def test_F2_관측_채점의_과거_빈도_짝은_모르는_곳을_빼지_않는다(f2w):
+    """입력 점검(2026-10-11)에서 본 것 — 그 시(時)에 학습 행이 없는 날(24시간 수집 전 09-15 `_05_10`)에 41장의
+    채움(없으면 0.5)을 A1H에 쓰면 모든 수거 후보가 '곧 빈다'로 빠졌다. A1의 확률은 41장 그대로 채운다."""
+    ids = ["ST0001", "ST0002"]
+    p = pd.Series({"ST0001": 0.2})                         # ST0002는 피처가 모자라 확률이 없다
+
+    a1, a1h, missing, unknown = f2w.filled(p, pd.Series(dtype=float), ids)
+
+    assert a1["ST0002"] == 0.5 and missing == 1           # 41장 그대로 — 시 전체가 없으면 0.5
+    assert (a1h == 0.0).all() and unknown == 2            # A1H는 모르면 빼지 않는다
+    assert f2w.excluded(_재배치량_프레임([-8, -5]), a1h) == 0
+
+
 def test_싣고_돌아온_자전거를_실은_대수와_따로_센다(bc):
     """대조군 표의 `bikes`(실은 대수)와 `bikes_done`(옮겨 끝낸 대수)을 가른다 (2026-10-08 점검).
 
