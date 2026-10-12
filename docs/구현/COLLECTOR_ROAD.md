@@ -339,10 +339,10 @@ travel_seconds()가 그때부터 실측 계수를 씀 → ILP·VRP 계산이 바
 `day_type`을 받아 `ROAD_FIXED_SEC_WEEKDAY/HOLIDAY`·
 `ROAD_SPEED_KMPH_WEEKDAY/HOLIDAY` 두 쌍 중 하나를 고릅니다. ILP·VRP·
 군집 K 추정 셋 다 `config.day_type`(그 실행이 평일 계획인지 휴일 계획인지)을
-그대로 넘깁니다. 🔴 **다만 지금은 휴일 쌍이 실질적으로 아무 값도 아닙니다**
-— `PBR_ROAD_FIXED_SEC_HOLIDAY`·`PBR_ROAD_SPEED_KMPH_HOLIDAY`를 사람이
-채우기 전까지는 평일 계수로 조용히 폴백합니다. 채택 판정에 쓸 휴일 표본이
-아직 없어서입니다(위 9-2-A). 옛 이름 `PBR_ROAD_FIXED_SEC`·
+그대로 넘깁니다. ✅ **휴일 쌍은 게이트 B 판정값입니다 (2026-10-04 판정 · 1.26.311 기본값)** —
+309.5초 + 32.33 km/h(EXPERIMENTS 9장 '휴일 판정'). 1.26.310까지는 채택 판정에 쓸 휴일 표본이 없어
+평일 계수로 조용히 폴백했습니다(위 9-2-A). `PBR_ROAD_FIXED_SEC_HOLIDAY`·`PBR_ROAD_SPEED_KMPH_HOLIDAY`로
+덮어쓸 수 있습니다. 옛 이름 `PBR_ROAD_FIXED_SEC`·
 `PBR_ROAD_SPEED_KMPH`(접미사 없음)는 평일 값의 폴백으로 계속 읽습니다 —
 기존 `.env`가 조용히 무시되지 않습니다.
 

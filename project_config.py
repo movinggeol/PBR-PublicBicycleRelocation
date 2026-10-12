@@ -462,15 +462,14 @@ ROAD_FIXED_SEC_WEEKDAY = env_float(
 ROAD_SPEED_KMPH_WEEKDAY = env_float(
     "PBR_ROAD_SPEED_KMPH_WEEKDAY", env_float("PBR_ROAD_SPEED_KMPH", 32.11))
 
-# 휴일 계수 — 1.26.159부터 휴일 패널을 따로 수집하지만(COLLECTOR_ROAD.md 4장),
-# 2026-09-08 기준 판정용 표본이 없다. 값이 없으면 **평일 계수로 폴백**한다 —
-# "휴일에도 이동시간을 예측은 해야 하니 아무 값이나 쓴다"가 아니라, 지금
-# 유일하게 검증된 계수가 평일 것뿐이라서다. 휴일 판정이 통과하면 여기에
-# `PBR_ROAD_FIXED_SEC_HOLIDAY`·`PBR_ROAD_SPEED_KMPH_HOLIDAY`를 채운다.
-ROAD_FIXED_SEC_HOLIDAY = env_float(
-    "PBR_ROAD_FIXED_SEC_HOLIDAY", ROAD_FIXED_SEC_WEEKDAY)
-ROAD_SPEED_KMPH_HOLIDAY = env_float(
-    "PBR_ROAD_SPEED_KMPH_HOLIDAY", ROAD_SPEED_KMPH_WEEKDAY)
+# 휴일 계수 — **게이트 B 판정값이다** (2026-10-04 판정 · 1.26.311 기본값). 휴일 고정 패널 10일
+# (추석 포함, COLLECTOR_ROAD.md 4장)에서 평일과 같은 세 기준을 넘었다 — 변동계수 고정비 3.6% ·
+# 속도 2.9% · 표본 밖 MAE −26.6% (EXPERIMENTS 9장 '휴일 판정'). 평일 계수와 거의 같지만(같은
+# 휴일 구간 MAE 198.5 대 197.4초) 1.26.310까지 쓰던 **평일 계수 폴백**이 아니라 재서 얻은 값을
+# 쓴다(수집완료_계획 4-2). 폴백 시절로 되돌리려면 `PBR_ROAD_FIXED_SEC_HOLIDAY=320.4` ·
+# `PBR_ROAD_SPEED_KMPH_HOLIDAY=32.11`. 추석과 10월 연휴 동시각 계획(EXPERIMENTS 32장)은 폴백으로 섰다.
+ROAD_FIXED_SEC_HOLIDAY = env_float("PBR_ROAD_FIXED_SEC_HOLIDAY", 309.5)
+ROAD_SPEED_KMPH_HOLIDAY = env_float("PBR_ROAD_SPEED_KMPH_HOLIDAY", 32.33)
 
 # 옛 이름 — 코드 안에서 새로 읽지 마라(아래 travel_seconds()가 day_type으로
 # 고른다). 이미 이 이름으로 값을 보던 실험·문서가 있어 **그대로 남긴다.**
@@ -489,9 +488,9 @@ def travel_seconds(km: float, speed_kmph: float = None,
     `day_type`이 계수에 영향을 주지 않는다 — `VEHICLE_SPEED_KMPH`가 여전히
     평일·휴일 구분 없는 단일 상수이기 때문이다. 8장 8.2 한계 참고).
 
-    `USE_ROAD_MODEL`이 켜져 있으면 `day_type`으로 계수 쌍을 고른다. 휴일
-    판정용 표본이 아직 없어 `_HOLIDAY` 변수가 안 채워져 있으면 평일 계수로
-    조용히 폴백한다 — 1.26.160 이전에는 이 구분 자체가 없었다.
+    `USE_ROAD_MODEL`이 켜져 있으면 `day_type`으로 계수 쌍을 고른다 — 1.26.160
+    이전에는 이 구분 자체가 없었고, 1.26.310까지는 휴일 판정이 없어 평일 계수로
+    폴백했다. 1.26.311부터 휴일은 게이트 B 판정값(309.5초 + 32.33 km/h)이다.
     """
     if speed_kmph is None:
         speed_kmph = VEHICLE_SPEED_KMPH
@@ -930,8 +929,8 @@ def align_day_type(day_type: str, *modules) -> str:
     수요는 평일·이동시간은 휴일 계수가 된다. step4는 같은 부류를 1.26.127에서
     `imbalance.use_run_day_type()`으로 막았고, 이것은 step1·step2 쪽의 짝이다.
 
-    ⚠️ 지금은 휴일 이동 계수가 평일 계수로 폴백해 있어(`ROAD_*_HOLIDAY`) 값이 달라지지
-    않는다 — **휴일 계수를 채우는 날 드러난다.** 그 전에 막아 둔다.
+    ⚠️ 1.26.310까지는 휴일 이동 계수가 평일 계수로 폴백해 있어 값이 달라지지 않았다.
+    1.26.311에 휴일 계수(`ROAD_*_HOLIDAY`)를 채워 **이제는 어긋나면 값이 바뀐다** — 미리 막아 둔 것이 일을 한다.
     """
     for module in modules:
         module.config = replace(module.config, day_type=day_type)

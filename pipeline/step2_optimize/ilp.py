@@ -130,7 +130,7 @@ def km_to_travel_seconds(km: float, speed_kmph: float = None) -> float:
     기본은 실측 기반 '고정비 + 거리비례'(실도로 모형, 1.26.268부터 켜짐)이고
     `PBR_USE_ROAD_MODEL=0`이면 직선거리 ÷ 속도로 되돌아간다. 실도로 모형은 이
     실행의 `config.day_type`(평일/휴일 계획인지)에 맞는 계수 쌍을 고른다
-    (1.26.160). 휴일 계수가 아직 안 채워져 있으면 평일 계수로 폴백한다.
+    (1.26.160). 휴일 계수는 1.26.311부터 게이트 B 판정값이다(그 전에는 평일 계수로 폴백했다).
     '''
     return float(travel_seconds(km, speed_kmph, day_type=config.day_type))
 
