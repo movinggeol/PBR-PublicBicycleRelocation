@@ -76,6 +76,20 @@ HYBRID_Q = {"표중앙": 0.5, "표상위": 0.9}   # 혼합 입력 — 그 대여
 FEATURES_H = FEATURES + list(HYBRID_Q) + ["표행수"]
 MODELS = ("M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8")
 KNOBS = {"C": (None,), "P": (None,), "U": KNOB_U, "T": KNOB_Q, "Z": KNOB_Z, **{m: KNOB_Q for m in MODELS}}
+
+# 확인 실행(54장 덧붙임 — 회사 PC 자료를 합친 뒤). 54장 등록문: "이번 실행에 없던 평일만을 확인 시험 날로 삼아, 이번 학습 날로 학습한
+# 같은 모형 · 이번에 고른 손잡이로 다시 채점한다". 나눔과 손잡이는 54장 첫 실측 그대로 박아 두고 새로 고르지 않는다.
+CONFIRM_UNTIL = "2026-10-12 17:00"
+CONFIRM_RANGES = {"학습": ("2026-08-25", "2026-09-16"), "고르기": ("2026-09-17", "2026-09-23")}
+# 54장 실행(합치기 전 이 PC, 평일 28일)에 없던 평일 — 합치기 전 DB로 돈 53장 rows.csv의 평일 28일과 맞대 가렸다(10-01 · 10-02),
+# 10-12는 54장의 자료 끝 뒤
+CONFIRM_DAYS = ("2026-10-01", "2026-10-02", "2026-10-12")
+CONFIRM_KNOBS = {
+    3 * TICKS_PER_HOUR: {"C": None, "P": None, "U": 0.7, "T": 0.95, "Z": 1.5, "M1": 0.8, "M2": 0.85, "M3": 0.85,
+                         "M4": 0.8, "M5": 0.8, "M6": 0.8, "M7": 0.8, "M8": 0.85},
+    5 * TICKS_PER_HOUR: {"C": None, "P": None, "U": 0.45, "T": 0.95, "Z": 2.5, "M1": 0.85, "M2": 0.85, "M3": 0.9,
+                         "M4": 0.85, "M5": 0.85, "M6": 0.85, "M7": 0.85, "M8": 0.85},
+}
 OUT_DIR = DATA_ROOT / "exp_54"
 
 HOUR_DUR = {h: d for d in DURATIONS for h in duration_hours(d)}   # 시 → 그 시각이 속한 회차
@@ -391,23 +405,33 @@ def evaluate(rows: pd.DataFrame, starts: pd.Series, h: int, models=None) -> tupl
     return pd.DataFrame(results), qtys, pick_rows, took
 
 
-def report(frame: pd.DataFrame, qtys: dict, pick_rows: dict, h: int, took: dict) -> None:
-    """손잡이를 고르고 시험 날 값을 낸다. 주 지평이면 판정까지."""
+def report(frame: pd.DataFrame, qtys: dict, pick_rows: dict, h: int, took: dict, fixed: dict = None) -> None:
+    """손잡이를 고르고 시험 날 값을 낸다. 주 지평이면 판정까지. `fixed`면 손잡이를 고르지 않고 그 값을 쓴다(확인 실행)."""
     test = pick_rows["시험"]
-    print(f"\n=== {h // TICKS_PER_HOUR}시간 — 고르기 날에서 무해 {SAFE_TARGET:.0%}를 지키며 가장 많이 빼는 손잡이 → 시험 날 ===")
-    print("방법  손잡이 | 고르기 무해  총량 | 시험 무해 (95% 구간)       총량 수거곳   곳 회차 | 학습 · 예측")
+    where = "확인 날" if fixed else "시험 날"
+    how = "54장 첫 실측이 고른 손잡이 그대로" if fixed else f"고르기 날에서 무해 {SAFE_TARGET:.0%}를 지키며 가장 많이 빼는 손잡이"
+    print(f"\n=== {h // TICKS_PER_HOUR}시간 — {how} → {where} ===")
+    print(f"방법  손잡이 | 고르기 무해  총량 | {where[:2]} 무해 (95% 구간)       총량 수거곳   곳 회차 | 수거한 곳만 무해 · 해친 곳 | 학습 · 예측")
     chosen = {}
     for name in frame["방법"].unique():
         sub = frame[frame["방법"] == name]
-        pick = choose(sub[sub["나눔"] == "고르기"])
-        knob = None if pd.isna(pick["손잡이"]) else pick["손잡이"]
-        same = sub["손잡이"].isna() if knob is None else sub["손잡이"] == knob
+        if fixed:
+            knob = fixed[name]
+            same = sub["손잡이"].isna() if knob is None else np.isclose(sub["손잡이"].astype(float), knob)
+            pick = sub[same & (sub["나눔"] == "고르기")].iloc[0]
+        else:
+            pick = choose(sub[sub["나눔"] == "고르기"])
+            knob = None if pd.isna(pick["손잡이"]) else pick["손잡이"]
+            same = sub["손잡이"].isna() if knob is None else sub["손잡이"] == knob
         t = sub[same & (sub["나눔"] == "시험")].iloc[0]
-        lo, hi = boot_rate(test, qtys[(name, knob, "시험")], h)
-        chosen[name] = knob
+        qty = qtys[(name, pick["손잡이"] if knob is not None else None, "시험")]
+        lo, hi = boot_rate(test, qty, h)
+        harm = (qty == 0) | (test[f"최저{h}"] - qty >= 1)
+        chosen[name] = pick["손잡이"] if knob is not None else None
         spent = format_seconds(took[name]) if name in took else "—"
         print(f"{name:<4}{'—' if knob is None else knob:>7} | {pick['무해']:>9.1%}{pick['총량']:>7.0f} | {t['무해']:>8.1%} "
-              f"({lo:.1%}~{hi:.1%}){t['총량']:>7.0f}{t['수거곳']:>6}{t['곳']:>6}{t['회차']:>5} | {spent}")
+              f"({lo:.1%}~{hi:.1%}){t['총량']:>7.0f}{t['수거곳']:>6}{t['곳']:>6}{t['회차']:>5} | "
+              f"{harm[qty > 0].mean():.1%} · {int((~harm).sum())} | {spent}")
     if "M1" not in chosen:
         return
     m1 = qtys[("M1", chosen["M1"], "시험")]
@@ -425,8 +449,8 @@ def report(frame: pd.DataFrame, qtys: dict, pick_rows: dict, h: int, took: dict)
         two = lower["T"] > 0 and lower["U"] > 0
         name = ("채택 후보" if one and two else "보정이 날을 못 넘는다" if not one
                 else "단순 표로 충분" if lower["T"] <= 0 else "균등 축소를 못 넘는다")
-        print(f"\n판정 — ① M1 시험 5시간 무해 {rate:.1%} ≥ {TEST_FLOOR:.0%}: {'✅' if one else '❌'} · "
-              f"② 뺀 총량 > T · U(구간 하한 > 0): {'✅' if two else '❌'} → {name}")
+        print(f"\n{'확인(54장 판정은 그대로)' if fixed else '판정'} — ① M1 {where} 5시간 무해 {rate:.1%} ≥ {TEST_FLOOR:.0%}: "
+              f"{'✅' if one else '❌'} · ② 뺀 총량 > T · U(구간 하한 > 0): {'✅' if two else '❌'} → {name}")
 
 
 def main(argv=None) -> int:
@@ -434,7 +458,13 @@ def main(argv=None) -> int:
     parser.add_argument("--sanity", action="store_true", help="결과 없이 입력만 점검한다(행 수 · 날짜 나누기 · 결측)")
     parser.add_argument("--until", help="이 시각 전의 관측만 쓴다 — 등록 때 고정한다")
     parser.add_argument("--models", nargs="*", choices=MODELS, help="이 모형만 돌린다(점검용, 기본은 전부)")
+    parser.add_argument("--confirm", action="store_true",
+                        help=f"확인 실행 — 54장의 나눔 · 손잡이 그대로, 확인 날 {', '.join(CONFIRM_DAYS)}만 채점(끝 {CONFIRM_UNTIL})")
     args = parser.parse_args(argv)
+    if args.confirm:
+        if args.until and args.until != CONFIRM_UNTIL:
+            parser.error(f"--confirm은 끝을 {CONFIRM_UNTIL}로 고정한다")
+        args.until = CONFIRM_UNTIL
 
     with db.session() as conn:
         refs = pv.load_refs(conn, "weekday", before=args.until)
@@ -456,7 +486,15 @@ def main(argv=None) -> int:
 
     arrays = window_arrays(grid)
     rows = build_rows(grid, refs, arrays, set(weekdays))
-    split = split_days(sorted(rows["날"].unique()))
+    if args.confirm:                              # 54장 첫 실측의 나눔 그대로 + 확인 날. 그 밖의 날(54장 시험 날 등)은 쓰지 않는다
+        confirm = {pd.Timestamp(d).date() for d in CONFIRM_DAYS}
+        split = {d: next((p for p, (a, b) in CONFIRM_RANGES.items() if pd.Timestamp(a).date() <= d <= pd.Timestamp(b).date()),
+                         "시험" if d in confirm else None) for d in rows["날"].unique()}
+        split = {d: p for d, p in split.items() if p}
+        rows = rows[rows["날"].isin(split)].reset_index(drop=True)
+        print(f"확인 실행 — 시험 = 확인 날 {', '.join(CONFIRM_DAYS)} · 손잡이는 54장 첫 실측 값")
+    else:
+        split = split_days(sorted(rows["날"].unique()))
     rows["나눔"] = rows["날"].map(split)
     starts = rows["시작뒤분"] == 0
     for dur, frame in refs.items():               # 49장 경로 기준의 수거량(채점 행에만 쓴다)
@@ -484,9 +522,10 @@ def main(argv=None) -> int:
     for h in HORIZONS:
         frame, qtys, pick_rows, took = evaluate(rows, starts, h, args.models)
         frames.append(frame)
-        report(frame, qtys, pick_rows, h, took)
-    pd.concat(frames).to_csv(OUT_DIR / "knobs.csv", index=False, encoding="utf-8-sig")
-    print(f"\n손잡이별 결과 — {OUT_DIR / 'knobs.csv'}")
+        report(frame, qtys, pick_rows, h, took, CONFIRM_KNOBS[h] if args.confirm else None)
+    out = OUT_DIR / ("knobs_confirm.csv" if args.confirm else "knobs.csv")
+    pd.concat(frames).to_csv(out, index=False, encoding="utf-8-sig")
+    print(f"\n손잡이별 결과 — {out}")
     return 0
 
 
