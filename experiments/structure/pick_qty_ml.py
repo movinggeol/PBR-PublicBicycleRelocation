@@ -128,8 +128,12 @@ def tick_duration(ts: pd.Timestamp) -> tuple:
     return dur, start
 
 
-def build_rows(grid, refs, arrays, days_ok) -> pd.DataFrame:
-    """평일 틱마다 계획을 다시 세워 수거 대상 행을 만든다(입력 · 정답 · 채점에 쓸 창 값)."""
+def build_rows(grid, refs, arrays, days_ok, stations: str = "pick", keep=None) -> pd.DataFrame:
+    """평일 틱마다 계획을 다시 세워 수거 대상 행을 만든다(입력 · 정답 · 채점에 쓸 창 값).
+
+    `stations="all"`이면 수거 대상만이 아니라 재고가 관측된 **모든 대여소**의 행을 만든다(55장 — 진단 밖까지 넓힌 수거).
+    그때 '계획량'은 −rebal_qty 그대로다(음수면 운영 식이 배송을 원하는 곳). `keep(i, ts, start)`가 거짓인 틱은 건너뛴다.
+    """
     hour, three = TICKS_PER_HOUR, 3 * TICKS_PER_HOUR
     lag6, lag18 = grid.shift(hour), grid.shift(three)
     max3 = grid.rolling(three, min_periods=2 * hour).max()
@@ -139,12 +143,14 @@ def build_rows(grid, refs, arrays, days_ok) -> pd.DataFrame:
         dur, start = tick_duration(ts)
         if start.date() not in days_ok or dur not in refs:
             continue
+        if keep is not None and not keep(i, ts, start):
+            continue
         s0 = grid.iloc[i].dropna()
         if len(s0) < 0.5 * grid.shape[1]:
             continue
         ref = refs[dur]
         rebal = pv.replan(ref, s0)
-        pick = rebal[rebal < -REBAL_MIN_QTY]
+        pick = rebal[rebal < -REBAL_MIN_QTY] if stations == "pick" else rebal
         if pick.empty:
             continue
         ids = pick.index
