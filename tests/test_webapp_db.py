@@ -1305,18 +1305,19 @@ def test_증감의_짝은_기간을_가르지_않되_히어로가_두_기간을_
 def test_0으로_보이는_증감에는_딱지를_달지_않는다(tmp_path, monkeypatch):
     """증감 딱지의 문턱(`|delta| > 0.001`)이 표시 단위보다 작아서, 결품 타일에 빨간 '▲ 0.0'과 개선률
     타일에 초록 '▲ 0%'가 떴다 (1.26.284 검토 실측 `sweep-16`·`brokenmix4-2506`). 찍힐 값으로 가른다 —
-    0으로 보이는 증감에 색을 칠하면 없는 변화를 말한다. 찍히는 증감(한 번에 닿는 범위 ▲10%)은 남는다."""
+    0으로 보이는 증감에 색을 칠하면 없는 변화를 말한다. 찍히는 증감(시간 예산 준수 ▲10%)은 남는다."""
     monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "zero.db"))
     monkeypatch.delenv("PBR_RUN_KIND", raising=False)
-    # (라벨, 기록 시각, 개선률, 결품 후, 한 번에 닿는 범위) — 결품 차이 0.00216·개선률 차이 0.4%p는
-    # 검토가 실데이터에서 본 크기다. 한 번에 닿는 범위만 10%p 차이가 난다.
+    # (라벨, 기록 시각, 개선률, 결품 후, 시간 예산 준수) — 결품 차이 0.00216·개선률 차이 0.4%p는
+    # 검토가 실데이터에서 본 크기다. 시간 예산 준수만 10%p 차이가 난다(예전에는 '한 번에 닿는 범위'
+    # 타일로 쟀다 — 1.26.358에 타일에서 내렸다).
     with db.session() as conn:
-        for label, created_at, rate, after, reach in (
+        for label, created_at, rate, after, met in (
                 ("2026-09-01 앞", "2026-09-01 10:00:00", 0.600, 0.51087, 0.60),
                 ("2026-09-02 뒤", "2026-09-02 10:00:00", 0.604, 0.51303, 0.70)):
             db.ensure_run(conn, label, duration=DURATIONS[0], kind="plan", day_type="weekday")
             metrics = _kpi_metrics(rate, after)
-            metrics["reachable_ratio"] = reach
+            metrics["time_budget_met"] = met
             db.save_kpi(conn, label, DURATIONS[0], metrics)
             conn.execute("UPDATE runs SET created_at = ? WHERE run_label = ?", (created_at, label))
         conn.commit()
@@ -1325,7 +1326,7 @@ def test_0으로_보이는_증감에는_딱지를_달지_않는다(tmp_path, mon
     assert "2026-09-01 앞 대비" in _hero(html), "시험 전제: 짝이 있어야 한다"
     tiles = _tile_values(html)
     assert "delta" not in tiles[0], f"개선률 0.4%p 차이를 '▲ 0%'로 칠했다: {tiles[0]}"
-    assert 'class="delta good">▲ 10%' in tiles[1], f"찍히는 증감은 남아야 한다: {tiles[1]}"
+    assert 'class="delta good">▲ 10%' in tiles[2], f"찍히는 증감은 남아야 한다: {tiles[2]}"
     stockout = _between(html, "data-stockout-tile", "</div>")
     assert 'class="delta' not in stockout, f"결품 0.00216 차이를 '▲ 0.0'으로 칠했다: {stockout}"
 

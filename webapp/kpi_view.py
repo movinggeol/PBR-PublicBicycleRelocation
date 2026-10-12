@@ -42,8 +42,11 @@ TRENDS = (
     ("improvement_per_km", "km당 개선", "대", 1, "total_distance_km", False),
     ("max_cluster_minutes", "최장 작업", "분", 1, None, True),
     ("avg_improvement_rate", "평균 개선률", "%", 100, "stations", False),
-    ("travel_time_ratio", "이동 시간 비중", "%", 100, "stations", True),
-    ("empty_distance_ratio", "공차 이동 비율", "%", 100, "total_distance_km", True),
+    # '이동 시간 비중'(`travel_time_ratio`) · '공차 이동 비율'(`empty_distance_ratio`)은 그래프에서
+    # 뺐다(1.26.358, 기록은 DB · /api/kpi에 그대로). 이동 시간 비중은 운영 계획 95회차에서 0.67~0.88
+    # (변동계수 0.04)로 거의 안 움직이고, 대여소당 작업 시간이 고정이라 거리 · 방문 수가 정하는 값이다 —
+    # '낮을수록 좋다'도 성립하지 않는다. 공차 비율은 수거 · 배송이 번갈아 오는 경로라 빈 차 구간이
+    # 구조적으로 생겨(중앙 71%) 이 값으로 정할 일이 없었다.
 )
 
 # 지표마다 한 줄 설명. 그래프만 보고 "이게 오르면 좋은 건가"를 묻지 않게 한다.
@@ -53,8 +56,6 @@ TREND_HINTS = {
     "km당 개선": "1km 움직여 줄인 불균형 대수. 높을수록 좋습니다.",
     "최장 작업": "가장 오래 걸린 차량의 작업 시간. 낮을수록 좋습니다.",
     "평균 개선률": "모자란 양을 메운 비율. 높을수록 좋습니다.",
-    "이동 시간 비중": "소요시간 중 이동 시간. 낮을수록 좋습니다.",
-    "공차 이동 비율": "빈 차로 달린 거리. 낮을수록 좋습니다.",
 }
 
 WEEKDAYS = ("월", "화", "수", "목", "금", "토", "일")
@@ -240,7 +241,7 @@ def lower_is_better(column: str) -> bool:
 
     `/kpi` 타일의 증감 색(good/bad)이 쓴다. 처음에는 결품 타일에 `true`를 템플릿에 박고 네
     카드는 라우트에 `False`를 적어, 방향을 `TRENDS`와 두 곳이 따로 쥐었다. `TRENDS`에 없는
-    지표(한 번에 닿는 범위·시간 예산 준수)는 높을수록 좋은 비율이라 `False`다.
+    지표(시간 예산 준수)는 높을수록 좋은 비율이라 `False`다.
     """
     return next((flag for name, *_rest, flag in TRENDS if name == column), False)
 

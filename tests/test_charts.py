@@ -233,13 +233,13 @@ def test_trend_orders_runs_oldest_first():
 def test_trend_drops_metrics_it_cannot_draw():
     """값이 한 점뿐인 지표는 그래프를 만들지 않는다 — 선이 안 그려진다."""
     rows = pd.DataFrame([
-        _kpi(run_label="A", computed_at="2026-01-01 00:00:00", travel_time_ratio=0.7),
-        _kpi(run_label="B", computed_at="2026-01-02 00:00:00", travel_time_ratio=None),
+        _kpi(run_label="A", computed_at="2026-01-01 00:00:00", saturation_hours_after=1.2),
+        _kpi(run_label="B", computed_at="2026-01-02 00:00:00", saturation_hours_after=None),
     ])
     titles = [s["title"] for s in kpi_view.trends(rows)]
 
     assert "결품 시간" in titles
-    assert "이동 시간 비중" not in titles, "한 점짜리 지표가 그래프로 나왔다"
+    assert "포화 시간" not in titles, "한 점짜리 지표가 그래프로 나왔다"
 
 
 def test_trend_weights_rounds_by_station_count():

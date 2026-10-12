@@ -240,7 +240,29 @@ def test_kpi_page_renders(client):
     assert "성과 지표" in html
     assert "65%" in html                      # 최신 개선률
     assert "계획을 얼마나 지켰는지" in html     # 지표 성격 안내
-    assert "목표 도달" in html
+
+
+def test_kpi_화면에서_뺀_지표가_돌아오지_않는다(client):
+    """1.26.358 — 실측(160회차)으로 뺀 것 다섯.
+
+    - 표 '군집': 차량 한 대가 한 묶음이라 160회차 전부 '차량'과 같은 값.
+    - 표 '목표 도달': 계획량 압축(`Q·tanh`) 때문에 격차 4~7대에서만 닿아 실행 품질을 못 잰다.
+    - 타일 '한 번에 닿는 범위': 계획 **전** 격차로 정해지는 일감의 크기다 — ▲▼ 색이 수요가 쉬워진 것을
+      '계획이 나아졌다'로 읽혔다. 표의 참고 열에는 남는다.
+    - 추세 '이동 시간 비중' · '공차 이동 비율': 거의 안 움직이거나(변동계수 0.04) 경로 구조로 정해지는 값.
+    """
+    from webapp import kpi_view
+
+    html = client.get("/kpi").text
+    tiles = html[html.index('<div class="tiles">'):html.index('<div class="grid2">')]
+    table = html[html.index('id="kpi-runs-table"'):]
+    table = table[:table.index("</thead>")]
+    assert "한 번에 닿는 범위" not in tiles, "일감의 크기가 성과 타일로 돌아왔다"
+    assert "한 번에 닿는 범위" in table, "참고 열에는 남아야 한다"
+    for gone in (">군집<", ">목표 도달<"):
+        assert gone not in table, f"표에 {gone}이 돌아왔다"
+    titles = {title for _, title, *_ in kpi_view.TRENDS}
+    assert not titles & {"이동 시간 비중", "공차 이동 비율"}, titles
 
 
 def test_kpi_page_shows_stockout(client):

@@ -248,17 +248,20 @@
       <th scope="col" class="tight">실행</th>
       <th scope="col" class="tight"><span class="tip" data-tip="계획한 시간대입니다.">회차</span></th>
       <th scope="col" class="num col-more"><span class="tip" data-tip="이번 계획에서 손을 댄 대여소 수입니다.">대여소</span></th>
-      <th scope="col" class="num col-more"><span class="tip" data-tip="가까운 대여소 묶음 수입니다. 차량 한 대가 한 묶음을 맡습니다.">군집</span></th>
+      {# '군집' 열은 뺐다(1.26.358) — 차량 한 대가 한 묶음을 맡아 160회차 전부에서 '차량'과 같은 값이었다. #}
       <th scope="col" class="num"><span class="tip" data-tip="실제로 출동한 차량 수입니다.">차량</span></th>
       <th scope="col" class="num"><span class="tip" data-tip="옮긴 자전거 총 대수입니다.">옮긴 대수</span></th>
       <th scope="col" class="num"><span class="tip" data-tip="목표 재고까지 모자란 양을 몇 % 메웠는지입니다.">개선률</span></th>
-      <th scope="col" class="num col-more"><span class="tip" data-tip="목표 재고를 다 채운 대여소 비율입니다.">목표 도달</span></th>
-      <th scope="col" class="num col-more"><span class="tip" data-tip="한 번 방문으로 목표를 채울 수 있는 대여소 비율입니다.">한 번에 닿는 범위</span></th>
+      {# '목표 도달' 열은 뺐다(1.26.358). 계획량이 `Q·tanh(격차/Q)`로 눌려 격차 4~7대에서만 닿을 수
+         있어 실행 품질을 재지 못하고(1.19.7에 헤드라인에서 내림), 실측도 옮긴 대수와 반대로 움직여
+         (스피어만 −0.88) 일감의 크기를 흐리게 말할 뿐이었다 — 그 말은 아래 두 참고 열이 한다.
+         '한 번에 닿는 범위'는 1.26.358에 타일에서 이 자리로 내렸다 — 계획 전 격차로 정해지는 값이다. #}
+      <th scope="col" class="num col-more"><span class="tip" data-tip="한 번 방문으로 목표를 채울 수 있었던 대여소 비율입니다. 계획 전 격차로 정해지는 일감의 크기라 성과가 아닙니다.">한 번에 닿는 범위</span></th>
       <th scope="col" class="num col-more"><span class="tip" data-tip="목표까지 모자란 양의 중앙값과 최댓값입니다.">격차 (중앙/최대)</span></th>
       <th scope="col" class="num"><span class="tip" data-tip="모든 차량이 움직인 거리의 합입니다.">이동거리</span></th>
       <th scope="col" class="num"><span class="tip" data-tip="가장 오래 걸린 차량의 작업 시간입니다. 예산을 넘으면 붉게 표시됩니다.">최장 작업</span></th>
-      <th scope="col" class="num col-more"><span class="tip" data-tip="시간 예산 안에 끝난 회차 비율입니다.">예산 준수</span></th>
-      <th scope="col" class="num col-more"><span class="tip" data-tip="1km 움직일 때 오른 개선률입니다.">km당 개선</span></th>
+      <th scope="col" class="num col-more"><span class="tip" data-tip="시간 예산 안에 작업을 끝낸 차량의 비율입니다.">예산 준수</span></th>
+      <th scope="col" class="num col-more"><span class="tip" data-tip="1km 움직여 줄인 불균형 대수입니다.">km당 개선</span></th>
       {# '12.5 → 8.3시간'처럼 숫자가 둘이라 한 열로는 정렬할 수 없다. #}
       <th scope="col" data-nosort class="col-more"><span class="tip" data-tip="재배치 전후 결품 시간입니다(시뮬레이션).">결품 (전→후)</span></th>
     </tr></thead>
@@ -274,11 +277,9 @@
         {%- if r.duration %}<a href="/orders?run_label={{ r.run_label | urlencode }}&duration={{ r.duration | urlencode }}" title="이 회차의 작업지시서">{{ duration_labels.get(r.duration, r.duration) }}</a>
         {%- else %}—{% endif %}</td>
       <td class="num muted col-more" data-label="대여소">{{ whole(r.stations, "") }}</td>
-      <td class="num muted col-more" data-label="군집">{{ whole(r.clusters, "") }}</td>
       <td class="num muted" data-label="차량">{{ whole(r.vehicles_used, "") }}</td>
       <td class="num" data-label="옮긴 대수">{{ whole(r.bikes_moved, "") }}</td>
       <td class="num" data-label="개선률"><b>{{ fmt(r.avg_improvement_rate, "pct") }}</b></td>
-      <td class="num col-more" data-label="목표 도달">{{ fmt(r.target_met_ratio, "pct") }}</td>
       <td class="num col-more" data-label="한 번에 닿는 범위">{{ fmt(r.reachable_ratio, "pct") }}</td>
       <td class="num muted col-more" data-label="격차 (중앙/최대)">{% if r.gap_median is not none %}{{ r.gap_median | round | int }} / {% if r.gap_max is not none %}{{ r.gap_max | round | int }}{% else %}—{% endif %}대{% else %}—{% endif %}</td>
       <td class="num muted" data-label="이동거리">{{ whole(r.total_distance_km, " km") }}</td>

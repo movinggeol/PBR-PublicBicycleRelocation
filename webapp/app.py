@@ -1488,22 +1488,24 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
 
     cards = []
     if latest is not None:
-        # 헤드라인에는 **목표 재고를 분모로 삼지 않는 값**을 앞세운다.
+        # 헤드라인에는 **계획이 잘했는지를 재는 값**만 둔다.
         # '목표 도달 비율'은 1.19.7에서 내렸다 — 계획량이 `Q·tanh(격차/Q)`로 눌려
         # 격차가 8대만 넘어도 도달이 구조적으로 불가능하다. 실행을 아무리 잘해도
         # 오르지 않는 값을 헤드라인에 두면 화면이 거짓말을 한다(docs/분석/KPI.md).
-        # 표에는 그대로 있고, 대신 '한 번에 닿는 범위'가 그 자리를 설명한다.
+        # 그 자리에 두었던 '한 번에 닿는 범위'도 1.26.358에 내렸다 — 계획 **전** 격차가
+        # 적재 용량 안인 대여소 비율이라 계획과 상관없는 **일감의 크기**인데, 타일의 ▲▼ 색이
+        # 수요가 쉬워진 것을 '계획이 나아졌다'로 읽혔다. 표의 참고 열(격차 옆)에 남는다.
         # 타일마다 용어 설명을 함께 넘긴다(수정안 32번). 아래 표의 머리글과
         # **같은 문구**를 쓴다 — 두 곳이 갈리면 같은 지표를 다르게 설명하게 된다.
         for label, column, weight, fmt, tip in [
             ("평균 개선률", "avg_improvement_rate", "stations", "pct",
              "목표 재고까지 모자란 양을 몇 % 메웠는지입니다."),
-            ("한 번에 닿는 범위", "reachable_ratio", "stations", "pct",
-             "한 번 방문으로 목표를 채울 수 있는 대여소 비율입니다."),
+            # 단위는 '대/km'다(`Σ improvement / 총 이동거리`) — 예전 설명 *"오른 개선률"* 은 틀렸다.
             ("km당 개선", "improvement_per_km", "total_distance_km", "num",
-             "1km 움직일 때 오른 개선률입니다."),
+             "1km 움직여 줄인 불균형 대수입니다."),
+            # 분모는 회차가 아니라 **차량(군집)** 이다 — `(군집별 소요시간 ≤ 예산).mean()`.
             ("시간 예산 준수", "time_budget_met", "clusters", "pct",
-             "시간 예산 안에 끝난 회차 비율입니다."),
+             "시간 예산 안에 작업을 끝낸 차량의 비율입니다."),
         ]:
             now_value = headline(latest, column, weight)
             before = headline(previous, column, weight) if previous is not None else None
