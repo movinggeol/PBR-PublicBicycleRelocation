@@ -2424,3 +2424,44 @@ def test_실험이_회차_시작_시를_제_손으로_뽑지_않는다():
     # 옛 식: 시작 시부터 5시간(`_20_05`는 9시간)을 24로 접어 더했다.
     assert sns.window_mu(mu, "_05_10").iloc[0] == sum(range(5, 10))
     assert sns.window_mu(mu, "_20_05").iloc[0] == sum([20, 21, 22, 23, 0, 1, 2, 3, 4])
+
+
+# --- 후보 상한 격자의 숨은 조건 둘 (1.26.363) -------------------------------------------
+# `limit_fixedpop_grid.py`가 인자 없이 돌면 ① 회차당 차량을 12대로 눌렀고(운영값은 21)
+# ② 50보다 큰 상한을 줘도 고정 모집단이 상한 50의 후보였다. 둘 다 출력에 티가 나지 않아
+# 원고 <표 5-9>가 그 조건을 적지 않은 채 실렸다 — *"상한 100에서는 12.0대가 모두 예산을 넘는다"*.
+
+def test_상한_격자의_차량_기본값은_운영값이다(monkeypatch, capsys):
+    """`--fleet`를 안 주면 운영값(`VEHICLES_PER_ROUND`)으로 잰다 — 12가 다시 박히면 실패한다."""
+    import project_config
+
+    lf = _load_experiment("experiments/params/limit_fixedpop_grid.py")
+    본 = {}
+    monkeypatch.setattr(lf, "collect_plans",
+                        lambda limits, args: 본.update(fleet=args.fleet) or [])
+    monkeypatch.setattr(lf, "evaluate", lambda rows, limits, args: pd.DataFrame())
+    monkeypatch.setattr(sys, "argv", ["limit_fixedpop_grid.py", "--limits", "50"])
+
+    assert lf.main() == 1, "잰 것이 없으면 성공으로 끝나지 않는다"
+    assert 본["fleet"] == project_config.VEHICLES_PER_ROUND
+    assert f"차량 {project_config.VEHICLES_PER_ROUND}" in capsys.readouterr().out, \
+        "차량 대수를 머리말에 찍는다 — 표를 옮겨 적을 때 조건이 따라가야 한다"
+
+
+def test_상한_격자의_고정_모집단은_가장_넓은_상한의_후보여야_한다():
+    """부모의 모집단이 자식이 그 상한으로 고른 후보 수와 다르면 표를 내지 않고 멈춘다."""
+    lf = _load_experiment("experiments/params/limit_fixedpop_grid.py")
+    rows = [{"duration": "_05_10", "limit": 50, "stations": 90},
+            {"duration": "_05_10", "limit": 100, "stations": 163}]
+
+    넓은 = {"_05_10": pd.DataFrame({"station_id": range(163)})}
+    lf.check_population(rows, 넓은, [50, 100])          # 맞으면 조용하다
+
+    좁은 = {"_05_10": pd.DataFrame({"station_id": range(90)})}   # 상한 50의 후보 — 옛 결함
+    with pytest.raises(SystemExit, match="상한 100의 후보가 아닙니다"):
+        lf.check_population(rows, 좁은, [50, 100])
+
+    # 상한은 import 때 굳는다 — 환경변수로 넣으면 듣지 않는다(그렇게 상한 50에 머물렀다).
+    source = (PROJECT_ROOT / "experiments/params/limit_fixedpop_grid.py").read_text(encoding="utf-8")
+    assert "step1.TOP_STATION_LIMIT = max(limits)" in source
+    assert 'os.environ["PBR_TOP_STATION_LIMIT"]' not in source

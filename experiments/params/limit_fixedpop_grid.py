@@ -37,11 +37,27 @@
 두 달 모두 **상한이 클수록 결품이 낮다** — 12장의 결론과 **방향이 반대**다.
 25년 11월은 9/9 회차·씨앗에서, 26년 03월은 8/9에서 그렇다.
 
+## 🔴 숨은 조건 둘 (2026-10-13, 1.26.363에서 고쳤다)
+
+**① 회차당 차량 대수.** `--fleet`의 기본값이 12였다 — 12장의 차량 축에서 가장 작은
+값을 물려받은 것인데, 운영 기본값은 21이고(`project_config.VEHICLES_PER_ROUND`)
+군집 수 식은 상한 50에서 14~18을 낸다. 그래서 인자 없이 돌리면 **차량이 12대로
+눌린 계획**을 쟀고, 원고 <표 5-9>가 그 조건을 적지 않은 채 실렸다(상한 50의 초과가
+7.78대, 상한 100은 *"12.0대가 모두"*). 지금 기본값은 운영값을 따른다. **위 '결과'와
+EXPERIMENTS 17장의 옛 표는 12대에서 잰 것이라, 다시 내려면 `--fleet 12`를 준다.**
+
+**② 고정 모집단이 `--limits`의 최댓값을 따라가지 않았다.** `evaluate()`가
+`PBR_TOP_STATION_LIMIT`을 환경변수로 넣었지만, 머리에 `import project_config`가
+들어간 뒤로는(1.26.194) 값이 이미 굳어 있어 **50보다 큰 상한을 줘도 모집단은
+상한 50의 후보**였다. 지금은 독립 인스턴스인 step1의 전역을 갈아 끼우고,
+**자식이 그 상한으로 고른 후보 수와 맞는지 확인한 뒤에만** 잰다
+(`check_population`). 최댓값이 50인 격자는 처음부터 영향이 없었다.
+
 사용법:
     python experiments/params/limit_fixedpop_grid.py \
-        --period "25년 11월" --run-label "2026-08-11 real" --limits "15,20,25,30,40,50"
+        --period "25년 11월" --run-label "2026-08-11 real" --limits "15,20,25,30,40,50,100"
     python experiments/params/limit_fixedpop_grid.py \
-        --period "26년 03월" --run-label "sweep-10" --limits "30,40,50,70"
+        --period "26년 03월" --run-label "sweep-10" --limits "30,40,50,70" --fleet 12
 """
 from __future__ import annotations
 
@@ -63,7 +79,7 @@ sys.path.insert(0, str(ROOT))
 # 이 프로세스는 요약 단계에서야 project_config를 거쳐, 그 앞의 진행 문구가 cp949로
 # 나갔다(2026-09-14 예행 로그 한 파일에 인코딩이 둘). 거기에 '—' 하나만 들어가도
 # 죽는다 — 출력 순서에 기대지 않고 처음부터 거친다.
-import project_config  # noqa: F401,E402
+import project_config  # noqa: E402
 from experiments._shared import load_baseline  # noqa: E402
 
 WORKER = Path(__file__).with_name("_limit_plan_worker.py")
@@ -106,18 +122,42 @@ def collect_plans(limits, args) -> list:
     return rows
 
 
+def check_population(rows, pops, limits) -> None:
+    """부모가 만든 모집단이 **가장 넓은 상한의 후보**가 맞는지 자식의 값으로 확인한다.
+
+    자식은 상한마다 새 프로세스라 그 상한이 실제로 걸린다. 부모의 모집단이 그 수와
+    다르면 상한이 부모에 걸리지 않은 것이다 — 1.26.194부터 10-13까지 실제로 그랬고
+    (50보다 큰 상한을 줘도 상한 50의 후보), 머리말은 *"상한 100의 후보"* 라고 찍었다.
+    틀린 자로 잰 표를 내느니 멈춘다.
+    """
+    top = max(limits)
+    want = {r["duration"]: int(r["stations"]) for r in rows if r["limit"] == top}
+    for duration, count in want.items():
+        pop = pops.get(duration)
+        got = 0 if pop is None else int(len(pop))
+        if got != count:
+            raise SystemExit(
+                f"[실패] 고정 모집단이 상한 {top}의 후보가 아닙니다 — {duration}:"
+                f" 부모 {got}곳 · 자식 {count}곳."
+                f" 상한이 평가 쪽에 걸리지 않았습니다 — 이 표는 내지 않습니다.")
+
+
 def evaluate(rows, limits, args) -> pd.DataFrame:
     """모든 계획을 **가장 넓은 상한의 후보 집합** 위에서 다시 평가한다."""
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        os.environ["PBR_TOP_STATION_LIMIT"] = str(max(limits))
         bc = load_baseline()
 
         step1 = bc.load_step1()
+        # 상한은 project_config가 import될 때 굳는다 — 이 프로세스는 머리에서 이미 읽었으므로
+        # 환경변수로는 못 바꾼다(그렇게 하려다 상한 50에 머물렀다). load_step1()이 주는
+        # 독립 인스턴스의 전역을 갈아 끼운다 — 다른 모듈로 새지 않는다.
+        step1.TOP_STATION_LIMIT = max(limits)
         net, st_info, warmup = bc.load_inputs(
             args.period, args.run_label, "weekday", 14, "")
         pops = {d: bc.build_candidates(net, st_info, d, None, warmup, 14, step1)
                 for d in args.durations}
+        check_population(rows, pops, limits)
 
         out = []
         for r in rows:
@@ -135,7 +175,9 @@ def evaluate(rows, limits, args) -> pd.DataFrame:
 
 def report(df, limits) -> None:
     print("\n" + "=" * 92)
-    print(f"고정 모집단(상한 {max(limits)}의 후보 {df.population.iloc[0]}곳)에서 다시 잰 결품 시간(h)")
+    sizes = " · ".join(f"{d} {int(n)}곳" for d, n in
+                       df.groupby("duration").population.first().items())
+    print(f"고정 모집단(상한 {max(limits)}의 후보 — {sizes})에서 다시 잰 결품 시간(h)")
     print("=" * 92)
     piv = df.pivot_table(index="limit", columns="duration", values="after_fixed")
     piv["3회차평균"] = piv.mean(axis=1)
@@ -170,7 +212,11 @@ def main() -> int:
     parser.add_argument("--period", default="25년 11월")
     parser.add_argument("--run-label", default="2026-08-11 real")
     parser.add_argument("--limits", default="15,20,25,30,40,50")
-    parser.add_argument("--fleet", type=int, default=12)
+    # 기본값은 운영값을 따른다 — 12로 박혀 있던 동안 인자 없이 돌린 표가 전부
+    # '차량 12대'라는 조건을 숨긴 채 인용됐다(머리말 '숨은 조건 둘').
+    parser.add_argument("--fleet", type=int,
+                        default=project_config.VEHICLES_PER_ROUND,
+                        help="회차당 차량 대수 (기본: 운영값)")
     parser.add_argument("--duration", default="_05_10,_10_15,_15_20")
     parser.add_argument("--seeds", default="42,7,13")
     parser.add_argument("--out", default="")

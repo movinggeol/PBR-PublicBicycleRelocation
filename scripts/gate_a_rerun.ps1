@@ -98,7 +98,8 @@ $Jobs = @(
        Args = @('--run-label', $Label, '--gammas', '1000,3000,5000,8000', '--periods', '25년 09월,25년 11월,26년 01월,26년 03월',
                 '--seeds', '42,7,13', '--out', "$O\gamma_sweep.csv") }
     @{ Name = 'limit_fixedpop_grid'; Ch = '17'; Script = 'params\limit_fixedpop_grid.py'
-       Args = @('--period', '25년 11월', '--run-label', $Label, '--limits', '15,20,25,30,40,50', '--out', "$O\limit_fixedpop_grid.csv") }
+       # 17장의 표는 차량 12대 상한에서 잰 값이다 — 2026-10-13까지 스크립트의 기본값이어서 여기 드러나지 않았다.
+       Args = @('--period', '25년 11월', '--run-label', $Label, '--limits', '15,20,25,30,40,50', '--fleet', '12', '--out', "$O\limit_fixedpop_grid.csv") }
     @{ Name = 'z_fixedpop_grid'; Ch = '18'; Script = 'params\z_fixedpop_grid.py'
        Args = @('--run-label', $Label, '--out', "$O\z_fixedpop_grid.csv") }
     @{ Name = 'z_fixedpop_wide'; Ch = '18·22'; Script = 'params\z_fixedpop_grid.py'
@@ -148,7 +149,8 @@ $ThesisJobs = @(
     @{ Name = 'backtest_w7_md2'; Ch = '5.4'; Script = 'tools\backtest_demand.py'
        Args = @('--day-type', 'weekday', '--min-demand', '2', '--warmup-days', '7') }
     @{ Name = 'limit_fixedpop_100'; Ch = '5.7'; Script = 'params\limit_fixedpop_grid.py'
-       Args = @('--period', '25년 11월', '--run-label', $Label, '--limits', '50,100', '--out', "$O\limit_fixedpop_100.csv") }
+       # 원고 <표 5-9> — 일곱 상한을 한 번에, 차량은 운영값(21대)으로 잰다(2026-10-13, 1.26.363). 모집단은 상한 100의 후보다.
+       Args = @('--period', '25년 11월', '--run-label', $Label, '--limits', '15,20,25,30,40,50,100', '--fleet', '21', '--out', "$O\limit_fixedpop_100.csv") }
     @{ Name = 'one_sided_clusters'; Ch = '3.5.2·39'; Script = 'structure\one_sided_clusters.py'
        Args = @('--periods', '25년 11월,26년 03월', '--run-label', $Label) }
     @{ Name = 'multi_cluster_route_3'; Ch = '7.5'; Script = 'structure\multi_cluster_route.py'
