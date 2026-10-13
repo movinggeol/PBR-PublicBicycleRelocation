@@ -271,8 +271,11 @@ def compare_stock(planned: pd.DataFrame, live: pd.DataFrame) -> pd.DataFrame:
             possible = max(0, min(need, room))
             if room <= 0:
                 status = "불가"
-                note = (f"이미 {now}대로 상한({parking_lot}대 x "
-                        f"{TARGET_QTY_UPPER_RATIO:g} = {ceiling:.0f}대)을 넘었습니다")
+                # 상한을 반올림해 찍지 않는다 (1.26.365). 거치대 5개면 상한이 7.5대인데 `.0f`가
+                # 8로 찍어 *"이미 7대로 상한(5대 x 1.5 = 8대)을 넘었습니다"* 가 됐다 — 7은 8을
+                # 넘지 않는다. 자리가 한 대분도 안 남은 것이지(room이 0) 넘은 것이 아닐 수도 있다.
+                note = (f"이미 {now}대라 상한({parking_lot}대 x "
+                        f"{TARGET_QTY_UPPER_RATIO:g} = {ceiling:g}대)까지 더 놓을 자리가 없습니다")
             elif possible < need:
                 status, note = "넘침", f"{need}대 중 {possible}대까지만 내려놓을 수 있습니다"
             else:

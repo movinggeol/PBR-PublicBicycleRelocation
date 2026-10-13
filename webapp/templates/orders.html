@@ -92,7 +92,12 @@
      글자로 정해, 대여소 이름이 긴 장과 짧은 장이 나란히 서면 '할 일' 열이 183px과 200px,
      '이동'이 359px과 375px에서 시작했다(1400px 실측 — 옆 장끼리 세로선이 제각각).
      폭을 열마다 박아 두고 대여소만 남는 폭을 갖는다. 폭은 값이 한 줄에 드는 최소치다:
-     '12.01 km' 84 · '107.2분' 76. '차고지 복귀'만 두 줄로 접는다(68px 안). */
+     '12.01 km' 84 · '59분 59초' 88. '차고지 복귀'만 두 줄로 접는다(68px 안).
+     누적은 '107.2분'에 맞춘 76px이었는데, 시간 표기를 "1시간 19분 18초"로 바꾼 뒤(1.26.327) 한 시간을
+     넘는 값이 32px 넘쳐 오른쪽에서 잘렸다 — 논문 그림 4-8을 다시 찍다가 보였다(1.26.365).
+     한 줄에 다 넣으려면 124px인데 그만큼 대여소 이름이 좁아지므로(2열 카드에서 126 → 78px), '분 초'가
+     한 줄에 드는 88px만 주고 '1시간' 뒤에서 접는다(분과 초 사이는 줄바꿈 없는 공백 — 표의 칸 참고).
+     종이는 한 장에 한 대라 자리가 남으니 한 줄에 드는 폭을 준다. */
   .sheet table.sheet-table { table-layout: fixed; width: 100%; }
   .sheet table.sheet-table th.grow { width: auto; }
   .sheet table.sheet-table th:nth-child(1) { width: 44px; }  /* 순번 */
@@ -100,8 +105,12 @@
   .sheet table.sheet-table th:nth-child(4) { width: 56px; }  /* 수량 */
   .sheet table.sheet-table th:nth-child(5) { width: 60px; }  /* 싣고 남는 수 */
   .sheet table.sheet-table th:nth-child(6) { width: 84px; }  /* 이동 */
-  .sheet table.sheet-table th:nth-child(7) { width: 76px; }  /* 누적 */
+  .sheet table.sheet-table th:nth-child(7) { width: 88px; }  /* 누적 */
   .sheet table.sheet-table td.back { white-space: normal; word-break: keep-all; }
+  .sheet td[data-label="누적"] { white-space: normal; word-break: keep-all; }
+  @media print {   /* 위의 88px보다 뒤에 와야 이긴다 */
+    .sheet table.sheet-table th:nth-child(7) { width: 124px; }
+  }
   [data-narrow] .sheet table.sheet-table { table-layout: auto; }
 
   /* 좁은 화면 — 표가 카드로 누울 때(base.html의 .m-cards) 순번과 대여소를
@@ -136,7 +145,7 @@
   .sheet table.cmp-table th:nth-child(4)  { width: 56px; }  /* 수량 */
   .sheet table.cmp-table th:nth-child(5)  { width: 76px; }  /* 싣고 남는 수 */
   .sheet table.cmp-table th:nth-child(6)  { width: 72px; }  /* 이동 */
-  .sheet table.cmp-table th:nth-child(7)  { width: 60px; }  /* 누적 */
+  .sheet table.cmp-table th:nth-child(7)  { width: 88px; }  /* 누적 */
   .sheet table.cmp-table th:nth-child(8)  { width: 60px; }  /* 계획 때 */
   .sheet table.cmp-table th:nth-child(9)  { width: 56px; }  /* 지금 */
   .sheet table.cmp-table th:nth-child(10) { width: 52px; }  /* 차이 */
@@ -350,7 +359,7 @@
       <td class="num" data-label="수량">{% if stop.qty %}{{ stop.qty }}대{% else %}—{% endif %}</td>
       <td class="num muted" data-label="싣고 남는 수">{{ stop.load_after }}대</td>
       <td class="num muted" data-label="이동">{{ stop.distance_km }} km</td>
-      <td class="num muted" data-label="누적">{{ stop.minutes | dur }}</td>
+      <td class="num muted" data-label="누적">{{ stop.minutes | dur | replace("분 ", "분\u00a0") }}</td>
       <td class="num muted" data-label="계획 때 재고">{{ stop.planned_stock if stop.planned_stock is not none else "—" }}</td>
       <td class="num" data-label="지금 재고">{{ stop.live_stock if stop.live_stock is not none else "—" }}</td>
       <td class="num muted" data-label="차이">{% if stop.delta is not none %}{{ "%+d" | format(stop.delta) }}{% else %}—{% endif %}</td>
@@ -424,7 +433,7 @@
       <td class="num" data-label="수량">{% if stop.qty %}{{ stop.qty }}대{% else %}—{% endif %}</td>
       <td class="num muted" data-label="싣고 남는 수">{{ stop.load_after }}대</td>
       <td class="num muted" data-label="이동">{{ stop.distance_km }} km</td>
-      <td class="num muted" data-label="누적">{{ stop.minutes | dur }}</td>
+      <td class="num muted" data-label="누적">{{ stop.minutes | dur | replace("분 ", "분\u00a0") }}</td>
     </tr>
     {% endfor %}
     </tbody>

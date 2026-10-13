@@ -272,6 +272,20 @@ def test_거치대_수를_모르면_배송_상한을_짐작하지_않는다(monk
     assert orders.summarize(compared)["unknown"] == 1
 
 
+def test_배송_상한을_반올림해_찍지_않는다():
+    """거치대 5개면 상한은 7.5대다. `.0f`가 8로 찍어 *"이미 7대로 상한(5대 x 1.5 = 8대)을
+    넘었습니다"* 가 나왔다 (1.26.365 — 논문 그림 4-9에 찍혀 있었다). 7은 8을 넘지 않는다."""
+    work = pd.DataFrame([
+        {"station_id": "ST0020", "station_name": "다라 대여소", "cluster": 0, "seq": 0,
+         "parking_lot": 5, "stock": 1, "need": 5, "action": "drop"},
+    ])
+    drop = orders.compare_stock(work, _live(ST0020=7)).iloc[0]
+
+    assert drop["status"] == "불가" and drop["possible"] == 0
+    assert "7.5대" in drop["note"], drop["note"]
+    assert "8대" not in drop["note"] and "넘었습니다" not in drop["note"], drop["note"]
+
+
 def test_api_failure_shows_a_message_instead_of_a_500(client, monkeypatch):
     """API가 죽어도 화면은 살아 있어야 한다 — 출발 직전에 500을 보면 곤란하다."""
     def boom(timeout=30):
