@@ -105,11 +105,13 @@ def mix(full, base, t, m1: pd.Series, tt: pd.Series) -> tuple:
     rest = wide_pool(full, base, t, tt)
     rest = rest[~rest["station_id"].isin(first["station_id"])]
     room = TOP_STATION_LIMIT - len(first)
-    second = pd.DataFrame(columns=first.columns)
+    parts = [first]
     if left >= REBAL_MIN_QTY + 1 and room > 0:
         rest = rest[rest["a"] > REBAL_MIN_QTY].sort_values(["a", "rebal_qty"], ascending=[False, True]).head(room)
         second, left = pr.take_until(rest, left)
-    return pd.concat([first, second, drops], ignore_index=True), left
+        parts.append(second)
+    # 빈 표를 이어 붙이면 좌표 열이 object가 되어 군집 조정(cdist)이 죽는다(56장 첫 실행) — 빈 것은 빼고 붙인다
+    return pd.concat([x for x in parts + [drops] if len(x)], ignore_index=True), left
 
 
 def choose_k(todo_pick, info, net, m1: dict, step1) -> tuple:
