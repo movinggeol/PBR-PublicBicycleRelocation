@@ -11,10 +11,15 @@
 
   · 그림 6-1  결품 편익과 포화 **대가를 한 축에** (표 둘을 맞대야 보였다)
   · 그림 6-2  19개월 반복의 **분포** (표는 평균±표준편차로 줄인다)
-  · 그림 6-3  이동거리 대비 편익 — **P가 더 멀리 다닌다**는 사실
+  · 그림 6-3  이동거리와 편익 — 실행별 산점과 **100km당 결품 감소**(본문과 같은 셈)
   · 그림 5-1  `z` 격자를 **모집단 셋으로** — 모집단이 승자를 정한다
   · 그림 1-1  평일·휴일 순수요 **부호 반전** (32~34%가 반대다 — 26년 03월)
   · 그림 4-1  파이프라인 구조
+
+**그림 안에 번호 · 주장 · 내부 표기를 넣지 않는다 (2026-10-13, 1.26.366).** 위 여섯은 초안용이라
+'그림 6-3 … 거리당으로도 앞선다' 같은 제목을 품고 있었는데, 원고가 고쳐진 뒤에도 그림 속 주장은
+남아 본문과 반대말을 했다(6.5절). 캡션은 원고가 그림 아래에 달므로 그림 안에는 축 · 범례 · 칸 이름만
+두고, 시간대는 코드(`_05_10`)가 아니라 원고의 이름('05~10시')으로 찍는다(`DURATION_NAME`).
 
 **원고 자료 자리를 채우는 그림 (2026-09-18~, 1.26.239).** 원고(docs/연구/논문/)의
 `(자리 [그림 n-m] …)` 문단을 채운다. 캡션은 원고가 그림 아래에 따로 달므로 그림
@@ -81,6 +86,10 @@ STYLE = {
     "P": dict(색="#3182bd", 해치="", 마커="D", 이름="P 제안"),
 }
 DURATIONS = ["_05_10", "_10_15", "_15_20"]
+# 그림 안의 시간대 이름 — 원고는 '05~10시'로 쓴다. 코드(`_05_10`)를 그대로 찍지 않는다.
+DURATION_NAME = {"_05_10": "05~10시", "_10_15": "10~15시", "_15_20": "15~20시", "_20_05": "20~05시"}
+# 그림 1-1의 달 — DB에서 가장 늦은 달을 고르면 다음 달 자료가 들어온 날 그림과 본문(32~34%)이 조용히 갈린다.
+FIG_1_1_PERIOD = "26년 03월"
 # 6장 그림 셋의 원천. **채택한 이동시간 식(320.4초 · 32.11km/h)으로 돌린 19개월 반복**이다 —
 # 옛 `repeat_12month_pinned.csv`는 상수 속도(25km/h)로 잰 것이라, 그 파일로 그리면 그림 6-3이
 # *"km당으로는 대등하다"* 는 **철회된 주장**을 그린다(EXPERIMENTS 33장). 재현은 부록 A에 있다.
@@ -89,7 +98,7 @@ DURATIONS = ["_05_10", "_10_15", "_15_20"]
 REPEAT = "baseline/repeat_19month_on.csv"
 REPEAT_WHAT = "19개월 반복 결과(채택한 이동시간 식)"
 # 그림 8-2의 작업 대상을 읽는 계획 — 정본 스냅샷을 복사해 지금 코드·원본 19개월로 다시 세운 실행이다.
-# 정본 `2026-08-11 real`의 저장 계획은 옛 코드라 <표 8-3>(`dockless_hub.py --run-label` 같은 값)과 맞지 않는다.
+# 정본 `2026-08-11 real`의 저장 계획은 옛 코드라 <표 8-4>(`dockless_hub.py --run-label` 같은 값)과 맞지 않는다.
 DOCKLESS_PLAN = "2026-08-11 real raw19"
 # 그림 3-5의 표본 끝 — 게이트 A 판정일. 채택 계수(320.4초 · 32.11km/h)가 이날까지의 패널에서 나왔다.
 ROAD_FIT_TO = "2026-09-15"
@@ -169,13 +178,8 @@ def fig_6_2():
                        s=6, color="black", alpha=0.35, zorder=3)
         ax.set_xticks(range(1, len(order) + 1))
         ax.set_xticklabels([STYLE[m]["이름"] for m in order], fontsize=8)
-        ax.set_title(f"{duration}  (각 n={len(data[0])})", fontsize=10)
-    axes[0].set_ylabel("재배치 후 결품 시간 (h) — 낮을수록 좋음")
-    runs = int((frame["method"] == "P").sum() / frame["duration"].nunique())
-    fig.suptitle(f"그림 6-2  {frame['period'].nunique()}개월 × 씨앗 {frame['seed'].nunique()}개 "
-                 "반복의 결품 시간 분포 "
-                 "(평일, 스냅샷 2026-08-11 real, 이동시간 식 적용)\n"
-                 f"상자는 사분위·수염은 1.5 IQR, 겹친 점이 개별 실행 {runs}개다", fontsize=11, y=1.06)
+        ax.set_title(f"{DURATION_NAME[duration]}  (방법마다 n={len(data[0])})", fontsize=10)
+    axes[0].set_ylabel("재배치 후 결품 시간 (시간)")
     save(fig, "그림6-2_결품분포", "반복의 분포 (표는 평균±표준편차로 줄인다)")
 
 
@@ -209,33 +213,37 @@ def fig_6_1():
                color=STYLE[method]["색"], hatch=STYLE[method]["해치"], edgecolor="black", lw=0.6)
         ax.bar(x + off, -part["대가"], width, color="white", edgecolor="#b03a2e",
                hatch="xx", lw=0.8,
-               label="포화 증가(대가) — 두 방법 공통 표기" if i == 0 else None)
+               label="포화 증가(대가) — 두 방법 같은 무늬" if i == 0 else None)
         for xi, (b, c) in zip(x + off, zip(part["편익"], part["대가"])):
             ax.text(xi, b + 0.04, f"{b:.2f}", ha="center", fontsize=8)
-            ax.text(xi, -c - 0.06, f"-{c:.2f}", ha="center", va="top",
+            # 포화가 **늘어난** 양이다 — <표 6-2>가 '+0.16'으로 적는 값이라 그림도 같은 부호로 찍는다
+            ax.text(xi, -c - 0.06, f"+{c:.2f}", ha="center", va="top",
                     fontsize=8, color="#b03a2e")
     ax.axhline(0, color="black", lw=0.8)
     ax.set_xticks(x)
-    ax.set_xticklabels(DURATIONS)
-    ax.set_ylim(-0.72, 2.05)                     # 값 라벨과 주의 문구가 겹치지 않게
-    ax.set_ylabel("무재배치(B0) 대비 변화 (h)")
-    ax.set_title("그림 6-1  재배치의 편익과 대가 — 결품은 줄지만 포화는 는다\n"
-                 f"({frame['period'].nunique()}개월 × 씨앗 {frame['seed'].nunique()}개 평균, "
-                 "위=편익 · 아래=대가)", fontsize=11)
+    ax.set_xticklabels([DURATION_NAME[d] for d in DURATIONS])
+    ax.set_ylim(-0.72, 2.05)                     # 값 라벨이 범례와 겹치지 않게
+    ax.set_ylabel("무재배치 대비 변화 (시간)\n위: 결품 감소 · 아래: 포화 증가")
     ax.legend(fontsize=8, loc="upper right", ncol=1)
-    # ⚠️ 두 막대를 빼서 하나로 합치지 않는다 — 같은 '시간'이라도 무게가 다르다(6.3)
-    fig.text(0.5, -0.02, "[주의] 두 값을 빼서 합치지 않는다 - 포화 1시간과 결품 1시간은 무게가 다르다",
-             ha="center", fontsize=8, color="#555")
+    # ⚠️ 두 막대를 빼서 하나로 합치지 않는다 — 같은 '시간'이라도 무게가 다르다. 그 말은 캡션이 한다(6.2).
     save(fig, "그림6-1_편익과_대가", "결품 편익과 포화 대가를 한 축에")
 
 
 # ────────────────────────────────────────────────────────────── 6-3
 def fig_6_3():
-    """P는 더 멀리 다닌다. **그래도 km당으로 앞선다** — 채택한 식에서 뒤집힌 결론이다.
+    """실행별 이동거리와 결품 감소(왼쪽), 100km당 결품 감소(오른쪽) — 6.5절.
 
     상수 속도로 재던 동안에는 100km당 이득이 P 0.372h · B1 0.397h로 대등해 보였고,
-    그때 이 그림의 오른쪽 패널은 *"km당으로 재면 대등하다"* 를 보여 주고 있었다.
     채택한 식에서는 0.372h 대 0.319h로 뒤집힌다(19개월 · EXPERIMENTS 33·42장).
+
+    ⚠️ **오른쪽 막대는 본문과 같은 셈이다** — 회차별 *평균 결품 감소 ÷ 평균 이동거리* (평균끼리의 비).
+    2026-10-13까지는 실행마다 나눈 값의 평균을 1,000km당으로 그려, 본문 값의 열 배보다 1~4% 컸다
+    (B1 3.49 · 3.84 · 2.62 대 본문 0.345 · 0.368 · 0.255). 본문이 "앞 문단 값의 열 배"라고 적었으나
+    정확히는 아니었다. 두 셈을 한 논문에 두지 않으려고 그림을 본문 쪽에 맞췄다 — 오차막대는 뺐다
+    (평균끼리의 비에는 실행별 표준편차가 없다. 퍼짐은 왼쪽 산점이 보인다).
+
+    ⚠️ **그림 안에 '앞선다'는 주장을 적지 않는다.** 6.5절은 이 그림만으로 방법의 우열을 읽지 말라고
+    쓴다(두 방법의 평균 이동거리가 거의 같다 — 402km 대 406km).
     """
     frame = _need(EXP / REPEAT, REPEAT_WHAT)
     if frame is None:
@@ -246,12 +254,15 @@ def fig_6_3():
     for method in ("B1", "P"):
         part = frame[frame["method"] == method].set_index(["duration", "period", "seed"])
         gain = base.loc[part.index] - part["stockout_after"]
-        axes[0].scatter(part["km"], gain, s=16, alpha=0.6, marker=STYLE[method]["마커"],
-                        color=STYLE[method]["색"], edgecolor="black", lw=0.4,
+        # 두 방법이 같은 파랑 계열이라 겹치면 안 갈린다 — 그리디는 속 빈 네모로 찍는다
+        hollow = method == "B1"
+        axes[0].scatter(part["km"], gain, s=18, alpha=0.75, marker=STYLE[method]["마커"],
+                        facecolors="none" if hollow else STYLE[method]["색"],
+                        edgecolors="#4a4a4a" if hollow else "black", lw=0.7 if hollow else 0.4,
                         label=STYLE[method]["이름"])
     axes[0].set_xlabel("총 이동거리 (km)")
-    axes[0].set_ylabel("결품 감소 (h, 무재배치 대비)")
-    axes[0].set_title("멀리 다닐수록 많이 줄이나", fontsize=10)
+    axes[0].set_ylabel("결품 감소 (시간, 무재배치 대비)")
+    axes[0].set_title("실행별 이동거리와 결품 감소", fontsize=10)
     axes[0].legend(fontsize=8)
 
     rows = []
@@ -259,24 +270,31 @@ def fig_6_3():
         part = frame[frame["method"] == method].set_index(["duration", "period", "seed"])
         gain = base.loc[part.index] - part["stockout_after"]
         for duration in DURATIONS:
-            per_km = (gain / part["km"]).xs(duration, level="duration")
+            g = gain.xs(duration, level="duration")
+            km = part["km"].xs(duration, level="duration")
             rows.append(dict(duration=duration, method=method,
-                             값=float(per_km.mean() * 1000), 편차=float(per_km.std() * 1000)))
+                             값=float(g.mean() / km.mean() * 100)))      # 평균끼리의 비 — 본문과 같은 셈
     summary = pd.DataFrame(rows)
     x = np.arange(len(DURATIONS))
     for i, method in enumerate(("B1", "P")):
         part = summary[summary["method"] == method].set_index("duration").loc[DURATIONS]
-        axes[1].bar(x + (i - 0.5) * 0.36, part["값"], 0.36, yerr=part["편차"], capsize=3,
-                    color=STYLE[method]["색"], hatch=STYLE[method]["해치"],
-                    edgecolor="black", lw=0.6, label=STYLE[method]["이름"])
+        bars = axes[1].bar(x + (i - 0.5) * 0.36, part["값"], 0.36,
+                           color=STYLE[method]["색"], hatch=STYLE[method]["해치"],
+                           edgecolor="black", lw=0.6, label=STYLE[method]["이름"])
+        for bar, value in zip(bars, part["값"]):
+            axes[1].text(bar.get_x() + bar.get_width() / 2, value + 0.006, f"{value:.3f}",
+                         ha="center", fontsize=8)
     axes[1].set_xticks(x)
-    axes[1].set_xticklabels(DURATIONS)
-    axes[1].set_ylabel("1,000km당 결품 감소 (h)")
-    axes[1].set_title("km당으로 재도 제안 방법이 앞선다 (오차막대 = 표준편차)", fontsize=10)
-    axes[1].legend(fontsize=8)
-    fig.suptitle("그림 6-3  편익과 이동 비용 — 제안 방법은 더 멀리 다니지만 거리당으로도 앞선다",
-                 fontsize=11, y=1.02)
-    save(fig, "그림6-3_편익과_이동거리", "거리를 같게 놓고 봐도 P가 앞선다 (6.5)")
+    axes[1].set_xticklabels([DURATION_NAME[d] for d in DURATIONS])
+    axes[1].set_ylabel("이동거리 100km당 결품 감소 (시간)")
+    axes[1].set_ylim(0, summary["값"].max() * 1.22)       # 범례가 막대 위 숫자를 가리지 않게
+    axes[1].set_title("100km당 결품 감소", fontsize=10)
+    axes[1].legend(fontsize=8, loc="upper right", ncol=2)
+    print("    100km당 결품 감소: " + " · ".join(
+        f"{STYLE[m]['이름']} " + "/".join(
+            f"{v:.3f}" for v in summary[summary["method"] == m].set_index("duration").loc[DURATIONS, "값"])
+        for m in ("B1", "P")))
+    save(fig, "그림6-3_편익과_이동거리", "실행별 이동거리와 결품 감소, 100km당 결품 감소 (6.5)")
 
 
 # ────────────────────────────────────────────────────────────── 5-1
@@ -292,18 +310,18 @@ def fig_5_1():
         for name, col in pops:
             curve = part.groupby("z")[col].mean()
             marker = "D" if "전체" in name else ("o" if "좁음" in name else "s")
-            ax.plot(curve.index, curve.to_numpy(), marker=marker, ms=4, lw=1.3, label=name)
+            # 원천의 열 이름은 '좁음(z=1.65)' · '넓음(z=2.33)' · '전체대여소'다 — 본문의 이름으로 찍는다
+            shown = ("전체 대여소" if "전체" in name
+                     else f"$z$={name[name.index('=') + 1:].rstrip(')')}의 작업 대상")
+            ax.plot(curve.index, curve.to_numpy(), marker=marker, ms=4, lw=1.3, label=shown)
             best = curve.idxmin()
             ax.scatter([best], [curve.loc[best]], s=90, facecolors="none",
                        edgecolors="red", lw=1.4, zorder=5)
         ax.axvline(1.99, color="#888", ls="--", lw=1)
-        ax.set_title(duration, fontsize=10)
-        ax.set_xlabel("z")
-    axes[0].set_ylabel("재배치 후 결품 시간 (h)")
+        ax.set_title(DURATION_NAME[duration], fontsize=10)
+        ax.set_xlabel("안전계수 $z$")
+    axes[0].set_ylabel("재배치 후 결품 시간 (시간)")
     axes[0].legend(fontsize=7.5, title="모집단", title_fontsize=7.5)
-    fig.suptitle("그림 5-1  $z$ 격자를 모집단 셋으로 각각 재면 — 빨간 원이 그 모집단의 최저점\n"
-                 "각 모집단은 자기를 정의한 $z$를 뽑는다. 중립 모집단(전체 대여소)은 거의 평평하다\n"
-                 "(점선 = 현행 $z$=1.99, 25년 11월 평일)", fontsize=11, y=1.12)
     save(fig, "그림5-1_z_모집단", "모집단이 승자를 정한다 (EXPERIMENTS 18장)")
 
 
@@ -324,8 +342,10 @@ def fig_1_1():
         if not periods:
             print("  건너뜀 - DB에 net_demand가 없습니다.")
             return
-        period = sorted(periods, key=lambda s: (int(s.split("년")[0]),
-                                                int(s.split("년")[1].replace("월", ""))))[-1]
+        period = FIG_1_1_PERIOD
+        if period not in periods:
+            print(f"  건너뜀 - DB에 {period}의 net_demand가 없습니다.")
+            return
         net = db.load_frame(conn, "net_demand", period=period)
 
     fig, axes = plt.subplots(1, 3, figsize=(11, 3.8))
@@ -354,26 +374,26 @@ def fig_1_1():
         lim = max(abs(np.percentile(joined[["평일", "휴일"]].to_numpy(), [1, 99])))
         ax.set_xlim(-lim, lim)
         ax.set_ylim(-lim, lim)
-        ax.set_title(f"{duration}   부호 반대 {opposite.mean() * 100:.0f}% "
-                     f"({int(opposite.sum())}/{len(joined)}곳)", fontsize=10)
+        ax.set_title(f"{DURATION_NAME[duration]}   부호 반대 {opposite.mean() * 100:.0f}% "
+                     f"({int(opposite.sum()):,}/{len(joined):,}곳)", fontsize=10)
         ax.set_xlabel("평일 순수요 (대/일)")
+        print(f"    {duration}: 부호 반대 {int(opposite.sum())}/{len(joined)}곳 "
+              f"({opposite.mean() * 100:.1f}%)")
     axes[0].set_ylabel("휴일 순수요 (대/일)")
     axes[0].legend(fontsize=8)
-    fig.suptitle(f"그림 1-1  같은 대여소인데 평일과 휴일의 순수요 방향이 반대다 ({period}, 전체 대여소 기준)\n"
-                 "2·4분면의 붉은 점 — 묶어 평균 내면 서로 상쇄돼 사라진다\n"
-                 "(축은 1~99 분위로 잘랐다. 비율은 자르기 전 전체로 셌다)", fontsize=11, y=1.10)
     save(fig, "그림1-1_평일휴일_부호반전", "1.2의 32~34%를 눈으로")
 
 
 # ────────────────────────────────────────────────────────────── 4-1
 def fig_4_1():
     """파이프라인 구조. 4.1의 글을 그림으로 — 심사자가 가장 먼저 찾는 그림이다."""
+    # 단계 이름은 원고 4.3절의 것이다 — 'step0' · 'greedy VRP' · 'KPI'는 원고에 한 번도 나오지 않는다
     steps = [
-        ("step0\n수집·전처리", "대여이력·API\n→ 순수요·목표재고"),
-        ("step1\n군집화", "작업 대상 선정\n→ K-Medoids"),
-        ("step2\n물량·경로", "ILP (수량)\n→ greedy VRP (순서)"),
-        ("step3\n지도", "TMAP 경로\n시각화"),
-        ("step4\n평가", "결품·포화\n· KPI"),
+        ("0단계\n수집과 전처리", "대여이력 · 실시간 재고\n→ 순수요 · 목표 재고"),
+        ("1단계\n선정과 군집화", "작업 대상 선정\n→ K-Medoids"),
+        ("2단계\n최적화", "정수선형계획 (수량)\n→ 그리디 경로 (순서)"),
+        ("3단계\n지도 시각화", "도로 경로를 얹은\n지도"),
+        ("4단계\n성과 평가", "결품 · 포화 시간\n이동시간"),
     ]
     fig, ax = plt.subplots(figsize=(11, 2.9))
     ax.set_xlim(0, len(steps) * 2.2)
@@ -390,9 +410,8 @@ def fig_4_1():
             ax.annotate("", xy=(x, 1.5), xytext=(x - 0.35, 1.5),
                         arrowprops=dict(arrowstyle="-|>", color="#3182bd", lw=1.6))
     ax.text(len(steps) * 1.1, 0.35,
-            "각 단계는 CSV 파일과 SQLite에 이중 기록한다 — CSV가 정본이고 DB는 조회용이다 (4.3)",
+            "각 단계는 산출물을 CSV 파일과 SQLite에 함께 기록한다",
             ha="center", fontsize=8.5, color="#444")
-    ax.set_title("그림 4-1  파이프라인 구조 — 단계마다 파일로 넘겨 독립 실행된다", fontsize=11)
     save(fig, "그림4-1_파이프라인", "4.1의 구조도")
 
 
@@ -428,7 +447,7 @@ def fig_3_2():
     fig, ax = plt.subplots(figsize=(7.2, 4.2))
     ax.plot(gap, clipped, color="#999", ls="--", lw=1.3, label=f"단순 절단  $[-Q, Q]$")
     ax.step(gap, rebal, where="post", color="#3182bd", lw=1.8,
-            label=r"$\tanh$ 완화 (식 3.5, 정수화 뒤)")
+            label=r"$\tanh$ 완화 (식 (3.5), 정수화 뒤)")
     for g in (5, 8):
         r = int(rebal[np.argmin(abs(gap - g))])
         ax.scatter([g], [r], color="#b03a2e", zorder=5, s=28)
@@ -442,7 +461,8 @@ def fig_3_2():
     ax.set_xlabel("목표 재고와 현재 재고의 격차  $t_i - q_i$ (대)")
     ax.set_ylabel("재배치량  $r_i$ (대)")
     ax.set_ylim(-Q - 2, Q + 2)
-    ax.legend(fontsize=8.5, loc="lower right")
+    # 오른쪽 아래 구석에 두면 -9대 점선이 범례 첫 줄을 가로지른다 — 점선 위로 올린다
+    ax.legend(fontsize=8.5, loc="lower right", bbox_to_anchor=(1.0, 0.14))
     save(fig, "그림3-2_재배치량_완화", "tanh 완화와 단순 절단 (3.3.3)")
 
 
@@ -472,7 +492,8 @@ def fig_4_3():
     for i, key in enumerate(months):
         tick = f"{key // 100:02d}.{key % 100:02d}"
         if key not in label:
-            ax.text(i, 12_000, "공개\n자료\n없음", ha="center", va="bottom", fontsize=8, color="#888")
+            # '공개 자료 없음'이 아니다 — 그 달 이름의 파일은 공개됐으나 내용이 다른 달의 것이라 쓰지 않았다(4.2)
+            ax.text(i, 12_000, "쓰지\n않음", ha="center", va="bottom", fontsize=8, color="#888")
             continue
         n = counts[label[key]]
         is_winter = key % 100 in winter
@@ -487,9 +508,8 @@ def fig_4_3():
     ax.set_ylim(0, max(counts.values()) * 1.15)
     handles = [plt.Rectangle((0, 0), 1, 1, color="#3182bd"),
                plt.Rectangle((0, 0), 1, 1, facecolor="#c6dbef", hatch="//", edgecolor="black", lw=0.5)]
-    ax.legend(handles, ["평월", "겨울 달(12·1·2월)"], fontsize=8.5, loc="upper left")
+    ax.legend(handles, ["그 밖의 달", "겨울 달(12·1·2월)"], fontsize=8.5, loc="upper left")
     total = sum(counts.values())
-    ax.set_title(f"{len(counts)}개월 · 합계 {total:,}건 (막대 위 숫자는 만 건)", fontsize=10)
     save(fig, "그림4-3_월별_대여건수", f"대여이력 {len(counts)}개월 {total:,}건")
 
 
@@ -530,9 +550,10 @@ def fig_5_3():
               color="#3182bd", ls="--", lw=1)
     # 글자가 점·선과 겹치지 않게 배율 구간 오른쪽 아래에 흰 바탕으로 둔다
     ax.text(pd.Timestamp("2026-03-16"), feb_weekday * 0.9,
-            f"2월 평일 평균 {feb_weekday:,.0f}건 (계획 통계의 달)", fontsize=8.5, color="#3182bd",
+            f"2월 평일 평균 {feb_weekday:,.0f}건", fontsize=8.5, color="#3182bd",
             va="top", bbox=dict(facecolor="white", edgecolor="none", alpha=0.85, pad=1.5))
     ax.set_ylabel("일별 대여 건수")
+    ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:,.0f}"))
     ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%m-%d"))
     ax.legend(fontsize=8.5, loc="upper left")
     ax.set_ylim(0, daily.max() * 1.2)
@@ -543,12 +564,12 @@ def fig_5_3():
 def fig_5_2():
     """10~15시에는 대여소 대부분이 |mu| < 0.5다 — 전체 평균이 희석되는 이유 (5.3).
 
-    <표 5-4>와 **같은 계산**이다 — 월쌍 9개의 학습 달, 평일, 대여소별 시간대 순수요
+    <표 5-4>와 **같은 계산**이다 — 월쌍 17개의 학습 달, 평일, 대여소별 시간대 순수요
     평균(backtest_demand.daily_window_demand). 비율은 월쌍마다 구해 평균 낸다.
 
     ⚠️ **대여소는 학습 달과 검증 달에 모두 있는 곳만 센다.** 백테스트(`evaluate`)가
-    두 달을 inner merge하기 때문이다. 학습 달에만 있는 곳까지 세면 05~10시가
-    50.3%로 표(50.2%)와 어긋난다 — 2026-09-18 그림을 처음 만들 때 실제로 그랬다.
+    두 달을 inner merge하기 때문이다. 학습 달에만 있는 곳까지 세면 표와 어긋난다 — 2026-09-18
+    그림을 처음 만들 때 실제로 그랬다(그때는 월쌍 9개 · 50.3% 대 50.2%. 지금은 17개 · 52.6%).
     """
     try:
         import db
@@ -581,15 +602,16 @@ def fig_5_2():
         colors = ["#b03a2e" if e < 0.5 else ("#3182bd" if e >= 2 else "#bbb") for e in edges[:-1]]
         ax.bar(edges[:-1], counts / len(pairs), width=0.25, align="edge", color=colors,
                edgecolor="white", lw=0.3)
-        ax.set_title(f"{duration}   |μ|<0.5 {np.mean(near) * 100:.1f}% · "
+        ax.set_title(f"{DURATION_NAME[duration]}   |μ|<0.5 {np.mean(near) * 100:.1f}% · "
                      f"|μ|>2 평균 {np.mean(targets):.0f}곳", fontsize=10)
         ax.set_xlabel("|μ| (대/일, 10 이상은 10에 모음)")
         print(f"    {duration}: |mu|<0.5 {np.mean(near) * 100:.1f}% · |mu|>2 평균 "
               f"{np.mean(targets):.0f}곳 (월쌍 {len(pairs)}개)")
     axes[0].set_ylabel("대여소 수 (월쌍 평균)")
     handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in ("#b03a2e", "#bbb", "#3182bd")]
-    axes[1].legend(handles, ["|μ| < 0.5 — μ를 쓰든 0을 쓰든 같다", "0.5 ≤ |μ| ≤ 2",
-                             "|μ| > 2 — 작업 대상 근사"], fontsize=8, loc="upper right")
+    # 범례에 해석을 적지 않는다 — 'μ를 쓰든 0을 쓰든 같다'는 본문(전체로는 오히려 오차가 컸다)과 다른 말이었다
+    axes[1].legend(handles, ["|μ| < 0.5", "0.5 ≤ |μ| ≤ 2", "|μ| > 2 (작업 대상에 가까운 곳)"],
+                   fontsize=8, loc="upper right")
     save(fig, "그림5-2_평균순수요_분포", "10~15시는 대여소 대부분이 0 근처 (5.3)")
 
 
@@ -635,8 +657,9 @@ def fig_8_1():
     ax.set_xticks(x)
     ax.set_xticklabels(ticks, fontsize=8.5)
     ax.set_ylabel("일별 대여 건수")
+    ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:,.0f}"))
     ax.set_ylim(0, report.max() * 1.32)            # 범례가 막대·비율 글자를 가리지 않게
-    ax.set_title("건수 — 막대 위는 공개 대여이력 / 공식 통계", fontsize=10)
+    ax.set_title("일별 대여 건수", fontsize=10)    # 막대 위 비율의 뜻은 캡션이 말한다
     ax.legend(fontsize=8, loc="upper center", ncol=2)
 
     ax = axes[1]
@@ -646,7 +669,8 @@ def fig_8_1():
     ax.set_xticks(x)
     ax.set_xticklabels(ticks, fontsize=8.5)
     ax.set_ylabel("요일변동계수 (일 대여 / 주 일평균)")
-    ax.set_title(f"모양 — 요일변동계수 차 최대 {gap:.2f}", fontsize=10)
+    # 차를 소수 둘째 자리로 찍으면 0.005가 '0.00'이 되어 본문(최대 0.005)과 다른 말이 된다 — 수는 캡션에 둔다
+    ax.set_title("요일변동계수", fontsize=10)
     ax.legend(fontsize=8)
     print(f"    비율 {min(mine / report):.1%}~{max(mine / report):.1%} · "
           f"주 평균 {mine.sum() / report.sum():.1%} · 계수 차 최대 {gap:.3f}")
@@ -664,7 +688,7 @@ def fig_4_2():
     """
     try:
         import db
-        from project_config import DEPOT_LAT, DEPOT_LON, DEPOT_NAME
+        from project_config import DEPOT_LAT, DEPOT_LON
     except Exception as exc:                       # pragma: no cover - 환경 의존
         print(f"  건너뜀 - 모듈을 못 불러왔습니다: {exc}")
         return
@@ -684,7 +708,7 @@ def fig_4_2():
     ax.scatter(frame.loc[~known, "lon"], frame.loc[~known, "lat"], s=14, facecolors="none",
                edgecolors="#666", lw=0.7, label=f"거치대 수 없음 ({int((~known).sum())}곳)")
     ax.scatter([DEPOT_LON], [DEPOT_LAT], marker="*", s=320, color="#b03a2e",
-               edgecolor="white", lw=1.0, zorder=5, label=f"차고지 ({DEPOT_NAME})")
+               edgecolor="white", lw=1.0, zorder=5, label="차고지")
     # 위도에서 경도 1도의 길이가 짧아지므로 가로세로 비를 맞춘다
     ax.set_aspect(1 / np.cos(np.deg2rad(frame["lat"].mean())))
     lon0, lat0 = frame["lon"].min(), frame["lat"].min()
@@ -697,8 +721,7 @@ def fig_4_2():
     ax.xaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%.2f"))
     ax.set_xlabel("경도")
     ax.set_ylabel("위도")
-    ax.legend(fontsize=8.5, loc="upper right")
-    ax.set_title(f"대여소 {len(frame):,}곳 · 스냅샷 {label[:10]} · 점 크기 = 거치대 수", fontsize=10)
+    ax.legend(fontsize=8.5, loc="upper left")      # 오른쪽 위는 대여소가 있는 자리라 글자 위에 점이 찍혔다
     save(fig, "그림4-2_대여소_분포", f"대여소 {len(frame):,}곳과 차고지")
 
 
@@ -721,7 +744,9 @@ def fig_2_1():
     ax.annotate("", xy=(26, 2.6), xytext=(26, 3.05),
                 arrowprops=dict(arrowstyle="-|>", color="#3182bd"))
     # 동적: 연속
-    ax.add_patch(plt.Rectangle((5, 1.4), 24, 0.4, color="#9ecae1", hatch="//", ec="#3182bd", lw=0.5))
+    # color=를 주면 면과 테두리가 같은 색이 되어 빗금이 묻힌다 — 면과 테두리를 따로 준다
+    ax.add_patch(plt.Rectangle((5, 1.4), 24, 0.4, facecolor="#9ecae1", edgecolor="#3182bd",
+                               hatch="//", lw=0.5))
     # 본 연구: 네 회차
     for i, (a, b) in enumerate(rounds):
         ax.add_patch(plt.Rectangle((a + 0.1, 0.4), b - a - 0.2, 0.4, color="#3182bd"))
@@ -743,13 +768,16 @@ def fig_2_1():
 
 # ────────────────────────────────────────────────────────────── 8-2
 def fig_8_2():
-    """거점 선정 기준 둘과 05~10시 작업 대상의 위치 — 포함률의 차이가 어디서 나는가 (8.6).
+    """거점 선정 기준 둘과 05~10시 재배치 후보의 위치 — 포함률의 차이가 어디서 나는가 (8.6).
+
+    ⚠️ 그림의 말은 **'재배치 후보'** 다(후보 상한 N을 적용하기 전의 381곳). 원고가 '작업 대상'(상한을
+    적용한 76~90곳)과 구분해 쓰므로 범례도 그 말을 쓴다 — 2026-10-13까지 범례만 '작업 대상'이었다.
 
     거점 선정은 `experiments/structure/dockless_hub.py`의 함수를 **그대로** 부른다 — 여기서
-    다시 구현하면 <표 8-3>과 어긋난다. 예산 K도 같은 규칙(이용량 기준 끝점 80% 지점)으로 구한다.
+    다시 구현하면 <표 8-4>와 어긋난다. 예산 K도 같은 규칙(이용량 기준 끝점 80% 지점)으로 구한다.
     작업 대상은 정본 스냅샷을 지금 코드와 원본 19개월로 다시 세운 계획
     `DOCKLESS_PLAN`(25년 11월 평일 통계)의 05~10시 후보다 — 정본의 **저장된** 계획은
-    08-12의 옛 코드·깎인 자료로 세운 것이라 <표 8-3>과 같은 계획을 쓰려고 옮겼다(EXPERIMENTS 42장).
+    08-12의 옛 코드·깎인 자료로 세운 것이라 <표 8-4>와 같은 계획을 쓰려고 옮겼다(EXPERIMENTS 42장).
     좌표는 그 스냅샷의 `station_info`에서 오므로, 좌표가 없는 거점은 수를 밝히고 뺀다.
     """
     import importlib.util
@@ -766,7 +794,7 @@ def fig_8_2():
         periods = db.distinct_values(conn, "rental_history", "period")
         cand = hub.candidates(conn, DOCKLESS_PLAN).get("_05_10", set())
         if not periods or not cand:
-            print(f"  건너뜀 - 대여이력이나 '{DOCKLESS_PLAN}'의 작업 대상이 DB에 없습니다.")
+            print(f"  건너뜀 - 대여이력이나 '{DOCKLESS_PLAN}'의 재배치 후보가 DB에 없습니다.")
             return
         counts = hub.endpoint_counts(conn, periods)
         k = hub.k_for(hub.coverage_curve(counts), 0.80)
@@ -784,9 +812,9 @@ def fig_8_2():
         ax.scatter(on_map["lon"], on_map["lat"], s=10, color="#9ecae1", label=f"거점 {k}곳")
         pts_in, pts_out = xy.reindex(sorted(inside)).dropna(), xy.reindex(sorted(outside)).dropna()
         ax.scatter(pts_in["lon"], pts_in["lat"], s=16, marker="o", facecolors="none",
-                   edgecolors="#08519c", lw=0.9, label=f"거점 안 작업 대상 {len(inside)}곳")
+                   edgecolors="#08519c", lw=0.9, label=f"거점 안 재배치 후보 {len(inside)}곳")
         ax.scatter(pts_out["lon"], pts_out["lat"], s=22, marker="x", color="#b03a2e", lw=1.1,
-                   label=f"거점 밖 작업 대상 {len(outside)}곳")
+                   label=f"거점 밖 재배치 후보 {len(outside)}곳")
         ax.set_aspect(1 / np.cos(np.deg2rad(xy["lat"].mean())))
         ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.05))
         ax.xaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%.2f"))
@@ -794,11 +822,12 @@ def fig_8_2():
         ax.set_title(f"{name} — 포함률 {len(inside) / len(cand):.1%}"
                      + (f"\n(좌표 없는 거점 {missing}곳은 빠짐)" if missing else ""), fontsize=10)
         ax.set_xlabel("경도")
-        ax.legend(fontsize=7.5, loc="upper right")
-        print(f"    {name}: 거점 {k}곳 · 작업 대상 {len(cand)}곳 중 {len(inside)}곳 "
+        # 축 안의 오른쪽 위는 북동쪽 대여소가 있는 자리라 글자 위에 점이 찍혔다 — 축 아래로 뺀다
+        ax.legend(fontsize=7.5, loc="upper center", bbox_to_anchor=(0.5, -0.11), ncol=2)
+        print(f"    {name}: 거점 {k}곳 · 재배치 후보 {len(cand)}곳 중 {len(inside)}곳 "
               f"({len(inside) / len(cand):.1%}) · 좌표 없는 거점 {missing}곳")
     axes[0].set_ylabel("위도")
-    save(fig, "그림8-2_거점_기준_비교", "거점 선정 기준별 거점과 05~10시 작업 대상 (8.6)")
+    save(fig, "그림8-2_거점_기준_비교", "거점 선정 기준별 거점과 05~10시 재배치 후보 (8.6)")
 
 
 # ────────────────────────────────────────────────────── 3장 공용: 정본 회차 재계산
@@ -1255,7 +1284,8 @@ def fig_3_6():
     ax.set_ylim(-0.5, max(top + 2, 4) if cap > top + 3 else cap + 1.5)
     ax.set_ylabel("재고 (대)")
     ax.legend(fontsize=8, loc="center right")
-    ax.set_title(f"{str(first['날짜'])[:10]} · 초기 재고 {int(first['stock'])}대 → 집행 "
+    day = pd.Timestamp(str(first["날짜"])[:10])
+    ax.set_title(f"{day.year}년 {day.month}월 {day.day}일 · 초기 재고 {int(first['stock'])}대 → 집행 "
                  f"+{int(first['delta'])}대 · 결품 {int(first['so_before'])}시간 → "
                  f"{int(first['so_after'])}시간", fontsize=9.5)
 
@@ -1264,7 +1294,7 @@ def fig_3_6():
     bx.bar(xi + 0.2, days["so_after"], 0.4, color="#2166ac", label="집행 뒤")
     bx.set_xticks(xi)
     bx.set_xticklabels([str(d)[8:10] for d in days["날짜"]], fontsize=7)
-    bx.set_xlabel(f"{CANON_PERIOD} 평일 (일)")
+    bx.set_xlabel(f"20{CANON_PERIOD[:2]}년 {int(CANON_PERIOD[4:6])}월 평일 (일)")
     bx.set_ylabel("결품 시간 (시간)")
     bx.set_ylim(0, len(hours) + 0.5)
     bx.legend(fontsize=8)
@@ -1317,7 +1347,7 @@ def fig_4_5():
     x = np.arange(1, rounds + 1)
     ax.axvspan(0.5, recover_at + 0.5, color="#fdd49e", alpha=0.45, lw=0, label="결원 기간 (1~6회차)")
     ax.axvspan(12.5, rounds + 0.5, color="#f0f0f0", lw=0, hatch="..", ec="#bdbdbd",
-               label="12회차 시험 밖 (확인용)")
+               label="12회차 뒤 (늘려 그린 구간)")
     styles = {0: ("#969696", "o"), 1: ("#9ecae1", "s"), 3: ("#4292c6", "^"), 5: ("#08306b", "D")}
     for outage, ys in series.items():
         col, mk = styles[outage]

@@ -8,7 +8,7 @@
 
   · 그림 4-4  경로 지도 — 가운데에 가장 가까운 방문 표식을 눌러 정보 창을 띄운 상태
   · 그림 4-6  실행 화면 — '새 실행' 폼 카드만
-  · 그림 4-7  성과 지표 — 지표 타일과 '효과와 비용' 그래프까지
+  · 그림 4-7  성과 지표 — 지표 타일과 '효과와 비용' 그래프까지 (빈 '추세' 절은 접고 찍는다)
   · 그림 4-8  작업지시서 — 인쇄 매체로 흉내 낸 차량 V01 한 장
   · 그림 4-9  실시간 재고 대조 — V01. **타슈 공개 API를 한 번 부르므로 `--live`를 줄 때만**
 
@@ -58,7 +58,8 @@ def plan(base: str = BASE) -> list[dict]:
         dict(key="4-6", name="그림4-6_실행화면", url=f"{base}/run", viewport=(1280, 1000),
              element="#run", what="실행 화면의 '새 실행' 폼"),
         dict(key="4-7", name="그림4-7_성과지표", url=f"{base}/kpi?run_label={q(LABEL)}",
-             viewport=(1280, 1000), clip_to="실행·회차별 지표", what="성과 지표 화면 윗부분"),
+             viewport=(1280, 1000), clip_to="실행·회차별 지표", hide_empty="추세",
+             what="성과 지표 화면 윗부분"),
         dict(key="4-8", name="그림4-8_작업지시서", url=f"{base}/orders?{run}&vehicle={VEHICLE}",
              viewport=(900, 1000), media="print", what=f"작업지시서 인쇄 미리보기({VEHICLE})"),
         dict(key="4-9", name="그림4-9_실시간대조", url=f"{base}/orders/live?{run}&vehicle={VEHICLE}",
@@ -85,6 +86,20 @@ def _shoot(browser, item: dict) -> Path:
     page.goto(item["url"], wait_until="networkidle", timeout=120_000)
     page.wait_for_timeout(1500)                    # 지도 타일·차트 그리기
     path = OUT / f"{item['name']}.png"
+
+    if item.get("hide_empty"):
+        # 실행 하나를 고른 화면에서는 '추세' 절이 "실행이 둘 이상이어야 그립니다"라는 빈 카드로만
+        # 선다 — 타일과 '효과와 비용' 그래프 사이에 빈 상자가 끼어 그림의 3분의 1을 쓴다(2026-10-13).
+        # **빈 상태일 때만** 그 절을 접고 찍는다. 그래프가 그려진 절은 건드리지 않는다.
+        page.evaluate(
+            """(text) => {
+                const h = [...document.querySelectorAll('h2')].find(e => e.innerText.trim().startsWith(text));
+                if (!h) return;
+                const block = [h];
+                for (let e = h.nextElementSibling; e && e.tagName !== 'H2'; e = e.nextElementSibling) block.push(e);
+                if (!block.some(e => e.querySelector('.empty'))) return;
+                for (const e of block) e.style.display = 'none';
+            }""", item["hide_empty"])
 
     if item.get("action") == "popup":
         markers = page.locator(".leaflet-marker-icon")

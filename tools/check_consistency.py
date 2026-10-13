@@ -845,7 +845,7 @@ def check_figures() -> list[str]:
     caption_lines: set[tuple[str, int]] = set()
 
     def _table_follows(lines: list[str], i: int) -> bool:
-        """캡션 줄 다음에 표가 오는가. **캡션은 여러 줄로 접힌다** — <표 8-2>의
+        """캡션 줄 다음에 표가 오는가. **캡션은 여러 줄로 접힌다** — <표 8-3>의
         조건 문구가 두 줄이라 바로 다음 줄만 보면 표를 못 찾는다."""
         for nxt in lines[i:i + 6]:
             if nxt.lstrip().startswith("|"):
