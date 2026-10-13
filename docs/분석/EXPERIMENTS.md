@@ -3876,6 +3876,7 @@ greedy가 나눠 처리할 수 있다는 것을 모델에 반영하고 나서야
 
 > 재현: `python experiments/params/limit_fixedpop_grid.py --period "25년 11월" --run-label "2026-08-11 real" --limits "15,20,25,30,40,50,100"`
 > — 회사 PC(A) · 대여이력 원본 19개월 · 채택한 이동시간 식 · 세 회차 × 씨앗 42 · 7 · 13 · 차량은 운영값(21대 — 이제 기본값) · 23분
+> 로그 · 자료: `data/limit_fixedpop_A_1013.log` · `data/limit_fixedpop_A_1013.csv` (회사 PC — `data/`는 커밋하지 않는다)
 
 **무엇이 숨어 있었나.** 원고 정합성 검토에서 <표 5-9>의 상한 50 행(투입 11.8대 · 초과 7.78대 · 392.2km)이 **같은 설정을 잰 다른
 표와 맞지 않는 것**을 찾았다 — <표 5-7>의 z = 1.99는 415.9km · 초과 2.87대, <표 6-3>은 18 · 13 · 12대를 투입해 1 · 4 · 6대가
@@ -4420,6 +4421,7 @@ python experiments/params/z_fixedpop_grid.py --z-grid wide `
 
 > 재현: `python experiments/params/cluster_time_term.py` — 회사 PC(A) · 대여이력 원본 19개월 · 정본 `2026-08-11 real` ·
 > 25년 11월 평일 · 세 회차 × 씨앗 42 · 7 · 13 · 중립 모집단(전체 대여소) · 이동시간은 채택한 식(기본값)
+> 로그: `data/cluster_time_term_A_1013.log` (회사 PC)
 
 위 10-08 표시가 남긴 빈칸이다. 원고 정합성 검토에서 8.2 끝 문장(*"채택한 이동시간 식으로 다시 재면 순회거리 항도 예산을
 지키지 못하였다"*)과 5.6 · 8.6 · 9.4(*"예산을 지키지만 결품을 나쁘게 하여"*)가 서로 어긋나는데 어느 쪽에도 근거 수치가
@@ -5516,6 +5518,7 @@ B1보다 12% 적게 옮기는데(301 · 209 · 216 대 337 · 232 · 256 — 합
 
 > 재현: `PBR_USE_ROAD_MODEL=0 python experiments/baseline/baseline_compare.py --period "25년 11월" --day-type weekday
 > --seed 42 --run-label "2026-08-11 real" --methods "P,B0,B1"` (상수 속도) — 채택한 식은 위 표(`PBR_USE_ROAD_MODEL` 없이)
+> 자료: `data/baseline_compare_const_A_1013.csv` (회사 PC)
 
 원고 6.5가 *"실제로 옮긴 대수는 같은데 이동거리가 333.5km에서 414.8km로 늘었고"* 라고 적고 있었다. 10-08에 옮긴 대수의
 뜻을 끝낸 대수(= min(실은 것, 내린 것))로 바꾼 뒤로는 이 문장이 맞는지 잰 적이 없어, 정합성 검토에서 상수 속도로 다시 돌렸다.
@@ -6164,6 +6167,8 @@ experiment라 빠지고 계획 실행 한 건과 짝이 맞았기 때문이다. 
 > 재현: `python experiments/structure/observed_stockout.py --day-type holiday --same-day` (확인용은 `--recompute-recon`을 붙인다)
 > — 회사 PC(A) 본 DB. 추석 09-24~27 · 10-03~05 · 10-09~11 × 네 회차 = **40개 계획**. 앞의 16개는 깎인 순수요, 뒤의 24개는 원본.
 > 규칙 6의 **확정**이다(10월 연휴의 마지막 날 10-11까지 받았다). 평일(10-08 확정)도 같은 날 다시 찍어 값이 그대로인 것을 봤다.
+> 로그: `data/sameday_holiday_1013.log` · `data/sameday_holiday_1013_recomp.log` · `data/otherday_holiday_1013_recomp.log` ·
+> `data/sameday_weekday_1013.log` (회사 PC)
 
 **40개가 모두 판정에 들어갔다.** `출발 빈 곳`과 `실제 빈 곳`의 차는 **0.0~4.0%p**(문턱 5%p), 창은 `_20_05` 하루만 53/54틱이고 나머지는
 다 찼다. 칸마다 10일이다.
