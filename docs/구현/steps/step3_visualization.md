@@ -6,7 +6,9 @@ VRP 경로를 TMAP Routes API로 실제 도로 경로로 변환해 Folium 지도
 
 ### `main.py`
 - **입력**: `VRP_plan{duration} ({now}).csv`, `top{duration} ({now}).csv`, `.env`의 `API_KEY`(TMAP)
-- **출력**: `data/pp_data/VRP/visualization/vrp_map{duration} ({now}).html`
+  (DB `vrp_plan` · `pick_drop`을 먼저 읽고 비었을 때만 CSV)
+- **출력**: `data/pp_data/VRP/visualization/vrp_map{duration} ({now}).html`,
+  DB `road_leg`(구간 실측) · `road_path`(실도로 선) — 이 둘은 CSV를 만들지 않는다
 - **처리 흐름**:
   1. 클러스터별로 depot → 방문지들 → depot 경로 포인트 구성
   2. TMAP **다중 경유지 안내** API로 도로 경로(GeoJSON) 요청
@@ -25,8 +27,8 @@ VRP 경로를 TMAP Routes API로 실제 도로 경로로 변환해 Folium 지도
 - **앞 단계가 건너뛴 시간대는 여기서도 건너뜁니다**(1.26.129). 그 전에는 확인
   없이 읽어 `FileNotFoundError`로 **파이프라인 전체가 죽었습니다** — 지도는
   산출물일 뿐이고 뒤에 지표(step4)가 남아 있는데도요.
-- ⚠️ **TMAP 요청의 출발점은 차고지가 아닙니다.** 출발지와 도착지가 같으면 경유지
-  최적화가 성립하지 않아 남쪽으로 `TMAP_START_OFFSET_DEG`(0.005도 ≈ 555m) 밀어
+- ⚠️ **TMAP 요청의 출발점은 차고지가 아닙니다.** 출발지와 도착지가 같으면 다중 경유지
+  안내가 성립하지 않아 남쪽으로 `TMAP_START_OFFSET_DEG`(0.005도 ≈ 555m) 밀어
   보냅니다. 그 어긋남이 이동시간 모형의 정답표(`road_leg`)에 새고 있었으므로
   (1,705구간 중 29건) **첫 구간(leg 0)은 표에서 뺍니다**(1.26.129). 지도에 그리는
   경로에는 진짜 차고지가 들어갑니다.
@@ -52,6 +54,16 @@ VRP 경로를 TMAP Routes API로 실제 도로 경로로 변환해 Folium 지도
   (구간 끝 경유지를 도착지로 연결)
 - `extract_cumulative_times()`: GeoJSON 선분의 `time` 속성을 누적해 포인트별 도착시간 계산
 - `merge_tmap_results()`: 분할 호출 결과의 경로·누적시간을 하나로 병합 (경계 중복 제거)
+- `start_time_for(duration, when=None, day_type="weekday")`: 회차의 출동 시각(창의 첫 시각)을
+  TMAP 형식(YYYYMMDDHHMM)으로 — 날짜는 다음 그 `day_type`의 날. 회차 형식이 다르면 `FALLBACK_START_TIME`
+- `available_endpoints()`: 아직 쓸 수 있는 엔드포인트 (경유지 상한 오름차순)
+- `route_skip_reason(need)`: 지도 한 장을 그리기 전에 끝까지 부를 수 있는지 확인 —
+  못 부르면 그 까닭, 부를 수 있으면 `None`
+- `call_count()` / `reset_call_count()`: 이 프로세스가 보낸 TMAP 호출 수 / 호출 수와 엔드포인트 소진 표시 초기화
+- 예외 `TmapQuotaExceeded`(일일 한도 소진, 429 `QUOTA_EXCEEDED`) · `TmapBudgetExceeded`(호출 예산 `MAX_CALLS` 소진)
+- 환경변수: `PBR_TMAP_MAX_CALLS`(호출 예산, 기본 35) · `PBR_TMAP_SEARCH_OPTION`(기본 `2` = 교통최적+최단시간) ·
+  `PBR_TMAP_CAR_TYPE`(기본 `1` = 승용차) · `PBR_TMAP_URL`(엔드포인트 고정, 폴백 없음) ·
+  `PBR_TMAP_MAX_VIA`(경유지 상한 강제)
 
 ## TMAP 엔드포인트와 호출 한도
 
@@ -90,7 +102,7 @@ TMAP **다중 경유지 안내** API는 경유지 상한별로 엔드포인트�
 규칙은 두 줄입니다.
 
 1. **한 번에 담기는 가장 작은 엔드포인트를 쓴다.** 경유지 30 이하면 30으로,
-   넘으면 처음부터 100으로 보냅니다 — 30으로 쪼개 두 번 부르면 쿼터를 두 번 쓰지만
+   넘으면 처음부터 100으로(100을 넘으면 200으로) 보냅니다 — 30으로 쪼개 두 번 부르면 쿼터를 두 번 쓰지만
    100은 한 번이면 끝납니다.
 2. **한도를 소진하면 남은 엔드포인트로 자동 전환한다.** 429 `QUOTA_EXCEEDED`를
    받으면 그 엔드포인트를 이번 실행에서 접고 같은 요청을 다음 것으로 다시 보냅니다.
@@ -110,7 +122,7 @@ TMAP **다중 경유지 안내** API는 경유지 상한별로 엔드포인트�
 
 ### 안전장치
 
-**무료 요금제이지만 일일 호출 한도가 있는 만큼** 세 겹을 뒀습니다.
+**무료 요금제이지만 일일 호출 한도가 있는 만큼** 여섯 겹을 뒀습니다.
 
 > 🔴 **1.26.210 정정** — 이 자리에 *"유료 API인 만큼"* 이라고 적혀 있었습니다.
 > TMAP은 요금이 청구되지 않습니다 — **유료 요금제는 신청하지 않았으므로 한도를 넘겨도
@@ -152,7 +164,7 @@ TMAP **다중 경유지 안내** API는 경유지 상한별로 엔드포인트�
 상태와 이번 예산을 먼저 찍습니다(`run_pipeline.tmap_notice` — `--dry-run`에서도).
 
 ```powershell
-$env:PBR_TMAP_MAX_CALLS="0"    # 호출 없이 직선 지도만 (쿼터 소모 0)
+$env:PBR_TMAP_MAX_CALLS="0"    # 호출 없음 (쿼터 소모 0) — 그리기 전 확인에 걸려 경로 지도를 만들지 않는다
 # 특정 엔드포인트만 쓰고 폴백을 끄고 싶을 때 (수동 검증용)
 $env:PBR_TMAP_URL="https://apis.openapi.sk.com/tmap/routes/routeSequential100"
 ```
@@ -162,7 +174,7 @@ $env:PBR_TMAP_URL="https://apis.openapi.sk.com/tmap/routes/routeSequential100"
 | 우선순위 | 문제 |
 | --- | --- |
 | 🟢 | 출발 마커 좌표의 `-0.0003` 오프셋(마커 겹침 회피용) — 이름 없이 하드코딩, 주석 없음. (TMAP 요청용 `-0.005`는 위에서 설명한 `TMAP_START_OFFSET_DEG`로 별개이며 이미 이름·주석이 있다) |
-| ✅ | ~~`start_time="201709121938"` 고정값~~ — 1.26.4부터 `start_time_for(duration)`이 회차 첫 시각(다음 평일)을 넘긴다. 고정값은 duration 형식이 틀릴 때의 폴백(`FALLBACK_START_TIME`)으로만 남았다. 남은 한계: 파이프라인이 `day_type`을 넘기지 않아 휴일 계획도 평일 교통량으로 요청한다 |
+| ✅ | ~~`start_time="201709121938"` 고정값~~ — 1.26.4부터 `start_time_for(duration)`이 회차 첫 시각(다음 평일)을 넘긴다. 고정값은 duration 형식이 틀릴 때의 폴백(`FALLBACK_START_TIME`)으로만 남았다. 지금은 `start_time_for(duration, day_type=config.day_type)`로 요일 구분도 넘긴다 — 휴일 계획은 다음 휴일의 회차 첫 시각으로 요청한다(2026-10-08까지는 넘기지 않아 휴일 계획도 평일 교통량으로 요청했다) |
 | ✅ | ~~분할 호출 시 구간 경계 경유지는 TMAP 순서 최적화 대상에서 제외됨(구간 도착지로 고정) — 방문 순서는 VRP가 이미 정하므로 실질 영향 없음~~ — **전제가 틀렸다.** 다중 경유지 안내는 순서를 최적화하지 않는다(순서 최적화는 별개 API인 *경유지 최적화*, 2026-09-15 공식 가이드 확인) |
 | ✅ | ~~`main.py` 주석 두 곳(TMAP 출발점을 벌리는 이유)이 아직 이 API를 *"경유지 최적화"* 라고 부르고, 607행 주석은 폴백을 *"30 → 100"* 까지만 적는다~~ → **고쳤다 (1.26.227, 사용자 지시).** ⚠️ 주석만 고쳐도 경로 지도 지문이 바뀌므로 **그 전에 그린 경로 지도는 전부 낡음**이 된다 — `redraw_maps.py --with-route --run-label …`로 라벨씩 다시 그린다. 09-16에 정본 3회차(30건)와 `2026-08-28 도로실측` 3회차(44건)를 되살렸고(합 74건), **남은 것은 9장·약 104건**이라 이틀 더다([TODO](../../기록/TODO.md) 색인). 📌 `--dry-run --all`의 *"60셋"* 은 **지도가 없는 실행까지** 센 값이니 남은 몫으로 읽지 말 것. ▶ **2026-09-17 현재: 위 잔량은 낡았다** — 1.26.232가 `main.py`를 고쳐 **두 PC의 경로 지도가 다시 전부 낡음**이다(집 PC 11장 · 회사 PC 15장). 게이트 A 재실행 뒤(09-23 이후) 다시 그리고, TMAP 한도를 두 PC가 한 키로 나눠 쓰므로 **한 날에는 한 PC만** 그린다([두_PC_작업.md](../두_PC_작업.md) 0장) |
 | 🟢 | 호출 예산은 **프로세스 단위**라 여러 번 나눠 실행하면 일일 한도를 넘을 수 있음 — `redraw_maps.py`는 한 번 실행 전체를 묶지만(1.26.219), 여러 번 돌리거나 다른 PC·세션이 쓴 호출은 여전히 모른다 |

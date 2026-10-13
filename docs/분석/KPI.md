@@ -96,8 +96,8 @@ stock(t+1) = clip(stock(t) - net(t), 0, 거치대 수)
 `_simulate_stock()`이 **궤적을 한 번 돌며 다섯 가지를 함께** 셉니다 — 결품·포화·
 못 빌린 수·못 세운 수·순유출.
 
-`_stockout_hours()`는 그 껍데기로 남겨 두었습니다. 실험 스크립트 넷이 이 이름으로
-부르므로(`baseline_compare`·`budget_enforce`·`min_qty_sweep`·`top_limit_sweep`)
+`_stockout_hours()`는 그 껍데기로 남겨 두었습니다. 실험 스크립트 셋이 이 이름으로
+부르므로(`budget_enforce`·`min_qty_sweep`·`top_limit_sweep` — `baseline_compare`는 `_simulate_stock()`을 직접 부릅니다)
 **값이 달라지면 그 표들이 전부 무효**가 되기 때문이고, 회귀 테스트가 두 경로의
 결과가 같은지 지킵니다.
 
@@ -315,7 +315,7 @@ z=1.99에서 95.6%까지 회복됩니다 — 근거는 [EXPERIMENTS.md](EXPERIME
 
 **`kpi_summary` 테이블**로 해결했습니다 — 실행 1건(run_label + duration) = 1행.
 step4가 자동으로 채웁니다. 실제 스키마는 [db.py](../../db.py)의 `SCHEMA`에 있고,
-아래는 설계 의도를 보여주는 요약입니다.
+아래는 설계 의도를 보여주는 요약입니다(일부만 추렸습니다 — 전체는 `db.KPI_FIELDS` 33개).
 
 ```sql
 CREATE TABLE kpi_summary (
@@ -324,7 +324,6 @@ CREATE TABLE kpi_summary (
     -- A. 계획
     avg_improvement_rate REAL,
     target_met_ratio     REAL,   -- af_imbalance <= 1 비율
-    unhandled_qty        INTEGER,
     -- B. 실측(시뮬레이션)
     stockout_hours_before REAL,
     stockout_hours_after  REAL,      -- 실제로 옮긴 양 기준
@@ -334,7 +333,7 @@ CREATE TABLE kpi_summary (
     max_cluster_minutes  REAL,
     time_budget_met      REAL,   -- 소요시간 <= 임계값 비율
     vehicles_used        INTEGER,-- 투입 차량 수
-    vehicle_load_gap     REAL,   -- 차량 누적 시간 편차(형평성)
+    vehicle_load_gap     REAL,   -- 회차 내 최대-최소 소요시간
     -- D. 효율
     improvement_per_km   REAL,
     -- E. 품질
@@ -466,7 +465,7 @@ km당 개선은 오히려 가장 높습니다(2.08 vs 1.55). **효과·비용·�
 
 ### '목표 도달 비율'은 실행 품질이 아닙니다 (1.19.7)
 
-**헤드라인에서 내렸습니다.** 표에는 그대로 있지만, 이 값이 낮은 것은 대개 계획을
+**헤드라인에서 내렸습니다.** `/kpi` 표에서도 뺐습니다(아래 덧붙임). 이 값이 낮은 것은 대개 계획을
 못 지켜서가 아닙니다.
 
 계획량은 격차 그대로가 아니라 `Q·tanh(격차/Q)`로 눌립니다(`Q` = 적재 용량 10대,

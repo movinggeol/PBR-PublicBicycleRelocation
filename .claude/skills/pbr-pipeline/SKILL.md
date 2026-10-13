@@ -5,7 +5,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 
 # PBR (Public Bicycle Relocation) 작업 가이드
 
-대전 타슈 공공자전거 재배치 프로젝트. step0~step4가 CSV 파일로 데이터를 주고받는
+대전 타슈 공공자전거 재배치 프로젝트. step0~step4가 산출물(DB, 비었으면 CSV)로 데이터를 주고받는
 배치 파이프라인이다. **코드를 수정하기 전에 이 규약과 함정을 반드시 확인할 것.**
 
 ## 문서 위치 (수정 전 필독)
@@ -18,7 +18,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 1292개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 1293개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -45,14 +45,16 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 
 ```text
 pipeline/step0_collect  : tashu_api → extract_parking_lot → api_to_info → raw_to_net → calculate_target_qty
-pipeline/step0_eda      : concat_1year_file, EDA (선택적)
+pipeline/step0_eda      : EDA (선택적 · concat_1year_file은 손으로 돌리는 도구 — 실행 순서에 없다)
 pipeline/step1_cluster  : top_st_clustering → st_visualization
 pipeline/step2_optimize : ilp → vrp
 pipeline/step3_map      : main (TMAP 지도)
 pipeline/step4_metrics  : imbalance
 ```
 
-각 단계는 `data/pp_data/…/<이름>{duration} ({now}).csv` 형식의 파일로 통신한다.
+각 단계는 산출물을 `data/pp_data/…/<이름>{duration} ({now}).csv` 형식의 파일과 DB에 함께 쓰고,
+다음 단계는 **DB를 먼저 읽는다**(`db.read_step_output()` — 같은 라벨의 행이 없을 때만 그 CSV로 물러선다.
+DB에 행이 있으면 CSV를 고쳐도 반영되지 않는다).
 **앞 단계의 출력 파일명과 뒤 단계의 입력 파일명이 정확히 일치해야 한다.**
 
 ## 공통 설정 규칙 (버전 1.0.3부터)
@@ -70,8 +72,11 @@ pipeline/step4_metrics  : imbalance
   **항상 해석된 값**이라 하위 코드가 'auto'를 볼 일이 없다.
 - **`now`는 실행 시각이 아니라 파이프라인 실행을 묶는 라벨이다.** `datetime.now()`나
   하드코딩 값을 코드에 넣지 마라 — 단계 간 파일명이 어긋난다.
-- 각 스크립트는 독립 실행되며(상호 import 없음) 실행 로직은
-  `if __name__ == '__main__':` + `main()` 아래에 둔다. 순서는 run_pipeline.py가 제어한다.
+- 각 스크립트는 독립 실행되며(import하는 형제 모듈은 셋뿐 — `vrp`→`ilp.haversine_km`,
+  `top_st_clustering`→`adjust_module`, step3 `main`→`module`) 실행 로직은
+  `if __name__ == '__main__':` 아래에 둔다(`main()`을 따로 둔 것은 tashu_api · extract_parking_lot ·
+  api_to_info · raw_to_net · EDA이고, calculate_target_qty와 step1~4는 그 블록에 바로 쓴다).
+  순서는 run_pipeline.py가 제어한다.
   **그 블록 첫머리에서 `exit_if_help(__doc__)`를 부른다**(1.26.190) — 공용 파서가
   `add_help=False`라 안 부르면 `--help`가 계산으로 흘러간다(자료가 있으면 실제로 돈다).
   `get_runtime_config()` 안에 넣지 마라 — step 모듈을 import하는 실험의 `--help`를
@@ -91,7 +96,9 @@ pipeline/step4_metrics  : imbalance
   `DURATIONS` · `duration_hours()` · `duration_start_hour()`. 스크립트에 6371 · 10분 ·
   회차 튜플을 다시 적지 마라 — 통합 전 거리 식이 아홉 벌이었고 서로 *"같은 공식"* 이라
   적어 두고도 마지막 자리가 달랐다. 실험이 `baseline_compare`를 읽거나 기본 실행을
-  고를 때는 실험 공용 모듈을 쓴다(복사본 넷에 고침이 안 번진 일이 있었다, 1.26.341).
+  고를 때는 실험 공용 모듈(`experiments/_shared.py`의 `load_baseline()` · `resolve_run_label()` ·
+  `default_run_label()`)을 쓴다(복사본 넷에 고침이 안 번진 일이 있었다, 1.26.341). 실험 폴더에 같은 이름의
+  함수를 다시 만들거나 `baseline_compare.py`를 `importlib`으로 직접 실으면 `tests/test_experiment_guards.py`가 막는다.
   🔴 `haversine_km()`의 **식 모양을 바꾸지 마라** — 계획의 이동시간이 이 값에서 나와
   테스트가 옛 ILP 식과 비트 단위로 대조한다.
 
@@ -151,7 +158,7 @@ pipeline/step4_metrics  : imbalance
    `db.sync_fleet()`(실행 경로)뿐이고 **조회 경로는 `db.ensure_fleet()`를 쓴다** —
    바꾸면 화면을 여는 것만으로 직전 실행의 보유 대수가 되돌아간다.
    하루 여러 회차를 돌리므로 **한쪽 후보만 있는 시간대는 크래시가 아니라 건너뛴다** —
-   step1/step2/step4의 건너뛰기 가드를 지우지 마라.
+   step1/step2/step3/step4의 건너뛰기 가드를 지우지 마라.
 7. **일회성 스크립트는 `experiments/<분류>/`에 둔다** — step 폴더나 루트에 test.py를
    만들지 마라. 분류는 params·baseline·structure·diagnostic·learning 다섯이고,
    스크립트 상단의 `sys.path.insert`는 **`parents[2]`**(저장소 루트)를 가리켜야 한다.
@@ -165,7 +172,8 @@ pipeline/step4_metrics  : imbalance
    요일을 맞춰라**(1.26.281). 모듈의 `config.day_type`은 실험에 `--day-type`을 주면 argv로
    따라오지만(이 통로를 막지 마라 — 테스트가 지킨다), 안 주면 **오늘 달력**이다. 채점 쪽은
    `imbalance.use_run_day_type()`(1.26.127)이 같은 일을 한다. 실험의 기본 실행은
-   `db.latest_label(conn, 표, kinds=("plan",))`로 고르고, **출발 재고는 그 계획의 스냅샷**을 써라 —
+   재고 스냅샷(`station_info`)이면 `experiments/_shared.py`의 `resolve_run_label()` · `default_run_label(conn)`로,
+   그 밖의 표는 `db.latest_label(conn, 표, kinds=("plan",))`로 고르고, **출발 재고는 그 계획의 스냅샷**을 써라 —
    `MAX(run_label)`은 스윕 실행(`sweep-10`)을 고른다.
 8. **가상환경은 `.venv`** (검증 환경: Python 3.14.7). 명령은 `.\.venv\Scripts\python.exe ...`로
    실행하라 — 시스템 `python`에는 의존성이 없다.
@@ -206,7 +214,7 @@ pipeline/step4_metrics  : imbalance
 ## 실행 방법
 
 ```powershell
-python run_pipeline.py --dry-run          # 실행 목록 확인 (파일 존재 검증)
+python run_pipeline.py --dry-run          # 실행 목록 · 요일 구분 · TMAP 안내만 찍는다 (파일 존재 검사는 실제 실행 때만)
 python run_pipeline.py                    # 전체 실행 (기본 설정)
 python run_pipeline.py --skip-api --skip-eda  # 수집·EDA 생략
 python run_pipeline.py --skip-map             # TMAP 지도 생략 (키 없는 환경)
@@ -234,8 +242,8 @@ python tools/gate_a_compare.py <off 폴더> <on 폴더>  # 끈/켠 결과 장별
 - FastAPI + Jinja2 파이썬 단독. `jobs.py`가 run_pipeline.py를 subprocess로 실행하고
   (동시 1개 제한), `store.py`가 산출물 **데이터**를, `catalog.py`가 **파일**(지도 HTML·
   CSV 다운로드)을 담당한다. 새 데이터 API는 `store.load()`를 써라.
-- **산출물 API는 DB를 읽는다**(`?run_label=`로 과거 실행분 조회). DB가 비면 CSV로
-  폴백하는데, 이건 전환기 장치이니 새 기능이 여기 의존하게 만들지 마라.
+- **산출물 API는 DB만 읽는다**(`?run_label=`로 과거 실행분 조회). CSV 폴백은 1.26.165에
+  걷어냈다 — `store.load()`의 출처는 `"db"` 아니면 `"none"`이고, DB에 없으면 옆에 CSV가 있어도 404다.
 - 파일 서빙은 `data/` 아래 `.html`/`.csv`로 제한된다 — 새 라우트를 추가할 때
   `catalog.safe_resolve()`를 우회하지 마라.
 - 파이프라인 로직을 웹 요청 안에서 직접 실행하지 마라(수 분 소요) —
@@ -263,7 +271,8 @@ python tools/gate_a_compare.py <off 폴더> <on 폴더>  # 끈/켠 결과 장별
   `rebal_qty`(양수=Drop 필요, 음수=Pick 가능), `target_qty`, `cluster`.
 - 좌표: TASHU API는 `x_pos`=위도, `y_pos`=경도 (뒤집혀 있음 — 변환 코드 존재).
 - 운영 상수(변경 시 근거 기록): 차량 적재 용량 10대(대전교통공사 확인),
-  차량 속도 25km/h(`VEHICLE_SPEED_KMPH` — **ILP·VRP가 반드시 같은 값**),
+  차량 속도 25km/h(`VEHICLE_SPEED_KMPH` — **ILP·VRP가 반드시 같은 값**. 계획의 이동시간에는 실도로 모형을 끈
+  `PBR_USE_ROAD_MODEL=0`일 때만 쓰인다 — 기본은 함정 15번의 실도로 모형이다),
   depot=타슈 관제센터(ST0001). 한 회차에 차량 1대 = 클러스터 1개 + depot 복귀.
 - **모델 파라미터는 실측 실험으로 정해져 있다** — `TARGET_Z = 1.99`,
   `CLUSTER_GAMMA = 3000`. 근거는 `docs/분석/EXPERIMENTS.md`이고 재현 스크립트는
@@ -327,7 +336,8 @@ python tools/gate_a_compare.py <off 폴더> <on 폴더>  # 끈/켠 결과 장별
   `plan`을 붙인다.** ⚠️ **기본값을 `plan`으로 만들지 마라** — 선언을 잊은 실험이
   계획으로 확정되면 라벨 짐작(`classify_run_label`, `obs-cmp-*`를 실험으로 맞힌다)
   보다 나빠진다. 선언이 없으면 NULL로 두고 짐작에 맡기는 것이 지금 설계다(1.26.114).
-- **CSV가 아직 정본이다.** `save_output()`은 DB 실패 시 경고만 남기고 파이프라인을
+- **조회 · 단계 간 배선은 DB가 정본이다**(조회 1.26.165 · 배선 1.26.166 — `db.read_step_output()`이 DB를 먼저 읽고
+  비었을 때만 CSV로 물러선다). CSV(`to_csv`)가 함께 남으므로 `save_output()`은 DB 실패 시 경고만 남기고 파이프라인을
   멈추지 않는다. 이 동작을 예외로 바꾸지 마라 — 전환기 설계다 (DB_PLAN 2단계).
 - 새 테이블을 추가할 때는 `db.TABLES`에 스코프·컬럼 변환을 등록하고 `SCHEMA`에
   DDL을 넣어라. 한글 컬럼은 ASCII로 변환한다(변환표가 `db.TABLES`에 모여 있다).
@@ -355,7 +365,7 @@ python tools/gate_a_compare.py <off 폴더> <on 폴더>  # 끈/켠 결과 장별
   인용할 때는 성격을 밝혀라. 자세한 근거와 개선안은 `docs/분석/KPI.md`.
 - 지표를 추가할 때는 **효과·비용·효율을 함께** 둬라. 개선률만 올리면 소요시간이 늘어난다.
   실측에서 `_05_10`은 개선률이 가장 낮은데(65%) km당 개선은 가장 높았다(2.08대).
-- 새 지표는 `kpi_summary` 테이블(실행 1건 = 1행)에 넣는다. `db.KPI_FIELDS`에 컬럼을
+- 새 지표는 `kpi_summary` 테이블(실행 · 회차 1건 = 1행)에 넣는다. `db.KPI_FIELDS`에 컬럼을
   등록하고 step4의 `save_kpi_summary()`에서 계산해 넘기면 된다.
   계산 못 한 지표는 빼고 넘기면 NULL로 남는다.
 - 시간대(`duration`)가 다르면 수요 구조가 반대이므로 섞어서 평균 내지 마라.
@@ -363,14 +373,17 @@ python tools/gate_a_compare.py <off 폴더> <on 폴더>  # 끈/켠 결과 장별
 ## 테스트
 
 ```powershell
-python -m pytest                 # 1292개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 1293개, 약 100초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 
 - `tests/test_webapp.py` — 라우트·보안·템플릿 회귀
 - `tests/test_pipeline.py` — 합성 데이터로 step0→step4 실제 실행 + 산출물 검증
-- 실행마다 고유 라벨(`smoketest-{pid}`)을 쓰므로 실데이터를 덮어쓰지 않는다.
+- 실행마다 고유 라벨(`smoketest-{pid}`)을 쓰고 산출물은 임시 `PBR_DATA_ROOT`에 쌓으므로(1.26.188)
+  실데이터를 덮어쓰지 않는다.
   **테스트를 추가할 때 이 규칙을 깨지 마라** — 고정 라벨을 쓰면 사용자 데이터가 지워진다.
+  단계를 하위 프로세스로 띄우는 테스트 파일에 `PBR_DATA_ROOT`가 없거나 `generate()`를 이 프로세스에서
+  부르면(`make_sample_data import generate`) `tests/test_db_isolation.py`가 실패한다.
 - `conftest.py`의 autouse fixture가 모든 테스트에 `PBR_DB_PATH`를 임시 경로로 강제한다.
   이걸 지우면 테스트가 실제 `data/bike_system.db`를 만들고 오염시킨다.
   🔴 **함수 스코프(`isolate_db`)는 모듈·세션 스코프 픽스처에 닿지 않는다** — pytest가

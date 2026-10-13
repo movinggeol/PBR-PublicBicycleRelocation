@@ -10,15 +10,16 @@ flowchart TD
     B[공공데이터포털 대여 이력] --> D[원천 이력 CSV]
     C --> E[대여소 정보 통합]
     D --> E
-    E --> F[순수요 Net Demand]
-    F --> G[목표 재고와 재배치량]
+    D --> F[순수요 Net Demand]
+    E --> G[목표 재고와 재배치량]
+    F --> G
     G --> H[Pick Drop 선정]
     E --> H
     H --> I[K-Medoids 클러스터링]
     I --> J[ILP 수량 최적화]
     J --> K[VRP 차량 경로]
     K --> L[TMAP Folium 지도]
-    L --> M[불균형 개선 평가]
+    K --> M[불균형 개선 평가]
 ~~~
 
 각 단계는 CSV와 SQLite에 **함께** 씁니다(이중 기록). 다음 단계는 앞 단계 산출물을
@@ -42,7 +43,8 @@ CSV 경로로 갈 때를 대비해 파일명 규약은 그대로 지킵니다 �
 │       ├── ILP/후보/
 │       ├── ILP/
 │       ├── VRP/
-│       └── 성능 지표/
+│       ├── 성능 지표/
+│       └── EDA/                          # EDA.py 산출물 (PNG 3장 · EDA.html)
 ├── pipeline/                              # step0~step4 (1.26.168부터 한데 묶음)
 │   ├── step0_collect/                    #   수집·전처리
 │   ├── step0_eda/                        #   이력 병합·탐색
@@ -51,8 +53,9 @@ CSV 경로로 갈 때를 대비해 파일명 규약은 그대로 지킵니다 �
 │   ├── step3_map/
 │   └── step4_metrics/
 ├── webapp/                               # 웹 대시보드 (FastAPI + Jinja2)
-├── tests/                                # pytest 1292개(41개 파일)
+├── tests/                                # pytest 1293개(41개 파일)
 ├── tools/                                # 합성 데이터·적재·백테스트·재고 수집 도구
+├── scripts/                              # 수집기 운영·게이트 A 재실행·PATH 셋업 (PowerShell)
 ├── experiments/                          # 파라미터 실험·구조 결정용 측정
 ├── project_config.py                     # 공통 설정·운영 상수 (now/period/duration/day_type)
 ├── demand_model.py                       # 수요 피처·계절 보정·분위수 모델 하네스
@@ -87,8 +90,9 @@ data/raw_data/에 타슈 대여 이력 CSV를 둡니다. 월별 파일은
 (옵션 없이 부르면 병합하지 않습니다).
 
 ⚠️ **파이프라인은 원천 CSV를 기간으로 거르지 않습니다.** `rental_history`에 그 기간이
-적재돼 있지 않으면 `--raw-file` **전체**를 `--period` 한 달로 읽습니다. 병합본(기본
-`--raw-file`)을 쓰려면 먼저 `python tools/load_rentals.py --split-by-month`로 적재하거나,
+적재돼 있지 않으면 `--raw-file` **전체**를 `--period` 한 달로 읽습니다. 먼저 월별 원본
+폴더를 `python tools/load_rentals.py --dir "<폴더>"`로 적재하거나(병합본인 기본 `--raw-file`은
+IQR 필터에 깎여 있어 다시 적재하지 않는다 — [steps/step0_raw.md](steps/step0_raw.md)),
 그 달만 담긴 CSV를 `--raw-file`로 주십시오(`project_config.DEFAULT_RAW_FILE` 주석).
 
 주요 입력 항목은 대여·반납 시각, 출발·도착 대여소 ID입니다.
@@ -179,11 +183,13 @@ rebal_qty의 부호로 나눠 만듭니다(음수 → pick_qty, 양수 → drop_
 3. 클러스터 총 이동량은 총 Pick과 총 Drop 중 작은 값
 4. 이동 수량은 음수가 아닌 정수
 
-목적함수는 `min Σ T(i,j)·x(i,j)`입니다 — Haversine 거리를 25 km/h로 환산한 이동시간
+목적함수는 `min Σ T(i,j)·x(i,j)`입니다 — Haversine 거리를 `project_config.travel_seconds()`로 환산한 이동시간
 T에 **옮기는 대수를 곱해** 더한 값을 최소화합니다. 실제 운행시간은 VRP의 방문 순서가
 정하므로 이것은 대리 목적함수입니다(ilp.py 주석 · [FORMULATION.md](../분석/FORMULATION.md)).
 
-- 기본 차량 속도: 25 km/h (`project_config.VEHICLE_SPEED_KMPH`)
+- 이동시간: 기본은 실도로 모형(`USE_ROAD_MODEL`, 기본 켜짐) — 고정비 + 직선 km × 3600 ÷ 속도이고
+  계수는 평일 320.4초 · 32.11 km/h, 휴일 309.5초 · 32.33 km/h(`ROAD_FIXED_SEC_*` · `ROAD_SPEED_KMPH_*`).
+  `PBR_USE_ROAD_MODEL=0`일 때만 직선거리 ÷ 25 km/h(`project_config.VEHICLE_SPEED_KMPH`)
 - 요일 구분: `--day-type weekday|holiday|auto` (기본 auto = 계획 대상일로 판정).
   **휴일 = 주말 ∪ 공휴일**이며, 평일과 휴일은 수요 구조가 달라 한 실행에 섞지 않습니다
   ([steps/step0_raw.md](steps/step0_raw.md))
@@ -201,12 +207,14 @@ vrp.py는 ILP 결과를 실제 차량이 수행할 방문 순서로 바꿉니다
 5. 적재량이 부족하면 depot으로 복귀 (ILP 입력에서는 발생하지 않음 —
    [steps/step2_ilp_vrp.md](steps/step2_ilp_vrp.md))
 6. 남은 작업이 없어질 때까지 반복
+7. 작업을 마치면 마지막 대여소에서 depot으로 복귀 (`return` 행, 1.19.1)
 
 현재 코드의 운영 가정 (depot·적재 용량은 project_config 공통 상수):
 
 - 차량 적재 용량: 10대 — **통상 7대의 상한값**이다(관제센터 유선 문의 2026-05-15,
   버전관리.md 1.0.1 · [ORIGINS.md](../기록/ORIGINS.md) 4장)
-- 차량 속도: 25 km/h (`project_config.VEHICLE_SPEED_KMPH` — ILP와 같은 값, 1.13.2에서 통일)
+- 이동시간: ILP와 같은 `project_config.travel_seconds()` — 기본은 실도로 모형(고정비 + 거리비례)이고,
+  `PBR_USE_ROAD_MODEL=0`일 때만 25 km/h(`project_config.VEHICLE_SPEED_KMPH` — ILP와 같은 값, 1.13.2에서 통일)
 - Pick·Drop 작업 시간: 자전거 1대당 각 30초 (가정값)
 - depot: 타슈 관제센터 (ST0001)
 - 보유 차량 21대(`FLEET_SIZE`, 대전교통공사 타슈 관제센터 유선 확인값 —
@@ -237,10 +245,11 @@ pipeline/step3_map/module.py는 TMAP 호출(엔드포인트 선택·한도 폴�
 main.py는 VRP 계획과 step1 후보로 경로점을 만들고, VRP 경로·Pick·Drop 마커·클러스터
 정보를 Folium 지도에 표시합니다.
 
-- 입력: VRP 계획 CSV, Pick·Drop 후보 CSV
+- 입력: VRP 계획, Pick·Drop 후보 (DB `vrp_plan` · `pick_drop` 먼저, 비었으면 CSV)
 - API 키: .env의 API_KEY
 - API: TMAP Routes API
-- 출력: data/pp_data/VRP/visualization/vrp_map*.html
+- 출력: data/pp_data/VRP/visualization/vrp_map*.html,
+  DB `road_leg`(구간 실측) · `road_path`(실도로 선) — 이 둘은 CSV가 없다
 
 HTML 결과는 브라우저에서 직접 열어 확인할 수 있습니다.
 
@@ -253,9 +262,11 @@ imbalance.py는 목표 재고 대비 재배치 전후의 불균형을 비교합�
 개선률 = 개선량 / 재배치 전 불균형
 ~~~
 
-- 입력: Pick·Drop 후보 및 VRP 결과
+- 입력: Pick·Drop 후보 및 VRP 결과, 결품 시뮬레이션에 순수요(`net_demand`),
+  대여소 커버리지에 대여소 정보(`station_info`) — 모두 DB 먼저, 비었으면 CSV
 - 출력: data/pp_data/성능 지표/verification*.csv (불균형 개선),
-  route_summary*.csv (클러스터별 총 이동거리·이동/작업/소요시간)
+  route_summary*.csv (클러스터별 총 이동거리·이동/작업/소요시간),
+  DB `kpi_summary` (실행 1건 = 1행, CSV 없음)
 - 지도: data/pp_data/성능 지표/visualization/imbalance_map*.html
 
 ## 10. 전체 실행 순서
@@ -264,7 +275,7 @@ imbalance.py는 목표 재고 대비 재배치 전후의 불균형을 비교합�
 (옵션 전체는 [README](../../README.md#실행) 참고).
 
 ~~~powershell
-python run_pipeline.py --dry-run          # 실행 목록·파일 존재 확인
+python run_pipeline.py --dry-run          # 실행 목록·TMAP 안내만 출력 (실행하지 않음)
 python run_pipeline.py                    # 전체 실행
 ~~~
 
@@ -272,11 +283,12 @@ python run_pipeline.py                    # 전체 실행
 각 스크립트도 같은 공통 옵션(`--now` 등)을 그대로 받습니다.
 
 ~~~powershell
-python "pipeline/step0_eda/concat_1year_file.py" --concat   # 월별 파일을 합칠 때만
+python "pipeline/step0_eda/concat_1year_file.py" --concat   # 월별 파일을 합칠 때만 — run_pipeline.py는 부르지 않는다
                                                   # (옵션 없이 부르면 병합하지 않는다)
 python "pipeline/step0_collect/tashu_api.py"
 python "pipeline/step0_collect/extract_parking_lot.py"
 python "pipeline/step0_collect/api_to_info.py"
+python "pipeline/step0_eda/EDA.py"                          # --skip-eda로 생략
 python "pipeline/step0_collect/raw_to_net.py"
 python "pipeline/step0_collect/calculate_target_qty.py"
 python "pipeline/step1_cluster/top_st_clustering.py"

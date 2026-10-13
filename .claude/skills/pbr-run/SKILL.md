@@ -31,7 +31,7 @@ description: PBR 프로젝트의 앱을 실제로 띄우고 조작해 변경이 
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-**테스트 1292개 수집 · 실패 0이 기준선이다**(이 숫자는 `tools/check_consistency.py`가 대조한다). cbcbox 미설치·산출물 없음 같은 환경 차이로
+**테스트 1293개 수집 · 실패 0이 기준선이다**(이 숫자는 `tools/check_consistency.py`가 대조한다). cbcbox 미설치·산출물 없음 같은 환경 차이로
 몇 개는 skip된다. 여기서 깨지면 아래로 내려가지 마라.
 
 ---
@@ -96,19 +96,21 @@ DB도 별도 파일(`data/재현.db`)을 쓴다.
 ### 끝나면 정리 (`--keep`을 줬을 때만)
 
 ```powershell
-# 파일
-Get-ChildItem data -Recurse -Filter "*테스트*" | Remove-Item -Force
-Remove-Item "data\raw_data\합성_대여이력.csv" -ErrorAction SilentlyContinue
+# 파일 — tools/reproduce.py의 cleanup()이 지우는 것과 같다 (라벨 '재현 데모')
+Get-ChildItem data\pp_data -Recurse -File -Filter "*재현 데모*" | Remove-Item -Force
+Remove-Item "data\raw_data\합성_대여이력 (재현 데모).csv" -ErrorAction SilentlyContinue
+Remove-Item "data\재현.db", "data\재현.db-wal", "data\재현.db-shm" -ErrorAction SilentlyContinue
 ```
 
 ```python
-# DB — 라벨이 들어가는 테이블 전부
+# DB — 라벨이 들어가는 테이블 전부 (본 DB에 그 라벨로 쓴 행이 있을 때.
+#      reproduce.py의 파이프라인 산출물은 data/재현.db에 있어 위에서 파일째 지워진다)
 import db
 with db.session() as c:
     for t in ('runs','vrp_plan','pick_drop','kpi_summary','vehicle_assignment',
               'ilp_plan','route_summary','metrics','rebalance_plan',
-              'station_info','parking_lot','station_stock','road_leg'):
-        try: c.execute(f"DELETE FROM {t} WHERE run_label='테스트'")
+              'station_info','parking_lot','station_stock','road_leg','road_path'):
+        try: c.execute(f"DELETE FROM {t} WHERE run_label='재현 데모'")
         except Exception: pass
     c.commit()
 ```
@@ -188,8 +190,8 @@ assert box.get_attribute("data-pinned") is not None    # 클릭하면 고정
 page.locator("#tipbox .tipclose").click()              # x로 닫는다
 ```
 
-⚠️ **고정은 `.tip` 딱지에서만 된다.** 내비 링크에도 `data-tip`이 있어서,
-아무 데서나 고정하면 **페이지 이동이 막힌다**(1.22.1에서 겪음).
+⚠️ **고정은 `.tip` 딱지와 그래프의 값 마크(`data-tip-title`이 있는 것)에서만 된다.** 내비 링크에도
+`data-tip`이 있어서(제목은 없다), 아무 데서나 고정하면 **페이지 이동이 막힌다**(1.22.1에서 겪음).
 
 ### 400% 확대 — 낱말이 세로로 쪼개지는지 (1.26.115)
 
@@ -364,16 +366,21 @@ with sync_playwright() as p:
 | --- | --- |
 | `/` | **현황판이다**(1.26.0~). 마지막 계획 요약·실험 라벨 표시 |
 | `/run` | **실행 폼**. 실행 이름 기본값이 오늘 날짜인가(`#f-now`), 시간대 체크박스 4개 |
-| `/kpi` | 타일 5개에 툴팁, 표 팝업 계단 배치, 그래프 렌더 |
+| `/kpi` | 타일 4개(평균 개선률 · km당 개선 · 시간 예산 준수 · 결품 시간)에 툴팁, 표 팝업 계단 배치, 그래프 렌더 |
 | `/vehicles` | 지표가 **어느 기간인지** 화면에 적혀 있나 |
 | `/orders` | 작업지시서에 **차고지 복귀 행**이 있나(1.19.1), 군집 > 순서로 정렬됐나 |
 | `/maps` | 지도가 뜨나 (⚠️ CDN 의존이라 인터넷 없으면 빈 화면) |
+| `/data` | CSV 목록(`catalog.list_csvs()`)이 `?run_label=` · `?duration=`으로 좁혀지나 |
+| `/collect` | 재고 수집 현황. **읽기만 한다** — 타슈 API를 부르지 않는다 |
+| `/upcoming` | 다음 회차 예상 — 1 · 3시간 뒤(`?hours=1`·`3`) 계획에서 수거 · 배송 대상이 될 대여소. 읽기만 한다 |
+| `/m` · `/m/route` · `/m/progress` · `/m/me` | **현장 앱** — 오늘 작업 · 경로 안내(방문 순서와 도착 체크) · 진행 현황 · 내 정보. 체크 기록은 이 기기의 localStorage(`pbr-field:…`)에만 남는다 |
 | `/device?path=/kpi` | 프레임 안 `innerWidth`가 기기 폭(430)인가, **같은 화면을 실제 430px 뷰포트로 연 값과** 타일 열 수가 같은가, 안에서 이동하면 주소가 따라가나. 프레임은 `page.frames`에서 찾는다 |
 
 ### 실시간 재고 대조는 자동 확인하지 마라
 
 `/orders/live`는 **타슈 API를 실제로 부른다.** 자동 스크립트로 반복 호출하지
-말고, 필요하면 사람이 한 번 눌러 본다.
+말고, 필요하면 사람이 한 번 눌러 본다. 현장 앱의 재판정 `/m/live`(JSON)도 타슈 API를
+부른다(받은 표를 60초 동안 나눠 쓴다).
 
 ---
 
@@ -429,8 +436,9 @@ with sync_playwright() as p:
 된다. 위의 138건 중 절반은 그래서 두 번 그린 것이다 — 그릴 때 쓴 호출이
 아니라 **순서를 틀려서 쓴 호출**이다.
 
-⚠️ **`road_leg`에 쓴다.** step3는 TMAP 실측을 DB에 남긴다 — 같은 (실행, 회차)
-범위를 갈아끼우므로 중복은 안 쌓이고, **게이트를 판정하는 패널
+⚠️ **`road_leg` · `road_path`에 쓴다.** step3는 TMAP 실측(구간 소요시간과 군집별 실도로 선
+좌표)을 DB에 남긴다 — 같은 (실행, 회차)
+범위를 갈아끼우므로(일부 군집만 받았으면 받은 군집만) 중복은 안 쌓이고, **게이트를 판정하는 패널
 행(`roadprobe-*`)과는 라벨이 달라 섞이지 않는다.**
 
 ### TMAP 없이 확인해야 할 때 (키가 없는 환경)
@@ -471,6 +479,6 @@ m.call_tmap_chunked = fake_chunked      # step3 모듈을 로드한 뒤 갈아�
 
 - [ ] `pytest` 실패 0 (1장의 개수 수집, skip 허용)
 - [ ] 서버를 **PowerShell로** 껐다
-- [ ] 테스트 라벨 파일·DB 행을 **둘 다** 지웠다
+- [ ] 합성 라벨('재현 데모') 파일·DB(`data/재현.db`와 본 DB의 그 라벨 행)를 **둘 다** 지웠다
 - [ ] `git status`가 깨끗하다 (합성 데이터가 남지 않았나)
 - [ ] 스크린샷을 **실제로 봤다**

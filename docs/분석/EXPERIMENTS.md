@@ -1518,7 +1518,7 @@ _wanted_vehicles_geo()  이동시간 = travel_seconds(순회거리 ÷ K + depot 
 > 재현: `python experiments/params/cluster_count_sweep.py`
 
 5-B장에서 **군집화 → ILP에서 물량의 ~~20~28%~~ 20~26%가 사라진다**는 것을 쟀습니다(5-B 표는
-25.8 · 21.9 · 20.2%이고 목차도 20~26%입니다 — 2026-10-08 점검. `cluster_count_sweep.py` 머리말도 *28%* 로 적고 있습니다).
+25.8 · 21.9 · 20.2%이고 목차도 20~26%입니다 — 2026-10-08 점검. `cluster_count_sweep.py` 머리말도 *20~26%* 로 적고 있습니다).
 그 손실을 줄이는 길이 있는지 세 갈래로 재 봤습니다.
 
 ### 먼저 — 문제가 아니었던 것 둘
@@ -2318,7 +2318,7 @@ python experiments/structure/multi_cluster_route.py --period "26년 03월" --cha
 
 ### ✅ 판정 — 세 기준을 모두 넘었다 (2026-09-15)
 
-> 재현: `python experiments/params/road_time_model.py --day-type weekday`
+> 재현: `python experiments/params/road_time_model.py --day-type weekday --until 2026-09-15`
 
 아래 *"아직 판정할 수 없다"* 절이 미리 박은 기준으로 10일째(09-15)에 돌렸습니다.
 
@@ -2910,7 +2910,7 @@ moved = candidates.set_index("station_id")["rebal_qty"]   # 계획이 전부 집
 보정계수·MAPE·CV가 전부 같다 — **원고의 표시 두 곳은 값을 고칠 필요 없이 지우면 된다**
 (`3장:234` · `7장:167`).
 
-> 재현: `python experiments/diagnostic/tour_length_estimate.py`
+> 재현: `python experiments/diagnostic/tour_length_estimate.py --run-label "2026-08-11 real"`
 
 5-H장은 BHH 면적 근사로 K를 정해 보고 **예산 초과가 28건 → 62건**이 되자 이렇게
 진단했습니다.
@@ -4184,7 +4184,7 @@ python experiments/params/z_fixedpop_grid.py --z-grid wide `
 아니라 관행값**이라, 근거를 물으면 그렇게 답할 수밖에 없었습니다.
 
 **중립 모집단(전체 대여소)으로 쟀습니다** — `REBAL_MIN_QTY`가 **후보 집합을
-바꾸는 손잡이**라([top_st_clustering.py:197](../../pipeline/step1_cluster/top_st_clustering.py#L197) —
+바꾸는 손잡이**라([top_st_clustering.py:203](../../pipeline/step1_cluster/top_st_clustering.py#L203) —
 `abs(rebal_qty) > REBAL_MIN_QTY`로 거르는 줄입니다. 코드가 늘어 174행에서 밀렸습니다, 2026-10-08 점검)
 자기 후보 집합에서 재면 17·18장과 같은 결함에 빠집니다. 자가 흔들리지 않았음을
 **회차별로 확인**했습니다(세 회차 모두 재배치 전 값이 값에 무관).
@@ -4879,7 +4879,7 @@ z 0.25 → 1.9058h        z 1.99 → 1.8519h        차이 194초
 
 ## 28. 중심 통계를 **중앙값으로** 바꿔 봤다 — 중립 모집단에서는 **잡음이다** (2026-09-03)
 
-> 재현: `python experiments/params/center_stat_grid.py --z-grid "1.65,1.99,2.33" --seeds "42,7,13"`
+> 재현: `python experiments/params/center_stat_grid.py --period "25년 11월" --z-grid "1.65,1.99,2.33" --seeds "42,7,13"`
 > 돌린 뒤 보고만 다시: `--from-csv <저장한 csv>` (결과 csv는 `.gitignore`에 걸려
 > 저장소에 없다 — 위 명령으로 직접 만든다. 약 40분)
 
@@ -4952,7 +4952,7 @@ sigma의 0.6745배라 같은 z에서도 목표가 작아진다 — 그러면 *"�
 
 ## 29. 충족률을 **총 대여 건수**로 다시 쟀다 — 순서가 뒤집힌다 (2026-09-03)
 
-> 재현: `python experiments/structure/fulfill_gross.py`
+> 재현: `python experiments/structure/fulfill_gross.py --period "25년 11월"`
 > 운영 코드는 **한 줄도 바꾸지 않았다** — `rental_history` 540만 건에서 직접 센다.
 
 ### 왜 다시 재나
@@ -5434,7 +5434,7 @@ db.py가 두 경우를 구분해 둔 것이 여기서 실제로 쓰였습니다.
 📌 **B1 그리디만 계획이 바뀐다.** 최장은 그대로인데(예산이 찰 때까지만 담으므로) **결품이 나빠졌다**
 (`_05_10` 1.15 → 1.30h · `_10_15` 0.41 → 0.55h). 감소율로는 52.1% → 45.8%다. 도착이 늦어서가 아니다 —
 결품은 `_simulate_stock()`이 **집행된 재배치량**으로 재므로 시각이 들어가지 않는다. B1은 차량마다 예산이
-찰 때까지 담기 때문에(`baseline_compare.py` 242행) 이동시간이 길어지면 **한 대가 덜 담아 분할이 달라지고,
+찰 때까지 담기 때문에(`baseline_compare.py` 255행) 이동시간이 길어지면 **한 대가 덜 담아 분할이 달라지고,
 같은 대수를 옮겨도 다른 곳을 채운다.** 이동거리가 372.5 → 436.1 km로 늘어난 것이 그 흔적이다.
 
 📌 **원고 3장의 그림 넷이 쓰는 정본 회차도 여기서 나온다** — `tools/make_thesis_figures.py`의 `_canon_round`가

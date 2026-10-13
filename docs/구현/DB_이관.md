@@ -194,7 +194,7 @@ Expand-Archive data\transfer\collected.zip -DestinationPath data\transfer\  # �
 | `road_leg` | 고정 패널 **TMAP 실측** | `collect_road_time.py` |
 
 > 🔑 **이쪽은 "합치는" 것이지 "덮는" 것이 아닙니다.** 두 PC가 **같은 창(매일
-> 07:00–23:00)으로 걸어 두고 켜져 있는 시간이 달라**(회사=낮, 집=저녁)
+> 00:00–23:50 — 24시간)으로 걸어 두고 켜져 있는 시간이 달라**(회사=24시간, 집=저녁)
 > 양쪽에 서로 다른 틱이 있습니다([두_PC_작업.md](두_PC_작업.md) 0장).
 > 덮어쓰면 한쪽 관측이 사라집니다 — 그래서 받는 쪽은 **먼저 수집한 것이
 > 이깁니다**(`INSERT OR IGNORE`).
@@ -232,8 +232,10 @@ python tools/export_collected.py --from 2026-08-25 --to 2026-08-31 --out data/tr
   stock_station_master   8,233 행
   road_leg                 300 행
 
-합계 422,910행.  (파일 약 51MB — 크면 3장의 zip 방법을 쓰십시오)
+합계 422,910행. 받는 PC에서: python tools/merge_stock.py data/transfer/collected.db  (파일을 옮긴 뒤 그 PC의 경로로)
 ```
+
+이 예의 파일은 약 51MB입니다 — 크면 3장의 zip 방법을 쓰십시오(도구는 파일 크기를 찍지 않습니다).
 
 > 📌 **`stock_station_master`(그날의 대여소 이름·좌표)가 함께 담깁니다.**
 > 재고만 옮기면 받는 PC에서 **"이름·좌표가 없는 날"** 경고가 뜹니다 —
@@ -424,7 +426,7 @@ python tools/transfer_run.py --import data/transfer/run_20260811_real.db --overw
 
 | | 따라가나 | 왜 |
 | --- | --- | --- |
-| `runs`·`station_info`·`station_stock` 등 **12개 표** | ✅ | 라벨 하나에 묶인 실행 전체 |
+| `runs`·`station_info`·`station_stock` 등 **13개 표**(실도로 경로 `road_path` 포함) | ✅ | 라벨 하나에 묶인 실행 전체 |
 | `net_demand` (순수요) | ❌ | 기간 스코프다. `tools/rebuild_net_demand.py`로 다시 만든다 |
 | `road_leg` (TMAP 실측) | ❌ | 각자 쌓는 관측치라 **합쳐야** 한다 → [3-B장](#3-b-수집기-자료-옮기기--재고-시계열tmap-실측) |
 | `stock_history` (재고 시계열) | ❌ | 〃 (`export_collected.py` → `merge_stock.py`) |

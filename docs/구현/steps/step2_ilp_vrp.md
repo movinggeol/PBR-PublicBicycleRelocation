@@ -6,26 +6,34 @@
 ## `ilp.py` — 이동 수량 최적화
 
 - **입력**: `data/pp_data/ILP/후보/top{duration} ({now}).csv`
+  (DB `pick_drop` 먼저, 비었으면 CSV — 둘 다 없으면 `[건너뜀]`으로 그 회차를 넘긴다)
 - **출력**: `data/pp_data/ILP/ILP_plan{duration} ({now}).csv`
   (hour, cluster, pick_station_id, drop_station_id, qty, travel_time_sec)
-  + SQLite `ilp_plan` 테이블 (`hour`는 `duration`과 중복이라 DB에는 저장하지 않는다)
+  + SQLite `ilp_plan` 테이블 (`hour`는 `duration`과 중복이라 DB에는 저장하지 않는다).
+  이동이 하나도 없는 빈 계획도 헤더(`ILP_PLAN_COLUMNS`)는 쓴다
 
 ### 모델 (클러스터별 독립 수행)
 
 - 결정변수: `x(i,j)` = Pick i → Drop j 이동 대수 (음이 아닌 정수)
-- 목적함수: `min Σ T(i,j)·x(i,j)` — Haversine 거리를 25km/h로 환산한 이동시간 가중 합
+- 목적함수: `min Σ T(i,j)·x(i,j)` — Haversine 거리를 `project_config.travel_seconds()`로 환산한 이동시간 가중 합
+  (기본은 실도로 모형 = 고정비 + 거리비례, `PBR_USE_ROAD_MODEL=0`이면 직선거리 ÷ 25km/h — 아래 운영 상수)
 - 제약조건:
   1. `Σ_j x(i,j) ≤ pick_qty(i)` — 공급 제한
   2. `Σ_i x(i,j) ≤ drop_qty(j)` — 수요 제한
   3. `Σ x = min(총 Pick, 총 Drop)` — 총 이동량 강제 (없으면 x=0이 최적해가 됨)
 - Solver: PuLP CBC, `timeLimit=600초`, `gapRel=2%`
+  - `build_solver()`가 `PULP_CBC_CMD` → `COIN_CMD`(PATH의 cbc) → `cbcbox` 순으로 있는 것을 고르고,
+    하나도 없으면 설치 안내와 함께 멈춘다 (PuLP 4.0에서 `PULP_CBC_CMD`가 사라지는 데 대비)
+  - `solve_with_retry()`는 CBC 프로세스를 못 띄운 경우(`OSError`)만 5초 쉬고 다시 시도한다
+    (모두 3회). 계산 오류는 다시 시도하지 않는다
 
 ## `vrp.py` — 방문 순서 계산 (greedy 휴리스틱)
 
 - **입력**: ILP_plan CSV + top 후보 CSV(좌표)
+  (DB `ilp_plan` · `pick_drop` 먼저, 비었으면 CSV — ILP 계획이 비면 `[건너뜀]`으로 그 회차를 넘긴다)
 - **출력**: `data/pp_data/VRP/VRP_plan{duration} ({now}).csv`
   (cluster, from_id/lat/lon, to_id/lat/lon, action(pick/drop/return), qty,
-  distance_km, travel_sec, work_sec, cum_sec)
+  distance_km, travel_sec, work_sec, cum_sec, vehicle_id)
   + SQLite `vrp_plan` 테이블 (같은 대여소 재방문이 있어 `seq` 컬럼으로 방문 순서 보존)
 - 노드 키는 `(station_id, type)` — 같은 대여소가 pick·drop 양쪽에 있어도 유실 없음
 - 작업시간은 자전거 1대당 `PICK/DROP_TIME_SEC`(30초) 가정
@@ -74,14 +82,17 @@
 | `DEPOT_*` | ST0001 타슈 관제센터 | project_config 공통 상수 (step3와 공유) |
 | `FLEET_SIZE` | 21대 | 기본값(대전교통공사 확인값, FLEET.md). 웹 실행 폼·`--fleet-size`(`PBR_FLEET_SIZE`)로 실행마다 조정 |
 | `VEHICLES_PER_ROUND` | 21대 (= 보유 대수) | 회차당 투입 **상한**. 실제 대수는 그 회차의 작업량이 정한다(step1 `wanted_vehicles`, 실측 K=12~16). 1.19.1에서 10 → 보유 대수로 열었다 |
-| `VEHICLE_SPEED_KMPH` | 25km/h | project_config 공통 상수. **ILP와 같은 값이어야 한다**(1.13.2에서 통일). 선행연구(이은탁·손봉수, 2019, Constraint 3)와 같은 값 |
+| `USE_ROAD_MODEL` | 켜짐 | 이동시간 식을 고른다(`PBR_USE_ROAD_MODEL`). 켜져 있으면 ILP · VRP 모두 `travel_seconds()`의 실도로 모형(고정비 + 직선 km × 3600 ÷ 속도)을 쓴다 |
+| `ROAD_FIXED_SEC_*` · `ROAD_SPEED_KMPH_*` | 평일 320.4초 · 32.11km/h, 휴일 309.5초 · 32.33km/h | 실도로 모형의 계수 쌍. 실행의 `day_type`으로 고른다(`PBR_ROAD_FIXED_SEC_WEEKDAY/HOLIDAY` · `PBR_ROAD_SPEED_KMPH_WEEKDAY/HOLIDAY`) |
+| `VEHICLE_SPEED_KMPH` | 25km/h | project_config 공통 상수. **`PBR_USE_ROAD_MODEL=0`일 때만 쓰인다**(직선거리 ÷ 속도). **ILP와 같은 값이어야 한다**(1.13.2에서 통일). 선행연구(이은탁·손봉수, 2019, Constraint 3)와 같은 값 |
 | `PICK/DROP_TIME_SEC` | 30초 | 자전거 1대당 작업시간으로 사용. 선행연구(이은탁·손봉수, 2019, Constraint 4)와 같은 값 — 다만 그 논문도 실측이 아니라 가정값이라 "수렴" 근거이지 "실측 검증"은 아니다 |
 
 ### 차량 배정 (로테이션)
 
 경로 계산이 끝나면 클러스터별 작업량을 산출해 **실제 차량을 배정**합니다.
 누적 작업이 적은 차량부터 뽑으므로 직전 회차에 나간 차량은 다음 회차에서 뒤로 밀립니다.
-배정 결과는 `vehicle_assignment` 테이블에 남고 `vrp_plan`에 `vehicle_id`로 붙습니다.
+배정 결과는 `vehicle_assignment` 테이블에 남고 `vrp_plan`(CSV · DB)에 `vehicle_id`로 붙습니다.
+배정이 실패하면 경고만 남기고 `vehicle_id`를 빈 채로 둡니다 — 경로 계획은 그대로 저장됩니다.
 규칙과 운영 모델은 [FLEET.md](../FLEET.md) 참고.
 
 ## 현재 문제점

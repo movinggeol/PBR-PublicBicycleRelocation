@@ -46,7 +46,7 @@ SQLAlchemy 엔진 모두에서 동일하게 동작하므로, 데이터 접근 �
 
 ```text
 data/bike_system.db  (WAL 모드)
-├── runs               (실행 이력: run_label, period, duration, raw_file, created_at)
+├── runs               (실행 이력: run_label, period, duration, raw_file, day_type, kind, created_at)
 ├── station_stock      (TASHU API 재고 스냅샷)          ← step0 산출
 ├── station_info       (대여소 마스터)                  ← step0 산출
 ├── parking_lot        (거치대 수)                      ← step0 산출
@@ -60,11 +60,18 @@ data/bike_system.db  (WAL 모드)
 ├── vehicle            (차량 마스터, 전역 스코프)         ← 1.8.0에서 추가
 ├── vehicle_assignment (회차별 배정·작업량)              ← step2 vrp 산출, 1.8.0
 ├── kpi_summary        (회차 1건 = 1행 지표)            ← step4 산출, 1.9.3
-└── rental_history     (대여이력 원본, 대여일시 인덱스)   ← raw CSV (4단계에서 적재)
+├── rental_history     (대여이력 원본, 대여일시 인덱스)   ← raw CSV (4단계에서 적재)
+├── demand_backtest    (수요 예측 백테스트, 월쌍 1건 = 1행) ← tools/backtest_demand.py, 1.19.3
+├── stock_history      (재고 시계열, 10분 틱)            ← tools/collect_stock.py, 1.20.0
+├── stock_station_master (그날의 대여소 이름·좌표)        ← tools/collect_stock.py, 1.20.0
+├── road_leg           (TMAP 실제 도로 소요시간)         ← step3 · tools/collect_road_time.py, 1.23.2
+├── stockout_calibration (결품 지표 보정 계수)            ← experiments/structure/observed_stockout.py, 1.26.1
+└── road_path          (TMAP 실도로 경로의 좌표)         ← step3 산출, 1.26.308
 ```
 
 > 위 3개(`vehicle`·`vehicle_assignment`·`kpi_summary`)는 이관 계획 이후에 추가된
 > 테이블입니다. 이관 단계와 무관하게 [FLEET.md](FLEET.md)·[KPI.md](../분석/KPI.md)에서 생겼습니다.
+> `rental_history` 아래 여섯도 그 뒤에 더해진 것으로, 지금은 모두 21개입니다.
 
 설계 시 실제 산출물 CSV의 컬럼을 뽑아 맞췄습니다. 주의할 점 3가지:
 
@@ -79,7 +86,8 @@ data/bike_system.db  (WAL 모드)
 컬럼으로 옮긴다(`run_label TEXT`, duration도 컬럼화). 효과:
 
 - 실행 이력 간 비교("지난주 vs 이번주 개선률")가 쿼리 한 줄이 됨
-- 웹 API의 최신 파일 휴리스틱 → `ORDER BY run_label DESC LIMIT 1`
+- 웹 API의 최신 파일 휴리스틱 → `db.latest_label()`(`runs.created_at` 순 — 처음에는
+  `ORDER BY run_label DESC LIMIT 1`이었고 그것이 버그였다, 아래 3단계 절)
 - 파일명 규약(`이름{duration} ({now}).csv`) 의존성이 사라짐
 
 초기 테이블 DDL 초안은 [메모.md](../기록/메모.md)의 SQLite 섹션 참고
@@ -92,11 +100,13 @@ data/bike_system.db  (WAL 모드)
 - [x] 1. `db.py` 공통 모듈 — 연결(WAL), 스키마, `save_frame`/`load_frame`, run_label 규약.
       `tools/csv_to_db.py`로 기존 CSV 산출물을 적재할 수 있고, 테스트 17개로 검증됨
       (그중 1개는 파이프라인이 실제로 만든 CSV를 적재해 스키마 적합성을 확인)
-- [x] 2. **이중 기록** — 9개 단계가 CSV와 DB에 모두 쓴다. CSV가 아직 정본이며,
+- [x] 2. **이중 기록** — 9개 단계가 CSV와 DB에 모두 쓴다. CSV가 아직 정본이며
+      (이 단계 기준 — 지금은 조회·배선 모두 DB가 정본이다, 5단계),
       DB 기록 실패는 경고만 남기고 파이프라인을 멈추지 않는다.
       테스트 11개로 각 테이블 적재와 CSV 대조를 검증 (아래 "2단계" 참고)
 - [x] 3. **webapp API를 DB 조회로 전환** — `webapp/store.py`가 DB를 먼저 보고,
-      비어 있으면 CSV로 폴백한다. `?run_label=`로 과거 실행분 조회 가능,
+      비어 있으면 CSV로 폴백한다(폴백은 1.26.165에 걷어냈다 — 지금 `store.load()`는
+      DB만 읽는다). `?run_label=`로 과거 실행분 조회 가능,
       `/api/pipeline-runs`로 실행 이력 노출. 테스트 9개 (아래 "3단계" 참고)
 - [x] 4. **대여이력 원본 적재 + step0 전환** — `tools/load_rentals.py`로 적재하면
       `raw_to_net.py`·`api_to_info.py`가 CSV 대신 DB에서 읽는다.
@@ -115,8 +125,7 @@ python tools/csv_to_db.py --list        # 적재된 실행 이력 확인
 
 ```python
 import db
-with db.connect() as conn:
-    db.init_schema(conn)
+with db.session() as conn:                             # 스키마 보장 + 끝나면 커밋하고 닫는다
     latest = db.load_frame(conn, "metrics")            # 최신 실행분
     old    = db.load_frame(conn, "metrics", run_label="2026-05-21 18")
 ```
@@ -194,8 +203,9 @@ GET /api/metrics?run_label=2026-05-21%2018    # 특정 실행
 GET /api/pipeline-runs                        # 실행 이력 목록
 ```
 
-응답에 `run_label`과 `source`(db|csv)가 함께 담겨, 어느 실행분을 어디서 읽었는지
-확인할 수 있습니다. 대시보드 첫 화면에도 실행 이력 표가 추가되었습니다.
+응답에 `run_label`과 `source`(지금은 늘 `db` — 폴백을 걷은 1.26.165 전에는 db|csv)가
+함께 담겨, 어느 실행분을 어디서 읽었는지 확인할 수 있습니다. 대시보드 첫 화면에도
+실행 이력 표가 추가되었습니다.
 
 ### 설계 결정
 
@@ -225,6 +235,7 @@ CSV 대신 DB에서 읽도록 바꿨습니다.
 
 ```powershell
 python tools/load_rentals.py            # 적재
+python tools/load_rentals.py --dir "data/raw_data/<월별 원본 폴더>"   # 월별 파일 여럿 (월별 원본이 있으면 이쪽)
 python tools/load_rentals.py --status   # 기간별 적재 현황
 ```
 
@@ -244,7 +255,9 @@ pandas의 C CSV 파서가 매우 빠르고, SQLite → Python 객체 → DataFra
 | **3개월치 저장소에서 한 달만 로드** | 2.43초 | 0.99초 | **DB 2.45배 빠름** |
 
 즉 **저장소가 필요한 양보다 클 때 DB가 이깁니다.** 실제 운용은 이쪽입니다 —
-`concat_1year_file.py`로 1년치를 병합해 두고 한 달씩 분석하므로, 12개월이 든
+여러 달을 DB에 넣어 두고 한 달씩 분석하므로(당시는 `concat_1year_file.py`의 1년치
+병합본, 지금은 월별 원본을 `tools/load_rentals.py --dir`로 넣습니다 — 병합본은 IQR
+필터에 깎여 있어 다시 적재하지 않습니다), 12개월이 든
 DB에서 한 달만 인덱스로 읽는 편이 훨씬 유리합니다. 반대로 딱 한 달치 파일만
 가지고 돌린다면 DB 전환의 속도 이득은 없습니다.
 
@@ -317,7 +330,10 @@ SQL `GROUP BY`로 시험하니 0.346초로 전체 fetch(0.564초)보다 빨랐�
 - **`use_min`·`use_km`은 `NUMERIC` 친화도**입니다. `REAL`로 두면 원본이 정수인
   `이용시간(분)`이 실수로 바뀌어 CSV 경로와 dtype이 달라집니다(동일성 테스트가 잡아냄).
 - **적재 중에는 인덱스를 지웠다가 끝나고 다시 만듭니다.** 인덱스가 걸린 채로
-  대량 삽입하면 매 행마다 B-Tree를 갱신해 훨씬 느립니다.
+  대량 삽입하면 매 행마다 B-Tree를 갱신해 훨씬 느립니다. 지금은 이것이
+  `manage_indexes=True`(기본)일 때의 동작입니다 — 여러 달을 잇달아 넣을 때는
+  `manage_indexes=False`로 인덱스를 둔 채 넣고(`load_rentals.py --dir`), 어느 쪽이든
+  청크마다 커밋합니다(재고 수집기가 틱을 잃지 않게).
 - **날짜는 `YYYY-MM-DD HH:MM:SS`로 정규화**해 저장합니다. TEXT 컬럼이라
   문자열 비교로 범위 조회가 되어야 하기 때문입니다.
 - **호출부가 필요한 컬럼만 요청**합니다(`read_rental_source(columns=[...])`).

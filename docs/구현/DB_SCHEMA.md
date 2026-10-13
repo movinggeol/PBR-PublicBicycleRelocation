@@ -8,7 +8,7 @@
 | | |
 | --- | --- |
 | 파일 | `data/bike_system.db` (환경변수 `PBR_DB_PATH`로 재정의) |
-| 엔진 | SQLite 3, `journal_mode=WAL` (파이프라인이 쓰는 중에도 웹이 읽을 수 있음) |
+| 엔진 | SQLite 3, `journal_mode=WAL` (파이프라인이 쓰는 중에도 웹이 읽을 수 있음). 쓰기 잠금은 60초까지 기다립니다(`db.BUSY_TIMEOUT_SEC`) |
 | 테이블 | **21개** (실행 이력 1 · 산출물 11(1.26.308에 `road_path`) · 차량 운용 2 · 지표 1 · 원천 1 · 재고 시계열 2 · 예측 백테스트 1 · **실도로 관측 1 · 결품 보정 1**) |
 | 접근 | 항상 `db.session()` 경유. `sqlite3.connect`를 직접 부르지 마세요 |
 
@@ -22,8 +22,10 @@
 | 스코프 | 키 | 뜻 | 해당 테이블 |
 | --- | --- | --- | --- |
 | **실행** | `run_label` | 파이프라인 실행 1건. CSV 파일명의 `{now}`가 컬럼이 된 것 | `station_stock`, `station_info`, `parking_lot` |
-| **실행 + 회차** | `run_label` + `duration` | 한 실행 안의 시간대(`_05_10` 등). 하루 3회차면 3행 세트 | `rebalance_plan`, `pick_drop`, `ilp_plan`, `vrp_plan`, `metrics`, `route_summary`, `vehicle_assignment`, `kpi_summary` |
+| **실행 + 회차** | `run_label` + `duration` | 한 실행 안의 시간대(`_05_10` 등). 하루 3회차면 3행 세트 | `rebalance_plan`, `pick_drop`, `ilp_plan`, `vrp_plan`, `road_leg`, `road_path`, `metrics`, `route_summary`, `vehicle_assignment`, `kpi_summary` |
 | **기간** | `period` | 원천 데이터 기간(`25년 11월`). **실행과 무관** | `net_demand`, `rental_history` |
+| **월쌍** | `duration` + `train_period` + `test_period` + `day_type` | 실행과 무관한 백테스트 기록. 축은 (시간대, 월쌍, 요일) | `demand_backtest` |
+| **잰 시각** | `measured_at` + `duration` + `day_type` | 결품 보정 계수. 덮어쓰지 않고 쌓는다 | `stockout_calibration` |
 | **관측 시각** | `observed_at` | 실행과 무관한 **실측 시계열**. 등록된 창(운영: 매일 00:00–23:50 — 24시간·휴일 포함, 2026-09-14부터 · [두_PC_작업.md](두_PC_작업.md) 0장. ~~07:00–23:00~~ 은 그 전 창)에서 10분마다 쌓인다 | `stock_history`, `stock_station_master`(일 단위) |
 | **전역** | — | 실행에 딸리지 않는 마스터 | `vehicle` |
 
@@ -59,6 +61,8 @@ erDiagram
     runs ||--o{ pick_drop : "run_label+duration"
     runs ||--o{ ilp_plan : "run_label+duration"
     runs ||--o{ vrp_plan : "run_label+duration"
+    runs ||--o{ road_leg : "run_label+duration"
+    runs ||--o{ road_path : "run_label+duration"
     runs ||--o{ metrics : "run_label+duration"
     runs ||--o{ route_summary : "run_label+duration"
     runs ||--o{ vehicle_assignment : "run_label+duration"
@@ -194,7 +198,9 @@ DB 기록이 실패해도 파이프라인을 멈추지 않습니다(DB_PLAN 2단
 
 **단계마다 아는 정보가 다릅니다** — 순수요 단계는 `period`만, 최적화 단계는 `duration`만
 압니다. 그래서 `ensure_run()`이 `COALESCE`로 **빈 값만 채우고** 먼저 기록된 값을
-덮어쓰지 않습니다. 전체를 확정해 덮어쓸 때만 `record_run()`을 씁니다.
+덮어쓰지 않습니다. 전체를 확정해 덮어쓸 때만 `record_run()`을 씁니다(그때도 `kind`와
+`created_at`은 지킵니다 — `kind`는 인자가 없으면 기존 값을 두고, `created_at`은 처음 보는
+라벨만 지금 시각을 받습니다. 옛 CSV를 다시 적재해도 '최신 계획'이 바뀌지 않게 하려는 것입니다).
 
 🔴 **`kind`는 화면이 무엇을 '마지막 계획'으로 부를지 정합니다.** 실험도 같은
 테이블에 쌓이므로, 종류를 모르면 가장 최근 실행이 실험일 수 있습니다 — 실제로
@@ -324,7 +330,7 @@ DB 기록이 실패해도 파이프라인을 멈추지 않습니다(DB_PLAN 2단
 | `pick_station_id` | TEXT **PK** | 어디서 빼서 |
 | `drop_station_id` | TEXT **PK** | 어디에 넣나 |
 | `qty` | INTEGER | 몇 대 |
-| `travel_time_sec` | REAL | ILP 기준 이동시간(25km/h) |
+| `travel_time_sec` | REAL | ILP 기준 이동시간 — `project_config.travel_seconds()` 값. 기본은 실도로 식(고정비 + 직선km ÷ 속도, 평일·휴일 계수가 따로)이고 `PBR_USE_ROAD_MODEL=0`이면 직선거리 ÷ 25km/h |
 
 CSV의 `hour` 컬럼은 `duration`과 같은 값이라 **저장하지 않습니다**(`TABLES`의 `drop`).
 </details>
@@ -484,7 +490,8 @@ PK 선두가 `run_label`이라 차량으로 거는 조회는 PK 인덱스를 못
 
 ### 4-6. `rental_history` — 원천 대여이력 (PK: id) ⚠️ period 스코프, 대용량
 
-원본 CSV 12개 컬럼을 **그대로 미러링**합니다. 60만 행 규모입니다.
+원본 CSV 12개 컬럼을 **그대로 미러링**합니다. 한 달치가 60만 행 규모입니다(원본 19개월을
+적재한 뒤 2026-10-08에 재니 911만 행 — `db.distinct_values()` 주석).
 
 | 컬럼 | 타입 | 원본 한글 컬럼 |
 | --- | --- | --- |
@@ -515,6 +522,14 @@ PK 선두가 `run_label`이라 차량으로 거는 조회는 PK 인덱스를 못
 읽을 때는 `db.read_rental_source(period, csv_path=..., columns=[...])`를 쓰세요
 (DB 우선, 없으면 CSV 폴백). **필요한 컬럼만 지정하세요** — 컬럼 수가 로드 시간을
 좌우합니다([DB_PLAN.md](DB_PLAN.md#4단계--대여이력-적재와-step0-전환-완료)의 성능 측정).
+
+넣을 때는 `db.bulk_load_rentals()`를 씁니다(`tools/load_rentals.py`). 인코딩은 파일마다
+판별하고(`sniff_csv_encoding()` — BOM · UTF-8 · cp949), 파일의 대여일시가 `period`와 1% 넘게
+어긋나면 적재하지 않습니다(`rental_period_mismatch()` · `PERIOD_MISMATCH_LIMIT`). **청크마다
+커밋합니다** — 한 달을 한 트랜잭션으로 넣으면 쓰기 잠금을 몇 분씩 쥐어 재고 수집기가 틱을
+잃습니다. 여러 달을 잇달아 넣을 때는 `manage_indexes=False`로 인덱스를 둔 채 넣습니다
+(`load_rentals.py --dir`이 그렇게 부릅니다). 적재된 기간 목록은 `db.rental_periods()`가
+인덱스를 건너뛰며 읽습니다(`distinct_values()`).
 
 ---
 
@@ -548,7 +563,7 @@ PK 선두가 `run_label`이라 차량으로 거는 조회는 PK 인덱스를 못
 1. **`day_type`·`duration` 컬럼이 없습니다.** 둘 다 `observed_at`에서 파생되고,
    요일 판정은 `project_config.holiday_mask()` 하나가 독점해야 합니다. 저장해 두면
    판정이 두 곳으로 갈립니다. 거를 때는 `db.load_stock_history(day_type=...)`를 쓰세요.
-2. **이름·좌표를 틱마다 반복하지 않습니다.** 1,372행 × 하루 97틱마다 같은 문자열을
+2. **이름·좌표를 틱마다 반복하지 않습니다.** 1,372행 × 하루 144틱마다 같은 문자열을
    넣으면 용량이 몇 배가 됩니다. 그래서 마스터를 따로 뒀습니다.
 3. **마스터를 `station_stock`에 얹지 않았습니다.** 당시 `latest_label()`이
    `run_label`의 **사전순** MAX였고, `collect-…`는 숫자로 시작하는 실행 라벨보다
@@ -558,8 +573,10 @@ PK 선두가 `run_label`이라 차량으로 거는 조회는 PK 인덱스를 못
    수집일마다 한 줄씩 늘어 실행 이력 화면이 흐려집니다.
 4. **`db.TABLES`에 등록하지 않았습니다.** 그 규약(`save_frame`)은 `run_label` 스코프
    산출물 전용입니다. `demand_backtest`와 같이 전용 함수를 씁니다 —
-   `save_stock_snapshot()` / `save_stock_master()` / `load_stock_history()` /
-   `stock_history_ticks()`.
+   `save_stock_snapshot()` / `save_stock_master()` / `has_stock_tick()` /
+   `has_stock_master()` / `load_stock_history()` / `stock_history_ticks()` /
+   `stock_history_tick_times()` / `stock_station_count()`(뒤의 둘은 `distinct_values()`로
+   인덱스를 건너뛰는 빠른 조회).
 5. **PK가 `(observed_at, station_id)`라 `INSERT OR REPLACE`가 멱등**합니다.
    스케줄러가 중복 실행해도, 나중에 손으로 다시 돌려도 행이 쌓이지 않습니다.
 
@@ -574,7 +591,7 @@ PK 선두가 `run_label`이라 차량으로 거는 조회는 PK 인덱스를 못
 둘 다 **추정치를 검증하려고** 둔 표입니다. 파이프라인 산출물이 아니라 바깥에서
 들어온 값이라, 이것이 없으면 "우리 가정이 맞나"를 물을 방법이 없습니다.
 
-**`road_leg`** — TMAP이 준 **실제 도로 소요시간** (1.23.2, 스코프: `run_label` + `duration`)
+**`road_leg`** — TMAP이 준 **실제 도로 소요시간** (1.23.2, 스코프: `run_label` + `duration`, PK: `run_label`, `duration`, `cluster`, `leg`)
 
 step3이 지도를 그리며 받은 값을 그대로 남깁니다. `VEHICLE_SPEED_KMPH = 25`가
 맞는지 검증할 유일한 근거입니다.
@@ -689,8 +706,8 @@ SEARCH metrics USING INDEX sqlite_autoindex_metrics_1 (run_label=? AND duration=
 ## 6. 일부러 정규화하지 않은 곳
 
 이 DB는 3정규형을 목표로 하지 않습니다. **각 산출 테이블이 그 단계의 CSV와 1:1로
-대응하는 것**이 우선입니다. CSV가 아직 정본이고, 두 경로의 산출물이 같아야 하기
-때문입니다(`tests/test_rentals.py`의 동일성 테스트).
+대응하는 것**이 우선입니다. 조회와 배선의 정본은 DB지만 `to_csv`가 남아 CSV 경로가 아직
+살아 있고(3장), 두 경로의 산출물이 같아야 하기 때문입니다(`tests/test_rentals.py`의 동일성 테스트).
 
 | 중복 | 어디에 | 왜 남겼나 |
 | --- | --- | --- |
@@ -793,6 +810,8 @@ CSV의 한글 컬럼은 DB에서 ASCII로 바뀝니다. 변환표는 `db.TABLES`
    `rename`으로 한글 컬럼 변환을, `drop`으로 버릴 컬럼을 지정합니다.
 3. **단계 스크립트에 `db.save_output(...)` 호출 추가.** 빠뜨리면 테스트가 잡습니다.
 4. **테스트 추가** — `tests/test_db.py`에 스코프·멱등성, `tests/test_pipeline.py`에 적재 검사.
+   `run_label` 컬럼이 있는 새 테이블은 `tools/transfer_run.py`의 `RUN_TABLES`(이관한다)나
+   `EXCLUDED_TABLES`(일부러 뺀다)에도 넣습니다 — `tests/test_transfer_run.py`가 먼저 실패해 알립니다.
 5. **이 문서와 [DB_PLAN.md](DB_PLAN.md)를 갱신**하고 [버전관리.md](../기록/버전관리.md)에 이유를 남기세요.
 
 ### 마이그레이션 — 컬럼 추가는 자동, 나머지는 수동

@@ -68,19 +68,19 @@ python tools/load_rentals.py --dir "data/raw_data/대전교통공사_대전시 �
 - **한계**: 이 CSV는 **실행하는 순간의 스냅샷 한 장**입니다. 계획 대상일의 요일
   구분과 일치한다는 보장이 없습니다 ([TODO.md](../../기록/TODO.md) 1-4).
   시간에 따른 실측 재고가 필요하면 `tools/collect_stock.py`가 **매일(휴일 포함)
-  07~23시**에 10분마다 `stock_history`에 쌓습니다 — [COLLECTOR.md](../COLLECTOR.md).
+  24시간(00:00–23:50)** 10분마다 `stock_history`에 쌓습니다 — [COLLECTOR.md](../COLLECTOR.md).
   **둘은 별개 저장소입니다**: 파이프라인은 이 CSV/`station_stock`을 쓰고,
   수집기는 그 둘을 건드리지 않습니다.
 
 ### 2. `extract_parking_lot.py`
-- **입력**: 1번 출력 CSV
+- **입력**: 1번 출력 (DB `station_stock` 먼저, 비었으면 CSV — 둘 다 없으면 멈춘다)
 - **처리**: `parking_info` 문자열(`"10대용*1, 5대용*2"`)을 정규식으로 파싱해 거치대 수 계산.
   도로뷰로 확인한 4개 대여소(ST0370, ST1133, ST1392, ST1341)는 하드코딩으로 보정
 - **출력**: `data/pp_data/대여소별 주차대수/대여소별_주차대수 ({now}).csv`
 
 ### 3. `api_to_info.py`
 - **입력**: 대여이력(DB `rental_history` 또는 원천 CSV), 1·2번 출력
-- **처리**: `--day-type`(평일/주말) 필터 → 대여/반납 건수 집계 → 주차대수·재고 병합
+- **처리**: `--day-type`(평일/휴일) 필터 → 대여/반납 건수 집계 → 주차대수·재고 병합
   (평일 계획이면 평일 이력만 집계해야 대여소 목록·좌표가 그 계획과 같은 세계를 가리킨다.
   1.14.0 이전에는 평일 고정이라 **휴일에만 쓰이는 대여소가 통째로 빠졌다**)
 - **출력**: `data/pp_data/대여소 정보/st_info ({now}).csv`
@@ -136,12 +136,14 @@ python run_pipeline.py --target-date 2026-09-25   # 추석 계획을 미리 뽑�
 있던 수요입니다. 그리고 섞었다면 57곳이 사라졌을 것입니다.
 
 그래서 `day_type`에 `all`을 두지 않았습니다 — 섞는 선택지를 아예 만들지 않습니다.
-재현: `python experiments/structure/weekend_profile.py`
+재현: `python experiments/structure/weekend_profile.py` (적재된 전 기간의 회차별 평균 표를
+냅니다 — 일수 · 필요량 · 하루 평균 대상 수 · mu 상관 · 부호역전 비율. 달을 고르는 옵션과
+'섞으면 소멸' 열은 없습니다)
 
 ### 왜 골라야 하는가 ② — 공휴일이 평일 수요를 가리고 있었습니다 (1.14.1)
 
 1.14.0까지 '평일'은 **월~금**이었습니다. 설·추석 연휴가 그대로 섞여 있었고
-(25년 10월은 평일 자리 18일 중 **5일**이 공휴일), 그 날들의 낮은 수요가 평균을
+(25년 10월은 평일 자리 23일 중 **5일**이 공휴일), 그 날들의 낮은 수요가 평균을
 끌어내렸습니다. 공휴일을 빼자 같은 데이터에서 이렇게 달라졌습니다.
 
 | 기간 | 평일 일수 | `mu` 변화 | **작업 대상 (`_05_10`)** |
@@ -170,7 +172,7 @@ python run_pipeline.py --warmup-days 0        # 보정 끄기
 ```
 
 `--warmup-period`를 생략하면 **계획 대상일이 속한 달**을 씁니다. 그 달의 순수요가
-없으면 조용히 건너뜁니다 — 있으면 좋고 없어도 도는 보정입니다.
+없으면 `[안내] 계절 보정 건너뜀`을 찍고 건너뜁니다 — 있으면 좋고 없어도 도는 보정입니다.
 
 | `_05_10` 평일, 26년 2→3월 | 보정 없음 | **warmup 14일** |
 | --- | --- | --- |
@@ -219,14 +221,20 @@ python tools/rebuild_net_demand.py --dry-run  # 대상만 확인
 > [EXPERIMENTS.md](../../분석/EXPERIMENTS.md) 3장).
 
 ### 5. `calculate_target_qty.py`
-- **입력**: st_info, st_net_daily
+- **입력**: st_info(DB `station_info`), st_net_daily(DB `net_demand`) — 하나라도 비면 멈춘다
 - **처리** (시간대 duration별, `z = project_config.TARGET_Z` 기본 1.99, `PBR_TARGET_Z`로 변경):
   - `mu ≥ 0`(부족 경향): `target_qty = mu + z·sigma`
   - `mu < 0`(과잉 경향): `target_qty = stock + mu`
-  - target_qty를 `[0, parking_lot × 1.5]`로 제한
+  - target_qty를 `[0, parking_lot × 1.5]`로 제한 (`TARGET_QTY_UPPER_RATIO`)
   - `rebal_qty = target_qty − stock`을 `MAX_CAPACITY·tanh(x/MAX_CAPACITY)`로 완화 후 정수화
-    (양수 = Drop 필요, 음수 = Pick 가능)
-- **출력**: `data/pp_data/재배치 정보/rebal_qty{duration} ({now}).csv`
+    (양수 = Drop 필요, 음수 = Pick 가능. `MAX_CAPACITY` = `VEHICLE_CAPACITY`)
+  - 분위수 모델이 학습돼 있으면(`demand_model.load()`, 기본은 없음) `mu ≥ 0` 쪽 목표를
+    `mu + z·sigma` 대신 그 예측값으로 잡는다. 예측이 실패하면 경고 뒤 원래 식으로 계산한다
+  - 계산은 저장하지 않는 `build_stats()` · `compute_rebal_qty()`가 하고(실험도 이 둘을 쓴다),
+    저장은 `calculate_rebal_qty()`가 한다 — 저장할 때마다 한 대여소 최대 계획량을 찍는다
+    (tanh 포화라 실무 범위에서는 적재 용량에 닿지 않는다)
+- **출력**: `data/pp_data/재배치 정보/rebal_qty{duration} ({now}).csv` + DB `rebalance_plan`
+  (요일 구분은 `runs.day_type`에 남는다)
 
 ## 현재 문제점 (자세한 내용은 [../TODO.md](../../기록/TODO.md))
 

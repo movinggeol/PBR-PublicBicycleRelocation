@@ -282,8 +282,8 @@ UPDATE vehicle SET active = 0, note = '정비 입고' WHERE vehicle_id = 'V07';
 | `stations`, `bikes` | 방문 대여소 수, **실제로 옮긴 자전거 수** |
 | `distance_km`, `minutes` | 이동거리, 소요시간(이동 + 작업) |
 
-> `bikes`는 pick 기준으로 셉니다. 한 대는 실리고 내려지므로 pick·drop의 `qty`를
-> 모두 더하면 2배가 됩니다(ILP 계획 대수와 어긋남). 반면 **작업시간은 수거·배송이
+> `bikes`는 군집마다 min(실은 것, 내린 것)으로 셉니다(`vrp.moved_bikes()`). 한 대는 실리고 내려지므로 pick·drop의 `qty`를
+> 모두 더하면 2배가 되고(ILP 계획 대수와 어긋남), pick만 세면 예산 강제로 끊겨 싣고 돌아온 것도 옮긴 것이 됩니다. 반면 **작업시간은 수거·배송이
 > 각각 드는 게 맞으므로** `work_sec`는 두 동작을 모두 반영합니다.
 
 이 테이블이 **형평성 추적의 원장**입니다. 로테이션도 이 누적을 보고 정합니다.
@@ -296,9 +296,9 @@ UPDATE vehicle SET active = 0, note = '정비 입고' WHERE vehicle_id = 'V07';
 - **형평성** — 누적 작업시간의 최소·최대·편차 (편차가 작을수록 고르게 나뉜 것)
 - **차량별 누적** — 출동 횟수, 처리 대수, 누적 거리·시간, 최근 작업
   ('최근 작업'은 **기록에 실제로 있는 한 배정**입니다 — `runs.created_at` → 라벨 →
-  하루 순서(`DURATIONS`)로 고르고, `store.vehicle_workload`가 덮습니다(1.26.283).
-  ⚠️ `db.vehicle_workload`의 `last_*` 칸 자체는 여전히 **각각 사전순 MAX**라 한 회차가
-  아닐 수 있습니다 — db.py 고칠 과제. 웹은 그 칸을 쓰지 않습니다.)
+  하루 순서(`DURATIONS`)로 고르고, `store.vehicle_workload`가 붙입니다(1.26.283).
+  `db.vehicle_workload`는 `last_*` 칸을 내지 않습니다 — **각각 사전순 MAX**라 한 회차가
+  아닐 수 있던 두 칸은 2026-10-08 점검에서 지웠습니다.)
 - **회차별 배정 이력** — 실행을 골라서 조회. `?vehicle_id=V01`로 **한 차량**의 이력만 볼 수 있고
   (누적 표의 '이력' 링크가 여기로 온다 — 예전에는 원자료 JSON뿐이었다), 이때 시간 예산 타일과 그
   아래 알림도 그 차량만 세고 알림이 *"차량 V01의 …"* 로 범위를 밝힙니다. 누적 표·막대는 좁히지
@@ -331,7 +331,7 @@ GET /api/vehicles/assignments?run_label=...        # 특정 실행 배정
 | `VEHICLE_SPEED_KMPH` | 25 | `PBR_VEHICLE_SPEED_KMPH` (ILP·VRP 공통, 1.13.2) — ⚠️ **실도로 모형을 끌 때만** 쓰인다(아래 세 행) |
 | `USE_ROAD_MODEL` | 켜짐 (1.26.268, 게이트 A 채택) | `PBR_USE_ROAD_MODEL` (`0`이면 끔 — 옛 식 직선거리 ÷ 25 km/h로 돌아간다) |
 | `ROAD_FIXED_SEC_WEEKDAY` · `ROAD_SPEED_KMPH_WEEKDAY` | 320.4초 · 32.11 km/h | `PBR_ROAD_FIXED_SEC_WEEKDAY` · `PBR_ROAD_SPEED_KMPH_WEEKDAY` (접미사 없는 옛 이름도 읽는다) |
-| `ROAD_FIXED_SEC_HOLIDAY` · `ROAD_SPEED_KMPH_HOLIDAY` | 평일 계수로 폴백 | `PBR_ROAD_FIXED_SEC_HOLIDAY` · `PBR_ROAD_SPEED_KMPH_HOLIDAY` |
+| `ROAD_FIXED_SEC_HOLIDAY` · `ROAD_SPEED_KMPH_HOLIDAY` | 309.5초 · 32.33 km/h (게이트 B 판정값, 1.26.311 — 그 전에는 평일 계수로 폴백) | `PBR_ROAD_FIXED_SEC_HOLIDAY` · `PBR_ROAD_SPEED_KMPH_HOLIDAY` |
 
 이동시간은 `project_config.travel_seconds()` 하나가 계산합니다 — 기본(실도로 모형)은
 `고정비 + 직선km × 3600 ÷ 속도`이고, 모형을 끄면 `직선km ÷ VEHICLE_SPEED_KMPH`입니다(2026-10-08 점검에서 표에 더했습니다).
@@ -362,8 +362,8 @@ python run_pipeline.py --fleet-size 15 --vehicles-per-round 6
 바꾸면 두 가지가 따라 움직입니다.
 
 1. **회차 투입 상한이 보유 대수로 잘립니다** — `VEHICLES_PER_ROUND = min(설정값, FLEET_SIZE)`.
-   보유 6대인데 상한이 10대면 step1이 클러스터를 10개 만들고 step2가
-   "배정할 차량이 부족합니다"로 죽기 때문입니다. 환경변수·상수 경로는 조용히
+   보유 6대인데 상한이 10대면 step1이 클러스터를 10개 만들고 step2의 차량 배정이
+   "배정할 차량이 부족합니다"로 실패하기 때문입니다(경고만 찍고 `vehicle_id`가 빕니다). 환경변수·상수 경로는 조용히
    잘라내지만, **웹 폼에서 두 값을 직접 적었을 때는 자르지 않고 되돌려서 알려 줍니다**
    (사용자가 적은 숫자를 말없이 바꾸지 않기 위해서).
 2. **차량 마스터가 맞춰집니다** — `db.sync_fleet()`이 늘어난 만큼 차량을 추가하고,

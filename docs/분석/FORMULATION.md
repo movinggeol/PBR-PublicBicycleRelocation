@@ -273,9 +273,9 @@ $$
 식은 기본값이 아니다.** 기본은 실측으로 맞춘 식
 $T_{ij} = F + 3600 \cdot \operatorname{haversine}(i,j) / v_r$ (평일 $F$=**320.4초**, $v_r$=**32.11 km/h** —
 고정 패널 판정값, [EXPERIMENTS.md](EXPERIMENTS.md) 9장 *판정* 절 · 원고 식 (3.12))이고, 위 식은
-`PBR_USE_ROAD_MODEL=0`으로 끌 때만 쓴다(채택 전 기록의 재현용). 휴일 계수는 값을 주지 않으면 평일 계수로 폴백한다.
+`PBR_USE_ROAD_MODEL=0`으로 끌 때만 쓴다(채택 전 기록의 재현용). 휴일 계수는 값을 주지 않으면 휴일 고정 패널 판정값($F$=**309.5초**, $v_r$=**32.33 km/h** — 9장 *휴일 판정* 절)을 쓴다(평일 계수 폴백은 1.26.310까지).
 ~~평일 $F$=275초, $v_r$=27.3 km/h~~ 는 TMAP 실측 239구간 하루치의 값이다(5-F장).
-ILP·VRP·군집 $K$ 추정이 모두 같은 `project_config.travel_seconds()`를 거친다.
+ILP·VRP·거리 인지 $K$ 추정(`PBR_WANTED_VEHICLES_GEO`, 기본 꺼짐 — 기본 $K$ 식은 4.1의 $c_{\text{tr}}$)이 모두 같은 `project_config.travel_seconds()`를 거치고, 계획의 요일 구분(`day_type`)으로 계수 쌍을 고른다.
 
 > 📌 **2026-09-17 — 위 계수는 곧 바뀐다.** 고정 패널 10일로 사전 등록 판정을 통과한 값은
 > $F$=**320.4초**, $v_r$=**32.11 km/h**다(2026-09-15, [EXPERIMENTS.md](EXPERIMENTS.md) 9장 *판정* 절 —
@@ -360,8 +360,11 @@ $$
 **소요시간**
 
 $$
-\tau = \sum \left( \frac{\text{거리}}{v} \times 3600 \right) + 30 \times (\text{수거} + \text{배송 대수})
+\tau = \sum_{\text{구간}} T(\text{거리}) + 30 \times (\text{수거} + \text{배송 대수})
 $$
+
+$T(\cdot)$는 5장의 이동시간 식 그대로다 — 기본은 구간마다 $F + 3600 \cdot \text{거리} / v_r$(depot 출발·복귀 구간 포함),
+`PBR_USE_ROAD_MODEL=0`이면 $\text{거리} / v \times 3600$이다.
 
 **시간 예산**
 

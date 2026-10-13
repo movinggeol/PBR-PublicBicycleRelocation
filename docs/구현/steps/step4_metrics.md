@@ -4,7 +4,12 @@
 
 ## `imbalance.py`
 
-- **입력**: `data/pp_data/ILP/후보/top{duration} ({now}).csv`, VRP 계획 CSV(경로 요약용)
+- **입력**: `data/pp_data/ILP/후보/top{duration} ({now}).csv`, VRP 계획 CSV(경로 요약 · 결품 시뮬레이션의 집행량)
+  — DB `pick_drop` · `vrp_plan`을 먼저 읽고 비었을 때만 CSV (`load_step_output`).
+  결품 시뮬레이션은 순수요(`net_demand`, period · 계획과 같은 요일 구분만), 커버리지는 대여소 정보(`station_info`),
+  차량 수는 차량 배정 이력(`db.assignment_history`)을 더 읽는다
+- **건너뜀**: step1 후보가 없는 회차는 `[건너뜀]`으로 넘긴다. VRP 결과가 없거나 거리·시간 컬럼이 없으면
+  경로 요약과 `kpi_summary` 기록을 건너뛴다(불균형 CSV · 지도는 남는다)
 - **출력**:
   - `data/pp_data/성능 지표/verification{duration} ({now}).csv` (지표 계산 결과)
   - `data/pp_data/성능 지표/route_summary{duration} ({now}).csv` (클러스터별 이동거리·운행시간)
@@ -26,6 +31,14 @@ stock(t+1) = clip(stock(t) − 순수요(t), 0, 거치대 수)
 한 걸음 다가갑니다. 다만 실제 집행 후 관측이 아니라 시뮬레이션이며,
 초기 재고와 순수요의 시점이 다르고, 재고를 0에서 자르므로 **하한**입니다
 (자세한 한계는 [KPI.md](../../분석/KPI.md) 3-B).
+
+- **재배치 후 재고는 계획량(`rebal_qty`)이 아니라 VRP가 실제로 싣고 내린 양**입니다
+  (`executed_delta(vrp)`). 계획이 100% 집행됐을 때의 값은 `stockout_hours_plan`으로 따로 남깁니다.
+  VRP에서 옮긴 양이 나오지 않으면(결과가 없거나 행이 전부 복귀) 계획량으로 물러서고 그렇다고 알립니다
+- 순수요는 **계획과 같은 요일 구분만** 씁니다(`load_net_demand`). 실험이 다른 실행을 채점할 때는
+  `use_run_day_type(run_label)`이 `runs.day_type`에 맞춥니다
+- Pick 쪽 결품 증가가 Drop 쪽 이득의 `PICK_HARM_WARN_SHARE`(기본 5%, `PBR_PICK_HARM_WARN_SHARE`)를
+  넘으면 경고합니다(`pick_harm_share`)
 
 ### 포화 시간과 순수요 충족률 (`_simulate_stock`, 1.26.101)
 
@@ -77,6 +90,12 @@ tanh 완화·정수화로 부분 재배치가 되는 경우 1.0 미만이 되며
 VRP 결과의 distance_km·travel_sec·work_sec·cum_sec 컬럼(1.2.0에서 추가)을 클러스터별로
 집계해 방문수·처리대수·총이동거리(km)·총이동/작업/소요시간(분)을 산출합니다.
 구버전 VRP 결과(시간 컬럼 없음)면 건너뜁니다.
+처리대수는 군집마다 **min(실은 것, 내린 것)** 입니다(`moved_bikes`, step2의 차량 배정과 같은 기준).
+
+`route_extras()`는 경로에서만 나오는 운영 지표 넷을 `kpi_summary`에 더합니다 — `travel_time_ratio`
+(이동시간 / 총 소요시간) · `empty_distance_ratio`(빈 차로 달린 거리 비율) · `depot_returns`(복귀 행 수) ·
+`bikes_per_minute`(분당 처리 대수). `station_coverage()`는 전체 대여소 가운데 손댄 곳의 비율
+(`stations_total` · `station_coverage`)을 더합니다.
 
 **시간 예산 준수율**도 함께 출력합니다 — `TIME_BUDGET_MINUTES`(기본 120분) 안에
 끝나는 클러스터 비율입니다. 초과분은 수요 예측 시간대가 지나간 뒤 작업이 끝나므로
@@ -84,8 +103,9 @@ VRP 결과의 distance_km·travel_sec·work_sec·cum_sec 컬럼(1.2.0에서 추�
 
 ### 지도 (`demand_satisfaction_map`)
 
-- Drop=빨강, Pick=파랑 CircleMarker
-- 원 크기 = 개선량, 투명도 = 개선률
+- 배송(Drop) = `mapviz.DROP_COLOR`(#D55E00, 주황), 수거(Pick) = `mapviz.PICK_COLOR`(#0072B2, 파랑) CircleMarker
+- 원 크기 = 개선량(반지름 `max(3, improvement)` — 3대 이하는 같은 크기), 투명도 = 개선률.
+  오히려 나빠진 곳은 점선 테두리로 표시
 - 클러스터별 레이어 토글 + 범례
 - **범례는 [`mapviz.py`](../../../mapviz.py)에서 옵니다** — 세 지도가 한 벌을
   같이 씁니다. 1.26.80 전까지 여기만 영어(`Legend`)에 회색 2px 테두리라,

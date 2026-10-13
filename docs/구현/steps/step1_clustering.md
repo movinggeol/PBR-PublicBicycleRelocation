@@ -14,11 +14,15 @@
    - Pick(음수)·Drop(양수) 각각 작업량 내림차순 상위 50개 컷
    - 누적합(cumsum)이 `min(|총 Pick|, 총 Drop)` 이내가 되도록 잘라 Pick·Drop 총량 균형 맞춤
 2. **클러스터링** `make_clustering()`
-   - K-Medoids (`kmedoids` 패키지, `method='fasterpam'`, `metric='manhattan'`, `random_state=42`)
+   - K-Medoids (`kmedoids` 패키지, `method='fasterpam'`, `metric='manhattan'`,
+     `random_state=CLUSTER_SEED` — 기본 42, `--seed` / `PBR_CLUSTER_SEED`로 바꾼다)
    - `K = min(wanted_vehicles(작업량), VEHICLES_PER_ROUND)` — 군집 1개 = 차량 1대.
      필요 대수는 **처리 대수 × (수거+배송) + 대여소 수 × 12.5분**을
      불균형 여유(1.4)만큼 늘려 시간 예산으로 나눈 값이다(1.19.1).
      그전에는 `ceil(대상 수 / 7)`이었고 늘 상한 10에 걸렸다
+   - `PBR_WANTED_VEHICLES_GEO=1`(`WANTED_VEHICLES_GEO`, 기본 꺼짐)이면 위 식 대신
+     `_wanted_vehicles_geo()`가 후보 집합의 기하(BHH 순회거리 어림 + depot 왕복)를
+     `travel_seconds()`로 시간으로 바꿔, 예산 안에 드는 가장 작은 K를 고른다
    - 좌표는 스케일링하지 않는다 (위경도 자체가 거리 단위)
 3. **군집 조정** `adjust_clustering()`
    - 목적함수: `α·balance² + β·size분산 + γ·거리합` (α=1, β=100, **γ=3000**)
@@ -27,11 +31,18 @@
    - 군집별 |balance| ≤ 3(THRESHOLD)이면 종료, 최대 200회 노드 이동
    - balance가 ±5(BALANCE_LIMIT) 초과 시 emergency mode로 balance 우선 조정
      (버전관리.md 1.0.2에서 도입된 로직)
+   - 3 · 200 · 5는 `project_config`의 `ADJUST_BALANCE_OK` · `ADJUST_MAX_ITER` ·
+     `ADJUST_BALANCE_LIMIT`다 (환경변수 `PBR_ADJUST_BALANCE_OK` · `PBR_ADJUST_MAX_ITER` ·
+     `PBR_ADJUST_BALANCE_LIMIT`로 조정)
 
 - **입력**: `rebal_qty{duration} ({now}).csv`, `st_info ({now}).csv`
+  (DB `rebalance_plan` · `station_info`를 먼저 읽고 비었을 때만 CSV.
+  실험이 재배치량을 파일 객체로 건네면 DB를 거치지 않고 그것을 쓴다)
 - **출력**: `data/pp_data/ILP/후보/top{duration} ({now}).csv`
   + SQLite `pick_drop` 테이블 (이중 기록, [DB_PLAN.md](../DB_PLAN.md) 2단계)
-  (station_id, station_name, lat, lon, mu, sigma, parking_lot, stock, target_qty, rebal_qty, cluster)
+  (station_id, station_name, lat, lon, parking_lot, stock, target_qty, rebal_qty, mu, sigma, cluster)
+- **건너뜀**: Pick 또는 Drop 후보가 없어 선정 결과가 비면 `[건너뜀]`을 찍고 그 회차는
+  저장하지 않는다. 대여소 정보가 없으면 멈춘다
 
 ### `adjust_module.py` (군집 조정 보조)
 
@@ -46,7 +57,7 @@
 | `try_move_node` | 점수가 개선되는 첫 이동을 적용 |
 
 ### `st_visualization.py`
-- **입력**: `top{duration} ({now}).csv`
+- **입력**: `top{duration} ({now}).csv` (DB `pick_drop` 먼저, 비었으면 CSV — 둘 다 없으면 그 회차를 건너뛴다)
 - **출력**: `data/pp_data/ILP/visualization/clusterd_map{duration} ({now}).html`
   (군집별·Pick/Drop별 레이어 토글 가능한 Folium 지도)
 - **색과 범례는 [`mapviz.py`](../../../mapviz.py)에서 옵니다** — 세 지도가 한 벌을

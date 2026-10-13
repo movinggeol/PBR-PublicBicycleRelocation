@@ -107,7 +107,7 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 ├── webapp/                                # 웹 대시보드 (FastAPI, 파이썬 단독)
 ├── tests/                                 # 스모크 테스트 (pytest)
 ├── tools/                                 # 합성 데이터 생성기 등 보조 도구
-├── scripts/                               # 작업 스케줄러 등록 (재고·도로 수집기 PowerShell)
+├── scripts/                               # PowerShell — 재고·도로 수집기 스케줄러 등록, 실험 일괄 재실행, PATH 셋업
 ├── experiments/                           # 검증·실험 스크립트 (성격별 5분류)
 │   ├── params/ baseline/ structure/       #   파라미터·대조군·설계 측정
 │   └── diagnostic/ learning/              #   산출물 진단·학습용 예제
@@ -129,9 +129,10 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 | 0 | `tashu_api.py` | TASHU 재고 API 수집 | 대여소별 재고 CSV |
 | 0 | `extract_parking_lot.py` | 거치대 수 추출 | 대여소별 주차대수 CSV |
 | 0 | `api_to_info.py` | 대여소·재고·거치대 정보 통합 | `st_info*.csv` |
+| 0 | `EDA.py` (`step0_eda/`) | 원천 대여 이력 기초 탐색 — 월별·시간대별·요일별 대여량 (`--skip-eda`로 생략) | `EDA/*.png`·`EDA/EDA.html` |
 | 0 | `raw_to_net.py` | 대여·반납 이력에서 순수요 계산 | `st_net_daily*.csv` |
 | 0 | `calculate_target_qty.py` | 목표 재고·재배치량 계산 | `rebal_qty*.csv` |
-| 1 | `top_st_clustering.py` | 불균형 대여소 선정·K-Medoids(kmedoids) 군집화 | `top*.csv` |
+| 1 | `top_st_clustering.py`, `adjust_module.py` | 불균형 대여소 선정·K-Medoids(kmedoids) 군집화·군집 조정 | `top*.csv` |
 | 1 | `st_visualization.py` | Pick/Drop·클러스터 지도 | HTML 지도 |
 | 2 | `ilp.py` | Pick→Drop 이동 수량 최적화 | `ILP_plan*.csv` |
 | 2 | `vrp.py` | 차량 방문 순서 계산 | `VRP_plan*.csv` |
@@ -215,9 +216,14 @@ python run_pipeline.py --duration "_05_10,_10_15"   # 여러 시간대 일괄 �
 | `--warmup-days` | 보정에 쓸 일수. `0`이면 끔 | `14` |
 | `--fleet-size` | 보유 차량 대수 (1~99) | `21` |
 | `--vehicles-per-round` | 회차당 투입 **상한**. 실제 대수는 작업량이 정합니다 | 보유 대수(`21`) |
+| `--seed` | K-Medoids 초기화 씨앗. 같은 입력을 여러 씨앗으로 돌려 결과의 흔들림을 재는 용도 | `42` |
+| `--enforce-time-budget` | 시간 예산을 제약으로 겁니다. VRP가 예산을 넘기는 작업 앞에서 멈추고 depot으로 돌아옵니다(남은 작업은 미집행) | 꺼짐 (사후 점검만) |
+| `--run-kind` | 이 실행의 종류 `plan` \| `experiment` \| `probe`. 웹 실행 폼은 언제나 `plan`으로 띄웁니다 | 없음 (라벨로 짐작) |
 | `--skip-api` / `--skip-eda` | 수집·EDA 생략 | 꺼짐 |
+| `--skip-fetch` | 라이브 타슈 API 호출(`tashu_api.py`)만 생략하고, 이미 있는 재고 CSV로 나머지 수집 단계를 돌립니다. `--skip-api`와 달리 직전 실행 스냅샷을 물려받지 않습니다 | 꺼짐 |
 | `--skip-map` | step3 TMAP 지도 생략 (TMAP 키가 없는 환경) | 꺼짐 |
 | `--continue-on-error` | 한 단계가 실패해도 계속 | 꺼짐 |
+| `--dry-run` | 실제 실행 없이 실행 목록만 출력 | 꺼짐 |
 
 ```powershell
 python run_pipeline.py --day-type holiday --now "260813 휴일"   # 휴일 계획
@@ -237,6 +243,7 @@ python run_pipeline.py --warmup-days 0                         # 계절 보정 �
 python "pipeline/step0_collect/tashu_api.py"
 python "pipeline/step0_collect/extract_parking_lot.py"
 python "pipeline/step0_collect/api_to_info.py"
+python "pipeline/step0_eda/EDA.py"
 python "pipeline/step0_collect/raw_to_net.py"
 python "pipeline/step0_collect/calculate_target_qty.py"
 python "pipeline/step1_cluster/top_st_clustering.py"
@@ -265,7 +272,7 @@ python "pipeline/step4_metrics/imbalance.py"
 .\scripts\collector.ps1 now         # 지금 한 틱 즉시 수집
 ```
 
-위 명령 한 번이면 매일 07:00에 저절로 시작해 23:00에 멈춥니다. ⚠️ **인자 없이
+위 명령 한 번이면 매일 00:00에 저절로 시작해 23:50에 멈춥니다. ⚠️ **인자 없이
 `install`하면 스크립트 기본값인 평일 09:00–17:00으로 등록되고, 이미 등록된 작업도
 그 값으로 덮어씁니다.** 어느 PC가 무엇을 맡는지는
 [docs/구현/두_PC_작업.md](docs/구현/두_PC_작업.md) 0장에 있습니다.
@@ -280,8 +287,9 @@ python tools/collect_stock.py --loop     # 창이 끝날 때까지 상주
 ```
 
 - **휴일을 거르는 것은 스케줄러가 아니라 스크립트입니다** — 작업 스케줄러는 요일만
-  알기 때문입니다. `-IncludeHolidays` 없이 등록하면 깨어나도 주말·공휴일은 스크립트가
-  거릅니다. 판정은 `project_config.is_holiday()`(주말 ∪ 공휴일) 하나입니다.
+  알기 때문입니다. `-IncludeHolidays` 없이 등록하면 트리거가 월~금뿐이라 주말에는 깨우지
+  않고, 평일에 낀 공휴일은 깨어나도 스크립트가 거릅니다. 판정은
+  `project_config.is_holiday()`(주말 ∪ 공휴일) 하나입니다.
 - 저장 위치는 `stock_history` 테이블이고, `data/raw_data/재고이력/`에 일별 CSV
   백업과 수집 로그가 함께 남습니다. **실패도 로그에 남습니다** — 그래야 나중에
   '결측'과 '재고 0'을 구분할 수 있습니다.
@@ -298,7 +306,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 
-python -m pytest              # 1292개 통과 확인 (약 100초)
+python -m pytest              # 1293개 통과 확인 (약 100초)
 python tools/reproduce.py     # 합성 데이터 생성 → step0~step4 → 결과 표 (약 20초)
 ```
 
@@ -331,13 +339,13 @@ $env:PBR_DB_PATH = "data/재현.db"; python -m webapp   # http://127.0.0.1:8000
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest                 # 1292개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 1293개, 약 100초 (tests/ 만 수집)
 ```
 
 - `tests/test_pipeline.py` (62) — 합성 데이터로 step0→step1→step2→step4를
   **subprocess로 실제 실행**한 뒤 산출물 존재·스키마·ILP 공급 제약·개선량을 검증.
-  실행마다 고유 라벨(`smoketest-{PID}`)을 써서 실데이터를 건드리지 않고,
-  끝나면 그 라벨 파일만 정리합니다.
+  산출물과 DB를 임시 경로(`PBR_DATA_ROOT`·`PBR_DB_PATH`)로 돌려 진짜 `data/`에는
+  아무것도 만들지 않습니다(실행 라벨은 `smoketest-{PID}`).
 - `tests/test_webapp.py` (235) — 라우트·경로 탈출 차단·실행 폼 입력 검증,
   그리고 **화면이 실제로 무엇을 보여 주는가** — 명암비·400% 확대·인쇄·빈 상태,
   화면이 말하는 범위와 실제로 센 범위가 같은지
@@ -363,8 +371,8 @@ python tools/make_sample_data.py --now "데모"
 python -m webapp        # http://127.0.0.1:8000
 ```
 
-- `/` 현황판 — 마지막 계획 요약과 세 구역 입구
-- `/run` 실행 폼·DB 실행 이력·작업 이력·최신 산출물 + **지금 날씨**
+- `/` 현황판 — 마지막 계획 요약과 바로 가기 넷(1 실행 · 2 결과 · 3 데이터 · 현장 앱)
+- `/run` 실행 폼·DB 실행 이력·작업 이력·최신 산출물 + **내일 예보·지금 날씨**
   (비가 오면 "실제 재배치 필요량은 평소의 40~55% 수준"을 알립니다 — 계획을 바꾸지는 않습니다)
 - `/guide` 사용 안내 — 시작 순서·입력 항목·지표 읽는 법·문제 해결·용어
 - `/runs/{id}` 실행 상태·진행 단계·로그 (실행 중단 포함)
@@ -376,6 +384,12 @@ python -m webapp        # http://127.0.0.1:8000
 - `/orders` **차량별 작업지시서**(인쇄하면 한 대가 한 장) + 출발 직전
   타슈 API로 계획 대상 대여소만 다시 조회하는 **실시간 재고 대조**
 - `/data` CSV 산출물 미리보기·다운로드
+- `/collect` 재고 수집 현황 (읽기만 합니다 — 타슈 API를 부르지 않습니다)
+- `/upcoming` 다음 회차 예상 — 1·3시간 뒤 계획에서 수거·배송 대상이 될 대여소
+  (수집기가 쌓은 마지막 재고 틱으로 셉니다 — 계획을 바꾸지는 않습니다)
+- `/m` **현장 앱**(기사용 폰 화면) — 오늘 작업 · 경로 안내(`/m/route`) ·
+  진행 현황(`/m/progress`) · 내 정보(`/m/me`)
+- `/device` 모바일 미리보기 — 폰 크기 iframe에 화면을 띄웁니다
 - `/api/docs` JSON API 문서 (GeoJSON 대여소, ILP/VRP 계획, 성과 지표)
 
 산출물 API는 DB를 조회하므로 과거 실행분도 볼 수 있습니다.
@@ -388,7 +402,9 @@ GET /api/pipeline-runs                        # 실행 이력 목록
 
 ## 데이터 저장
 
-파이프라인은 CSV와 SQLite에 **동시에** 기록합니다(이중 기록). CSV가 아직 정본이며,
+파이프라인은 CSV와 SQLite에 **동시에** 기록합니다(이중 기록). 단계 사이의 되읽기는
+DB가 먼저이고 CSV는 DB가 비었을 때의 폴백이며, 웹의 계획·지표 조회는 DB만 읽습니다
+(`/data`·`/maps`는 파일을 그대로 보여 줍니다).
 스키마(ERD·테이블 레퍼런스)는 [docs/구현/DB_SCHEMA.md](docs/구현/DB_SCHEMA.md),
 DB 이관 계획은 [docs/구현/DB_PLAN.md](docs/구현/DB_PLAN.md)에 있습니다.
 
@@ -413,6 +429,7 @@ DB 위치는 `data/bike_system.db`이며 `PBR_DB_PATH` 환경변수로 바꿀 �
 
 ```powershell
 python tools/load_rentals.py            # 원천 CSV → rental_history
+python tools/load_rentals.py --dir "data/raw_data/<월별 원본 폴더>"   # 월별 원본 여럿 — 파일명의 (YY년MM월)로 기간을 정합니다
 python tools/load_rentals.py --status   # 기간별 적재 현황
 ```
 
@@ -445,14 +462,14 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/연구/RELATED_WORK.md](docs/연구/RELATED_WORK.md) | **관련 연구** — 문제의 갈래와 본 연구의 위치 |
 | [docs/연구/LITERATURE.md](docs/연구/LITERATURE.md) | **문헌 분석** — 논문 24편 한 편씩 분석·비교표·인용 지도 |
 | [docs/분석/EXPERIMENTS.md](docs/분석/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
-| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 1292개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
+| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 1293개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/구현/PROJECT_PIPELINE.md](docs/구현/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/구현/WEBAPP.md](docs/구현/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/구현/DESIGN.md](docs/구현/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |
 | [docs/분석/DEMAND_DISTRIBUTION.md](docs/분석/DEMAND_DISTRIBUTION.md) | **순수요 분포** — 정규분포 전제 검증, 커버리지 원인 정정, ML 방향 |
 | [docs/구현/DB_SCHEMA.md](docs/구현/DB_SCHEMA.md) | **DB 스키마** — ERD, 테이블 21개 컬럼 레퍼런스, 조인 쿼리 |
 | [docs/구현/DB_PLAN.md](docs/구현/DB_PLAN.md) | SQLite 도입 결정·이관 계획·성능 측정 |
-| [docs/구현/COLLECTOR.md](docs/구현/COLLECTOR.md) | **재고 시계열 수집** — 매일(휴일 포함) 07–23시 10분 간격 수집기·운영(시작/일시정지/중지), 두 PC 수집분 병합(`merge_stock.py`) |
+| [docs/구현/COLLECTOR.md](docs/구현/COLLECTOR.md) | **재고 시계열 수집** — 매일(휴일 포함) 24시간 10분 간격 수집기·운영(시작/일시정지/중지), 두 PC 수집분 병합(`merge_stock.py`) |
 | [docs/구현/두_PC_작업.md](docs/구현/두_PC_작업.md) | **두 PC로 번갈아 작업** — `.gitignore` 항목별 판단(옮길 것·다시 만들 것), 새 PC 세팅 순서 |
 | [docs/구현/DB_이관.md](docs/구현/DB_이관.md) | **DB 이관 절차서** — 실행 스냅샷을 하나만/기간별/전부 내보내고 받는 방법 |
 | [docs/분석/WEATHER.md](docs/분석/WEATHER.md) | **날씨** — 어떤 기상청 API를 받는지, 결측·겨울 3시간 누적 처리, 순수요 설명력 측정 |

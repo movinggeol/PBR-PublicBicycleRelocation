@@ -205,7 +205,8 @@ PCP를 범주로 준다)를 **별도로 활용신청하는 것**이다. 확률·
 ### 📌 2026-08-29 — 격자 수치예보(mm)를 넣으니 신호가 돌아왔다 (측정 완료)
 
 > 재현: `python experiments/structure/forecast_grid_impact.py`
-> (3개 시간대 × 약 360일 × 최대 5시간, 5,000회 넘게 apihub를 부른다 — 몇 분 걸린다)
+> (3개 시간대 × 약 360일 × 최대 5시간, 5,000회 넘게 apihub를 부른다 — 한 시간 넘게 걸린다.
+> 2026-09-29 재측정은 88분이었다, [재측정_계획.md](../기록/재측정_계획.md))
 
 사용자가 단기예보 **격자**(`nph-dfs_shrt_grd`, 5km LCC 격자, PCP=1시간
 강수량 mm)를 추가로 활용신청받아 확인했다. `fct_afs_dl.php`(문장 예보)의
@@ -313,6 +314,7 @@ import weather
 
 hourly   = weather.load_hourly()                 # 디렉터리 안의 CSV를 모두 이어 붙인다
 window   = weather.window_frame(hourly, "_05_10")  # 5시간 창 단위로 접는다
+covered  = weather.covered_periods(periods, hourly)  # 관측 날씨가 그 달 날짜의 90% 이상을 덮는 기간만 남긴다 (날씨 실험용)
 now      = weather.fetch_hour()                  # 지금 관측값 (API 허브)
 forecast = weather.fetch_forecast()              # 단기예보 문장 (API 허브, 2026-08-29 추가)
 grid     = weather.fetch_grid("2026082923", "2026083005", var="PCP")  # 격자 강수량(mm), 2026-08-29 추가
@@ -354,7 +356,7 @@ mm       = weather.grid_value(grid, project_config.DEPOT_LAT, project_config.DEP
 좌표는 `latlon_to_grid()`(LCC 변환)로 바꾸고, `grid_value()`로 한 점 값을
 꺼낸다 — 격자 밖(바다·해외)은 `None`.
 
-테스트는 `tests/test_weather.py` 43개가 위 규약과 화면 동작을 지킵니다.
+테스트는 `tests/test_weather.py` 44개가 위 규약과 화면 동작을 지킵니다.
 
 ---
 
