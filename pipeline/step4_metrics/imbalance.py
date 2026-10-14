@@ -325,8 +325,9 @@ def _stockout_hours(net: pd.DataFrame, initial: pd.Series,
     0에서 잘라내는 것은 물리적 현실이다 — 없는 자전거는 빌릴 수 없고,
     그 못 빌린 수요는 사라진다(그래서 이 값은 결품의 하한이다).
 
-    ⚠️ **이 함수를 지우지 마라.** 실험 스크립트 넷과 테스트 넷이 이 이름으로
-    부른다(baseline_compare · budget_enforce · min_qty_sweep · top_limit_sweep).
+    ⚠️ **이 함수를 지우지 마라.** 이 파일의 `stockout_simulation()`, 실험 스크립트 셋
+    (budget_enforce · min_qty_sweep · top_limit_sweep), `tests/test_kpi.py`의 시험들이
+    이 이름으로 부른다. baseline_compare는 포화도 봐야 해서 `_simulate_stock()`을 직접 부른다.
     측정 코드와 운영 코드가 같은 궤적을 쓰게 하는 것이 이 저장소의 규약이다.
     '''
     return _simulate_stock(net, initial, capacity, hours)['stockout']

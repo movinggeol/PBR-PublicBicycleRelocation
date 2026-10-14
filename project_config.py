@@ -364,7 +364,8 @@ DEFAULT_RAW_FILE = os.getenv(
 #
 # 🔴 **이 병합본은 깎여 있다 — 다시 적재하지 마라** (2026-09-26 확인).
 # `step0_eda/concat_1year_file.py`의 IQR 필터가 이 파일을 제자리에 덮어써(1.26.129의
-# 결함) 달마다 대여 14~16%가 빠졌다 — 빠진 것은 긴 이용(중앙 44분·5.0km)이다.
+# 결함) 달마다 대여 12~16%가 빠졌다(DB ÷ 원본 0.837~0.879 — 2026-10-08 점검이 14~16%를
+# 정정했다, DECISIONS 6-1) — 빠진 것은 긴 이용(중앙 44분·5.0km)이다.
 # 온전한 월별 원본은 `data/raw_data/대전교통공사_대전시 공영자전거 타슈 대여이력
 # 정보_20260331/`(24년 08월~26년 03월)이고 `python tools/load_rentals.py --dir <폴더>`로
 # 넣는다. 그 폴더의 `(25년12월)` 파일은 내용이 **2025년 1월**이라 적재기가 거부한다.
@@ -608,7 +609,8 @@ def normalize_per_round(value) -> int:
 FLEET_SIZE = normalize_fleet_size(os.getenv("PBR_FLEET_SIZE", DEFAULT_FLEET_SIZE))
 # 보유 대수보다 많이 투입할 수는 없다. 회차 투입 상한의 기본값이 보유 대수(21)와
 # 같으므로(1.19.1~), 보유 대수를 줄이면 상한도 그만큼 내려간다 — 안 그러면 step1이
-# 만든 클러스터에 배정할 차가 모자라 step2가 죽는다.
+# 만든 클러스터에 배정할 차가 모자란다. 그때 step2는 죽지 않고 `vrp._assign_fleet`이
+# `[경고] 차량 배정 실패`를 찍은 뒤 차량 번호 없이 경로만 남긴다(`db.assign_vehicles`의 ValueError를 받는다).
 VEHICLES_PER_ROUND = min(
     normalize_per_round(os.getenv("PBR_VEHICLES_PER_ROUND", DEFAULT_VEHICLES_PER_ROUND)),
     FLEET_SIZE,
@@ -1034,6 +1036,52 @@ def duration_start_hour(duration: str) -> int:
     문자열을 다시 팠다(2026-10-08 점검) — 회차의 시각을 읽는 곳을 이 둘로 모은다.
     """
     return duration_hours(duration)[0]
+
+
+# ---- 출발 리드 (회차 시작보다 몇 분 먼저 차고지를 떠나나) ----
+# ✅ **기본 30분 — 연구 판정 + 사용자 결정(2026-10-14 "30분 당겨라").** 운영 주체(대전교통공사)가
+# 확인한 값이 아니다 — 차량 적재 10대(공사 확인)와 성격이 다르고, `TIME_BUDGET_MINUTES`처럼
+# 연구 쪽에서 세운 값이다. 근거는 EXPERIMENTS 51장 본판정(회사 PC 평일 22회차): 회차 시작에 세운
+# 동시각 계획의 **필요했던 배송 52.0%가 대여소가 빈 뒤에 닿았고**, 같은 계획을 30분 일찍 집행하면
+# 28.2%로 **−23.8%p**였다(등록 문턱 5%p · 휴일은 찍기만 −20.0%p). 방문 순서만 바꾸는 상한(−9.4%p)의
+# 두 배 반이라 가장 큰 손잡이였다.
+#
+# 🔴 **바뀌는 것은 '차가 떠나는 시각' 하나다.** 51장은 계획은 그대로 두고 도착만 30분 당겨 쟀다 —
+# 30분 이른 재고로 계획을 **다시 세운** 효과는 재지 않았다. 그래서:
+#   - 수요 창(`duration_hours()`)·회차 시작(`duration_start_hour()`)은 그대로다 — 계획이 겨냥하는
+#     시간대는 회차의 시간대다.
+#   - 동시각 실험 계열(`tools/sameday_plan.py`의 `OFFSET_MIN` · `observed_stockout.is_same_day_plan()`)과 도로 패널
+#     수집기(`tools/collect_road_time.py`)는 **회차 시작 기준**을 지킨다 — 쌓아 온 기록과 비교가 끊긴다.
+#   - 읽는 곳은 둘이다: step3 지도의 TMAP 교통량 시각(`start_time_for(lead_min=…)`)과 현장 앱의
+#     출발·완료 예정 시각(`webapp/mobile_view.build_plan`).
+# 끄려면 `PBR_DEPART_LEAD_MINUTES=0` — 원고(논문) 수치는 리드 없이 냈으므로 그 재현에 쓴다.
+# 0 ≤ 값 < 300만 받는다: 가장 짧은 회차가 5시간이라, 그만큼 당기면 출발이 앞 회차의 시작과 겹친다.
+# 범위 밖 값은 **조용히 자르지 않고** 멈춘다(`PBR_USE_ROAD_MODEL` 오타와 같은 이유 — 흔적이 안 남는다).
+DEFAULT_DEPART_LEAD_MINUTES = 30
+
+
+def _depart_lead_minutes() -> int:
+    """`PBR_DEPART_LEAD_MINUTES`를 읽어 검사한다(테스트가 다시 부를 수 있게 함수로 둔다)."""
+    minutes = env_int("PBR_DEPART_LEAD_MINUTES", DEFAULT_DEPART_LEAD_MINUTES)
+    if not 0 <= minutes < 300:
+        raise ValueError(
+            f"환경변수 PBR_DEPART_LEAD_MINUTES는 0 이상 300 미만의 분이어야 합니다"
+            f" (0 = 회차 시작에 출발, 입력: {minutes!r})."
+        )
+    return minutes
+
+
+DEPART_LEAD_MINUTES = _depart_lead_minutes()
+
+
+def departure_minute_of_day(duration: str) -> int:
+    """차가 차고지를 떠나는 시각(자정부터 분). `_05_10` → 270(04:30), `_20_05` → 1170(19:30).
+
+    = 회차 시작 − `DEPART_LEAD_MINUTES`. **회차 시작(`duration_start_hour`)과 다르다** —
+    수요 창 · 동시각 실험 · 도로 패널은 회차 시작을 쓴다. 0시 앞으로 넘어가면 돌려 쓴다
+    (지금 회차로는 일어나지 않는다 — 가장 이른 시작이 05시이고 리드는 300분 미만이다).
+    """
+    return (duration_start_hour(duration) * 60 - DEPART_LEAD_MINUTES) % (24 * 60)
 
 
 def duration_list(config: RuntimeConfig) -> Tuple[str, ...]:

@@ -56,6 +56,54 @@ def test_빈_값은_기본값이_아니라_오류다(monkeypatch):
     assert "PBR_TARGET_Z" in str(err.value)
 
 # ---------------------------------------------------------------------------
+# 출발 리드 `PBR_DEPART_LEAD_MINUTES` (2026-10-14 — EXPERIMENTS 51장 · 사용자 결정)
+#
+# 0은 끄는 값이다(원고 수치 재현). 범위 밖은 조용히 자르지 않고 멈춘다 —
+# 300분을 넘겨 당기면 출발이 앞 회차와 겹치는데, 잘라서 돌면 흔적이 안 남는다.
+# ---------------------------------------------------------------------------
+
+def test_출발_리드_기본은_30분이고_회차_시작에서_뺀다(monkeypatch):
+    import project_config as pc
+
+    monkeypatch.delenv("PBR_DEPART_LEAD_MINUTES", raising=False)
+    assert pc._depart_lead_minutes() == pc.DEFAULT_DEPART_LEAD_MINUTES == 30
+    monkeypatch.setattr(pc, "DEPART_LEAD_MINUTES", 30)
+    assert pc.departure_minute_of_day("_05_10") == 4 * 60 + 30
+    assert pc.departure_minute_of_day("_20_05") == 19 * 60 + 30
+    # 회차 시작 · 수요 창은 그대로다 — 바뀌는 것은 출발 시각 하나다.
+    assert pc.duration_start_hour("_05_10") == 5
+    assert pc.duration_hours("_05_10")[0] == 5
+
+
+def test_출발_리드_0이면_회차_시작에_떠난다(monkeypatch):
+    import project_config as pc
+
+    monkeypatch.setenv("PBR_DEPART_LEAD_MINUTES", "0")
+    assert pc._depart_lead_minutes() == 0
+    monkeypatch.setattr(pc, "DEPART_LEAD_MINUTES", 0)
+    assert pc.departure_minute_of_day("_05_10") == 5 * 60
+
+
+@pytest.mark.parametrize("value", ["-1", "300", "600"])
+def test_출발_리드_범위_밖은_멈춘다(monkeypatch, value):
+    import project_config as pc
+
+    monkeypatch.setenv("PBR_DEPART_LEAD_MINUTES", value)
+    with pytest.raises(ValueError) as err:
+        pc._depart_lead_minutes()
+    assert "PBR_DEPART_LEAD_MINUTES" in str(err.value)
+    assert value in str(err.value)
+
+
+def test_출발_리드가_정수가_아니면_변수_이름을_밝힌다(monkeypatch):
+    import project_config as pc
+
+    monkeypatch.setenv("PBR_DEPART_LEAD_MINUTES", "30분")
+    with pytest.raises(ValueError, match="PBR_DEPART_LEAD_MINUTES"):
+        pc._depart_lead_minutes()
+
+
+# ---------------------------------------------------------------------------
 # `.env`가 실제로 읽히는가 (1.26.208에서 고침)
 #
 # 🔴 2026-09-14 실측: `.env`에 `PBR_TARGET_Z=9.9`를 적어도 코드는 1.99를,

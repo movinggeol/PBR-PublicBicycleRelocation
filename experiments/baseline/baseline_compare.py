@@ -20,8 +20,8 @@
 
 측정 코드는 운영 코드를 그대로 부른다 — build_stats·compute_rebal_qty·
 select_top_unbalanced_st·make_clustering·adjust_clustering·solve_cluster_moves·
-greedy_route·_stockout_hours 전부 파이프라인의 함수다. 측정이 제 방식대로 계산하면
-측정이 거짓말을 한다(docs/분석/DEMAND_DISTRIBUTION.md 5장에서 실제로 겪었다).
+greedy_route·_simulate_stock(결품과 포화를 함께 낸다 — 아래 `simulate_pair()`)
+전부 파이프라인의 함수다. 측정이 제 방식대로 계산하면 측정이 거짓말을 한다(docs/분석/DEMAND_DISTRIBUTION.md 5장에서 실제로 겪었다).
 
 사용법:
     python experiments/baseline/baseline_compare.py --period "25년 11월"
@@ -45,7 +45,8 @@ sys.path.insert(0, str(ROOT))
 # 그래야만 했던 이유는 `vrp.py`·`top_st_clustering.py`가 형제 모듈을 맨 이름으로
 # 부르고 있어서였고, 그 두 줄을 고치자 이 우회가 필요 없어졌다.
 import db                                                                # noqa: E402
-from experiments._shared import default_run_label                        # noqa: E402
+from experiments._shared import (CANONICAL_RUN_LABEL, default_run_label,  # noqa: E402
+                                 default_run_note)
 from pipeline.step0_collect import calculate_target_qty as target_mod    # noqa: E402
 from pipeline.step2_optimize import ilp as ilp_mod                       # noqa: E402
 from pipeline.step2_optimize import vrp as vrp_mod                       # noqa: E402
@@ -131,8 +132,9 @@ def _report_snapshot(info, run_label, period, net) -> None:
     """
     label = run_label
     if not label:
+        # 정본 없음 경고는 `load_inputs()`에서 이미 찍었다 — 같은 실행에 두 번 찍지 않는다.
         with db.session() as conn:
-            label = default_run_label(conn)
+            label = default_run_label(conn, warn=False)
     kind = db.classify_run_label(label)
     stock = int(info["stock"].sum()) if "stock" in info else -1
     print(f"[스냅샷] 대여소 정보 = '{label}' ({kind}) · "
@@ -144,10 +146,16 @@ def _report_snapshot(info, run_label, period, net) -> None:
     if kind != "plan":
         print(f"  ⚠️ '{label}'은 계획이 아니라 **{kind}**로 보입니다. "
               f"논문에 실을 값이라면 `--run-label`로 계획 실행을 못박으세요.")
+    # 라벨을 비웠을 때 — 정본이면 원고와 같은 재고이니 그렇다고만 적고, 정본이 없어 가장 최근 계획으로
+    # 넘어갔으면 원고 수치와 다르다고 경고한다(기본값을 정본으로 못박은 것은 2026-10-14).
     if not run_label:
-        print("  ⚠️ `--run-label`이 비어 있어 **최신 계획 실행**을 골랐습니다 — "
-              "계획을 다시 돌리면 같은 명령이 다른 답을 냅니다. "
-              "논문에 실을 값이라면 라벨을 못박으세요.")
+        if label == CANONICAL_RUN_LABEL:
+            print(f"  `--run-label`이 비어 정본 '{CANONICAL_RUN_LABEL}'을 골랐습니다 {default_run_note(label)}.")
+        else:
+            print(f"  ⚠️ `--run-label`이 비었는데 이 DB에 정본 '{CANONICAL_RUN_LABEL}'이 없어 "
+                  f"**가장 최근 계획 실행**을 골랐습니다 {default_run_note(label)} — "
+                  "계획을 다시 돌리면 같은 명령이 다른 답을 냅니다. "
+                  "논문에 실을 값이라면 정본을 옮겨 오거나 라벨을 못박으세요.")
 
 
 def load_inputs(period, run_label, day_type, warmup_days, warmup_period):
@@ -161,7 +169,8 @@ def load_inputs(period, run_label, day_type, warmup_days, warmup_period):
         # ⚠️ `db.load_frame`과 `latest_label`은 처음부터 `kinds`를 받고 있었다 —
         #    **아무도 넘기지 않았을 뿐이다.** 여기 한 곳을 고치면 이 함수를
         #    쓰는 실험 19개가 함께 고쳐진다.
-        # 기본 실행을 고르는 규칙(가장 최근 계획)은 `experiments/_shared.py`의 `default_run_label()` 하나다.
+        # 기본 실행을 고르는 규칙(정본 `2026-08-11 real`, 없으면 가장 최근 계획 + 경고 — 2026-10-14)은
+        # `experiments/_shared.py`의 `default_run_label()` 하나다.
         info = db.load_frame(conn, "station_info",
                              run_label=run_label or default_run_label(conn))
         warmup = pd.DataFrame()
@@ -582,7 +591,7 @@ def main():
     parser.add_argument("--period", default=DEFAULT_PERIOD, help='순수요 기간 (예: "25년 11월")')
     parser.add_argument("--duration", default="_05_10,_10_15,_15_20", help="시간대 (콤마 구분)")
     parser.add_argument("--day-type", default="weekday", choices=["weekday", "holiday"])
-    parser.add_argument("--run-label", default="", help="대여소 정보를 가져올 실행 라벨 (기본: 최신)")
+    parser.add_argument("--run-label", default="", help="대여소 정보를 가져올 실행 라벨 (기본: 정본 '2026-08-11 real', 없으면 가장 최근 계획)")
     parser.add_argument("--warmup-period", default="", help="계절 보정에 쓸 기간 (기본: 사용 안 함)")
     parser.add_argument("--warmup-days", type=int, default=DEFAULT_WARMUP_DAYS)
     parser.add_argument("--seed", type=int, default=42, help="K-Medoids 씨앗 (변동성 측정용)")

@@ -11,7 +11,9 @@
 경유지가 30개를 넘는 요청도 처음부터 100으로(100을 넘으면 200으로) 보낸다 — 작은 것으로
 쪼개 여러 번 부르는 것보다 큰 것으로 한 번 부르는 편이 쿼터를 덜 쓴다.
 
-**무료 요금제이지만 일일 호출 한도가 있으므로** 세 가지 안전장치를 둔다.
+**무료 요금제이지만 일일 호출 한도가 있으므로** 이 모듈에 안전장치 넷을 둔다.
+(나머지 둘 — 도중 끊김 시 저장 안 함(1.26.232) · 실도로 선 저장(1.26.308) — 은 `main.py`와
+`db` 쪽이다. 여섯 전부는 docs/구현/steps/step3_visualization.md 의 안전장치 표.)
 (1.26.210 정정 — 여기 '유료 API'라고 적혀 있었으나 요금은 청구되지 않는다.
 막으려는 것은 지출이 아니라 **그날 남은 호출을 한 번에 태워 버리는 것**이다.)
 
@@ -69,11 +71,18 @@ CAR_TYPE = os.getenv("PBR_TMAP_CAR_TYPE", "1")
 FALLBACK_START_TIME = "201709121938"
 
 
-def start_time_for(duration: str, when=None, day_type: str = "weekday") -> str:
+def start_time_for(duration: str, when=None, day_type: str = "weekday",
+                   lead_min: int = 0) -> str:
     """회차의 **출동 시각**을 TMAP 형식(YYYYMMDDHHMM)으로 만든다.
 
-    `_05_10` → 05시, `_10_15` → 10시처럼 창의 **첫 시각**을 쓴다. 차량은 그때
-    차고지를 떠나기 때문이다.
+    `_05_10` → 05시, `_10_15` → 10시처럼 창의 **첫 시각**에서 `lead_min`분을 뺀다.
+    차량은 그때 차고지를 떠나기 때문이다. 파이프라인(step3)은
+    `project_config.DEPART_LEAD_MINUTES`(기본 30 — EXPERIMENTS 51장 · 사용자 결정
+    2026-10-14)를 넘겨 `_05_10` → 04:30, `_20_05` → 19:30이 된다. **기본값 0은 그대로
+    두었다** — 도로 패널 수집기(`tools/collect_road_time.py`)는 회차 첫 시각을 계속 써야
+    쌓아 온 패널 · 게이트 A·B 판정과 같은 시각을 잰다.
+    날짜는 당겨도 그대로다 — 회차 시작 05시 · 리드 300분 미만이라 앞날로 넘어가지 않고,
+    넘어가더라도 날짜를 바꾸면 고른 `day_type`의 날이 아닐 수 있어 시각만 돌려 쓴다.
 
     날짜는 **다음 `day_type`**을 쓴다 — 과거 날짜를 넣으면 TMAP이 그날의 실제
     이력이 아니라 요일·시간대 패턴으로 답하기 때문에, 평일 계획은 평일 교통량을,
@@ -92,7 +101,9 @@ def start_time_for(duration: str, when=None, day_type: str = "weekday") -> str:
     base = (when or datetime.now()) + timedelta(days=1)
     while is_holiday(base.date()) != wants_holiday:
         base += timedelta(days=1)
-    return base.replace(hour=hours, minute=0).strftime("%Y%m%d%H%M")
+    minute_of_day = (hours * 60 - int(lead_min or 0)) % (24 * 60)
+    return base.replace(hour=minute_of_day // 60,
+                        minute=minute_of_day % 60).strftime("%Y%m%d%H%M")
 
 
 def _duration_first_hour(duration):

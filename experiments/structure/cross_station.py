@@ -42,6 +42,7 @@ import pandas as pd
 import db
 from project_config import DAY_TYPES, DURATIONS, REBAL_MIN_QTY, normalize_day_type, select_day_type
 from backtest_demand import daily_window_demand
+from experiments._shared import default_run_label
 
 WEIGHTS = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5)
 
@@ -94,8 +95,9 @@ def main() -> int:
     durations = [args.duration] if args.duration else DURATIONS
 
     with db.session() as conn:
-        # 좌표·거치대만 쓰지만 스냅샷은 계획 쪽으로 고정한다 (1.26.132)
-        info = (db.load_frame(conn, "station_info", kinds=("plan",))
+        # 좌표·거치대만 쓰지만 스냅샷은 고정한다 (1.26.132) — 2026-10-14부터 다른 실험과 같은
+        # `default_run_label()`(정본, 없으면 가장 최근 계획 + 경고)
+        info = (db.load_frame(conn, "station_info", run_label=default_run_label(conn))
                 .drop_duplicates("station_id", keep="last")
                 .set_index("station_id")[["lat", "lon", "parking_lot"]])
         periods = [r[0] for r in conn.execute(

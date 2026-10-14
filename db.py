@@ -441,7 +441,7 @@ CREATE TABLE IF NOT EXISTS stock_history (
 );
 
 -- 대여소 이름·좌표는 틱마다 반복하지 않고 **하루 한 번**만 남긴다.
--- 1,374행 × 하루 97틱마다 같은 문자열을 넣으면 용량이 몇 배가 된다.
+-- 1,374행 × 하루 144틱(00:00~23:50, 2026-09-14부터)마다 같은 문자열을 넣으면 용량이 몇 배가 된다.
 -- station_stock에 얹지 않는 이유가 두 가지다:
 --   1. (당시) latest_label()이 run_label의 **사전순** MAX라 'collect-…'가
 --      파이프라인 실행 라벨을 밀어냈다. 1.26.125부터는 runs.created_at 기준이지만,
@@ -1395,7 +1395,7 @@ def vehicle_workload(conn: sqlite3.Connection, only_active: bool = True) -> pd.D
     최근이 아니었고 **기록에 없는 (실행, 회차) 조합**을 만들었다(21대가 전부
     `sweep-21 _20_05`였는데 그 실행에는 `_20_05`가 없었다). 유일한 소비자
     `webapp/store.py`가 두 칸을 버리고 `created_at` 순으로 다시 구하고 있었다 —
-    그쪽 `vehicles()`가 정본이다.
+    그쪽 `vehicle_workload()`(`_latest_assignments()`)가 정본이다.
     """
     where = "WHERE v.active = 1" if only_active else ""
     return pd.read_sql(f"""

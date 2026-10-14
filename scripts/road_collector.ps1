@@ -131,8 +131,8 @@ function Invoke-Install {
     $logon.Delay = 'PT3M'          # 부팅 직후 혼잡을 피한다
     $triggers += $logon
 
-    # StartWhenAvailable을 **켠다** — 재고 수집기와 반대다. 저쪽은 10분 뒤 다음
-    # 틱이 오지만 이쪽은 하루치가 통째로 걸려 있다.
+    # StartWhenAvailable을 **켠다** — 이쪽은 하루치가 통째로 걸려 있다. 재고 수집기도
+    # 1.26.269부터 켠다(collector.ps1 — 끄고 두었다가 놓친 틱을 거부만 해 하루가 비었다).
     $settings = New-ScheduledTaskSettingsSet `
         -MultipleInstances IgnoreNew `
         -ExecutionTimeLimit (New-TimeSpan -Minutes 20) `

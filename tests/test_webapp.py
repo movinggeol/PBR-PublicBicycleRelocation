@@ -42,7 +42,7 @@ def test_index_has_run_form(client):
 
 
 def test_index_has_vehicle_count_fields(client):
-    """차량 대수를 웹에서 조정할 수 있어야 한다(기본 21대 / 회차당 10대)."""
+    """차량 대수를 웹에서 조정할 수 있어야 한다(기본 21대 / 회차당 21대 — 1.19.1부터 보유 대수와 같다)."""
     res = client.get("/run")
     assert 'name="fleet_size"' in res.text
     assert 'name="vehicles_per_round"' in res.text
@@ -554,6 +554,44 @@ def test_예상_소요는_0분이어도_숨지_않는다(client, monkeypatch):
     body = client.get("/guide").text
     assert "시간대 1개 0초" in body, "0분이 하드코딩 문구에 가려졌다"   # 예전 글 "0.0분"(1.26.327 — 소수 분을 쓰지 않는다)
     assert "보통 2~4분" not in body, "기록이 있는데 하드코딩 문구가 나온다"
+
+
+def _현황판_실행중_알림(client, monkeypatch, 작업) -> str:
+    """현황판(`/`)의 '계획을 계산하고 있습니다' 알림 글만 공백을 접어 돌려준다."""
+    monkeypatch.setattr(jobs, "running_job", lambda: 작업)
+    html = client.get("/").text
+    m = re.search(r'<div class="alert"><span><b>계획을 계산하고 있습니다</b>(.*?)</span></div>', html, re.S)
+    assert m, "실행 중인 작업이 있는데 현황판 알림이 없다"
+    return " ".join(m.group(1).split())
+
+
+def test_현황판_실행중_알림은_굳힌_예상이_없으면_숫자를_적지_않는다(client, monkeypatch):
+    """🔴 실행 폼 · 진행 화면은 기록이 없으면 숫자를 내지 않는데, 현황판만 하드코딩
+    *"2~4분"* 으로 물러섰다(2026-10-13 문서 최신화가 찾은 후보, 10-14 확인). 사람이 적은
+    숫자는 조건이 바뀐 뒤에도 남는다 — 옛 안내의 "보통 5~10분"이 그랬다. 진행 화면과
+    같은 규칙(`_running_estimate_minutes`)을 따른다."""
+    옛것 = jobs.Job(id="옛작업", args=["--duration", "_05_10"])     # 굳힌 예상 없음
+    알림 = _현황판_실행중_알림(client, monkeypatch, 옛것)
+    assert "2~4분" not in 알림, f"기록이 없는데 하드코딩 숫자를 낸다: {알림!r}"
+    assert "예상" not in 알림, f"굳힌 예상이 없는데 예상을 적는다: {알림!r}"
+    assert "옛작업" in 알림
+
+
+def test_현황판_실행중_알림은_진행_화면과_같은_예상과_말을_쓴다(client, monkeypatch):
+    """굳힌 예상이 있으면 진행 화면과 **같은 글**, EDA를 못 넣었으면 같은 말까지 붙인다."""
+    약속 = {"수집": 18.4, "전처리": 11.4, "시간대당": 86.5, "EDA": None, "표본": 3,
+          "높음": {"수집": 19.0, "전처리": 13.4, "시간대당": 115.9, "EDA": None}}
+    생략 = jobs.Job(id="생략작업", args=["--duration", "_05_10,_10_15,_15_20,_20_05", "--skip-eda"])
+    생략.estimate = jobs.job_estimate(생략, 약속)
+    알림 = _현황판_실행중_알림(client, monkeypatch, 생략)
+    assert f"(예상 {app_module._running_estimate_minutes(생략)})" in 알림, 알림
+    assert "EDA" not in 알림, "EDA를 생략했는데 EDA 이야기를 한다"
+
+    켬 = jobs.Job(id="EDA작업", args=["--duration", "_05_10"])        # EDA 켬 · EDA 기록 없음
+    켬.estimate = jobs.job_estimate(켬, 약속)
+    알림 = _현황판_실행중_알림(client, monkeypatch, 켬)
+    assert (f"(예상 {app_module._running_estimate_minutes(켬)} · "
+            f"{app_module._estimate_note(켬)})") in 알림, 알림
 
 
 def test_끝난_실행의_사라진_로그를_아직이라고_말하지_않는다(tmp_path):

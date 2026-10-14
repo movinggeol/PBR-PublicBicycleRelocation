@@ -201,6 +201,8 @@ STAGE_LABELS = {
     "tashu_api.py": "실시간 재고 수집",
     "extract_parking_lot.py": "대여소 거치대 수 추출",
     "api_to_info.py": "대여소 정보 정리",
+    # 2026-10-08에 EDA 묶음에서 빠졌다(run_pipeline.STAGES). 지우지 않는다 — 그 전 실행의
+    # 로그를 다시 열 때 이 단계 이름이 나온다(webapp/jobs.py의 `RETIRED_STAGE`가 남은 것도 그 옛 로그 때문).
     "concat_1year_file.py": "1년치 이력 합치기",
     "EDA.py": "탐색적 분석",
     "raw_to_net.py": "순수요 계산",
@@ -612,6 +614,7 @@ def _home_context() -> dict:
         "run_estimate": _run_estimate(),
         "estimate_one": _estimate_minutes(1),
         "running_minutes": _running_estimate_minutes(running),
+        "running_note": _estimate_note(running),   # 진행 화면과 같은 말 — EDA를 예상에 못 넣었을 때
         "typical_vehicles": _typical_vehicles(),
     }
 

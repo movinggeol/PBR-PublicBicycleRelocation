@@ -193,9 +193,11 @@ def vehicle_workload() -> pd.DataFrame:
     """차량별 누적 작업량(로테이션 형평성 확인용).
 
     `last_run`·`last_duration`은 **기록에 실제로 있는 한 배정**이다(1.26.283) —
-    `db.vehicle_workload`는 두 칸을 각각 사전순 `MAX`로 뽑아 붙여, 21대가 전부
+    예전 `db.vehicle_workload`는 두 칸을 각각 사전순 `MAX`로 뽑아 붙여, 21대가 전부
     `sweep-21 _20_05`였는데 `sweep-21`에는 `_20_05` 회차가 없었다(실측). 기록에
-    없는 조합을 '최근'이라 적은 것이다. 여기서 `_latest_assignments()`로 덮는다.
+    없는 조합을 '최근'이라 적은 것이다. 그래서 두 칸은 여기서 `_latest_assignments()`로
+    구한다 — `db.vehicle_workload`는 2026-10-08부터 두 칸을 아예 내지 않는다
+    (아래 `drop(..., errors="ignore")`는 그 전의 흔적이라 지금은 할 일이 없다).
     `last_kind`는 그 배정이 속한 실행의 종류다(화면이 실험이면 밝힌다).
     `/vehicles`와 `/api/vehicles`가 둘 다 이 함수를 쓰므로 한 곳에서 맞는다.
     """

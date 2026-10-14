@@ -196,6 +196,42 @@ def test_파이프라인은_요일_구분을_넘겨_출동_날짜를_고른다()
         assert "day_type" in {kw.arg for kw in call.keywords},             "day_type 없이 부르면 휴일 계획이 평일 교통량을 받는다"
 
 
+def test_파이프라인은_출발_리드를_넘겨_당긴_시각의_교통량을_받는다():
+    """step3가 `start_time_for()`에 `lead_min=DEPART_LEAD_MINUTES`를 넘긴다 (2026-10-14).
+
+    차는 회차 시작보다 30분 먼저 떠난다(EXPERIMENTS 51장 · 사용자 결정 "30분 당겨라").
+    안 넘기면 지도의 경로 시간이 차가 실제로 달리지 않는 시각의 교통량으로 계산된다.
+    도로 패널 수집기는 반대로 넘기지 않는다 — `tests/test_road_time.py`가 본다.
+    """
+    import ast
+
+    tree = ast.parse((MODULE_PATH.parent / "main.py").read_text(encoding="utf-8"))
+    calls = [node for node in ast.walk(tree)
+             if isinstance(node, ast.Call)
+             and getattr(node.func, "id", "") == "start_time_for"]
+    assert calls, "step3가 start_time_for()를 부르지 않는다"
+    for call in calls:
+        lead = [kw for kw in call.keywords if kw.arg == "lead_min"]
+        assert lead, "lead_min 없이 부르면 출발 리드가 지도에 안 듣는다"
+        assert isinstance(lead[0].value, ast.Name) and lead[0].value.id == "DEPART_LEAD_MINUTES",             "리드는 project_config.DEPART_LEAD_MINUTES 한 곳에서 읽는다 — 숫자를 다시 적지 마라"
+
+
+def test_출발_리드는_시각만_당기고_날짜는_그대로다():
+    """`_05_10` · 리드 30 → 04:30, `_20_05` → 19:30. 날짜는 리드가 없을 때와 같다 —
+    날짜를 바꾸면 고른 `day_type`의 날이 아닐 수 있다."""
+    from datetime import datetime
+
+    module = load_module()
+    when = datetime(2026, 9, 3, 9, 0)         # 목요일
+    for duration, hhmm in (("_05_10", "0430"), ("_10_15", "0930"), ("_20_05", "1930")):
+        plain = module.start_time_for(duration, when)
+        early = module.start_time_for(duration, when, lead_min=30)
+        assert early[8:] == hhmm, (duration, early)
+        assert early[:8] == plain[:8], f"{duration}: 리드가 날짜를 바꿨다 ({plain} → {early})"
+    # 기본값 0은 회차 첫 시각 그대로다 — 도로 패널 수집기가 이 길을 쓴다.
+    assert module.start_time_for("_05_10", when)[8:] == "0500"
+
+
 def test_reset_clears_exhausted_endpoints():
     """호출 수 초기화는 소진 표시도 함께 지운다(다음 실행을 오염시키지 않도록)."""
     module = load_module()

@@ -142,9 +142,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="z 스윕 — 커버리지와 작업량의 맞바꿈")
     parser.add_argument("--duration", help="시간대 하나만")
     parser.add_argument("--period", default="25년 11월", help="비용 계산에 쓸 기간")
-    # 기본값을 박아 두면 DB가 바뀌었을 때 조용히 빈 표가 된다 — 최신 실행을 쓴다.
+    # 기본값을 argparse에 박아 두면 그 라벨이 없는 DB에서 조용히 빈 표가 됐다(1.26.39) — 그래서 None으로 두고
+    # 아래 `resolve_run_label()`이 고른다(정본, 없으면 가장 최근 계획 + 경고 — 2026-10-14).
     parser.add_argument("--run-label", default=None,
-                        help="st_info 실행 라벨 (기본: station_info의 최신 실행)")
+                        help="st_info 실행 라벨 (기본: 정본 '2026-08-11 real', 없으면 가장 최근 계획)")
     parser.add_argument("--day-type", default="weekday", choices=list(DAY_TYPES),
                         help="평일/휴일 (기본 weekday). 섞어서 재지 않는다")
     parser.add_argument("--sample-days", type=int, default=None,
@@ -156,8 +157,9 @@ def main() -> int:
     durations = [args.duration] if args.duration else DURATIONS
     day_type = normalize_day_type(args.day_type)
 
-    # 기본은 가장 최근 **계획**이다 — 예전의 `MAX(run_label)`은 문자열 최대라 08-24의
-    # 스윕 실행 `sweep-10`을 골랐다(1.26.281). 1장 표는 `--run-label "2026-08-11 real"`.
+    # 기본은 정본 `2026-08-11 real`이고, 정본이 없는 DB에서만 가장 최근 **계획**으로 넘어가며 경고한다
+    # (2026-10-14 — `_shared.default_run_label()`). 그 전의 '가장 최근 계획'은 계획을 돌릴 때마다 바뀌었고,
+    # 더 전의 `MAX(run_label)`은 문자열 최대라 08-24의 스윕 실행 `sweep-10`을 골랐다(1.26.281).
     # 없는 라벨이면 순수요를 읽기 전에 여기서 멈춘다. 고른 라벨은 아래 머리줄이 찍는다.
     run_label = resolve_run_label(args.run_label, announce=False)
     with db.session() as conn:

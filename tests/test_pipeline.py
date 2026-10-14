@@ -4,8 +4,8 @@
 API 키가 필요한 step0/tashu_api.py와 step3/main.py(TMAP)는 제외한다.
 (모든 step 폴더는 1.26.168부터 `pipeline/` 아래에 있다.)
 
-실데이터를 건드리지 않도록 실행마다 고유한 now/period 라벨을 쓰고,
-끝나면 그 라벨이 붙은 파일만 지운다.
+실데이터를 건드리지 않도록 실행마다 고유한 now/period 라벨을 쓰고, 산출물과 DB는
+임시 `PBR_DATA_ROOT` · `PBR_DB_PATH`에만 쌓는다 — 그래서 끝나고 치울 것이 없다(1.26.188).
 """
 import os
 import subprocess
@@ -799,7 +799,8 @@ def test_파이프라인이_띄우는_스크립트는_일하기_전에_도움말
     위 시험은 두 파일만 실제로 띄운다(파일마다 import에 수 초가 든다). 나머지에서
     호출이 빠지면 그 스크립트의 `--help`는 다시 **계산으로 흘러간다** — 한 곳만
     고치고 덮는 것을 막으려고 전부를 정적으로 본다(1.26.190). 도움말보다 앞에
-    와도 되는 것은 자기 파서를 세우는 줄뿐이다(`concat_1year_file.py`).
+    와도 되는 것은 자기 파서를 세우는 줄뿐이다 — 그렇게 하던 `concat_1year_file.py`는
+    2026-10-08에 STAGES에서 빠져, 지금 이 허용을 쓰는 단계는 없다(허용은 남겨 둔다).
     """
     import ast
     import importlib

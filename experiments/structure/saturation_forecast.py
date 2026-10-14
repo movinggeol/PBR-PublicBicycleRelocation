@@ -43,6 +43,7 @@ import pandas as pd  # noqa: E402
 
 import db  # noqa: E402
 import stockout_forecast as sf  # noqa: E402
+from experiments._shared import default_run_label  # noqa: E402
 from project_config import DEFAULT_PERIOD, TICKS_PER_HOUR, holiday_mask  # noqa: E402
 
 TICK_MINUTES = sf.TICK_MINUTES
@@ -62,10 +63,12 @@ FEATURES = ["지금포화", "재고", "재고비율", "거치대", "1틱전포�
 def load_capacity(conn) -> tuple:
     """거치대 수(station_id → parking_lot)와 그것을 읽은 계획 실행 라벨.
 
-    F2 · F3 하네스가 `bc.load_inputs()`로 읽는 것과 **같은 실행**(최신 계획)이다 — 모형이 본
-    거치대와 계획이 본 거치대가 갈리면 비율 피처가 다른 자가 된다.
+    F2 · F3 하네스가 `bc.load_inputs()`로 읽는 것과 **같은 실행**이다 — 모형이 본
+    거치대와 계획이 본 거치대가 갈리면 비율 피처가 다른 자가 된다. 그래서 하네스와 같은
+    `default_run_label()`로 고른다(정본 '2026-08-11 real', 없으면 가장 최근 계획 + 경고 —
+    2026-10-14에 하네스의 기본이 정본으로 바뀌며 여기만 '최신 계획'으로 남아 같은 실행이 깨졌었다).
     """
-    label = db.latest_label(conn, "station_info", kinds=("plan",))
+    label = default_run_label(conn)
     info = db.load_frame(conn, "station_info", run_label=label)
     capacity = (info.drop_duplicates("station_id").set_index("station_id")["parking_lot"])
     return label, pd.to_numeric(capacity, errors="coerce")

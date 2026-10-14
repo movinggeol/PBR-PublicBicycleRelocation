@@ -25,7 +25,8 @@ from mapviz import (DROP_WORD, PICK_WORD, cluster_color, legend_html,
                     swatch_circle, swatch_line)
 from project_config import (
     exit_if_help,
-    DATA_ROOT, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, MAP_TILES, PROJECT_ROOT,
+    DATA_ROOT, DEPART_LEAD_MINUTES, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, MAP_TILES,
+    PROJECT_ROOT,
     VEHICLE_CAPACITY,
     duration_list, ensure_output_dirs, get_runtime_config, haversine_km,
 )
@@ -205,7 +206,10 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
     # 요일 구분을 넘긴다 — 안 넘기면 휴일 계획도 '다음 평일' 교통량으로 답을 받아
     # 평일·휴일이 섞인다(2026-10-08 점검. `runs.day_type`은 holiday인데 `road_leg`의
     # start_time은 평일이었다).
-    tmap_start_time = start_time_for(duration, day_type=config.day_type)
+    # 출발을 회차 시작보다 DEPART_LEAD_MINUTES(기본 30분) 당긴다 — 차가 실제로 떠나는 시각의
+    # 교통량을 받는다(EXPERIMENTS 51장 · 사용자 결정 2026-10-14). 도로 패널 수집기는 넘기지 않는다.
+    tmap_start_time = start_time_for(duration, day_type=config.day_type,
+                                     lead_min=DEPART_LEAD_MINUTES)
 
     # 경로 색은 mapviz.cluster_color()가 정한다 — 세 지도가 한 벌을 쓴다.
     # 예전 목록은 red/darkred, green/darkgreen/lightgreen처럼 인접한 색이

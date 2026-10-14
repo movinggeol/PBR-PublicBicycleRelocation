@@ -108,6 +108,39 @@ def test_default_db_is_not_the_real_one(repro):
     assert repro.DEFAULT_DB != Path(db_mod.DB_PATH)
 
 
+def test_generate_writes_to_the_isolated_db(repro, monkeypatch, tmp_path):
+    """합성 생성 단계도 `--db`의 격리 DB에 써야 한다 (2026-10-14).
+
+    `generate()`는 이 프로세스에서 `db.save_output("station_stock", …)`을 부른다.
+    `PBR_DB_PATH`를 하위 프로세스에만 넘기던 때는 그 쓰기가 기본값
+    `data/bike_system.db`로 갔고, 정리 단계는 격리 DB 파일만 지웠다.
+    파이프라인은 무거우니 돌리지 않는다 — 생성 단계가 **어느 DB를 보는지**만 잰다.
+    """
+    import db as db_mod
+
+    # 바깥 값(conftest의 임시 DB)을 '본 DB' 자리로 둔다 — 격리가 빠지면 이 경로가 잡힌다.
+    stand_in_real = tmp_path / "real.db"
+    monkeypatch.setenv("PBR_DB_PATH", str(stand_in_real))
+    isolated = tmp_path / "repro.db"
+
+    seen = {}
+
+    def fake_generate(**kwargs):
+        seen["db"] = db_mod.active_db_path()
+
+    monkeypatch.setattr(repro, "generate", fake_generate)
+    monkeypatch.setattr(repro, "DATA_ROOT", tmp_path / "data")   # 진짜 data/를 건드리지 않게
+    for name in ("run_pipeline", "verify", "report", "cleanup"):
+        monkeypatch.setattr(repro, name, lambda *a, **k: None)
+    monkeypatch.setattr(sys, "argv", ["reproduce.py", "--db", str(isolated)])
+
+    repro.main()
+
+    assert seen["db"] == isolated.resolve(), (
+        f"합성 생성이 격리 DB 밖에 쓴다: {seen['db']} — 본 DB에 '재현 데모' 행이 남는다")
+    assert seen["db"] != stand_in_real
+
+
 @pytest.mark.slow
 def test_end_to_end(tmp_path):
     """실제로 한 번 돌려 본다 — 이 테스트가 곧 README의 재현 절차다."""

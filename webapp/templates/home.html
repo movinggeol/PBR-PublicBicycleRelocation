@@ -41,9 +41,13 @@
 
 {% if running %}
 {# 예상은 **그 작업이 고른 시간대 수**로 센다 — 예전에는 시간대와 무관한
-   한 숫자라, 네 개를 골라 돌리는 사람에게도 하나짜리 숫자를 보여 줬다(1.26.214). #}
+   한 숫자라, 네 개를 골라 돌리는 사람에게도 하나짜리 숫자를 보여 줬다(1.26.214).
+   🔴 굳힌 예상이 없으면(첫 실행 · 옛 기록) **숫자를 적지 않는다** — 진행 화면(run_detail)과
+   같은 규칙 · 같은 문구다. 예전에는 여기만 "2~4분"을 하드코딩으로 냈다(2026-10-14 — 옛 안내의
+   "보통 5~10분"처럼 사람이 적은 숫자는 조건이 바뀐 뒤에도 남는다). EDA를 못 넣은 사정도 진행
+   화면과 같은 `_estimate_note()` 말로 붙인다. #}
 <div class="alert"><span><b>계획을 계산하고 있습니다</b> — {{ running.id }}
-  (예상 {% if running_minutes is not none %}{{ running_minutes }}{% else %}2~4분{% endif %}).
+  {%- if running_minutes is not none %} (예상 {{ running_minutes }}{% if running_note %} · {{ running_note }}{% endif %}){% endif %}.
   <a href="/runs/{{ running.id }}">진행 상황 보기</a></span></div>
 {% endif %}
 

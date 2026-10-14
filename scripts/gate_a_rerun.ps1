@@ -116,10 +116,13 @@ $Jobs = @(
        Args = @('--outages', '0,1,3,5,7,9', '--seeds', '42,7,13,21,99') }
     @{ Name = 'budget_split'; Ch = '26'; Script = 'structure\budget_split.py'
        Args = @('--run-label', $Label, '--road-factor', '1.0') }
+    # 28 · 29장과 원고(3.3.4 · 7.5)는 25년 11월로 잰 값이다. 2026-10-14까지 두 작업에 --period가 없어 가장 최근 달
+    # (PBR_PERIOD가 없으면 DEFAULT_PERIOD = latest_period(), 그때 26년 03월)로 돌았다 — 09-19 · 09-20 · 09-26 배치 폴더의
+    # 두 결과는 그 달의 값이라, gate_a_compare로 새 폴더와 맞대면 두 작업만 다른 달끼리 비교된다(1.26.303).
     @{ Name = 'center_stat_grid'; Ch = '28'; Script = 'params\center_stat_grid.py'
-       Args = @('--run-label', $Label, '--z-grid', '1.65,1.99,2.33', '--seeds', '42,7,13', '--out', "$O\center_stat_grid.csv") }
+       Args = @('--period', '25년 11월', '--run-label', $Label, '--z-grid', '1.65,1.99,2.33', '--seeds', '42,7,13', '--out', "$O\center_stat_grid.csv") }
     @{ Name = 'fulfill_gross'; Ch = '29'; Script = 'structure\fulfill_gross.py'
-       Args = @('--run-label', $Label, '--out', "$O\fulfill_gross.csv") }
+       Args = @('--period', '25년 11월', '--run-label', $Label, '--out', "$O\fulfill_gross.csv") }
     @{ Name = 'gamma_recheck'; Ch = '4 후속-2'; Script = 'baseline\gamma_recheck.py'
        Args = @('--period', '26년 03월', '--run-label', $Label, '--out', "$O\gamma_recheck.csv") }
 )

@@ -77,7 +77,7 @@ def main() -> int:
     parser.add_argument("--periods", default=",".join(PERIODS))
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--run-label", default=None,
-                        help="재고 스냅샷을 고정할 실행 라벨 (기본: 가장 최근 계획 실행)")
+                        help="재고 스냅샷을 고정할 실행 라벨 (기본: 정본 '2026-08-11 real', 없으면 가장 최근 계획)")
     parser.add_argument("--out", default=None,
                         help="회차별 표를 CSV로 남긴다 (오래 걸리므로 결과를 잃지 않게)")
     args = parser.parse_args()
@@ -86,7 +86,8 @@ def main() -> int:
     run_label = resolve_run_label(args.run_label)
     step1 = bc.load_step1()
     # 순수요를 읽는 요일(아래 "weekday")과 ILP·VRP·군집 모듈의 요일을 맞춘다(1.26.281) — 안 맞추면 모듈은
-    # 오늘 달력을 따른다. 지금은 휴일 이동 계수가 평일로 폴백해 어느 날 돌려도 수치는 같다.
+    # 오늘 달력을 따른다. 1.26.311부터 휴일 이동 계수(`ROAD_*_HOLIDAY`)가 따로 있어 어긋나면 수치가
+    # 바뀐다(1.26.310까지는 평일로 폴백해 같았다 — project_config.align_day_type).
     bc.align_day_type("weekday", bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
     solver = bc.ilp_mod.build_solver()
 

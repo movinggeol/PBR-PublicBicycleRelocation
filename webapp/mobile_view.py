@@ -4,7 +4,8 @@
 `orders.build()`, 회차별 이동·작업 분은 `route_summary`, 기본 실행·회차는
 `/orders`와 같은 `_orders_context()`(app.py)다. 여기서 새로 정하는 것은 넷뿐이다.
 
-  ① 회차 시각 — `_05_10`이면 05:00 시작, 완료 예정 = 시작 + 계획 소요 분
+  ① 회차 시각 — `_05_10`이면 04:30 출발(회차 시작 05:00 − `DEPART_LEAD_MINUTES` 30분,
+     2026-10-14 사용자 결정), 완료 예정 = 출발 + 계획 소요 분
   ② 경로 색 — `mapviz.cluster_color()`. 기존 지도(step3)에서 같은 군집이 같은 색이다
   ③ 체크 기록을 어느 계획에 묶을지 — 계획 지문(`plan_fingerprint`)
   ④ 지도 바탕 — `project_config.MAP_TILES`를 folium과 **같은 규칙**으로 푼다
@@ -37,8 +38,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 
 from mapviz import DROP_COLOR, PICK_COLOR, cluster_color
-from project_config import (DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, DURATION_LABELS,
-                            MAP_TILES)
+from project_config import (DEPART_LEAD_MINUTES, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME,
+                            DURATION_LABELS, MAP_TILES)
 from webapp import kpi_view, store
 
 # 지도 스크립트는 folium이 싣는 것과 **같은 판**이다 — 새 종류의 의존이 아니다.
@@ -75,12 +76,14 @@ def duration_window(duration) -> Optional[tuple]:
     return start, end
 
 
-def clock(start_hour: int, minutes: float = 0) -> str:
-    """시작 시각 + 분 → 'HH:MM'. 자정을 넘기면 돌려 쓴다(`_20_05`).
+def clock(start_hour: int, minutes: float = 0, lead_min: int = 0) -> str:
+    """시작 시각 − 출발 리드 + 분 → 'HH:MM'. 자정을 넘기면 돌려 쓴다(`_20_05`).
 
     분은 **올림**이다 — 계획값으로 완료를 앞당겨 약속하지 않는다(7시 3.2분이면 07:04).
+    `lead_min`은 **시작 쪽에서** 뺀다 — `minutes`는 음수를 0으로 깎으므로 거기서 빼면
+    `clock(5, 0, 30)`이 04:30이 아니라 05:00이 된다.
     """
-    total = start_hour * 60 + math.ceil(max(float(minutes or 0), 0))
+    total = start_hour * 60 - int(lead_min or 0) + math.ceil(max(float(minutes or 0), 0))
     total %= 24 * 60
     return f"{total // 60:02d}:{total % 60:02d}"
 
@@ -218,7 +221,8 @@ def build_plan(sheets: list, names: list, candidates: Optional[pd.DataFrame],
             "minutes": _num(sheet["minutes"]),
             "travel_min": split.get("travel_min"),
             "work_min": split.get("work_min"),
-            "finish": clock(start, sheet["minutes"]) if start is not None else None,
+            "finish": (clock(start, sheet["minutes"], DEPART_LEAD_MINUTES)
+                       if start is not None else None),
             "pick_total": pick_total,
             "drop_total": drop_total,
             # 🔴 옮긴 대수는 `min(수거, 배송)`으로 센다(pbr-pipeline 함정 13). 수거만 세면
@@ -234,8 +238,11 @@ def build_plan(sheets: list, names: list, candidates: Optional[pd.DataFrame],
     longest = max((v["minutes"] or 0 for v in vehicles), default=0)
     return {
         "fp": plan_fingerprint(sheets, names),
-        "start": clock(start) if start is not None else None,
-        "finish": clock(start, longest) if start is not None and vehicles else None,
+        # 출발은 회차 시작보다 DEPART_LEAD_MINUTES(기본 30분) 앞이다 — `_05_10`이면 04:30 출발,
+        # 완료 예정 = 출발 + 계획 소요(EXPERIMENTS 51장 · 사용자 결정 2026-10-14).
+        "start": clock(start, 0, DEPART_LEAD_MINUTES) if start is not None else None,
+        "finish": (clock(start, longest, DEPART_LEAD_MINUTES)
+                   if start is not None and vehicles else None),
         "vehicles": vehicles,
         "totals": {
             "vehicles": len(vehicles),

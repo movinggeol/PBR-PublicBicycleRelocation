@@ -414,6 +414,23 @@ def test_요일로_평일_휴일을_가른다(collector):
     assert collector.is_holiday_date("2026-10-09") is True    # 한글날(평일 공휴일)
 
 
+def test_수집기는_출발_리드를_넘기지_않고_회차_첫_시각을_잰다():
+    """파이프라인(step3)은 2026-10-14부터 출발을 30분 당긴 시각의 교통량을 받지만, 이 패널은
+    **회차 첫 시각**을 계속 잰다 — 바꾸면 그날부터 쌓는 패널이 08-31 이후 패널 · 게이트 A·B
+    판정과 다른 시각을 재게 돼 날짜별 계수의 흔들림을 교통 탓으로 읽을 수 없다.
+    """
+    import ast
+
+    tree = ast.parse(MODULE_PATH.read_text(encoding="utf-8"))
+    calls = [node for node in ast.walk(tree)
+             if isinstance(node, ast.Call)
+             and getattr(node.func, "id", "") == "start_time_for"]
+    assert calls, "수집기가 start_time_for()를 부르지 않는다"
+    for call in calls:
+        assert "lead_min" not in {kw.arg for kw in call.keywords},             "수집기가 출발 리드를 넘긴다 — 패널의 시각이 판정 때와 달라진다"
+        assert len(call.args) < 4, "네 번째 위치 인자(lead_min)로 리드를 넘기지 마라"
+
+
 # ---------------------------------------------------------------- 모형 재추정의 day_type 필터
 
 def _model_module():

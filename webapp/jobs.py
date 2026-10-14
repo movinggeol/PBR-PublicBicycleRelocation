@@ -387,7 +387,7 @@ def estimate_model(limit: int = ESTIMATE_WINDOW) -> Optional[Dict[str, float]]:
         시간대표본 = [s["시간대당"] for s in shapes]
         # EDA는 **켠 실행이 드물다**(폼 기본값이 생략). 같은 좁은 창에서 찾으면
         # 거의 늘 비므로, 이력 전체에서 켠 실행을 따로 최근 `limit`건 모은다.
-        # 이 단계는 코드가 거의 바뀌지 않아(1년치 파일 합치기·그래프) 시대가
+        # 이 단계는 코드가 거의 바뀌지 않아(그래프 — 2026-10-08부터 `EDA.py` 하나다) 시대가
         # 섞일 위험이 시간대당 몫보다 훨씬 작다.
         EDA표본 = []
         for job in history:

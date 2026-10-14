@@ -102,8 +102,8 @@ with contextlib.redirect_stdout(buf):          # 파이프라인 수다를 삼�
     args = json.loads(sys.argv[2])
     step1 = bc.load_step1()
     # 부모의 --day-type은 `python -c` 자식의 argv에 없다 — 순수요를 읽는 요일과 ILP·VRP·군집
-    # 모듈의 요일을 여기서 맞춘다(1.26.281). 안 맞추면 모듈은 오늘 달력을 따른다. 지금은 휴일
-    # 이동 계수가 평일로 폴백해 어느 날 돌려도 수치는 같다.
+    # 모듈의 요일을 여기서 맞춘다(1.26.281). 안 맞추면 모듈은 오늘 달력을 따른다. 1.26.311부터 휴일
+    # 이동 계수가 따로 있어 어긋나면 수치가 바뀐다(그 전엔 평일로 폴백해 같았다).
     bc.align_day_type(args["day_type"], bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
     solver = bc.ilp_mod.build_solver()
     net, st_info, warmup = bc.load_inputs(
@@ -253,7 +253,7 @@ def main():
     parser.add_argument("--duration", default="_05_10,_10_15,_15_20")
     parser.add_argument("--day-type", default="weekday", choices=["weekday", "holiday"])
     parser.add_argument("--run-label", default="",
-                        help="재고 스냅샷을 고정할 실행 라벨 (기본: 최신)")
+                        help="재고 스냅샷을 고정할 실행 라벨 (기본: 정본 '2026-08-11 real', 없으면 가장 최근 계획)")
     parser.add_argument("--warmup-days", type=int, default=14)
     parser.add_argument("--limits", default=",".join(str(x) for x in LIMITS))
     parser.add_argument("--fleet", default=",".join(str(x) for x in FLEET))
@@ -278,7 +278,7 @@ def main():
     print(f"상한 {limits} × 차량 {fleet} × 회차 {len(args.durations)}"
           f" × 씨앗 {len(args.seeds)}"
           f"  (z={TARGET_Z}·γ={CLUSTER_GAMMA} 고정,"
-          f" 스냅샷 '{args.run_label or '최신'}')")
+          f" 스냅샷 '{args.run_label or '기본'}')")
     print(f"셀 {len(limits) * len(fleet)}개를 각각 별도 프로세스로 돌린다.\n")
 
     rows = []

@@ -479,7 +479,8 @@ def main() -> int:
         for line in tmap_notice(env):
             print(line)
 
-    # dry-run은 파일 존재 여부와 실행 순서만 확인할 때 사용합니다.
+    # dry-run은 실행 순서(와 위 TMAP 안내)만 보여 주고 여기서 끝납니다.
+    # 스크립트 파일이 있는지는 보지 않습니다 — 그 검사는 아래 실행 루프에서야 합니다.
     if args.dry_run:
         return 0
 

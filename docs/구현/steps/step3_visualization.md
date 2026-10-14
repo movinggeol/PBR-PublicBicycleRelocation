@@ -54,8 +54,11 @@ VRP 경로를 TMAP Routes API로 실제 도로 경로로 변환해 Folium 지도
   (구간 끝 경유지를 도착지로 연결)
 - `extract_cumulative_times()`: GeoJSON 선분의 `time` 속성을 누적해 포인트별 도착시간 계산
 - `merge_tmap_results()`: 분할 호출 결과의 경로·누적시간을 하나로 병합 (경계 중복 제거)
-- `start_time_for(duration, when=None, day_type="weekday")`: 회차의 출동 시각(창의 첫 시각)을
-  TMAP 형식(YYYYMMDDHHMM)으로 — 날짜는 다음 그 `day_type`의 날. 회차 형식이 다르면 `FALLBACK_START_TIME`
+- `start_time_for(duration, when=None, day_type="weekday", lead_min=0)`: 회차의 출동 시각(창의 첫 시각 − `lead_min`분)을
+  TMAP 형식(YYYYMMDDHHMM)으로 — 날짜는 다음 그 `day_type`의 날이고 리드로 당겨도 날짜는 그대로다. 회차 형식이 다르면 `FALLBACK_START_TIME`.
+  **`lead_min`을 넘기는 것은 step3(`main.py`) 하나다** — `DEPART_LEAD_MINUTES`(기본 30, 사용자 결정 2026-10-14 ·
+  [EXPERIMENTS](../../분석/EXPERIMENTS.md) 51장 끝)를 넘겨 `_05_10`이면 04:30의 교통량을 받는다. 도로 패널 수집기
+  (`tools/collect_road_time.py`)는 기본값 0으로 회차 첫 시각을 계속 잰다(쌓아 온 패널 · 게이트 A·B와 같은 시각 — `tests/test_road_time.py`가 지킨다)
 - `available_endpoints()`: 아직 쓸 수 있는 엔드포인트 (경유지 상한 오름차순)
 - `route_skip_reason(need)`: 지도 한 장을 그리기 전에 끝까지 부를 수 있는지 확인 —
   못 부르면 그 까닭, 부를 수 있으면 `None`
@@ -174,7 +177,7 @@ $env:PBR_TMAP_URL="https://apis.openapi.sk.com/tmap/routes/routeSequential100"
 | 우선순위 | 문제 |
 | --- | --- |
 | 🟢 | 출발 마커 좌표의 `-0.0003` 오프셋(마커 겹침 회피용) — 이름 없이 하드코딩, 주석 없음. (TMAP 요청용 `-0.005`는 위에서 설명한 `TMAP_START_OFFSET_DEG`로 별개이며 이미 이름·주석이 있다) |
-| ✅ | ~~`start_time="201709121938"` 고정값~~ — 1.26.4부터 `start_time_for(duration)`이 회차 첫 시각(다음 평일)을 넘긴다. 고정값은 duration 형식이 틀릴 때의 폴백(`FALLBACK_START_TIME`)으로만 남았다. 지금은 `start_time_for(duration, day_type=config.day_type)`로 요일 구분도 넘긴다 — 휴일 계획은 다음 휴일의 회차 첫 시각으로 요청한다(2026-10-08까지는 넘기지 않아 휴일 계획도 평일 교통량으로 요청했다) |
+| ✅ | ~~`start_time="201709121938"` 고정값~~ — 1.26.4부터 `start_time_for(duration)`이 회차 첫 시각(다음 평일)을 넘긴다. 고정값은 duration 형식이 틀릴 때의 폴백(`FALLBACK_START_TIME`)으로만 남았다. 지금은 `start_time_for(duration, day_type=config.day_type)`로 요일 구분도 넘긴다 — 휴일 계획은 다음 휴일의 회차 첫 시각으로 요청한다(2026-10-08까지는 넘기지 않아 휴일 계획도 평일 교통량으로 요청했다). 2026-10-14부터는 `lead_min=DEPART_LEAD_MINUTES`도 넘겨 출발 시각(회차 시작 − 30분)의 교통량을 받는다 |
 | ✅ | ~~분할 호출 시 구간 경계 경유지는 TMAP 순서 최적화 대상에서 제외됨(구간 도착지로 고정) — 방문 순서는 VRP가 이미 정하므로 실질 영향 없음~~ — **전제가 틀렸다.** 다중 경유지 안내는 순서를 최적화하지 않는다(순서 최적화는 별개 API인 *경유지 최적화*, 2026-09-15 공식 가이드 확인) |
 | ✅ | ~~`main.py` 주석 두 곳(TMAP 출발점을 벌리는 이유)이 아직 이 API를 *"경유지 최적화"* 라고 부르고, 607행 주석은 폴백을 *"30 → 100"* 까지만 적는다~~ → **고쳤다 (1.26.227, 사용자 지시).** ⚠️ 주석만 고쳐도 경로 지도 지문이 바뀌므로 **그 전에 그린 경로 지도는 전부 낡음**이 된다 — `redraw_maps.py --with-route --run-label …`로 라벨씩 다시 그린다. 09-16에 정본 3회차(30건)와 `2026-08-28 도로실측` 3회차(44건)를 되살렸고(합 74건), **남은 것은 9장·약 104건**이라 이틀 더다([TODO](../../기록/TODO.md) 색인). 📌 `--dry-run --all`의 *"60셋"* 은 **지도가 없는 실행까지** 센 값이니 남은 몫으로 읽지 말 것. ▶ **2026-09-17 현재: 위 잔량은 낡았다** — 1.26.232가 `main.py`를 고쳐 **두 PC의 경로 지도가 다시 전부 낡음**이다(집 PC 11장 · 회사 PC 15장). 게이트 A 재실행 뒤(09-23 이후) 다시 그리고, TMAP 한도를 두 PC가 한 키로 나눠 쓰므로 **한 날에는 한 PC만** 그린다([두_PC_작업.md](../두_PC_작업.md) 0장) |
 | 🟢 | 호출 예산은 **프로세스 단위**라 여러 번 나눠 실행하면 일일 한도를 넘을 수 있음 — `redraw_maps.py`는 한 번 실행 전체를 묶지만(1.26.219), 여러 번 돌리거나 다른 PC·세션이 쓴 호출은 여전히 모른다 |

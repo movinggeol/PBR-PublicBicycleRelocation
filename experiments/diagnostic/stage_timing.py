@@ -34,6 +34,7 @@ sys.path.insert(0, str(ROOT / "experiments" / "baseline"))
 
 import project_config  # noqa: E402,F401  (콘솔 인코딩을 먼저 잡는다)
 import baseline_compare as bc  # noqa: E402
+from experiments._shared import CANONICAL_RUN_LABEL  # noqa: E402
 from project_config import DEFAULT_PERIOD, TARGET_Z  # noqa: E402
 
 
@@ -89,7 +90,7 @@ def main():
     ap.add_argument("--period", default=DEFAULT_PERIOD)
     ap.add_argument("--duration", default="_05_10,_10_15,_15_20")
     ap.add_argument("--day-type", default="weekday", choices=["weekday", "holiday"])
-    ap.add_argument("--run-label", default="2026-08-11 real")
+    ap.add_argument("--run-label", default=CANONICAL_RUN_LABEL)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--repeat", type=int, default=3,
                     help="회차마다 몇 번 재서 중앙값을 낼지 (기본 3)")
@@ -101,7 +102,7 @@ def main():
         args.period, args.run_label, args.day_type, 0, "")
     step1 = bc.load_step1()
     # 순수요를 읽는 요일(위 `args.day_type`)과 ILP·VRP·군집 모듈의 요일을 맞춘다(1.26.281) — 안 맞추면 `--day-type`을
-    # 안 줬을 때 모듈은 오늘 달력을 따른다. 지금은 휴일 이동 계수가 평일로 폴백해 어느 날 돌려도 수치는 같다.
+    # 안 줬을 때 모듈은 오늘 달력을 따른다. 1.26.311부터 휴일 이동 계수가 따로 있어 어긋나면 수치가 바뀐다(그 전엔 평일로 폴백해 같았다).
     bc.align_day_type(args.day_type, bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
     solver = bc.ilp_mod.build_solver()
 

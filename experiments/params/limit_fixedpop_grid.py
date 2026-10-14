@@ -80,7 +80,7 @@ sys.path.insert(0, str(ROOT))
 # 나갔다(2026-09-14 예행 로그 한 파일에 인코딩이 둘). 거기에 '—' 하나만 들어가도
 # 죽는다 — 출력 순서에 기대지 않고 처음부터 거친다.
 import project_config  # noqa: E402
-from experiments._shared import load_baseline  # noqa: E402
+from experiments._shared import CANONICAL_RUN_LABEL, load_baseline  # noqa: E402
 
 WORKER = Path(__file__).with_name("_limit_plan_worker.py")
 
@@ -210,7 +210,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="후보 상한을 같은 모집단으로 다시 잰다 (TODO 대기-1)")
     parser.add_argument("--period", default="25년 11월")
-    parser.add_argument("--run-label", default="2026-08-11 real")
+    parser.add_argument("--run-label", default=CANONICAL_RUN_LABEL)
     parser.add_argument("--limits", default="15,20,25,30,40,50")
     # 기본값은 운영값을 따른다 — 12로 박혀 있던 동안 인자 없이 돌린 표가 전부
     # '차량 12대'라는 조건을 숨긴 채 인용됐다(머리말 '숨은 조건 둘').

@@ -44,7 +44,7 @@ def main():
     parser.add_argument("--duration", default="_05_10,_10_15,_15_20")
     parser.add_argument("--day-type", default="weekday", choices=["weekday", "holiday"])
     parser.add_argument("--run-label", default=None,
-                        help="재고 스냅샷을 고정할 실행 라벨 (기본: 최신)")
+                        help="재고 스냅샷을 고정할 실행 라벨 (기본: 정본 '2026-08-11 real', 없으면 가장 최근 계획)")
     parser.add_argument("--out", default="")
     args, _ = parser.parse_known_args()
 
@@ -56,7 +56,7 @@ def main():
 
     step1 = bc.load_step1()
     # 순수요를 읽는 요일(아래 `day_type`)과 ILP·VRP·군집 모듈의 요일을 맞춘다(1.26.281) — 안 맞추면 `--day-type`을
-    # 안 줬을 때 모듈은 오늘 달력을 따른다. 지금은 휴일 이동 계수가 평일로 폴백해 어느 날 돌려도 수치는 같다.
+    # 안 줬을 때 모듈은 오늘 달력을 따른다. 1.26.311부터 휴일 이동 계수가 따로 있어 어긋나면 수치가 바뀐다(그 전엔 평일로 폴백해 같았다).
     bc.align_day_type(day_type, bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
     solver = bc.ilp_mod.build_solver()
     baseline_gamma = step1.CLUSTER_GAMMA
@@ -64,9 +64,9 @@ def main():
     # 재고 스냅샷을 고정한다. 예전에는 ""를 넘겨 **말없이 최신 라벨**을 썼는데,
     # 그러면 같은 명령이 다른 날 다른 값을 내고 다른 실험과 기준이 갈린다
     # (DECISIONS.md 6-B: 백분율은 기준 스냅샷과 함께 인용한다).
-    # 기본은 가장 최근 **계획**이다. 예전의 `MAX(run_label)`은 문자열 최대라 08-24의
-    # 스윕 실행 `sweep-10`을 말없이 골랐다(1.26.281). 논문 수치는 라벨을 고정해 잰다
-    # (`--run-label "2026-08-11 real"`, EXPERIMENTS 머리말). 고른 라벨은 아래 머리줄이 찍는다.
+    # 기본은 정본 `2026-08-11 real`이다(2026-10-14) — 정본이 없는 DB에서만 가장 최근 **계획**으로
+    # 넘어가며 경고한다. 예전의 `MAX(run_label)`은 문자열 최대라 08-24의 스윕 실행 `sweep-10`을
+    # 말없이 골랐다(1.26.281). 고른 라벨은 아래 머리줄이 찍는다.
     run_label = resolve_run_label(args.run_label, announce=False)
 
     total_runs = len(periods) * len(gammas) * len(seeds) * len(durations)

@@ -58,7 +58,7 @@ sys.path.insert(0, str(ROOT))
 # 🔴 한 글자에 UnicodeEncodeError). project_config를 거치면 _force_utf8_output()이
 # 돈다 — 저장소가 이 함정을 막아 둔 단일 지점이다.
 import project_config  # noqa: F401,E402
-from experiments._shared import load_baseline  # noqa: E402
+from experiments._shared import CANONICAL_RUN_LABEL, load_baseline  # noqa: E402
 
 WORKER = Path(__file__).with_name("_convention_worker.py")
 
@@ -207,7 +207,7 @@ def main() -> int:
     parser.add_argument("--knob", default="", help=f"하나만: {', '.join(KNOBS)}")
     parser.add_argument("--values", default="", help="격자를 직접 준다 (쉼표)")
     parser.add_argument("--period", default="25년 11월")
-    parser.add_argument("--run-label", default="2026-08-11 real")
+    parser.add_argument("--run-label", default=CANONICAL_RUN_LABEL)
     parser.add_argument("--duration", default="_05_10,_10_15,_15_20")
     parser.add_argument("--seeds", default="42,7,13")
     parser.add_argument("--out", default="")

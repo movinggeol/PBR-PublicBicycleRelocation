@@ -40,6 +40,18 @@ def test_완료_예정은_올림이고_자정을_넘긴다():
     assert mobile_view.clock(20, 600) == "06:00"
 
 
+def test_출발_리드는_시작_쪽에서_뺀다():
+    """`clock(5, 0, 30)`은 04:30이다 — 리드를 분에서 빼면 음수가 0으로 깎여 05:00이 된다.
+
+    출발 30분 당기기(EXPERIMENTS 51장 · 사용자 결정 2026-10-14)의 화면 쪽 계산이다.
+    """
+    assert mobile_view.clock(5, 0, 30) == "04:30"
+    assert mobile_view.clock(5, 123.2, 30) == "06:34"
+    assert mobile_view.clock(20, 0, 30) == "19:30"
+    assert mobile_view.clock(20, 600, 30) == "05:30"
+    assert mobile_view.clock(5, 0, 0) == mobile_view.clock(5) == "05:00"
+
+
 def test_소요_시간_표기():
     assert mobile_view.hours_minutes(92.4) == "1시간 33분"
     assert mobile_view.hours_minutes(40) == "40분"
@@ -298,7 +310,9 @@ def test_빈_DB에서도_네_화면이_뜬다(tmp_path, monkeypatch):
 def test_계획_한_벌은_지시서와_같은_숫자다(client):
     plan = _plan(client.get("/m").text)
     assert plan["run_label"] == LABEL and plan["duration"] == DURATION
-    assert plan["start"] == "05:00"
+    # 출발은 회차 시작 − DEPART_LEAD_MINUTES다(기본 30분 → `_05_10`이면 04:30).
+    lead = mobile_view.DEPART_LEAD_MINUTES
+    assert plan["start"] == mobile_view.clock(5, 0, lead)
     v1, v2 = plan["vehicles"]
     assert (v1["id"], v2["id"]) == ("V01", "V02")
     # '옮길 자전거'는 `/orders`와 같은 값(실을 대수 합)이다.
@@ -310,14 +324,34 @@ def test_계획_한_벌은_지시서와_같은_숫자다(client):
     assert plan["totals"]["stops"] == 5
     # 이동·작업 분은 route_summary에서, 완료 예정은 올림.
     assert (v2["travel_min"], v2["work_min"]) == (110.0, 15.0)
-    assert v2["finish"] == mobile_view.clock(5, v2["minutes"])
-    assert plan["finish"] == mobile_view.clock(5, max(v1["minutes"], v2["minutes"]))
+    assert v2["finish"] == mobile_view.clock(5, v2["minutes"], lead)
+    assert plan["finish"] == mobile_view.clock(5, max(v1["minutes"], v2["minutes"]), lead)
     # 경로 색은 기존 지도와 같은 군집 색이다.
     from mapviz import cluster_color
     assert v1["color"] == cluster_color(0) and v2["color"] == cluster_color(1)
     # 재고가 비었던 대여소는 None(JSON null)이다.
     stop3 = next(s for s in v1["stops"] if s["id"] == "ST1003")
     assert stop3["stock"] is None and stop3["lot"] == 12
+
+
+def test_현장_앱_시각은_출발_기준이고_리드를_끄면_회차_시작이다(client, monkeypatch):
+    """출발 30분 당기기(EXPERIMENTS 51장 · 사용자 결정 2026-10-14) — `_05_10`이면 04:30 출발.
+
+    완료 예정도 함께 당겨진다(출발 + 계획 소요). `PBR_DEPART_LEAD_MINUTES=0`이면 예전처럼
+    회차 시작 05:00이다 — 원고 시절 화면을 재현하는 길이다.
+    """
+    monkeypatch.setattr(mobile_view, "DEPART_LEAD_MINUTES", 30)
+    early = _plan(client.get("/m").text)
+    assert early["start"] == "04:30"
+    monkeypatch.setattr(mobile_view, "DEPART_LEAD_MINUTES", 0)
+    plain = _plan(client.get("/m").text)
+    assert plain["start"] == "05:00"
+    # 끝나는 시각도 30분씩 앞선다 — 시작만 당기고 완료 예정을 그대로 두면 소요가 30분 는다.
+    assert early["finish"] != plain["finish"]
+    for fast, slow in zip(early["vehicles"], plain["vehicles"]):
+        h1, m1 = map(int, fast["finish"].split(":"))
+        h0, m0 = map(int, slow["finish"].split(":"))
+        assert (h0 * 60 + m0) - (h1 * 60 + m1) == 30, (fast["finish"], slow["finish"])
 
 
 def test_실도로_선이_있는_차량만_선을_받는다(client):

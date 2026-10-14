@@ -22,6 +22,9 @@
 이 스크립트가 지키는 것 셋:
 
   · **격리** — DB는 기본적으로 별도 파일(`data/재현.db`)을 쓴다. 실 DB를 건드리지 않는다.
+    합성 생성(`generate()`)도 이 프로세스에서 DB에 쓰므로 `PBR_DB_PATH`를 하위
+    프로세스만이 아니라 **이 프로세스에도** 건다(2026-10-14 — 그 전에는 합성 재고가
+    실 DB에 남았다).
   · **자기 검증** — 파이프라인이 정말 합성 대여소를 봤는지 **대여소 수를 대조한다.**
     위 ①은 조용히 틀렸기 때문에, 조용히 틀릴 수 없게 만드는 것이 핵심이다.
   · **정리** — 만든 산출물을 지운다(`--keep`으로 남길 수 있다).
@@ -161,9 +164,20 @@ def main() -> None:
     parser.add_argument("--keep", action="store_true", help="산출물과 DB를 지우지 않는다")
     args = parser.parse_args()
 
-    db_path = Path(args.db)
+    # 절대 경로로 굳힌다 — 하위 프로세스는 cwd=PROJECT_ROOT에서 돌므로, 상대 경로를
+    # 그대로 넘기면 이 프로세스(generate·report)와 파이프라인이 서로 다른 파일을 본다.
+    db_path = Path(args.db).resolve()
     raw_path = DATA_ROOT / "raw_data" / f"합성_대여이력 ({LABEL}).csv"
     raw_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # 🔴 **이 프로세스도 격리 DB를 쓰게 한다** (2026-10-14). 예전에는 `PBR_DB_PATH`를
+    #    하위 프로세스(run_pipeline)에만 넘겼는데, 아래 `generate()`는 **이 프로세스에서**
+    #    `db.save_output("station_stock", …)`을 부른다 — 그 쓰기는 기본값
+    #    `data/bike_system.db`로 가서 '재현 데모'의 runs·station_stock 행을 남겼고,
+    #    `cleanup()`은 격리 DB 파일만 지우니 그 행은 그대로 남았다. 테스트에서는
+    #    conftest가 `PBR_DB_PATH`를 임시 경로로 깔아 두어 드러나지 않았다
+    #    (tests/test_reproduce.py가 이 줄을 지킨다).
+    os.environ["PBR_DB_PATH"] = str(db_path)
 
     print("=" * 68)
     print("PBR 재현 — 합성 데이터로 step0~step4를 돕니다")

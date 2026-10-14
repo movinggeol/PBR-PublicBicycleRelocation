@@ -47,7 +47,23 @@ BASELINE_PATH = ROOT / "experiments" / "baseline" / "baseline_compare.py"
 
 # 실험이 라벨 없이 돌 때 고르는 실행의 종류. `kinds`를 비우면 `db.latest_label()`이 종류를 안 가려
 # 파라미터 스윕(`sweep-10`) 같은 **실험 스냅샷**을 집는다(1.26.132).
+# 재고 스냅샷(`station_info`)은 정본이 있으면 이 규칙까지 오지 않는다 — 아래 `default_run_label()`이
+# 정본을 먼저 본다. 저장된 계획 표(`vrp_plan` …)의 기본은 지금도 이 규칙이다.
 DEFAULT_RUN_KINDS = ("plan",)
+
+# 원고 수치를 잰 **정본 재고 스냅샷**(대여소 1,368곳 · 총재고 3,214대). 라벨 없는 실험의 기본값이다
+# (사용자 결정 2026-10-08, 구현 2026-10-14 — docs/기록/TODO.md 색인 ⑥).
+# 예전 기본값 '가장 최근 계획'은 계획을 돌릴 때마다 바뀌어, 10-14에는 '2026-10-11 20 휴일 동시각'
+# (_20_05 한 회차 · 총재고 2,384대 — 정본과 26% 차이)을 집고 있었다. 부록 A의 라벨 없는 명령이
+# 원고와 다른 재고로 돌던 까닭이다. 스크립트마다 `--run-label` 기본값으로 따로 적던 같은 문자열
+# 일곱 곳도 이것을 쓴다. `dockless_hub.CANON_LABEL`은 그대로 뒀다 — 재고가 아니라 저장된 계획
+# (`rebalance_plan`)을 읽는 라벨이라 아래 범위 밖이다.
+CANONICAL_RUN_LABEL = "2026-08-11 real"
+
+# 정본을 기본으로 고르는 표 — **재고 스냅샷만이다.** 저장된 계획 표(ilp_plan · vrp_plan · pick_drop ·
+# rebalance_plan …)는 원고가 `2026-08-11 real raw19`(종류 experiment)로 읽는다. 같은 정본 라벨로
+# 묶으면 그 표에서는 **옛 코드가 푼 계획**을 읽게 되므로, 그 표의 기본은 예전대로 가장 최근 계획이다.
+CANONICAL_DEFAULT_TABLES = ("station_info",)
 
 
 def load_baseline():
@@ -67,17 +83,44 @@ def load_baseline():
     return module
 
 
-def default_run_label(conn, table: str = "station_info"):
-    """라벨을 안 줬을 때 쓸 실행 — 그 표에 자료가 있는 **가장 최근 계획**. 표가 비었으면 None.
+def default_run_label(conn, table: str = "station_info", *, warn: bool = True):
+    """라벨을 안 줬을 때 쓸 실행. 표가 비었으면 None.
 
-    **기본 실행을 고르는 규칙은 여기 하나다.** `db.latest_label()`은 `runs.created_at` 순으로
-    고르고(사전순 최대가 아니다 — 1.26.125), 계획이 하나도 없으면 종류를 무시한 최신을 준다.
+    **기본 실행을 고르는 규칙은 여기 하나다.**
 
-    ⚠️ '가장 최근 계획'은 요일도 회차 구성도 가리지 않는다(휴일 한 회차짜리 동시각 계획이 잡히기도
-    한다 — 1.26.341). 원고 수치는 언제나 `--run-label "2026-08-11 real"`로 못박아 잰다. 기본값을
-    정본으로 바꿀지는 따로 정할 일이고(docs/기록/TODO.md), 바꾼다면 고칠 곳이 여기다.
+      1. 재고 스냅샷(`CANONICAL_DEFAULT_TABLES`)에 정본(`CANONICAL_RUN_LABEL`)이 있으면 **정본**.
+      2. 없으면 그 표에 자료가 있는 **가장 최근 계획**(`db.latest_label(…, kinds=("plan",))` —
+         `runs.created_at` 순, 사전순 최대가 아니다 — 1.26.125). 계획이 하나도 없으면 종류를 무시한
+         최신이다. 재고 스냅샷에서 이리로 넘어오면 `warn`이 켜진 동안 **크게 경고한다.**
+
+    왜 2를 남겼나 — 정본이 없는 DB(새 클론 · `make_sample_data`의 합성 데모 · 테스트 DB)에서 멈추면
+    데모와 시험이 통째로 못 돈다. 대신 원고와 다른 재고라는 것을 감추지 않는다.
+
+    부르는 쪽은 `label == CANONICAL_RUN_LABEL`로 어느 쪽으로 골랐는지 안다(정본이 없을 때만 2로
+    넘어오므로 둘은 겹치지 않는다). 안내 문구는 `default_run_note()`가 만든다. 한 실행에서 두 번
+    부르는 곳(대조군의 `load_inputs()` → `_report_snapshot()`)은 두 번째를 `warn=False`로 부른다.
+
+    ⚠️ 2의 '가장 최근 계획'은 요일도 회차 구성도 가리지 않는다(휴일 한 회차짜리 동시각 계획이 잡히기도
+    한다 — 1.26.341). 저장된 계획 표의 기본이 여전히 이 규칙인 까닭은 `CANONICAL_DEFAULT_TABLES` 주석.
     """
-    return db.latest_label(conn, table, kinds=DEFAULT_RUN_KINDS)
+    if table in CANONICAL_DEFAULT_TABLES and conn.execute(
+            f"SELECT 1 FROM {table} WHERE run_label = ? LIMIT 1",
+            (CANONICAL_RUN_LABEL,)).fetchone():
+        return CANONICAL_RUN_LABEL
+    label = db.latest_label(conn, table, kinds=DEFAULT_RUN_KINDS)
+    if warn and label is not None and table in CANONICAL_DEFAULT_TABLES:
+        print(f"⚠️⚠️ 정본 스냅샷 '{CANONICAL_RUN_LABEL}'이 이 DB의 {table}에 없습니다 — "
+              f"가장 최근 계획 '{label}'로 돕니다.\n"
+              f"   원고 수치와 **다른 재고**입니다. 원고를 재현하려면 정본을 가진 PC에서 옮기십시오"
+              f" (tools/transfer_run.py — docs/구현/두_PC_작업.md 4-2장).")
+    return label
+
+
+def default_run_note(label) -> str:
+    """라벨을 안 줬을 때 고른 실행을 [스냅샷] 줄에 덧붙일 말 — 정본인지 아닌지를 가른다."""
+    if label == CANONICAL_RUN_LABEL:
+        return "(기본: 정본)"
+    return "(기본: 정본 없음 → 가장 최근 계획 — 원고 수치와 다르다)"
 
 
 def resolve_run_label(label=None, *, hint: str = "--run-label", announce: bool = True) -> str:
@@ -88,23 +131,23 @@ def resolve_run_label(label=None, *, hint: str = "--run-label", announce: bool =
     (1.26.58에서 `gamma_sweep.py`가, 그 전에 `z_sweep.py`가 이 결함으로 걸렸다).
     판정 기준은 "인자가 있는가"가 아니라 **"못 찾았을 때 멈추는가"** 다.
 
-    라벨을 안 주면 `default_run_label()`이 고른다.
+    라벨을 안 주면 `default_run_label()`이 고른다(정본, 없으면 가장 최근 계획 + 경고). 라벨을 주면
+    기본 실행을 아예 고르지 않는다 — 고르면 쓰지도 않을 실행 때문에 정본 없음 경고가 뜬다.
 
     `hint`는 오류 문구에서 라벨을 고르는 방법으로 안내할 이름이다 — argparse가 없는 스크립트에
     `--run-label`을 안내하면 통하지 않는다(그쪽은 `PBR_RUN_LABEL=…`). `announce`를 끄면 고른
-    라벨을 찍지 않는다(스스로 찍는 스크립트용).
+    라벨을 찍지 않는다(스스로 찍는 스크립트용). 정본 없음 경고는 `announce`와 상관없이 찍힌다.
     """
     with db.session() as conn:
         available = [r[0] for r in conn.execute(
             "SELECT DISTINCT run_label FROM station_info ORDER BY 1")]
-        latest_plan = default_run_label(conn)
-    if not available:
-        raise SystemExit("station_info가 비어 있습니다. 파이프라인을 한 번 돌리십시오.")
-    chosen = label or latest_plan
+        if not available:
+            raise SystemExit("station_info가 비어 있습니다. 파이프라인을 한 번 돌리십시오.")
+        chosen = label or default_run_label(conn)
     if chosen not in available:
         raise SystemExit(f"station_info에 '{chosen}' 실행이 없습니다."
                          f" {hint} 로 고르십시오: {available}")
     if announce:
         print(f"[스냅샷] station_info run_label = '{chosen}'"
-              f"{' (기본: 가장 최근 계획)' if not label else ''}")
+              f"{' ' + default_run_note(chosen) if not label else ''}")
     return chosen

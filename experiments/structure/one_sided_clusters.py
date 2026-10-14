@@ -39,8 +39,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "baseline"))
 
 import project_config  # noqa: E402  — 콘솔 인코딩을 먼저 맞춘다(— · 이모지)
 import baseline_compare as bc  # noqa: E402
+from experiments._shared import CANONICAL_RUN_LABEL  # noqa: E402
 
-CANONICAL = "2026-08-11 real"
+CANONICAL = CANONICAL_RUN_LABEL   # 정본 재고 스냅샷 — 공용 상수(2026-10-14)
 
 
 def one_sided(clustered: pd.DataFrame) -> list:

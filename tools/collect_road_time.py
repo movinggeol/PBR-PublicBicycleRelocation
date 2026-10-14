@@ -33,7 +33,11 @@
 `startTime`은 **그 시각의 교통량**을 정한다. 파이프라인과 똑같이
 `start_time_for(duration, day_type)`(평일이면 다음 평일, 휴일이면 다음 토·일·
 공휴일 + 회차 첫 시각)을 쓴다 — 우리가 검증하려는
-것이 파이프라인이 실제로 소비하는 값이기 때문이다. 따라서 이 수집기는
+것이 파이프라인이 실제로 소비하는 값이기 때문이다.
+⚠️ 2026-10-14부터 파이프라인은 출발을 30분 당긴 시각(`lead_min=DEPART_LEAD_MINUTES`,
+`_05_10` → 04:30)을 쓰지만 **이 수집기는 회차 첫 시각을 지킨다** — 쌓아 온 패널과 게이트
+A·B 판정이 그 시각으로 쟀다. 30분 앞 시각의 교통량이 얼마나 다른지는 재지 않았다.
+따라서 이 수집기는
 **하루 중 아무 때나 돌려도 된다**(재고 수집기와 달리 창 가드가 없다).
 
 ⚠️ 평일과 휴일은 `day_type`으로 **따로 잰다**(1.26.158). `--day-type`을 주지
@@ -363,6 +367,10 @@ def collect(chains: list, durations: list, run_label: str, headers: dict,
             db.ensure_run(conn, run_label, kind="probe", day_type=day_type)
 
     for duration in durations:
+        # 🔴 `lead_min`을 넘기지 않는다 — 파이프라인(step3)은 2026-10-14부터 출발을
+        # DEPART_LEAD_MINUTES(30분) 당긴 시각의 교통량을 받지만, 이 패널은 **회차 첫 시각**을
+        # 계속 잰다. 바꾸면 그날부터의 패널이 08-31 이후 쌓은 것 · 게이트 A·B 판정과 다른 시각을
+        # 재게 돼 날짜별 계수의 흔들림이 교통 탓인지 시각 탓인지 가릴 수 없다(EXPERIMENTS 51장 끝).
         start_time = start_time_for(duration, day_type=day_type)
         print(f"\n[{duration}] 교통량 기준 시각 {start_time}"
               f" · 사슬 {len(chains)}개")

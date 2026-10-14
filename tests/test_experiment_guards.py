@@ -2116,13 +2116,14 @@ def _스냅샷_둘을_심는다():
         assert db.latest_label(conn, "station_info") == "sweep-10", "전제 — 종류를 안 가리면 실험이 이긴다"
 
 
-def test_스냅샷_기본값은_사전순_최대가_아니라_가장_최근_계획이다(capsys):
+def test_스냅샷_기본값은_사전순_최대가_아니라_정본이다(capsys):
     """`resolve_run_label()` 세 복사본의 기본값이 `ORDER BY 1`의 마지막이었다 (2026-10-08 점검).
 
     `gamma_sweep.py`·`z_sweep.py`는 1.26.281에 고쳤는데 **복사본 셋에는 닿지 않았다** — 실험
     라벨(`sweep-10`)은 `'s' > '2'`라 어떤 날짜 라벨도 이기고, 그 스냅샷은 재고가 10.4% 적다.
     지금은 공용 모듈의 함수 하나다. 안내 문구의 옵션 이름은 부르는 쪽이 정한다 — 인자를 안 받는 두
-    스크립트에 `--run-label`로 고르라고 하면 통하지 않는다.
+    스크립트에 `--run-label`로 고르라고 하면 통하지 않는다. 기본값이 '가장 최근 계획'에서 정본으로
+    바뀐 것(2026-10-14)과 정본이 없을 때의 동작은 아래 테스트들이 본다.
     """
     import db
 
@@ -2130,9 +2131,9 @@ def test_스냅샷_기본값은_사전순_최대가_아니라_가장_최근_계�
     공용 = _실험_공용()
 
     assert 공용.resolve_run_label() == "2026-08-11 real"
-    assert "가장 최근 계획" in capsys.readouterr().out, "기본값으로 골랐다는 것을 찍어야 한다"
+    assert "(기본: 정본)" in capsys.readouterr().out, "기본값으로 골랐다는 것을 찍어야 한다"
     assert 공용.resolve_run_label("sweep-10") == "sweep-10"    # 고르면 고른 대로
-    assert "가장 최근 계획" not in capsys.readouterr().out
+    assert "기본" not in capsys.readouterr().out
     assert 공용.resolve_run_label(announce=False) == "2026-08-11 real"
     assert capsys.readouterr().out == "", "스스로 라벨을 찍는 스크립트(gamma_sweep · z_sweep)에는 조용해야 한다"
     with db.session() as conn:
@@ -2153,6 +2154,132 @@ def test_스냅샷_기본값은_사전순_최대가_아니라_가장_최근_계�
         source = (PROJECT_ROOT / relpath).read_text(encoding="utf-8")
         assert "resolve_run_label(__import__('os').environ.get('PBR_RUN_LABEL'), hint=\"PBR_RUN_LABEL=…\")" \
             in source, f"{relpath}: 받지 않는 옵션으로 고르라고 안내한다"
+
+
+def _스냅샷을_심는다(conn, label, kind=None):
+    import db
+
+    db.record_run(conn, label, kind=kind)
+    db.save_frame(conn, "station_info", pd.DataFrame([{
+        "station_id": "ST0001", "station_name": "가", "lat": 36.0,
+        "lon": 127.0, "stock": 5, "parking_lot": 10,
+    }]), run_label=label)
+
+
+def _대조군_스냅샷_보고(공용, capsys) -> str:
+    """대조군의 `_report_snapshot()`을 라벨 없이 불러 찍은 것을 돌려준다(모듈 등록은 되돌린다)."""
+    전 = sys.modules.get("baseline_compare")
+    try:
+        bc = 공용.load_baseline()
+        capsys.readouterr()
+        bc._report_snapshot(pd.DataFrame([{"station_id": "ST0001", "stock": 5}]), "",
+                            "25년 11월", pd.DataFrame({"date": ["2025-11-03"]}))
+        return capsys.readouterr().out
+    finally:
+        if 전 is None:
+            sys.modules.pop("baseline_compare", None)
+        else:
+            sys.modules["baseline_compare"] = 전
+
+
+def test_정본이_있으면_더_최근_계획이_있어도_기본은_정본이다(capsys):
+    """라벨 없는 실험의 기본 실행을 정본 `2026-08-11 real`로 못박았다 (사용자 결정 10-08, 구현 10-14).
+
+    예전 기본 '가장 최근 계획'은 계획을 돌릴 때마다 바뀌어, 10-14에는 휴일 한 회차짜리 동시각 계획
+    (`2026-10-11 20 휴일 동시각` · 총재고 2,384대 — 정본 3,214대와 26% 차이)을 집고 있었다. 부록 A의
+    라벨 없는 명령(ortools_gap · tour_length_estimate)이 원고와 다른 재고로 돌던 까닭이다.
+    정본을 골랐을 때는 경고하지 않는다 — 원고와 같은 재고다.
+    """
+    import db
+
+    공용 = _실험_공용()
+    with db.session() as conn:
+        _스냅샷을_심는다(conn, "2026-08-11 real")
+        _스냅샷을_심는다(conn, "2026-10-11 20 휴일 동시각", kind="plan")   # 나중에 돈 계획
+        assert db.latest_label(conn, "station_info", kinds=("plan",)) == "2026-10-11 20 휴일 동시각", (
+            "전제 — 예전 규칙이면 나중 계획을 집는다")
+        label = 공용.default_run_label(conn)
+    assert label == 공용.CANONICAL_RUN_LABEL == "2026-08-11 real"
+    assert "⚠️" not in capsys.readouterr().out, "정본을 골랐으면 경고할 것이 없다"
+    assert 공용.default_run_note(label) == "(기본: 정본)"
+
+    assert 공용.resolve_run_label() == "2026-08-11 real"
+    assert "(기본: 정본)" in capsys.readouterr().out
+
+    # 대조군(`load_inputs` → `_report_snapshot`)도 같은 규칙으로 고르고, 정본이라고 찍는다.
+    out = _대조군_스냅샷_보고(공용, capsys)
+    assert "'2026-08-11 real'" in out and "(기본: 정본)" in out
+    assert "⚠️" not in out and "가장 최근 계획" not in out
+
+
+def test_정본이_없으면_가장_최근_계획으로_넘어가되_크게_경고한다(capsys):
+    """정본이 없는 DB(새 클론 · 합성 데모 · 테스트 DB)에서 멈추면 데모와 시험이 통째로 못 돈다 —
+    그래서 예전 규칙(가장 최근 **계획**)으로 넘어가되, 원고와 다른 재고라는 것을 감추지 않는다.
+    라벨을 직접 주면 기본 실행을 고르지 않으므로 경고도 없다(쓰지도 않을 실행 때문에 놀라게 하지 않는다).
+    """
+    import db
+
+    공용 = _실험_공용()
+    with db.session() as conn:
+        _스냅샷을_심는다(conn, "2026-09-22 휴일 전회차", kind="plan")
+        _스냅샷을_심는다(conn, "2026-10-11 20 휴일 동시각", kind="plan")
+        _스냅샷을_심는다(conn, "sweep-10")                    # 더 나중의 실험 — 종류로 걸러진다
+        label = 공용.default_run_label(conn)
+        out = capsys.readouterr().out
+        assert label == "2026-10-11 20 휴일 동시각"
+        assert "정본 스냅샷 '2026-08-11 real'이 이 DB의 station_info에 없습니다" in out
+        assert "다른 재고" in out and "transfer_run.py" in out
+        assert 공용.default_run_label(conn, warn=False) == label
+        assert capsys.readouterr().out == "", "warn=False면 조용히 고른다(같은 실행에서 두 번째로 부를 때)"
+    assert label != 공용.CANONICAL_RUN_LABEL, "부르는 쪽은 정본과 같은지로 어느 쪽인지 안다"
+    assert "정본 없음" in 공용.default_run_note(label)
+
+    assert 공용.resolve_run_label() == "2026-10-11 20 휴일 동시각"
+    out = capsys.readouterr().out
+    assert "없습니다" in out, "기본으로 넘어간 것을 경고한다"
+    assert "(기본: 정본 없음 → 가장 최근 계획 — 원고 수치와 다르다)" in out
+    assert 공용.resolve_run_label(announce=False) == "2026-10-11 20 휴일 동시각"
+    assert "없습니다" in capsys.readouterr().out, "스스로 라벨을 찍는 스크립트(announce=False)에서도 경고는 남는다"
+    assert 공용.resolve_run_label("sweep-10") == "sweep-10"
+    assert "⚠️" not in capsys.readouterr().out, "라벨을 주면 기본 실행을 고르지 않는다"
+
+    out = _대조군_스냅샷_보고(공용, capsys)
+    assert "정본 '2026-08-11 real'이 없어" in out and "원고 수치와 다르다" in out
+    assert "⚠️⚠️" not in out, "정본 없음 큰 경고는 `load_inputs()`가 한 번만 찍는다"
+
+
+def test_정본_기본값은_재고_스냅샷에만_건다():
+    """저장된 계획 표(vrp_plan 등)는 원고가 `2026-08-11 real raw19`로 읽는다 — 그 표의 기본까지 정본
+    라벨로 묶으면 **옛 코드가 푼 계획**을 읽는다. 그 표의 기본은 예전대로 가장 최근 계획이다."""
+    import db
+
+    공용 = _실험_공용()
+    plan = pd.DataFrame({
+        "cluster": [0], "from_id": ["ST0001"], "from_lat": [36.4], "from_lon": [127.3],
+        "to_id": ["ST0002"], "to_lat": [36.3], "to_lon": [127.3], "action": ["pick"], "qty": [5],
+        "distance_km": [1.0], "travel_sec": [120.0], "work_sec": [150.0], "cum_sec": [270.0],
+    })
+    with db.session() as conn:
+        for label in ("2026-08-11 real", "2026-10-11 20 휴일 동시각"):
+            db.record_run(conn, label, kind="plan")
+            db.save_frame(conn, "vrp_plan", plan, run_label=label, duration="_05_10")
+        assert 공용.CANONICAL_DEFAULT_TABLES == ("station_info",)
+        assert 공용.default_run_label(conn, "vrp_plan") == "2026-10-11 20 휴일 동시각"
+
+
+def test_정본_라벨을_스크립트마다_다시_적지_않는다():
+    """`--run-label` 기본값으로 정본 문자열을 따로 적던 일곱 곳이 공용 상수를 쓴다 (2026-10-14).
+    기본값을 고칠 일이 생기면 고칠 곳이 다시 여럿이 된다. `dockless_hub.CANON_LABEL`은 재고가 아니라
+    저장된 계획(`rebalance_plan`)을 읽는 라벨이라 남겨 두었다 — 늘어나지 않는지만 본다."""
+    import re
+
+    식 = re.compile(r"(?:default\s*=\s*|^\s*[A-Z_]+\s*=\s*)[\"']2026-08-11 real[\"']", re.M)
+    위반 = [f"{relpath}:{source[:m.start()].count(chr(10)) + 1}"
+            for relpath, source, _tree in _실험_소스() for m in 식.finditer(source)]
+    남겨둔곳 = {"experiments/structure/dockless_hub.py"}
+    새로생긴곳 = [v for v in 위반 if v.rsplit(":", 1)[0] not in 남겨둔곳]
+    assert not 새로생긴곳, f"정본 라벨의 복사본: {새로생긴곳} — `experiments._shared.CANONICAL_RUN_LABEL`을 쓴다"
+    assert 위반, "전제 — 남겨 둔 dockless_hub를 이 식이 잡아야 검사가 살아 있다"
 
 
 def test_스냅샷이_하나도_없으면_파이프라인을_돌리라고_말하고_멈춘다():
@@ -2209,8 +2336,8 @@ def test_대조군_모듈은_공용_함수로_싣고_맨_이름_import와_같은
 def test_계획을_다시_푸는_실험은_순수요와_같은_요일로_모듈을_맞춘다(relpath, day_type):
     """순수요는 평일로 읽는데 ILP·VRP·군집 모듈의 `config.day_type`은 오늘 달력이었다 (2026-10-08 점검).
 
-    지금은 휴일 이동 계수가 평일로 폴백해 값이 같다 — **휴일 계수를 채우는 날** 휴일에 돌린 격자만
-    조용히 달라진다(1.26.281이 대조군 쪽에서 막은 것의 짝). 모듈 수준에서 바로 도는 스크립트와
+    점검 당시에는 휴일 이동 계수가 평일로 폴백해 값이 같았지만, 1.26.311에 휴일 계수를 채워
+    **이제는 휴일에 돌린 격자가 조용히 달라진다**(1.26.281이 대조군 쪽에서 막은 것의 짝). 모듈 수준에서 바로 도는 스크립트와
     `python -c` 문자열이 섞여 있어 import해서 볼 수 없으므로 원문으로 본다: `load_inputs()`에
     넘기는 요일과 `align_day_type()`에 넘기는 요일이 같은 식이어야 한다.
     """
@@ -2300,9 +2427,8 @@ def test_실험이_기본_실행을_고르는_식을_station_info에_다시_쓰�
                     r'load_frame\(\s*conn,\s*"station_info",\s*kinds=')
     위반 = [f"{relpath}:{source[:m.start()].count(chr(10)) + 1}"
             for relpath, source, _tree in _실험_소스() for m in 식.finditer(source)]
-    # saturation_forecast · cross_station은 통합 범위 밖이라 남겨 두었다 — 늘어나지 않는지만 본다.
-    남겨둔곳 = {"experiments/structure/saturation_forecast.py", "experiments/structure/cross_station.py"}
-    새로생긴곳 = [v for v in 위반 if v.rsplit(":", 1)[0] not in 남겨둔곳]
+    # saturation_forecast · cross_station도 2026-10-14에 옮겼다 — 이제 남겨 둔 곳이 없다.
+    새로생긴곳 = 위반
     assert not 새로생긴곳, f"기본 실행을 고르는 식의 복사본: {새로생긴곳} — `default_run_label(conn)`을 쓴다"
 
 

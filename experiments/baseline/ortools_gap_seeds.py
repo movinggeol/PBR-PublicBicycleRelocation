@@ -44,6 +44,7 @@ sys.path.insert(0, str(ROOT))
 # 보고 첫 줄의 '—' 한 글자에 죽었다(2026-09-14 회사환경 예행: 씨앗 계산을 다 마친
 # 뒤 UnicodeEncodeError). project_config를 거치면 _force_utf8_output()이 돈다.
 import project_config  # noqa: F401,E402
+from experiments._shared import CANONICAL_RUN_LABEL  # noqa: E402
 
 GAP_SCRIPT = Path(__file__).with_name("ortools_gap.py")
 
@@ -116,7 +117,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="OR-Tools 갭의 씨앗 민감도 (TODO 대기-0A ②)")
     parser.add_argument("--period", default="25년 11월")
-    parser.add_argument("--run-label", default="2026-08-11 real")
+    parser.add_argument("--run-label", default=CANONICAL_RUN_LABEL)
     parser.add_argument("--duration", default="_05_10")
     parser.add_argument("--seeds", default="42,7,13")
     parser.add_argument("--limit-sec", type=int, default=60)
@@ -129,7 +130,7 @@ def main() -> int:
         out_dir = ROOT / out_dir
 
     print(f"씨앗 {seeds} · {args.period} {args.duration}"
-          f" · 탐색 {args.limit_sec}초 · 스냅샷 '{args.run_label or '최신'}'")
+          f" · 탐색 {args.limit_sec}초 · 스냅샷 '{args.run_label or '기본'}'")
     frames = {}
     for seed in seeds:
         path = out_dir / f"ortools_gap_seed{seed}.csv"

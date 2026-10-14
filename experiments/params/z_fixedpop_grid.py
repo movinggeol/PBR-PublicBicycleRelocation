@@ -47,7 +47,7 @@ sys.path.insert(0, str(ROOT))
 # 불러오므로 그 앞의 머리 문구가 cp949로 나갔다(2026-09-14 예행 로그 첫 줄만
 # 인코딩이 달랐다). 거기에 '—' 하나만 들어가도 죽는다 — 출력 순서에 기대지 않는다.
 import project_config  # noqa: F401,E402
-from experiments._shared import load_baseline  # noqa: E402
+from experiments._shared import CANONICAL_RUN_LABEL, load_baseline  # noqa: E402
 
 
 # 좁은 격자 — 11·18장이 쓴 값. 인자 없이 돌리면 이쪽이다(과거 결과 재현용).
@@ -79,12 +79,12 @@ Z_GRID_WIDE = [0.0, 0.25, 0.52, 0.67, 0.84, 1.04, 1.28, 1.44,
 def measure(bc, args) -> pd.DataFrame:
     step1 = bc.load_step1()
     # 순수요를 읽는 요일(아래 `args.day_type`)과 ILP·VRP·군집 모듈의 요일을 맞춘다(1.26.281) — 안 맞추면 `--day-type`을
-    # 안 줬을 때 모듈은 오늘 달력을 따른다. 지금은 휴일 이동 계수가 평일로 폴백해 어느 날 돌려도 수치는 같다.
+    # 안 줬을 때 모듈은 오늘 달력을 따른다. 1.26.311부터 휴일 이동 계수가 따로 있어 어긋나면 수치가 바뀐다(그 전엔 평일로 폴백해 같았다).
     bc.align_day_type(args.day_type, bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
     solver = bc.ilp_mod.build_solver()
     net, st_info, warmup = bc.load_inputs(
         args.period, args.run_label, args.day_type, args.warmup_days, "")
-    print(f"[스냅샷] station_info run_label = '{args.run_label or '최신'}'"
+    print(f"[스냅샷] station_info run_label = '{args.run_label or '기본'}'"
           f" ({len(st_info)}곳)", flush=True)
 
     zs = args.z_grid
@@ -169,7 +169,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="z 격자를 모집단을 바꿔 가며 잰다 (TODO 대기-10)")
     parser.add_argument("--period", default="25년 11월")
-    parser.add_argument("--run-label", default="2026-08-11 real")
+    parser.add_argument("--run-label", default=CANONICAL_RUN_LABEL)
     parser.add_argument("--z-grid", default=",".join(str(z) for z in Z_GRID),
                         help="쉼표로 구분한 z 목록. 'wide'를 주면 Z_GRID_WIDE(16개)")
     parser.add_argument("--duration", default="_05_10,_10_15,_15_20")
