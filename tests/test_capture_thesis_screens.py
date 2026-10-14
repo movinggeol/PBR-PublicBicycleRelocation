@@ -4,7 +4,7 @@
 지키는 것은 **찍기 전의 판단**이다:
   1. 파일 이름이 그림 번호를 따른다 — 원고의 `![그림 4-8](…그림4-8_…)`와 어긋나면 엉뚱한 화면이 실린다.
   2. 모르는 번호면 아무것도 하지 않고 1로 끝난다.
-  3. 외부 API를 부르는 4-9는 `--live` 없이 찍지 않는다 — 서버에 닿기 전에 건너뛴다.
+  3. 외부 API를 부르는 4-8(실시간 재고 대조)은 `--live` 없이 찍지 않는다 — 서버에 닿기 전에 건너뛴다.
   4. 대시보드가 없으면 무엇을 띄울지 말하고 1로 끝난다.
 """
 import importlib.util
@@ -28,7 +28,7 @@ def tool(tmp_path, monkeypatch):
 
 def test_파일_이름이_그림_번호를_따르고_원고와_맞는다(tool):
     items = tool.plan()
-    assert [i["key"] for i in items] == ["4-4", "4-6", "4-7", "4-8", "4-9"]
+    assert [i["key"] for i in items] == ["4-4", "4-5", "4-6", "4-7", "4-8"]
     chapter = (ROOT / "docs/연구/논문/4장_시스템설계.md").read_text(encoding="utf-8")
     for item in items:
         assert item["name"].startswith(f"그림{item['key']}_")
@@ -36,17 +36,17 @@ def test_파일_이름이_그림_번호를_따르고_원고와_맞는다(tool):
 
 
 def test_모르는_번호면_아무것도_하지_않는다(tool, tmp_path, capsys):
-    assert tool.main(["--only", "4-4,4-5"]) == 1
+    assert tool.main(["--only", "4-4,4-9"]) == 1
     assert "모르는 그림" in capsys.readouterr().out
     assert list(tmp_path.iterdir()) == []
 
 
 def test_실시간_대조는_live_없이_서버에_닿지_않는다(tool, monkeypatch, capsys):
     monkeypatch.setattr(tool, "server_up", lambda *a, **k: pytest.fail("서버를 불렀다"))
-    assert tool.main(["--only", "4-9"]) == 0
+    assert tool.main(["--only", "4-8"]) == 0
     assert "--live" in capsys.readouterr().out
 
 
 def test_대시보드가_없으면_띄울_명령을_말한다(tool, capsys):
-    assert tool.main(["--only", "4-6", "--base", "http://127.0.0.1:9"]) == 1
+    assert tool.main(["--only", "4-5", "--base", "http://127.0.0.1:9"]) == 1
     assert "python -m webapp" in capsys.readouterr().out

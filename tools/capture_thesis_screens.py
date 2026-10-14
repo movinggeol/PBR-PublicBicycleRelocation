@@ -1,4 +1,7 @@
-"""논문 화면 캡처 — 원고 [그림 4-4]·[그림 4-6]~[그림 4-9]를 다시 찍는다 (2026-09-18).
+"""논문 화면 캡처 — 원고 [그림 4-4]·[그림 4-5]~[그림 4-8]을 다시 찍는다 (2026-09-18).
+
+번호는 2026-10-14 원고 분량 줄이기에서 결원 그림(옛 [그림 4-5])이 빠져 하나씩 당겨졌다
+(옛 4-6~4-9 → 4-5~4-8). 파일 이름도 함께 바꿨다.
 
 **왜 도구로 만들었나.** 화면 캡처는 손으로 찍으면 다시 찍을 수 없다 — 어느 실행을,
 어느 창 크기로, 무엇을 누른 상태로 찍었는지가 남지 않는다. 게이트 A 뒤나 화면을 고친
@@ -7,10 +10,10 @@
 **무엇을 찍나** (실행은 모두 정본 스냅샷 `2026-08-11 real`의 05~10시):
 
   · 그림 4-4  경로 지도 — 가운데에 가장 가까운 방문 표식을 눌러 정보 창을 띄운 상태
-  · 그림 4-6  실행 화면 — '새 실행' 폼 카드만
-  · 그림 4-7  성과 지표 — 지표 타일과 '효과와 비용' 그래프까지 (빈 '추세' 절은 접고 찍는다)
-  · 그림 4-8  작업지시서 — 인쇄 매체로 흉내 낸 차량 V01 한 장
-  · 그림 4-9  실시간 재고 대조 — V01. **타슈 공개 API를 한 번 부르므로 `--live`를 줄 때만**
+  · 그림 4-5  실행 화면 — '새 실행' 폼 카드만
+  · 그림 4-6  성과 지표 — 지표 타일과 '효과와 비용' 그래프까지 (빈 '추세' 절은 접고 찍는다)
+  · 그림 4-7  작업지시서 — 인쇄 매체로 흉내 낸 차량 V01 한 장
+  · 그림 4-8  실시간 재고 대조 — V01. **타슈 공개 API를 한 번 부르므로 `--live`를 줄 때만**
 
 ⚠️ **정본 실행은 평일/휴일 분리(1.14.0, 2026-08-13)와 차고지 복귀(1.19.1) 이전의 산출물이다.**
 그래서 지도·지시서의 계획은 3장 그림(평일로 다시 계산한 계획)과 군집 수가 다르고,
@@ -18,7 +21,7 @@
 만들지 않았다 — 다시 돌리면 `station_info.stock`이 오늘 재고로 바뀌어 정본이 깨진다.
 원고 캡션이 이 사실을 밝힌다.
 
-⚠️ **4-9는 찍을 때마다 값이 다르다.** 계획(08-11 재고)을 **지금** 재고와 대조하므로
+⚠️ **4-8은 찍을 때마다 값이 다르다.** 계획(08-11 재고)을 **지금** 재고와 대조하므로
 찍은 날짜를 원고 캡션에 적는다.
 
 준비 (Playwright는 파이프라인 의존성이 아니라 검증 도구라 requirements.txt에 없다):
@@ -26,9 +29,9 @@
     .\\.venv\\Scripts\\python.exe -m playwright install chromium
 
 실행 (대시보드를 먼저 띄운다 — `python -m webapp`):
-    python tools/capture_thesis_screens.py              # 4-4 · 4-6 · 4-7 · 4-8
-    python tools/capture_thesis_screens.py --live       # 4-9까지
-    python tools/capture_thesis_screens.py --only 4-8
+    python tools/capture_thesis_screens.py              # 4-4 · 4-5 · 4-6 · 4-7
+    python tools/capture_thesis_screens.py --live       # 4-8까지
+    python tools/capture_thesis_screens.py --only 4-7
 """
 from __future__ import annotations
 
@@ -55,14 +58,14 @@ def plan(base: str = BASE) -> list[dict]:
     return [
         dict(key="4-4", name="그림4-4_경로지도", url=f"{base}/files/{map_file}",
              viewport=(1200, 900), action="popup", what="경로 지도와 정보 창"),
-        dict(key="4-6", name="그림4-6_실행화면", url=f"{base}/run", viewport=(1280, 1000),
+        dict(key="4-5", name="그림4-5_실행화면", url=f"{base}/run", viewport=(1280, 1000),
              element="#run", what="실행 화면의 '새 실행' 폼"),
-        dict(key="4-7", name="그림4-7_성과지표", url=f"{base}/kpi?run_label={q(LABEL)}",
+        dict(key="4-6", name="그림4-6_성과지표", url=f"{base}/kpi?run_label={q(LABEL)}",
              viewport=(1280, 1000), clip_to="실행·회차별 지표", hide_empty="추세",
              what="성과 지표 화면 윗부분"),
-        dict(key="4-8", name="그림4-8_작업지시서", url=f"{base}/orders?{run}&vehicle={VEHICLE}",
+        dict(key="4-7", name="그림4-7_작업지시서", url=f"{base}/orders?{run}&vehicle={VEHICLE}",
              viewport=(900, 1000), media="print", what=f"작업지시서 인쇄 미리보기({VEHICLE})"),
-        dict(key="4-9", name="그림4-9_실시간대조", url=f"{base}/orders/live?{run}&vehicle={VEHICLE}",
+        dict(key="4-8", name="그림4-8_실시간대조", url=f"{base}/orders/live?{run}&vehicle={VEHICLE}",
              viewport=(1280, 1000), live=True, clip_from="지금 재고와 대조", clip_to="footer",
              what=f"실시간 재고 대조({VEHICLE})"),
     ]
@@ -115,7 +118,7 @@ def _shoot(browser, item: dict) -> Path:
             raise RuntimeError("표식을 눌렀는데 정보 창이 뜨지 않았습니다.")
         page.screenshot(path=str(path))
     elif item.get("element"):
-        # 위에 고정된 머리띠가 카드 제목을 덮는다(처음 찍은 4-6에서 '새 실행'이 가려졌다) —
+        # 위에 고정된 머리띠가 카드 제목을 덮는다(처음 찍은 실행 화면에서 '새 실행'이 가려졌다) —
         # 고정·붙박이 요소를 풀어 문서 흐름에 두고 찍는다.
         page.evaluate("""() => { for (const e of document.querySelectorAll('*')) {
             const p = getComputedStyle(e).position;
@@ -123,7 +126,7 @@ def _shoot(browser, item: dict) -> Path:
         page.locator(item["element"]).screenshot(path=str(path))
     elif item.get("clip_to"):
         # 제목 두 개 사이를 자른다. 제목의 부모 요소로 자르면 부모가 페이지 전체라
-        # 잘리지 않았다(처음 찍은 4-7) — 그래서 **다음 제목의 위치**를 경계로 쓴다.
+        # 잘리지 않았다(처음 찍은 성과 지표 화면) — 그래서 **다음 제목의 위치**를 경계로 쓴다.
         box = page.evaluate(
             """([start, stop]) => {
                 const top = (text) => {
@@ -150,10 +153,10 @@ def _shoot(browser, item: dict) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="논문 화면 캡처 (그림 4-4, 4-6~4-9)")
-    parser.add_argument("--only", help="쉼표로 구분한 그림 번호 (예: 4-4,4-8)")
+    parser = argparse.ArgumentParser(description="논문 화면 캡처 (그림 4-4, 4-5~4-8)")
+    parser.add_argument("--only", help="쉼표로 구분한 그림 번호 (예: 4-4,4-7)")
     parser.add_argument("--live", action="store_true",
-                        help="4-9도 찍는다 - 타슈 공개 API를 한 번 부른다")
+                        help="4-8도 찍는다 - 타슈 공개 API를 한 번 부른다")
     parser.add_argument("--base", default=BASE, help="대시보드 주소")
     args, _ = parser.parse_known_args(argv)
 

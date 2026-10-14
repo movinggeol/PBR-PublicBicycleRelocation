@@ -72,9 +72,9 @@ def test_모르는_그림_이름이면_아무것도_만들지_않는다(tool, �
 
 def test_원천이_없어도_죽지_않고_무엇이_없는지_말한다(tool, 격리, monkeypatch, capsys):
     """실험 CSV가 없는 PC에서도 나머지는 나와야 한다."""
-    assert run_cli(tool, monkeypatch, "--only", "6-1,6-2,6-3,5-1") == 0
+    assert run_cli(tool, monkeypatch, "--only", "6-1,6-2,5-1") == 0
     out = capsys.readouterr().out
-    assert out.count("건너뜀") == 4
+    assert out.count("건너뜀") == 3
     assert "19개월 반복 결과" in out and "z 격자" in out
     assert list(격리.iterdir()) == []
 
@@ -111,7 +111,7 @@ def test_재배치량_완화는_원천_없이_운영_함수로_그려진다(tool
 
 
 def test_DB가_비면_자료_그림은_건너뛰고_무엇이_없는지_말한다(tool, 격리, monkeypatch, capsys):
-    """4-2·4-3·5-2·5-3·8-1·8-2는 DB의 대여이력·순수요·스냅샷을 읽는다. 시험 DB는 비어 있다.
+    """4-2·4-3·5-2는 DB의 대여이력·스냅샷을 읽는다. 시험 DB는 비어 있다.
 
     3장 넷(3-1·3-3·3-4·3-6)은 정본 회차 계산 하나를 **캐시해** 함께 쓴다. 처음에는 첫 그림만
     '건너뜀'을 말하고 나머지 셋은 캐시된 None을 받아 **조용히** 넘어갔다(2026-09-18) — 그림마다
@@ -119,10 +119,10 @@ def test_DB가_비면_자료_그림은_건너뛰고_무엇이_없는지_말한�
 
     3-5는 도로 패널을 읽는다 — 도로 수집을 맡지 않는 회사 PC에서는 늘 이 경로다.
     """
-    keys = "4-2,4-3,5-2,5-3,8-1,8-2,3-1,3-3,3-4,3-6,3-5"
+    keys = "4-2,4-3,5-2,3-1,3-3,3-4,3-6,3-5"
     assert run_cli(tool, monkeypatch, "--only", keys) == 0
     out = capsys.readouterr().out
-    assert out.count("건너뜀") == 11
+    assert out.count("건너뜀") == 8
     # 격리가 ROOT를 옮겨 실험 스크립트를 못 찾거나(여기), 순수요가 없거나 — 어느 까닭이든 넷이 같은 말을 한다
     lines = [ln for ln in out.splitlines() if "정본 회차" in ln or "baseline_compare" in ln]
     assert len(lines) == 4 and len(set(lines)) == 1, lines
@@ -134,20 +134,6 @@ def test_회차_구조_개념도는_원천_없이_그려진다(tool, 격리, mon
     assert run_cli(tool, monkeypatch, "--only", "2-1") == 0
     capsys.readouterr()
     assert [p.name for p in 격리.iterdir()] == ["그림2-1_회차구조.png"]
-
-
-def test_남의_계산을_다시_구현하지_않는다(tool):
-    """8-1·8-2는 원고 표와 같은 수를 말해야 한다 — 원천 스크립트의 상수·함수를 불러 쓴다.
-
-    보고서 값을 그림 쪽에 다시 옮겨 적거나 거점 선정을 다시 구현하면 <표 8-4>·8.4.2와
-    어긋나도 아무도 모른다.
-    """
-    import inspect
-    src_81, src_82 = inspect.getsource(tool.fig_8_1), inspect.getsource(tool.fig_8_2)
-    assert "survey_crosscheck.py" in src_81 and "REPORT_DAILY" in src_81
-    assert "21632" not in src_81, "보고서 일별 값을 그림 쪽에 다시 적었다"
-    for name in ("endpoint_counts", "demand_scores", "rank_sites", "candidates"):
-        assert f"hub.{name}" in src_82, f"거점 선정의 {name}을 다시 구현했다"
 
 
 def test_이동시간_그림은_채택_계수를_낸_표본과_적합을_그대로_쓴다(tool):
@@ -197,19 +183,18 @@ def test_예시_군집은_이동시간_식과_무관하게_고른다(tool):
     assert "cum_sec" not in block and "travel" not in block
 
 
-def test_결원_그림은_실험_스크립트를_그대로_부르고_같은_씨앗을_쓴다(tool):
-    """4-5는 EXPERIMENTS 25장과 같은 수를 보여야 한다 — 스크립트의 배정 함수와 **같은 씨앗 다섯**.
+def test_결원_시험은_재실행_목록과_같은_씨앗을_쓴다():
+    """원고 4.5절의 결원 시험은 EXPERIMENTS 25장과 같은 수를 내야 한다 — **같은 씨앗 다섯**.
 
     25장의 '씨앗 5개'가 어느 것인지 문서에 없어, 스크립트 기본값(세 개)으로는 표가 재현되지
     않았다(복구 후 54.0 대 53.4분, 2026-09-18). 게이트 A 재실행 목록에 적힌 다섯 개가 표를
-    그대로 냈다 — 셋이 어긋나면 그림·표·재실행이 서로 다른 수를 말한다.
+    그대로 냈다. 결원 그림(옛 [그림 4-5])은 2026-10-14 원고 분량 줄이기에서 빠졌지만, 부록 A가
+    본문 수치의 출처로 이 스크립트를 가리키므로 스크립트와 재실행 목록이 어긋나지 않는지는 계속 본다.
     """
-    import inspect
     import re
-    assert "fo.run_rounds" in inspect.getsource(tool.fig_4_5)
     ps1 = (PROJECT_ROOT / "scripts" / "gate_a_rerun.ps1").read_text(encoding="utf-8-sig")
     seeds = re.search(r"fleet_outage_stress.*?'--seeds',\s*'([\d,]+)'", ps1, re.S).group(1)
-    assert tuple(int(x) for x in seeds.split(",")) == tool.OUTAGE_SEEDS
+    assert tuple(int(x) for x in seeds.split(",")) == (42, 7, 13, 21, 99)
     script = (PROJECT_ROOT / "experiments" / "structure" / "fleet_outage_stress.py").read_text(
         encoding="utf-8")
     assert f'default="{seeds}"' in script, "스크립트 기본 씨앗이 25장·재실행 목록과 다르다"
