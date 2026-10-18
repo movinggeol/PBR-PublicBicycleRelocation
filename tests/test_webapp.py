@@ -306,33 +306,78 @@ def test_index_offers_only_periods_we_have(client, monkeypatch, tmp_path):
     assert 'value="25년 12월"' not in html, "없는 달이 목록에 있다"
 
 
-def test_index_has_duration_checkboxes(client):
-    """시간대는 네 창 중에서 고른다(직접 적게 두면 오타가 step4까지 흘러간다)."""
+def _freeze_clock(monkeypatch, when):
+    from webapp import app as webapp_app
+
+    monkeypatch.setattr(webapp_app, "_clock", lambda: when)
+
+
+def test_실행_폼은_시간대를_고르게_하지_않는다(client, monkeypatch):
+    """2026-10-18 사용자 결정(*"자동으로 하자"*): 재고는 한 장만 받고 고른 회차 전부의 목표를 그 한 장으로
+    셌다. 체크박스를 걷고, 재고 시각으로 정한 회차를 글로 보인다."""
+    from datetime import datetime
+
+    import project_config
+
+    monkeypatch.setattr(project_config, "DEPART_LEAD_MINUTES", 30)
+    _freeze_clock(monkeypatch, datetime(2026, 10, 18, 23, 11))
     html = client.get("/run").text
-    for duration in DURATIONS:
-        assert f'value="{duration}"' in html, f"{duration}이 폼에 없다"
-    assert 'type="checkbox" name="duration"' in html
+    assert 'name="duration"' not in html, "시간대를 고르는 칸이 남았다"
+    assert "20~05시" in html and "지금(23:11) 받는 재고로 세웁니다" in html
 
 
-def test_chosen_durations_are_passed_as_one_argument(client, monkeypatch):
-    """고른 시간대는 콤마 하나로 묶여 전달된다. 순서는 하루 흐름 순이다."""
+def test_회차는_지금_시각으로_정해_넘긴다(client, monkeypatch):
+    """폼이 `duration`을 보내도 받지 않는다. 예전 화면을 띄워 둔 채 누른 요청도 지금 회차로 선다."""
+    from datetime import datetime
+
+    import project_config
+
+    monkeypatch.setattr(project_config, "DEPART_LEAD_MINUTES", 30)
+    for clock, expected in (((23, 11), "_20_05"), ((4, 30), "_05_10"), ((4, 29), "_20_05")):
+        _freeze_clock(monkeypatch, datetime(2026, 10, 18, *clock))
+        captured = _capture_start(monkeypatch)
+        res = client.post("/runs", data={"duration": ["_15_20", "_05_10"]}, follow_redirects=False)
+        assert res.status_code == 303
+        args = captured[0]
+        assert args.count("--duration") == 1
+        assert args[args.index("--duration") + 1] == expected, clock
+
+
+def test_API_수집_생략이면_물려받는_재고의_시각으로_정한다(client, monkeypatch):
+    """23시에 눌러도 물려받는 재고가 14:40 것이면 15:10이 드는 15~20시를 세운다. 고르는 규칙은
+    `run_pipeline.stock_source`(파이프라인이 실제로 물려받는 것) 한 벌이다."""
+    from datetime import datetime
+
+    import project_config
+    from webapp import store
+
+    monkeypatch.setattr(project_config, "DEPART_LEAD_MINUTES", 30)
+    _freeze_clock(monkeypatch, datetime(2026, 10, 18, 23, 11))
+    asked = []
+
+    def inherited(label):
+        asked.append(label)
+        return {"label": "2026-10-18 14", "at": datetime(2026, 10, 18, 14, 40)}
+
+    monkeypatch.setattr(store, "inherited_stock", inherited)
     captured = _capture_start(monkeypatch)
-    res = client.post("/runs",
-                      data={"duration": ["_15_20", "_05_10"]},
-                      follow_redirects=False)
-
+    res = client.post("/runs", data={"now": "2026-10-18 23", "skip_api": "1"}, follow_redirects=False)
     assert res.status_code == 303
     args = captured[0]
-    assert args[args.index("--duration") + 1] == "_05_10,_15_20"
+    assert args[args.index("--duration") + 1] == "_15_20"
+    assert asked == ["2026-10-18 23"], "실행 이름으로 물려받을 재고를 골라야 한다"
+    html = client.get("/run").text
+    assert "물려받는 재고(2026-10-18 14, 14:40 수집)로 세웁니다" in html
 
 
-def test_unknown_duration_is_rejected(client, monkeypatch):
-    """맨 앞 밑줄이 빠진 값처럼 목록에 없는 시간대는 띄우기 전에 거른다."""
+def test_물려받을_재고가_없으면_띄우기_전에_말한다(client, monkeypatch):
+    from webapp import store
+
+    monkeypatch.setattr(store, "inherited_stock", lambda label: None)
     _reject_start(monkeypatch)
-    res = client.post("/runs", data={"duration": "10_15"}, follow_redirects=False)
-
+    res = client.post("/runs", data={"skip_api": "1"}, follow_redirects=False)
     assert res.status_code == 400
-    assert "시간대는" in res.text
+    assert "물려받을 재고가 없습니다" in res.text
 
 
 def test_missing_period_is_rejected(client, monkeypatch, tmp_path):
@@ -3037,11 +3082,12 @@ def test_체크박스_묶음에_이름이_붙어_있다(client):
     그 연결이 없다.
     """
     html = client.get("/run").text
-    assert 'role="group" aria-labelledby="lbl-duration"' in html, \
-        "시간대 체크박스 묶음에 그룹 이름이 없다"
-    assert 'id="lbl-duration"' in html, "aria-labelledby가 가리킬 상대가 없다"
     assert 'role="group" aria-label="건너뛸 단계"' in html, \
         "생략 옵션 묶음에 그룹 이름이 없다"
+    # 시간대 체크박스 묶음은 2026-10-18에 걷었다(재고 시각으로 정한다). 정한 회차를 알리는 칸도
+    # 이름이 있어야 하고, '생략'을 켜고 끄면 바뀌므로 바뀐 것이 소리로 전해져야 한다.
+    assert '<label for="f-auto-round">시간대</label>' in html, "정한 회차 칸에 이름이 없다"
+    assert '<output id="f-auto-round" class="auto-round" aria-live="polite">' in html
 
 
 def test_나중에_채워지는_상자는_알려진다(client):

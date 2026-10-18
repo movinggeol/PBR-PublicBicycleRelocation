@@ -7,6 +7,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass, replace
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -1084,6 +1085,32 @@ def departure_minute_of_day(duration: str) -> int:
     return (duration_start_hour(duration) * 60 - DEPART_LEAD_MINUTES) % (24 * 60)
 
 
+def duration_at(hour: int) -> str:
+    """그 시(時)가 드는 회차. 7시는 `_05_10`, 23시와 3시는 자정을 넘는 `_20_05`.
+
+    네 회차가 하루 24시간을 빈틈없이 나누므로 언제나 하나가 걸린다.
+    """
+    for name in DURATIONS:
+        if hour % 24 in duration_hours(name):
+            return name
+    raise ValueError(f"{hour}시가 드는 회차가 없습니다 (DURATIONS: {', '.join(DURATIONS)})")
+
+
+def auto_duration(when: datetime) -> str:
+    """운영 계획의 회차를 재고 시각으로 정한다 (2026-10-18 사용자 결정: "자동으로 하자").
+
+    재고는 실행할 때 한 장만 받고, 회차를 여럿 골라도 모든 회차의 목표를 그 한 장으로 센다.
+    그래서 23시에 받은 재고로 내일 15~20시를 세우면 그 사이의 이용과 앞 회차 재배치가 빠진다.
+    맞는 회차는 그 재고를 들고 **곧 출발하는** 하나뿐이다: 재고 시각에 출발 앞당김
+    (`DEPART_LEAD_MINUTES`, 기본 30분)을 더한 시각이 드는 회차.
+
+    - 04:30 재고: 05:00이 드는 `_05_10` (출발 04:30)
+    - 04:29 재고: 04:59가 드는 `_20_05` (진행 중인 야간 회차. 05~10시 계획에는 이르다)
+    - 23:11 재고: 23:41이 드는 `_20_05`
+    """
+    return duration_at((when + timedelta(minutes=DEPART_LEAD_MINUTES)).hour)
+
+
 def duration_list(config: RuntimeConfig) -> Tuple[str, ...]:
     """Return one or more duration labels.
 
@@ -1170,6 +1197,19 @@ def snapshot_labels() -> Tuple[str, ...]:
         if all(p.exists() for p in snapshot_paths(label)):
             found.append((path.stat().st_mtime, label))
     return tuple(label for _, label in sorted(found, reverse=True))
+
+
+def snapshot_time(label: str) -> Optional[datetime]:
+    """그 라벨의 재고 스냅샷을 받은 시각. 재고 파일의 수정 시각이고, 파일이 없으면 None.
+
+    `--skip-api`가 스냅샷을 물려줄 때 `shutil.copy2`로 수정 시각을 지키므로(run_pipeline.inherit_snapshot),
+    물려받은 파일이어도 처음 수집한 시각이다. 웹 실행 폼이 '물려받는 재고가 몇 시 것인가'로 회차를 정할 때 쓴다.
+    """
+    path = snapshot_paths(label)[0]
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime)
+    except OSError:
+        return None
 
 
 def ensure_output_dirs() -> None:

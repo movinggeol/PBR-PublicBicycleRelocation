@@ -447,6 +447,25 @@ def test_skip_api는_계획_실행일_때만_계획을_최근_실험보다_먼�
         assert path.read_text(encoding="utf-8") == "계획"
 
 
+def test_skip_api가_쓸_재고는_자기_것이_먼저고_없으면_기증자다(tmp_path, monkeypatch):
+    """`stock_source()`는 `inherit_snapshot()`이 실제로 고르는 것과 같아야 한다 (2026-10-18). 웹 실행 폼이
+    이 라벨의 재고 시각으로 회차를 정하므로, 둘이 갈리면 화면이 말한 회차와 다른 재고로 계획이 선다.
+    그리고 물려받은 파일의 수정 시각은 원래 수집 시각이어야 한다(`copy2`)."""
+    from datetime import datetime
+
+    import project_config
+    import run_pipeline
+
+    monkeypatch.setattr(project_config, "PP_ROOT", tmp_path)
+    _스냅샷_세_파일(tmp_path, "0901 계획", "계획", 1_000_000)
+    assert run_pipeline.stock_source("오늘", kind="plan") == "0901 계획"
+    assert run_pipeline.inherit_snapshot("오늘", kind="plan") == 3
+    assert run_pipeline.stock_source("오늘", kind="plan") == "오늘"       # 물려받은 뒤에는 자기 것
+    assert project_config.snapshot_time("오늘") == datetime.fromtimestamp(1_000_000)
+    monkeypatch.setattr(project_config, "PP_ROOT", tmp_path / "빈 곳")
+    assert run_pipeline.stock_source("오늘", kind="plan") is None
+
+
 def test_skip_api는_계획이_없으면_실험이라도_물려받고_그렇다고_말한다(
         tmp_path, monkeypatch, capsys):
     """실험을 **버리지는 않는다** — 뒤로 보낼 뿐이다. 계획이 하나도 없는 PC에서

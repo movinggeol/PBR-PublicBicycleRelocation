@@ -42,8 +42,9 @@ from project_config import (ROAD_FIXED_SEC_WEEKDAY, ROAD_SPEED_KMPH_WEEKDAY, USE
     TIME_BUDGET_MINUTES, TOP_STATION_LIMIT, VEHICLE_CAPACITY, VEHICLE_SPEED_KMPH,
     VEHICLES_PER_ROUND,
     available_periods, format_estimate, format_minutes, format_seconds, latest_period,
-    normalize_day_type, normalize_durations, normalize_fleet_size, normalize_per_round,
+    normalize_day_type, normalize_fleet_size, normalize_per_round,
     normalize_period, resolve_day_type,
+    DEFAULT_NOW, DEPART_LEAD_MINUTES, auto_duration,
 )
 import tashu
 from webapp import (catalog, charts, collect_view, district_view, jobs, kpi_view, mobile_view,
@@ -416,6 +417,50 @@ def _suggested_now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H")
 
 
+def _clock() -> datetime:
+    """지금 시각. 회차 자동 결정이 읽는다(시험이 이 하나만 바꿔 끼운다)."""
+    return datetime.now()
+
+
+def _clock_text(at: datetime, now: datetime) -> str:
+    """'23:11', 날짜가 다르면 '10월 17일 14:02'."""
+    return at.strftime("%H:%M") if at.date() == now.date() else f"{at.month}월 {at.day}일 {at:%H:%M}"
+
+
+def _auto_round(label: str, skip_api: bool) -> dict:
+    """웹 실행 폼의 회차: **재고 시각으로 정한다** (2026-10-18 사용자 결정 "자동으로 하자").
+
+    예전에는 시간대를 체크박스로 고르고, 하나도 안 고르면 시각과 상관없이 `_05_10`이었다. 그런데 재고는
+    실행할 때 한 장만 받고 고른 회차 전부의 목표를 그 한 장으로 센다. 23시에 넷을 고르면 내일 15~20시도
+    23시 재고로 세웠다. 맞는 회차는 그 재고로 곧 출발하는 하나다(`project_config.auto_duration`).
+
+    - API 수집을 하면 재고는 지금 받는다: 지금 시각으로 정한다.
+    - 'API 수집 생략'이면 물려받는 재고의 시각으로 정한다(`store.inherited_stock`, 파이프라인과 같은 고르기).
+      물려받을 재고가 없으면 `problem`에 까닭을 담는다(파이프라인도 거기서 멈춘다).
+
+    다른 회차를 일부러 세우는 일(실험 · 재현)은 명령줄 `run_pipeline.py --duration`으로 한다.
+    """
+    now = _clock()
+    result = {"duration": None, "name": None, "at": None, "at_text": None,
+              "source": None, "problem": None, "note": None}
+    at = now
+    if skip_api:
+        found = store.inherited_stock(label)
+        if found is None:
+            result["problem"] = ("물려받을 재고가 없습니다. 'API 수집 생략'을 끄면 지금 재고를 받아 "
+                                 "지금 회차를 세웁니다.")
+            return result
+        result["source"] = found["label"]
+        if found["at"] is None:
+            result["note"] = "물려받는 재고를 언제 받았는지 몰라 지금 시각으로 정했습니다."
+        else:
+            at = found["at"]
+    duration = auto_duration(at)
+    result.update(duration=duration, name=DURATION_LABELS[duration], at=at,
+                  at_text=_clock_text(at, now))
+    return result
+
+
 def _year_ago_period(periods) -> Optional[str]:
     """가장 최근 달의 **1년 전 같은 달**이 자료에 있으면 그 라벨 (수정안 34).
 
@@ -445,7 +490,6 @@ def _index_context(error: Optional[str] = None,
         "defaults": {
             "now": _suggested_now(),
             "period": latest_period(),
-            "duration": DEFAULT_DURATION,
             "raw_file": DEFAULT_RAW_FILE,
             # 환경변수(PBR_FLEET_SIZE 등)를 걸어 뒀으면 그 값이, 아니면 기본값이 뜬다.
             "fleet_size": FLEET_SIZE,
@@ -463,8 +507,11 @@ def _index_context(error: Optional[str] = None,
         # 있는 기간은 CSV를 아예 안 보기 때문이다. 폼이 그 사실을 알려야
         # "적어 넣은 CSV가 조용히 무시된다"는 혼란이 없다.
         "periods_in_db": sorted(store.periods_with_rentals()),
-        # 시간대는 네 창이 전부다. 창마다 수요 방향이 반대라 섞지 않는다.
-        "durations": [{"value": d, "label": DURATION_LABELS[d]} for d in DURATIONS],
+        # 시간대는 고르지 않는다(2026-10-18). 재고 시각으로 정한 회차를 두 경우 모두 미리 셈해 넘기고,
+        # 'API 수집 생략'을 켜고 끌 때 화면의 스크립트가 둘 중 하나를 보여 준다.
+        "auto_round": {"fresh": _auto_round(DEFAULT_NOW, False),
+                       "inherited": _auto_round(_suggested_now(), True)},
+        "depart_lead": DEPART_LEAD_MINUTES,
         # 평일과 휴일은 수요 구조가 달라 한 실행에 섞지 않는다 (docs/구현/steps/step0_raw.md).
         # auto는 계획 대상일(기본 오늘)을 달력으로 판정한다 — 운영 기본값.
         "day_types": (
@@ -744,7 +791,6 @@ def create_run(
     request: Request,
     now: str = Form(""),
     period: str = Form(""),
-    duration: List[str] = Form([]),
     raw_file: str = Form(""),
     day_type: str = Form(""),
     fleet_size: str = Form(""),
@@ -790,10 +836,15 @@ def create_run(
     try:
         if (checked := normalize_period(period)):
             args.extend(["--period", checked])
-        if (chosen := normalize_durations(duration)):
-            args.extend(["--duration", chosen])
     except ValueError as err:
         return invalid(str(err))
+
+    # 회차는 고르지 않는다: 재고 시각으로 정한다(`_auto_round`, 2026-10-18). 폼이 `duration`을 보내도
+    # 받지 않는다. 이름 칸을 비우면 파이프라인은 `DEFAULT_NOW` 라벨로 돌므로 물려받을 재고도 그 라벨로 고른다.
+    chosen_round = _auto_round(now.strip() or DEFAULT_NOW, bool(skip_api))
+    if chosen_round["problem"]:
+        return invalid(chosen_round["problem"])
+    args.extend(["--duration", chosen_round["duration"]])
 
     if day_type.strip():
         try:
@@ -972,6 +1023,7 @@ def guide_page(request: Request):
         # 시간대 선택지도 코드에서 읽어 넘긴다 — 안내에 창을 박아 두면
         # 폼과 어긋나는 순간 그대로 거짓말이 된다(tests/test_guide.py).
         "durations": [{"value": d, "label": DURATION_LABELS[d]} for d in DURATIONS],
+        "depart_lead": DEPART_LEAD_MINUTES,      # 시간대 자동 결정의 앞당김(2026-10-18)
         # 예상 소요는 **이 서버의 지난 실행에서 뽑는다.** 사람이 적어 두면
         # 조건이 바뀐 뒤에도 남아 거짓말이 된다(옛 안내의 '보통 5~10분'이 그랬다).
         "run_estimate": _run_estimate(),

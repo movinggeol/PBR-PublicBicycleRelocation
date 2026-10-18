@@ -38,8 +38,8 @@ import numpy as np
 import pandas as pd
 
 from project_config import (
-    DURATIONS, REBAL_MIN_QTY, STOCK_TICK_MINUTES, TICKS_PER_HOUR, TOP_STATION_LIMIT,
-    duration_hours, holiday_mask,
+    REBAL_MIN_QTY, STOCK_TICK_MINUTES, TICKS_PER_HOUR, TOP_STATION_LIMIT,
+    duration_at, holiday_mask,
 )
 from webapp import store
 
@@ -51,10 +51,8 @@ VALIDATED_TOP50 = {1: {"수거": 95.3, "배송": 99.4}, 3: {"수거": 85.8, "배
 
 
 def duration_of(hour: int) -> str:
-    for name in DURATIONS:
-        if hour % 24 in duration_hours(name):
-            return name
-    return "_20_05"
+    """그 시가 드는 회차. 계산은 `project_config.duration_at` 한 벌이다(실행 폼의 회차 자동 결정과 같은 식)."""
+    return duration_at(hour)
 
 
 def expected_outflow(mu: pd.DataFrame, start: pd.Timestamp, hours: int) -> pd.Series:

@@ -208,11 +208,14 @@
       </tr>
       <tr>
         <td><b>시간대</b></td>
-        <td class="muted">하루 중 어느 시간을 계획할지. 창 넷 중에서 고릅니다(낮 셋은
-          5시간, 자정을 넘기는 <code>_20_05</code>는 9시간) —
-          {% for option in durations %}<code>{{ option.value }}</code>({{ option.label }}){% if not loop.last %}, {% endif %}{% endfor %}.</td>
-        <td class="muted">다른 시간대를 계획할 때. <b>여러 개를 고르면 차례로 돕니다.</b>
-          시간대마다 자전거가 흐르는 방향이 반대라 계획은 따로 세웁니다.</td>
+        <td class="muted">하루 중 어느 회차를 계획할지. 창은 넷입니다(낮 셋은 5시간, 자정을 넘기는
+          <code>_20_05</code>는 9시간):
+          {% for option in durations %}<code>{{ option.value }}</code>({{ option.label }}){% if not loop.last %}, {% endif %}{% endfor %}.
+          <b>고르지 않습니다.</b> 재고를 받은 시각에 출발 앞당김 {{ depart_lead }}분을 더한 시각이 드는 회차 하나를
+          세웁니다(23시 11분이면 23시 41분이 드는 20~05시).</td>
+        <td class="muted">계획은 그 실행에서 받은 재고 한 장으로 세웁니다. 그래서 그 재고로 곧 출발할 회차만
+          맞습니다. 다음 회차 계획은 그 회차 출발 무렵에 다시 실행하세요. 'API 수집 생략'을 켜면 물려받는 재고의
+          시각으로 정합니다.</td>
       </tr>
       <tr>
         <td><b>요일 구분</b></td>

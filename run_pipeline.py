@@ -373,6 +373,20 @@ def donor_labels(label: str, kind: str | None = None) -> list:
             + [c for c in candidates if kinds[c] != "plan"])
 
 
+def stock_source(label: str, kind: str | None = None) -> str | None:
+    """`--skip-api`로 띄우면 **어느 라벨의 재고**로 계획하나. 없으면 None.
+
+    그 라벨 자신의 스냅샷(파일 세 개 또는 DB)이 먼저이고, 없으면 `donor_labels()`의 1순위다.
+    `inherit_snapshot()`이 실제로 고르는 순서와 같다. 웹 실행 폼은 이 라벨의 재고 시각으로
+    회차를 정한다(`project_config.auto_duration`, 2026-10-18): 물려받는 재고가 14시 것이면
+    23시에 눌러도 14시 재고로 곧 출발하는 회차를 세운다.
+    """
+    if all(p.exists() for p in snapshot_paths(label)) or _snapshot_in_db(label):
+        return label
+    donors = donor_labels(label, kind)
+    return donors[0] if donors else None
+
+
 def inherit_snapshot(label: str, kind: str | None = None) -> int:
     """`--skip-api`로 건너뛴 재고 스냅샷을 **가장 최근 실행에서 물려받는다.**
 

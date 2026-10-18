@@ -84,6 +84,48 @@ def test_출발_리드_0이면_회차_시작에_떠난다(monkeypatch):
     assert pc.departure_minute_of_day("_05_10") == 5 * 60
 
 
+@pytest.mark.parametrize("clock, expected", [
+    ("04:29", "_20_05"),   # 04:59가 드는 야간 회차. 05~10시 계획(출발 04:30)에는 이르다
+    ("04:30", "_05_10"),   # 출발 시각 그 분부터 다음 회차
+    ("09:29", "_05_10"),
+    ("09:30", "_10_15"),
+    ("14:30", "_15_20"),
+    ("19:29", "_15_20"),
+    ("19:30", "_20_05"),
+    ("23:11", "_20_05"),   # 2026-10-18 사용자 화면의 시각
+    ("23:59", "_20_05"),   # 자정을 넘겨도 같은 야간 회차
+    ("02:00", "_20_05"),
+])
+def test_회차는_재고_시각에_출발_앞당김을_더한_시각으로_정한다(monkeypatch, clock, expected):
+    """2026-10-18 사용자 결정(*"자동으로 하자"*). 재고는 한 장만 받으므로 맞는 회차는 그 재고로 곧 출발하는
+    하나다. 경계는 출발 시각(회차 시작 − 30분)이다."""
+    from datetime import datetime
+
+    import project_config as pc
+
+    monkeypatch.setattr(pc, "DEPART_LEAD_MINUTES", 30)
+    hour, minute = map(int, clock.split(":"))
+    assert pc.auto_duration(datetime(2026, 10, 18, hour, minute)) == expected
+
+
+def test_출발_앞당김을_끄면_회차_시작이_경계다(monkeypatch):
+    from datetime import datetime
+
+    import project_config as pc
+
+    monkeypatch.setattr(pc, "DEPART_LEAD_MINUTES", 0)
+    assert pc.auto_duration(datetime(2026, 10, 18, 4, 59)) == "_20_05"
+    assert pc.auto_duration(datetime(2026, 10, 18, 5, 0)) == "_05_10"
+
+
+def test_모든_시각에_회차가_하나씩_걸린다():
+    import project_config as pc
+
+    assert [pc.duration_at(h) for h in range(24)].count("_20_05") == 9
+    for name in pc.DURATIONS:
+        assert sum(pc.duration_at(h) == name for h in range(24)) == len(pc.duration_hours(name))
+
+
 @pytest.mark.parametrize("value", ["-1", "300", "600"])
 def test_출발_리드_범위_밖은_멈춘다(monkeypatch, value):
     import project_config as pc
