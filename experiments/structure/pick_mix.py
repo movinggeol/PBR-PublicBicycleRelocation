@@ -14,9 +14,15 @@
   **D 짝 풀기** — 수거는 E·M1 그대로, 군집마다 배송이 수거보다 많으면 그 차이를 **차고지 좌표의 가상 수거 지점**(차량이 처음 싣고
          나오는 자전거)으로 채운다. 차고지 자전거는 모자라지 않는다고 둔다(운영 가정이 바뀐다 — 한계)
 
+확인 실행(56장 '확인 실행', 2026-10-20 등록): 56장 시험 뒤의 새 평일 회차로 같은 설정을 다시 잰다. 학습 날 · 모형 설정 ·
+손잡이(H는 k 0.85와 표 0.95, K는 k 0.7 고정, 다시 고르지 않는다) · 판정 다섯은 56장 그대로다. 자료 끝 · 참조 계획 · 대여소
+정보는 확인 자료 끝(CONFIRM_UNTIL) 기준이다(54장 확인 실행과 같은 방식).
+
 실행:
     python experiments/structure/pick_mix.py --sanity --limit 4   # 결과 없이 입력 · 후보 크기 · 고른 손잡이 · DB 지문만
     python experiments/structure/pick_mix.py                      # 등록판(56장)
+    python experiments/structure/pick_mix.py --confirm --sanity   # 확인 실행의 입력 점검(결과 없이)
+    python experiments/structure/pick_mix.py --confirm            # 확인 실행(DB 지문을 등록에 적은 뒤)
 """
 import argparse
 import sys
@@ -57,6 +63,20 @@ KEEP, KM_MAX = pr.KEEP, pr.KM_MAX
 CI_ALPHA = 0.05 / 3                      # 주 판정이 셋이라 본페로니
 DEPOT_PREFIX = "차고지_가상_"            # 가상 수거 지점의 station_id — 군집 c는 '차고지_가상_c'(관측 대여소 번호와 겹치지 않는다)
 OUT_DIR = DATA_ROOT / "exp_56"
+
+# ── 확인 실행 (56장 '확인 실행', 결과 전에 등록) ─────────────────────────────
+CONFIRM_FROM = "2026-10-12 15:00"        # 56장 시험에 들지 않은 첫 평일 회차(10-12 15~20시)부터
+CONFIRM_UNTIL = "2026-10-19 16:10"       # 회사 PC 자료(10-12 ~ 10-19 16:00)의 끝 + 한 틱. 이 PC가 그 뒤에 모은 틱은 쓰지 않는다
+CONFIRM_K = 0.7                          # 56장에서 고른 K의 손잡이 그대로(다시 고르지 않는다)
+CONFIRM_FINGERPRINT = None               # 합친 직후 찍어 결과 전에 적는다(비어 있으면 본 실행은 멈춘다)
+
+
+def fingerprint_at(conn, until: str) -> tuple:
+    """(until 전 재고 행 수 · 마지막 관측 · until 전에 만든 실행 수). 55 · 56장 `pr.fingerprint()`와 같은 셈, 끝만 다르다."""
+    rows, last = conn.execute("SELECT COUNT(*), MAX(observed_at) FROM stock_history WHERE observed_at < ?",
+                              (until,)).fetchone()
+    runs = conn.execute("SELECT COUNT(*) FROM runs WHERE created_at < ?", (until,)).fetchone()[0]
+    return int(rows), str(last), int(runs)
 
 
 def fit_wide(rows_all: pd.DataFrame, starts: pd.Series) -> tuple:
@@ -214,19 +234,25 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--sanity", action="store_true", help="결과 없이 입력 · 후보 크기 · 고른 손잡이 · DB 지문만 찍는다")
     parser.add_argument("--limit", type=int, default=0, help="--sanity에서 시험 회차를 이만큼만 돈다")
+    parser.add_argument("--confirm", action="store_true",
+                        help=f"확인 실행: 56장 설정 그대로, {CONFIRM_FROM} 뒤 평일 회차만 채점(끝 {CONFIRM_UNTIL})")
     args = parser.parse_args(argv)
 
+    until = CONFIRM_UNTIL if args.confirm else UNTIL
+    registered = CONFIRM_FINGERPRINT if args.confirm else FINGERPRINT
     step1 = bc.load_step1()
     solver = bc.ilp_mod.build_solver()
     with db.session() as conn:
-        mark = pr.fingerprint(conn)
-        print(f"DB 지문(UNTIL 전 재고 행 · 마지막 관측 · 계획 실행 수): {mark}")
-        if not args.sanity and mark != FINGERPRINT:
-            raise SystemExit(f"DB가 등록 때({FINGERPRINT})와 다르다 — 등록을 고치거나 덧붙임으로 적고 돌린다")
-        refs = pv.load_refs(conn, "weekday", before=UNTIL)
+        mark = fingerprint_at(conn, until)
+        print(f"DB 지문(끝 {until} 전 재고 행 · 마지막 관측 · 실행 수): {mark}")
+        if not args.sanity and registered is None:
+            raise SystemExit("확인 실행의 DB 지문이 등록에 없다. 합친 직후 찍은 값을 CONFIRM_FINGERPRINT와 56장 등록에 적고 돌린다")
+        if not args.sanity and mark != registered:
+            raise SystemExit(f"DB가 등록 때({registered})와 다르다 — 등록을 고치거나 덧붙임으로 적고 돌린다")
+        refs = pv.load_refs(conn, "weekday", before=until)
         raw = sf.load_grid(conn)
-        label, info = wv.snapshot(conn, UNTIL)
-    raw = raw[raw["ts"] < pd.Timestamp(UNTIL)]
+        label, info = wv.snapshot(conn, until)
+    raw = raw[raw["ts"] < pd.Timestamp(until)]
     net = pv.load_net("weekday")
     for dur, (frame, _lab) in list(refs.items()):
         refs[dur] = pv.current_stats(frame, net, dur)
@@ -239,8 +265,11 @@ def main(argv=None) -> int:
     lo_, hi_ = (pd.Timestamp(d).date() for d in TRAIN)
     pk_lo, pk_hi = (pd.Timestamp(d).date() for d in PICK_DAYS)
     test_from = pd.Timestamp(TEST_FROM).date()
+    confirm_from = pd.Timestamp(CONFIRM_FROM)
 
     def part(d):
+        if args.confirm:                     # 학습 날은 56장 그대로, 고르기 날은 쓰지 않는다(K는 고정), 확인 날만 '시험'
+            return "학습" if lo_ <= d <= hi_ else "시험" if d >= confirm_from.date() else "쓰지 않음"
         return "학습" if lo_ <= d <= hi_ else "고르기" if pk_lo <= d <= pk_hi else "시험" if d >= test_from else "쓰지 않음"
 
     keep = (lambda i, ts, start: (part(start.date()) == "학습" and i % pr.ALL_EVERY == 0)
@@ -249,16 +278,25 @@ def main(argv=None) -> int:
     rows_all["나눔"] = rows_all["날"].map(part)
     cap = info.set_index("station_id")["parking_lot"].astype(float)
     cap = cap[cap > 0]
-    print(f"관측 자료: {raw['ts'].min()} ~ {raw['ts'].max()} (끝 {UNTIL}) · 대여소 정보 '{label}' · 모든 대여소 행 {len(rows_all):,}")
+    print(f"관측 자료: {raw['ts'].min()} ~ {raw['ts'].max()} (끝 {until}) · 대여소 정보 '{label}' · 모든 대여소 행 {len(rows_all):,}")
     m1, tt = fit_wide(rows_all, rows_all["시작뒤분"] == 0)
 
     inst_all = [x for x in wv.instances(raw, grid) if x[2] == "weekday"]
     todo_pick = [x for x in inst_all if part(x[0]) == "고르기"]
     todo = [x for x in inst_all if part(x[0]) == "시험"]
     project_config.align_day_type("weekday", bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
-    k_star, ratio = choose_k([(d, u, dt, grid.index[i], s) for d, u, dt, i, s in todo_pick], info, net, m1, step1)
-    print(f"K — 고르기 날 {len(todo_pick)}회차에서 k마다 수거 총량을 채운 비율: "
-          + " · ".join(f"{k} {r:.1%}" for k, r in ratio.items()) + f" → k = {k_star}")
+    if args.confirm:
+        # 56장 시험 뒤의 회차만, 그리고 5시간 창이 자료 끝 전에 닫힌 것만(창이 안 닫힌 회차는 채점할 수 없다)
+        last = raw["ts"].max()
+        todo = [x for x in todo if grid.index[x[3]] >= confirm_from
+                and grid.index[x[3]] + pd.Timedelta(minutes=H * project_config.STOCK_TICK_MINUTES) <= last]
+        k_star = CONFIRM_K
+        print(f"확인 실행: K의 손잡이는 56장 값 k = {k_star}(다시 고르지 않는다) · 확인 회차 "
+              + ", ".join(f"{d} {u}" for d, u, *_ in todo))
+    else:
+        k_star, ratio = choose_k([(d, u, dt, grid.index[i], s) for d, u, dt, i, s in todo_pick], info, net, m1, step1)
+        print(f"K — 고르기 날 {len(todo_pick)}회차에서 k마다 수거 총량을 채운 비율: "
+              + " · ".join(f"{k} {r:.1%}" for k, r in ratio.items()) + f" → k = {k_star}")
     print(f"시험 회차 {len(todo)}개 · 수거 상한 {TOP_STATION_LIMIT}곳")
     if args.sanity and args.limit:
         todo = todo[:args.limit]
@@ -309,7 +347,7 @@ def main(argv=None) -> int:
 
     frame = pd.DataFrame(out)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    frame.to_csv(OUT_DIR / "rows.csv", index=False, encoding="utf-8-sig")
+    frame.to_csv(OUT_DIR / ("rows_confirm.csv" if args.confirm else "rows.csv"), index=False, encoding="utf-8-sig")
     report(frame, k_star)
     return 0
 

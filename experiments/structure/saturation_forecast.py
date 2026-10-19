@@ -43,7 +43,7 @@ import pandas as pd  # noqa: E402
 
 import db  # noqa: E402
 import stockout_forecast as sf  # noqa: E402
-from experiments._shared import default_run_label  # noqa: E402
+from experiments._shared import default_run_label, plan_label_before  # noqa: E402
 from project_config import DEFAULT_PERIOD, TICKS_PER_HOUR, holiday_mask  # noqa: E402
 
 TICK_MINUTES = sf.TICK_MINUTES
@@ -60,15 +60,19 @@ FEATURES = ["지금포화", "재고", "재고비율", "거치대", "1틱전포�
 
 # ───────────────────────────────────────────── 자료
 
-def load_capacity(conn) -> tuple:
+def load_capacity(conn, label: str | None = None) -> tuple:
     """거치대 수(station_id → parking_lot)와 그것을 읽은 계획 실행 라벨.
 
     F2 · F3 하네스가 `bc.load_inputs()`로 읽는 것과 **같은 실행**이다 — 모형이 본
     거치대와 계획이 본 거치대가 갈리면 비율 피처가 다른 자가 된다. 그래서 하네스와 같은
     `default_run_label()`로 고른다(정본 '2026-08-11 real', 없으면 가장 최근 계획 + 경고 —
     2026-10-14에 하네스의 기본이 정본으로 바뀌며 여기만 '최신 계획'으로 남아 같은 실행이 깨졌었다).
+
+    `label`을 주면 그 실행을 읽는다. 이 파일의 `main()`(43장 F3 판정의 1단계)은 2026-10-20부터
+    등록 규칙인 `plan_label_before()`(자료 끝 전 가장 최근 계획)로 정해 넘긴다. F3 하네스와 같은 규칙이다.
+    라벨 없이 부르는 다른 실험(forecast_learning_curve · target_forecast)은 그대로 정본 기본값이다.
     """
-    label = default_run_label(conn)
+    label = label or default_run_label(conn)
     info = db.load_frame(conn, "station_info", run_label=label)
     capacity = (info.drop_duplicates("station_id").set_index("station_id")["parking_lot"])
     return label, pd.to_numeric(capacity, errors="coerce")
@@ -223,10 +227,13 @@ def main(argv=None) -> int:
                         help=f"뒤 며칠을 검증으로 (기본 {DEFAULT_TEST_DAYS})")
     parser.add_argument("--period", default=DEFAULT_PERIOD,
                         help=f"베이스라인 ③의 순수요 기간 (기본 {DEFAULT_PERIOD} — 운영과 같다)")
+    parser.add_argument("--run-label", default="",
+                        help="거치대 수를 읽을 계획 실행 (기본: 자료 끝 전 가장 최근 계획, 43장 등록)")
     args = parser.parse_args(argv)
 
     with db.session() as conn:
-        label, capacity = load_capacity(conn)
+        # 43장 등록: 거치대 수는 최신 계획 실행의 station_info(F3 하네스와 같은 실행). 2026-10-20, 판정 전.
+        label, capacity = load_capacity(conn, args.run_label or plan_label_before(conn))
         raw = sf.load_grid(conn)
         mu_by_type = hourly_mu(conn, args.period)
     frame = label_saturation(raw, capacity)

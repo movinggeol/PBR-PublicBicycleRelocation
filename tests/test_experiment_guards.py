@@ -2267,6 +2267,54 @@ def test_정본_기본값은_재고_스냅샷에만_건다():
         assert 공용.default_run_label(conn, "vrp_plan") == "2026-10-11 20 휴일 동시각"
 
 
+def test_등록이_최신_계획을_정한_실험은_자료_끝_전_가장_최근_계획을_쓴다():
+    """41장 F2 · 43장 F3 · 53장 계열은 *최신 계획 실행의 station_info* 로 등록했다(정본 기본값과 다른 규칙).
+
+    1.26.371이 라벨 없는 기본값을 정본으로 바꿔 F2 · F3 하네스가 등록과 다른 스냅샷을 읽게 됐고, 채택
+    판정 전(2026-10-20)에 `plan_label_before()`로 되돌렸다. '최신'은 실행 시각이 아니라 자료 끝에 묶는다:
+    자료 끝 뒤에 만든 계획, 계획이 아닌 실행, 대여소 정보가 없는 실행은 고르지 않는다.
+    """
+    import db
+
+    공용 = _실험_공용()
+    with db.session() as conn:
+        _스냅샷을_심는다(conn, "2026-08-11 real")                          # 정본(종류 없음)
+        _스냅샷을_심는다(conn, "2026-10-11 20 휴일 동시각", kind="plan")
+        _스냅샷을_심는다(conn, "sweep-10", kind="experiment")
+        db.record_run(conn, "2026-10-12 05 빈 계획", kind="plan")            # 대여소 정보가 없다
+        _스냅샷을_심는다(conn, "2026-10-12 10 다른 기간", kind="plan")       # 순수요 기간이 다른 계획
+        _스냅샷을_심는다(conn, "2026-10-18 22", kind="plan")                 # 자료 끝 뒤에 만든 계획
+        for label, made, period in (("2026-08-11 real", "2026-08-11 09:00:00", "26년 03월"),
+                                    ("2026-10-11 20 휴일 동시각", "2026-10-11 20:03:04", "26년 03월"),
+                                    ("sweep-10", "2026-10-12 01:00:00", "26년 03월"),
+                                    ("2026-10-12 05 빈 계획", "2026-10-12 05:03:00", "26년 03월"),
+                                    ("2026-10-12 10 다른 기간", "2026-10-12 10:03:00", "25년 11월"),
+                                    ("2026-10-18 22", "2026-10-18 22:38:52", "26년 03월")):
+            conn.execute("UPDATE runs SET created_at = ?, period = ? WHERE run_label = ?", (made, period, label))
+        conn.execute("INSERT INTO stock_history (observed_at, station_id, stock) VALUES (?, ?, ?)",
+                     ("2026-10-12 16:50", "ST0001", 5))
+        conn.commit()
+
+        assert 공용.default_run_label(conn) == "2026-08-11 real", "전제: 라벨 없는 기본값은 정본이다"
+        # 자료 끝을 비우면 재고 시계열의 마지막 관측 + 한 틱(10-12 17:00)이 끝이다. 기간은 거르지 않는다(F2 · F3).
+        assert 공용.plan_label_before(conn) == "2026-10-12 10 다른 기간"
+        assert 공용.plan_label_before(conn, "2026-10-12 17:00") == "2026-10-12 10 다른 기간"
+        # 53장 계열은 기간도 거른다(`worklist_validity.snapshot()`, period=DEFAULT_PERIOD).
+        assert 공용.plan_label_before(conn, "2026-10-12 17:00", period="26년 03월") == "2026-10-11 20 휴일 동시각"
+        assert 공용.plan_label_before(conn, "2026-10-19 16:10") == "2026-10-18 22", "자료가 늘면 그 끝 전의 계획"
+        with pytest.raises(SystemExit):
+            공용.plan_label_before(conn, "2026-10-01 00:00")                 # 그 전에는 계획이 없다
+
+    # 세 스크립트가 라벨 없이 `load_inputs()`를 부르지 않고, 등록 규칙으로 정한 라벨을 넘긴다.
+    for relpath in ("experiments/structure/f2_candidate_priority.py",
+                    "experiments/structure/f3_drop_saturation.py",
+                    "experiments/structure/saturation_forecast.py",
+                    "experiments/structure/worklist_validity.py"):
+        source = (PROJECT_ROOT / relpath).read_text(encoding="utf-8")
+        assert "plan_label_before(" in source, f"{relpath}: 등록 규칙(plan_label_before)을 쓰지 않는다"
+        assert "load_inputs(args.period, None" not in source, f"{relpath}: 라벨 없이 부르면 정본을 집는다"
+
+
 def test_정본_라벨을_스크립트마다_다시_적지_않는다():
     """`--run-label` 기본값으로 정본 문자열을 따로 적던 일곱 곳이 공용 상수를 쓴다 (2026-10-14).
     기본값을 고칠 일이 생기면 고칠 곳이 다시 여럿이 된다. `dockless_hub.CANON_LABEL`은 재고가 아니라

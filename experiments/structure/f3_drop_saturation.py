@@ -55,6 +55,7 @@ import db  # noqa: E402
 import f2_candidate_priority as f2  # noqa: E402
 import saturation_forecast as satf  # noqa: E402
 import stockout_forecast as sf  # noqa: E402
+from experiments._shared import plan_label_before  # noqa: E402
 from project_config import DEFAULT_PERIOD, DURATIONS, duration_hours  # noqa: E402
 
 # ── 사전 등록 (ML_고도화_계획 3장 F3 · EXPERIMENTS 43장) — 결과를 보고 바꾸지 않는다.
@@ -224,6 +225,8 @@ def main(argv=None) -> int:
     parser.add_argument("--durations", default=",".join(DURATIONS))
     parser.add_argument("--days", default="", help="평가할 날만 (쉼표, YYYY-MM-DD)")
     parser.add_argument("--seeds", default=",".join(str(s) for s in SEEDS))
+    parser.add_argument("--run-label", default="",
+                        help="거치대 · 좌표를 읽을 계획 실행 (기본: 자료 끝 전 가장 최근 계획, 43장 등록)")
     args, _ = parser.parse_known_args(argv)
 
     durations = [d.strip() for d in args.durations.split(",") if d.strip()]
@@ -235,7 +238,13 @@ def main(argv=None) -> int:
     step1 = bc.load_step1()
     project_config.align_day_type("weekday", bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
     solver = bc.ilp_mod.build_solver()
-    net, st_info, _warmup = bc.load_inputs(args.period, None, "weekday", 0, "")
+    # 43장 등록: F2 하네스와 같은 실행(자료 끝 전 가장 최근 계획). 1.26.371 뒤 라벨 없는 기본값은 정본이라
+    # 등록 규칙으로 정해 넘긴다(2026-10-20, 판정 전). ML 11번(saturation_forecast.py)도 같은 규칙이다.
+    with db.session() as conn:
+        info_label = args.run_label or plan_label_before(conn)
+    print(f"대여소 정보 = '{info_label}' station_info"
+          f"{'' if args.run_label else ' (자료 끝 전 가장 최근 계획, 43장 등록)'}")
+    net, st_info, _warmup = bc.load_inputs(args.period, info_label, "weekday", 0, "")
 
     # 거치대 수는 계획과 같은 station_info에서 — 모형의 비율 피처와 계획의 자가 같아야 한다.
     capacity = pd.to_numeric(st_info.drop_duplicates("station_id").set_index("station_id")["parking_lot"],

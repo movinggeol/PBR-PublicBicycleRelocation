@@ -61,7 +61,7 @@ import pandas as pd  # noqa: E402
 import db  # noqa: E402
 import plan_validity as pv  # noqa: E402
 import stockout_forecast as sf  # noqa: E402
-from experiments._shared import load_baseline  # noqa: E402
+from experiments._shared import load_baseline, plan_label_before  # noqa: E402
 from pipeline.step0_collect import calculate_target_qty as target_mod  # noqa: E402
 from project_config import (DATA_ROOT, DEFAULT_PERIOD, DURATIONS, TICKS_PER_HOUR,  # noqa: E402
                             duration_start_hour, holiday_mask)
@@ -90,13 +90,12 @@ def horizon_name(h: int) -> str:
 
 
 def snapshot(conn, until: str):
-    """자료 끝 전 가장 최근 계획 실행의 대여소 정보 — 좌표 · 거치대를 여기서 읽는다(재고는 회차마다 관측으로 갈아 끼운다)."""
-    for (label,) in conn.execute("SELECT run_label FROM runs WHERE kind = 'plan' AND period = ? AND created_at < ?"
-                                 " ORDER BY created_at DESC", (DEFAULT_PERIOD, str(pd.Timestamp(until)))):
-        info = db.load_frame(conn, "station_info", run_label=label)
-        if not info.empty:
-            return label, info[bc.ST_INFO_COLUMNS].copy()
-    raise SystemExit("자료 끝 전에 만든 계획 실행의 station_info가 없습니다")
+    """자료 끝 전 가장 최근 계획 실행의 대여소 정보 — 좌표 · 거치대를 여기서 읽는다(재고는 회차마다 관측으로 갈아 끼운다).
+
+    고르는 규칙은 `experiments._shared.plan_label_before()` 하나다(41 · 43장 하네스와 같은 규칙, 2026-10-20).
+    """
+    label = plan_label_before(conn, until, period=DEFAULT_PERIOD)
+    return label, db.load_frame(conn, "station_info", run_label=label)[bc.ST_INFO_COLUMNS].copy()
 
 
 def with_stock(info: pd.DataFrame, s0: pd.Series) -> pd.DataFrame:

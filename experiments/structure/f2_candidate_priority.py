@@ -45,6 +45,7 @@ import project_config  # noqa: E402  — 콘솔 인코딩을 먼저 맞춘다(�
 import baseline_compare as bc  # noqa: E402
 import db  # noqa: E402
 import stockout_forecast as sf  # noqa: E402
+from experiments._shared import plan_label_before  # noqa: E402
 from project_config import (DEFAULT_PERIOD, DURATIONS, REBAL_MIN_QTY, TICKS_PER_HOUR,  # noqa: E402
                             TOP_STATION_LIMIT, duration_hours, duration_start_hour, is_holiday)
 
@@ -295,6 +296,8 @@ def main(argv=None) -> int:
     parser.add_argument("--days", default="", help="평가할 날만 (쉼표, YYYY-MM-DD)")
     parser.add_argument("--seeds", default=",".join(str(s) for s in SEEDS))
     parser.add_argument("--out", help="(날, 회차, 방법, 씨앗) 행을 CSV로 남긴다 — 80분짜리 실행을 되짚으려면 꼭 준다")
+    parser.add_argument("--run-label", default="",
+                        help="거치대 · 좌표를 읽을 계획 실행 (기본: 자료 끝 전 가장 최근 계획, 41장 등록)")
     args, _ = parser.parse_known_args(argv)
 
     durations = [d.strip() for d in args.durations.split(",") if d.strip()]
@@ -305,7 +308,13 @@ def main(argv=None) -> int:
     step1 = bc.load_step1()
     project_config.align_day_type("weekday", bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
     solver = bc.ilp_mod.build_solver()
-    net, st_info, _warmup = bc.load_inputs(args.period, None, "weekday", 0, "")
+    # 41장 등록: 거치대 수 · 좌표는 최신 계획 실행의 station_info. 라벨 없이 부르면 1.26.371부터 정본을
+    # 집으므로, 등록 규칙(자료 끝 전 가장 최근 계획)으로 라벨을 정해 넘긴다(2026-10-20, 판정 전).
+    with db.session() as conn:
+        info_label = args.run_label or plan_label_before(conn)
+    print(f"대여소 정보 = '{info_label}' station_info"
+          f"{'' if args.run_label else ' (자료 끝 전 가장 최근 계획, 41장 등록)'}")
+    net, st_info, _warmup = bc.load_inputs(args.period, info_label, "weekday", 0, "")
 
     with db.session() as conn:
         frame = sf.load_grid(conn)

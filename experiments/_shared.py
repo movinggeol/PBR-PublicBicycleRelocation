@@ -123,6 +123,39 @@ def default_run_note(label) -> str:
     return "(기본: 정본 없음 → 가장 최근 계획 — 원고 수치와 다르다)"
 
 
+def plan_label_before(conn, until=None, *, period: str | None = None) -> str:
+    """자료 끝 전에 만든 가장 최근 **계획** 실행(대여소 정보가 있는 것). 없으면 멈춘다.
+
+    정본 기본값(`default_run_label()`)과 다른 규칙이다. 사전 등록이 *최신 계획 실행의 station_info* 로
+    정해 둔 실험이 쓴다: 41장 F2(2026-09-28) · 43장 F3(09-29, 포화 모형 ML 11번 포함) · 53장 계열
+    (`worklist_validity.snapshot()`). 1.26.371(10-14)이 라벨 없는 기본값을 정본으로 바꾸며 F2 · F3
+    하네스가 등록과 다른 스냅샷을 읽게 됐고, 채택 판정 전(10-20, 결과를 보기 전)에 이 규칙으로 되돌렸다.
+
+    '최신'을 실행하는 시각이 아니라 **자료 끝**에 묶는다. 그래야 판정 뒤에 계획을 더 돌려도 같은 명령이
+    같은 실행을 고른다(10-18 밤에 계획 하나가 돌아 '최신 계획'이 바뀐 일이 있었다).
+
+    until  : 이 시각 전에 만든 실행만 본다. 비우면 재고 시계열의 마지막 관측 + 한 틱이다.
+    period : 순수요 기간으로도 거른다(53장 계열은 `DEFAULT_PERIOD`). 비우면 거르지 않는다. F2 · F3의
+             착수 점검은 `db.latest_label(kinds=("plan",))`로 골라 기간을 보지 않았다.
+    """
+    import pandas as pd
+
+    if until is None:
+        last = conn.execute("SELECT MAX(observed_at) FROM stock_history").fetchone()[0]
+        if last is None:
+            raise SystemExit("재고 시계열이 비어 자료 끝을 정할 수 없습니다(--run-label로 실행을 지정하십시오)")
+        until = pd.Timestamp(last) + pd.Timedelta(minutes=project_config.STOCK_TICK_MINUTES)
+    sql = "SELECT run_label FROM runs WHERE kind = 'plan' AND created_at < ?"
+    params = [str(pd.Timestamp(until))]
+    if period:
+        sql += " AND period = ?"
+        params.append(period)
+    for (label,) in conn.execute(sql + " ORDER BY created_at DESC", params):
+        if conn.execute("SELECT 1 FROM station_info WHERE run_label = ? LIMIT 1", (label,)).fetchone():
+            return label
+    raise SystemExit(f"{pd.Timestamp(until)} 전에 만든 계획 실행의 station_info가 없습니다")
+
+
 def resolve_run_label(label=None, *, hint: str = "--run-label", announce: bool = True) -> str:
     """재고 스냅샷(`station_info`) 라벨을 정한다 — **못 찾으면 멈춘다.**
 
