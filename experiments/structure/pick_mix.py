@@ -68,7 +68,7 @@ OUT_DIR = DATA_ROOT / "exp_56"
 CONFIRM_FROM = "2026-10-12 15:00"        # 56장 시험에 들지 않은 첫 평일 회차(10-12 15~20시)부터
 CONFIRM_UNTIL = "2026-10-19 16:10"       # 회사 PC 자료(10-12 ~ 10-19 16:00)의 끝 + 한 틱. 이 PC가 그 뒤에 모은 틱은 쓰지 않는다
 CONFIRM_K = 0.7                          # 56장에서 고른 K의 손잡이 그대로(다시 고르지 않는다)
-CONFIRM_FINGERPRINT = None               # 합친 직후 찍어 결과 전에 적는다(비어 있으면 본 실행은 멈춘다)
+CONFIRM_FINGERPRINT = (8220990, "2026-10-19 16:00", 150)   # 합친 직후(10-20) 찍어 결과 전에 적었다
 
 
 def fingerprint_at(conn, until: str) -> tuple:
