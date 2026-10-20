@@ -18,7 +18,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 1325개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 1343개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -72,8 +72,9 @@ DB에 행이 있으면 CSV를 고쳐도 반영되지 않는다).
   **항상 해석된 값**이라 하위 코드가 'auto'를 볼 일이 없다.
 - **`now`는 실행 시각이 아니라 파이프라인 실행을 묶는 라벨이다.** `datetime.now()`나
   하드코딩 값을 코드에 넣지 마라 — 단계 간 파일명이 어긋난다.
-- 각 스크립트는 독립 실행되며(import하는 형제 모듈은 셋뿐 — `vrp`→`ilp.haversine_km`,
-  `top_st_clustering`→`adjust_module`, step3 `main`→`module`) 실행 로직은
+- 각 스크립트는 독립 실행되며(import하는 형제 모듈은 넷: `vrp`→`ilp.haversine_km`,
+  `top_st_clustering`→`adjust_module`, step3 `main`→`module`, 그리고 `top_st_clustering`의 `__main__` 블록 안에서만
+  `pick_model`) 실행 로직은
   `if __name__ == '__main__':` 아래에 둔다(`main()`을 따로 둔 것은 tashu_api · extract_parking_lot ·
   api_to_info · raw_to_net · EDA이고, calculate_target_qty와 step1~4는 그 블록에 바로 쓴다).
   순서는 run_pipeline.py가 제어한다.
@@ -207,6 +208,14 @@ DB에 행이 있으면 CSV를 고쳐도 반영되지 않는다).
    바꾸려면 `experiments/params/road_time_model.py`의 사전 등록 기준(변동계수 15% 미만 · 표본 밖 −20% · 10일)을
    다시 통과해야 하고, 문서의 소요시간 수치가 옛 식과 새 식으로 섞인다. 판정 값 재현은 `--until`(평일
    2026-09-15 · 휴일 2026-10-04). 절차: `docs/기록/수집완료_계획.md` 2-4~2-6 · 4장.
+16. **운영 계획의 수거는 수거 대수 학습(K)이 다시 고른다** (1.26.375, EXPERIMENTS 56장, 사용자 결정 2026-10-20).
+   step1이 `select_top_unbalanced_st()`로 고른 뒤, **실행 종류가 plan일 때만**(`PBR_PICK_MODEL=auto`, 기본)
+   `pipeline/step1_cluster/pick_model.py`가 수거 쪽을 다시 고른다. 배송 쪽과 수거 총량은 그대로다. 실험 · 재현
+   (종류 experiment 또는 선언 없음)은 지금 선정 그대로라 원고 수치가 바뀌지 않는다. 🔴 `pick_model`을 step1 모듈
+   맨 위에서 불러오지 마라. 실험이 step1을 불러와 쓰는 '현행'에 K가 섞일 길이 생긴다(`tests/test_pick_model.py`가 지킨다).
+   저장된 계획은 `pick_drop.pick_rule`(`현행` · `K0.7`)로 어느 규칙인지 가린다. 저장된 계획을 읽는 실험은 10-20 뒤 plan
+   실행에 K가 섞였음을 알고 읽어라. 56장 정의(5시간 낙폭 · 30분 간격 행 · 혼합 입력 · GBM 설정)를 고치면 56장의 검증이
+   이 코드의 것이 아니게 된다(실험 코드와 맞대는 시험이 깨진다).
 
 ## 실행·확인은 `pbr-run` 스킬에 있다
 
@@ -381,7 +390,7 @@ python tools/gate_a_compare.py <off 폴더> <on 폴더>  # 끈/켠 결과 장별
 ## 테스트
 
 ```powershell
-python -m pytest                 # 1325개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 1343개, 약 100초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

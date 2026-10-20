@@ -187,6 +187,7 @@ CREATE TABLE IF NOT EXISTS pick_drop (
     mu            REAL,
     sigma         REAL,
     cluster       INTEGER,
+    pick_rule     TEXT,            -- 수거를 고른 규칙: '현행' 또는 'K0.7'(수거 대수 학습, 1.26.375). 그 전 행은 NULL
     PRIMARY KEY (run_label, duration, station_id)
 );
 

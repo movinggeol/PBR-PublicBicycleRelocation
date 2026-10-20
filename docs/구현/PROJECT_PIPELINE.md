@@ -53,7 +53,7 @@ CSV 경로로 갈 때를 대비해 파일명 규약은 그대로 지킵니다 �
 │   ├── step3_map/
 │   └── step4_metrics/
 ├── webapp/                               # 웹 대시보드 (FastAPI + Jinja2)
-├── tests/                                # pytest 1325개(41개 파일)
+├── tests/                                # pytest 1343개(42개 파일)
 ├── tools/                                # 합성 데이터·적재·백테스트·재고 수집 도구
 ├── scripts/                              # 수집기 운영·게이트 A 재실행·PATH 셋업 (PowerShell)
 ├── experiments/                          # 파라미터 실험·구조 결정용 측정
@@ -152,7 +152,7 @@ rebal_qty = target_qty − stock              (tanh로 완화 후 정수화)
 
 ## 5. Step 1: Pick·Drop과 클러스터
 
-top_st_clustering.py는 재배치량이 큰 대여소를 선정하고 양수·음수 재배치량을 Drop·Pick으로 분류합니다. 위도·경도 정보도 함께 붙여 다음 최적화 단계의 후보 파일을 만듭니다.
+top_st_clustering.py는 재배치량이 큰 대여소를 선정하고 양수·음수 재배치량을 Drop·Pick으로 분류합니다. 위도·경도 정보도 함께 붙여 다음 최적화 단계의 후보 파일을 만듭니다. 운영 계획(실행 종류 plan)에서는 이어서 pick_model.py가 수거 쪽을 수거 대수 학습(EXPERIMENTS 56장 K)으로 다시 고릅니다(1.26.375). 배송 쪽과 수거 총량은 그대로입니다.
 
 ~~~text
 data/pp_data/ILP/후보/top{duration} ({now}).csv
@@ -162,6 +162,7 @@ K-Medoids 기반 공간 클러스터링은 작업 대여소를 가까운 군집�
 
 - adjust_module.py: 메도이드, 군집 목적함수, 군집 후보 이동 보조
 - top_st_clustering.py: 군집 생성·크기 및 작업량 균형 조정
+- pick_model.py: 수거 대수 학습. 관측 재고로 배운 분위수 GBM이 수거할 대여소와 대수를 다시 고른다(운영 계획에서만, 1.26.375)
 - st_visualization.py: Pick·Drop과 군집을 지도에 저장
 
 군집 조정의 목적은 Pick 또는 Drop이 특정 군집에 과도하게 몰리지 않게 하고, 차량이 처리할 수 있는 규모로 작업을 나누는 것입니다.

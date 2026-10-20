@@ -724,6 +724,23 @@ REBAL_MIN_QTY = env_int("PBR_REBAL_MIN_QTY", 2)
 # 재현: experiments/params/top_limit_sweep.py
 TOP_STATION_LIMIT = env_int("PBR_TOP_STATION_LIMIT", 50)
 
+# ---- 수거 대수 학습 (EXPERIMENTS 56장 K, 1.26.375) ----
+# 수거 총량은 그대로 두고, 관측 재고로 배운 분위수 GBM이 '5시간 안에 0대가 되지 않고 뺄 수 있는 대수'를
+# 예측해 많이 뺄 수 있는 곳부터 채운다(pipeline/step1_cluster/pick_model.py). 시험 날 35회차와 새 평일 20회차에서
+# 두 번 모두 채택 후보였고(수거 무해 +14.8 · +11.6%p, 배송 적중 93.7 · 95.8%), 사용자가 기본으로 넣기로 했다(2026-10-20).
+#   auto : 운영 계획(실행 종류 plan: 웹 실행 폼 · 동시각 계획)에서만 켠다. 실험 · 재현은 지금 방식 그대로다(기본)
+#   on   : 실행 종류와 상관없이 켠다        off : 끈다(지금 방식)
+# 켜도 휴일 · 재고 시계열이 없거나 오래됨 · 학습 평일 부족이면 지금 방식으로 돌아가고 그 이유를 찍는다.
+PICK_MODEL = os.getenv("PBR_PICK_MODEL", "auto").strip().lower() or "auto"
+if PICK_MODEL not in ("auto", "on", "off"):
+    raise ValueError(f"환경변수 PBR_PICK_MODEL은 auto · on · off 중 하나여야 합니다 (입력: {PICK_MODEL!r}).")
+# 분위수 k. 56장이 고르기 날(09-17 ~ 23)에서 '수거 총량의 90% 이상을 채우는 가장 큰 k'로 고른 값이다.
+# 바꾸려면 같은 규칙으로 다시 고르고 확인 실행을 거친다(EXPERIMENTS 56장 '확인 실행').
+PICK_MODEL_QUANTILE = env_float("PBR_PICK_MODEL_QUANTILE", 0.7)
+# 학습에 쓰는 평일 수(계획 날 전의 가장 최근 평일, 하루 144틱의 80% 이상을 덮은 날).
+# ponytail: 운영 설정이다. 56장은 학습 날을 08-25 ~ 09-16으로 고정해 검증했다. 날마다 최근 날로 다시 학습한다
+PICK_MODEL_TRAIN_DAYS = env_int("PBR_PICK_MODEL_TRAIN_DAYS", 10)
+
 # ---- 목표 재고 상한 (거치대 대비 배수) ----
 # 목표 재고는 거치대 수를 그대로 상한으로 쓰지 않고 **거치대 x 1.5**까지 허용한다.
 # 자전거는 거치대 밖에도 세울 수 있고, 거치대가 적은 대여소(5대)에서 상한을 거치대에

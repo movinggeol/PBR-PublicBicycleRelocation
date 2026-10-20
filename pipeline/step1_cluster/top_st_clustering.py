@@ -501,11 +501,19 @@ if __name__ == '__main__':
     if st_info.empty:
         raise SystemExit(f"대여소 정보가 없습니다 — api_to_info.py를 먼저 돌리세요 ({now}).")
 
+    # 수거 대수 학습(EXPERIMENTS 56장 K, 1.26.375). 여기서만 불러온다: 실험은 이 모듈을 불러와
+    # select_top_unbalanced_st()를 쓰는데, 그 경로(원고 · 실험 기록의 '현행')에는 닿지 않게 한다.
+    try:
+        import pick_model
+    except ModuleNotFoundError:                  # 패키지 경로로 불렸다
+        from pipeline.step1_cluster import pick_model
+    run_kind = db.declared_run_kind()
+
     # 시간대 목록은 project_config의 --duration(콤마 구분)으로 지정
     for duration in duration_list(config):
         print('-'*100)
         print(f"< {duration[1:]} > 시간대 처리")
-        
+
         # 1차 : 재배치 대상 대여소 선택
         pick_drop = select_top_unbalanced_st(file_path.format(duration=duration, now=now), duration, st_info)
 
@@ -517,6 +525,14 @@ if __name__ == '__main__':
                   f"(Pick 또는 Drop 후보가 없어 옮길 곳이 없음)")
             continue
 
+        # 1차-2 : 수거를 수거 대수 학습(K)으로 다시 고른다. 배송 쪽과 수거 총량은 그대로다.
+        # 운영 계획(실행 종류 plan)에서만 켜고, 쓸 수 없으면 지금 선정 그대로 두며 그 이유를 찍는다.
+        st_rebal, _ = db.read_step_output('rebalance_plan', file_path.format(duration=duration, now=now),
+                                          run_label=now, duration=duration)
+        pick_drop, pick_rule = pick_model.apply(pick_drop, st_rebal, st_info, duration,
+                                                day_type=config.day_type, period=config.period,
+                                                run_kind=run_kind)
+
         # 2차 : 클러스터링
         pick_drop = make_clustering(pick_drop).copy()
         cluster_info = cal_cluster_info(pick_drop)
@@ -524,6 +540,7 @@ if __name__ == '__main__':
         # 3차 : 군집 간 불균형 조정
         pick_drop = adjust_clustering(pick_drop).copy()
         cluster_info = cal_cluster_info(pick_drop)
+        pick_drop["pick_rule"] = pick_rule           # '현행' 또는 'K0.7'. 저장한 계획이 어느 규칙인지 남긴다
 
         # 저장
         pick_drop.to_csv(clustered_file.format(duration=duration, now=now),encoding='utf-8', index=False)

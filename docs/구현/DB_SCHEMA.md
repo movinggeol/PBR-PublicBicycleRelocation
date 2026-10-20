@@ -315,9 +315,13 @@ DB 기록이 실패해도 파이프라인을 멈추지 않습니다(DB_PLAN 2단
 | `rebal_qty` | INTEGER | 양수=Drop, 음수=Pick |
 | `mu`, `sigma` | REAL | |
 | `cluster` | INTEGER | K-Medoids 군집 번호. **군집 1개 = 차량 1대** |
+| `pick_rule` | TEXT | 그 회차의 수거를 고른 규칙. `현행`(재배치량이 큰 순) 또는 `K0.7`(수거 대수 학습, 1.26.375). 그 전에 저장한 행은 NULL |
 
 `rebalance_plan`에서 `|rebal_qty| > 2`인 대여소를 골라 군집을 붙인 것입니다.
 전체 대여소가 아니라 **파이프라인이 실제로 손대는 대여소만** 들어 있습니다.
+`pick_rule`이 `K…`이면 수거 쪽은 수거 대수 학습(`pipeline/step1_cluster/pick_model.py`)이 다시 고른 것입니다. 그때는
+운영 식이 수거를 원하지 않는 대여소(`rebal_qty ≤ 2`)도 수거 행으로 들어오고, 수거 행의 `rebal_qty`는 운영 식의 값이 아니라
+모형이 정한 대수입니다(`target_qty − stock`과 맞지 않습니다).
 </details>
 
 <details>

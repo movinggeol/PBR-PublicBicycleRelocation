@@ -13,6 +13,13 @@
    - `|rebal_qty| > 2`인 대여소만 후보로
    - Pick(음수)·Drop(양수) 각각 작업량 내림차순 상위 50개 컷
    - 누적합(cumsum)이 `min(|총 Pick|, 총 Drop)` 이내가 되도록 잘라 Pick·Drop 총량 균형 맞춤
+1-2. **수거 대수 학습** `pick_model.apply()` (1.26.375, EXPERIMENTS 56장 K): **운영 계획(실행 종류 plan)에서만**
+   - 배송 쪽과 수거 총량은 그대로 두고 수거만 다시 고른다. 대여소마다 '5시간 안에 0대가 되지 않고 뺄 수 있는 대수'를
+     분위수 GBM(k 0.7)으로 예측해, 많이 뺄 수 있는 곳부터 수거 총량까지 채운다(상한 50곳, 2대 이하 버림).
+     운영 식이 수거를 원하지 않는 대여소(`rebal_qty ≤ 2`, 배송 대상은 뺀다)도 고를 수 있다
+   - 휴일 회차 · 재고 시계열이 없거나 30분보다 오래됨 · 마지막 관측이 회차 시작 2시간 전 ~ 1시간 뒤 밖 ·
+     학습 평일 5일 미만 · 예측 없음 · 고른 수거 0곳이면 지금 선정 그대로 두고 까닭을 찍는다
+   - 실험 · 재현(종류 experiment 또는 선언 없음)은 지금 선정 그대로다. `PBR_PICK_MODEL=on`이면 늘 켜고, `off`면 끈다
 2. **클러스터링** `make_clustering()`
    - K-Medoids (`kmedoids` 패키지, `method='fasterpam'`, `metric='manhattan'`,
      `random_state=CLUSTER_SEED` — 기본 42, `--seed` / `PBR_CLUSTER_SEED`로 바꾼다)
@@ -40,9 +47,35 @@
   실험이 재배치량을 파일 객체로 건네면 DB를 거치지 않고 그것을 쓴다)
 - **출력**: `data/pp_data/ILP/후보/top{duration} ({now}).csv`
   + SQLite `pick_drop` 테이블 (이중 기록, [DB_PLAN.md](../DB_PLAN.md) 2단계)
-  (station_id, station_name, lat, lon, parking_lot, stock, target_qty, rebal_qty, mu, sigma, cluster)
+  (station_id, station_name, lat, lon, parking_lot, stock, target_qty, rebal_qty, mu, sigma, cluster, pick_rule)
+  · `pick_rule`은 그 회차의 수거를 고른 규칙(`현행` 또는 `K0.7`)이다
 - **건너뜀**: Pick 또는 Drop 후보가 없어 선정 결과가 비면 `[건너뜀]`을 찍고 그 회차는
   저장하지 않는다. 대여소 정보가 없으면 멈춘다
+
+### `pick_model.py` (수거 대수 학습, 1.26.375)
+
+EXPERIMENTS 56장 K를 운영 코드로 옮긴 것이다. 시험 날 35회차와 새 평일 20회차에서 두 번 모두 채택 후보였고
+(수거 무해 +14.8 · +11.6%p, 배송 적중 93.7 · 95.8%, 거리 99.0 · 96.1%), 사용자가 기본으로 넣기로 했다(2026-10-20).
+
+| 함수 | 역할 |
+| --- | --- |
+| `apply` | 켤지 정하고(실행 종류 · 휴일 · 관측 신선도 · 학습 평일), 모형을 학습하거나 저장한 것을 읽어 수거를 다시 고른다 |
+| `training_days` | 회차 날 전의 평일 가운데 하루 144틱의 80% 이상을 덮은 날, 가장 최근 `PICK_MODEL_TRAIN_DAYS`(10)일 |
+| `load_grid` · `build_rows` | 재고 시계열을 10분 격자로 펴고, 30분 간격 틱마다 모든 대여소의 학습 행을 만든다(정답은 5시간 낙폭) |
+| `add_hybrid_train` · `quantile_tables` · `hybrid_values` | 대여소 × 회차의 학습 날 낙폭 분위수(학습 행은 그 날을 뺀 값) |
+| `fit` · `predict_safe` | 분위수 GBM 학습, 안전량(계획이 본 재고 − 예측 낙폭 − 1) |
+| `select_picks` · `take_until` | 안전량이 큰 곳부터 수거 총량까지(56장 `pick_mix.wide`와 같다) |
+
+- **모형 저장**: `data/models/pick_k0.7_{기간}_{마지막 학습 날}_{일수}d_v1.pkl`. 같은 학습 날이면 다시 배우지 않는다
+  (그날 첫 계획만 학습 시간을 낸다).
+- **비용(10-20 실측, 다른 계산과 함께 돌 때)**: 학습 평일 10일 · 학습 행 62만 9천 · 학습 4분 남짓 · 최대 메모리 528MB.
+  재고 시계열을 한꺼번에 읽어 펴던 첫 판은 1.1GB였다(하루씩 읽어 펴게 고쳤다).
+- **56장과 다른 점(운영 설정)**: 학습 날을 고정하지 않고 최근 평일로 날마다 다시 배운다. 입력은 마지막 관측 틱으로
+  만들고 안전량은 계획이 본 재고에서 뺀다.
+- **같은 값인지**: `tests/test_pick_model.py`가 같은 합성 격자로 56장 실험 코드(`pick_qty_ml` · `pick_redistribute` ·
+  `pick_mix`)와 행 · 혼합 입력 · 예측 · 고르기를 맞댄다.
+- step1은 이 모듈을 `__main__` 블록 안에서만 불러온다. 실험은 step1 모듈을 불러와 `select_top_unbalanced_st()`만 쓰므로
+  실험 기록과 원고의 '현행'에는 닿지 않는다.
 
 ### `adjust_module.py` (군집 조정 보조)
 
