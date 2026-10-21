@@ -247,3 +247,28 @@ def test_저장은_OUT_아래_png로_떨어진다(tool, 격리, capsys):
 
     assert (격리 / "시험-1.png").exists()
     assert "시험용" in capsys.readouterr().out
+
+
+def test_그림은_본문_폭으로_그려_글자가_줄지_않는다(tool):
+    """🔴 그림을 9 ~ 11인치로 그려 본문 폭(132mm)에 절반으로 줄여 실었더니 가장 작은 글자가 3.7 ~ 5.6pt였다
+    (2026-10-21 다시 그림). 모든 `subplots`의 폭이 `BODY_W`이고, 저장 검사가 줄어든 글자를 세는지 본다."""
+    import ast
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    tree = ast.parse(MODULE_PATH.read_text(encoding="utf-8"))
+    widths = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "subplots":
+            for kw in node.keywords:
+                if kw.arg == "figsize":
+                    widths.append(ast.unparse(kw.value.elts[0]))
+    assert widths and set(widths) == {"BODY_W"}, widths
+    assert tool.BODY_W == 5.2 and tool.PRINT_DPI >= 300
+
+    fig, ax = plt.subplots(figsize=(10.4, 3))
+    ax.set_title("제목", fontsize=8)
+    assert tool.printed_min_pt(fig, 10.4) == pytest.approx(4.0)      # 반으로 줄면 8pt가 4pt
+    assert tool.printed_min_pt(fig, 5.2) == pytest.approx(8.0)
+    plt.close(fig)

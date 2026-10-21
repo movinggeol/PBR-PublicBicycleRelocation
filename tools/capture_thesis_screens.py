@@ -48,6 +48,10 @@ BASE = "http://127.0.0.1:8000"
 LABEL = "2026-08-11 real"
 DURATION = "_05_10"
 VEHICLE = "V01"
+# 창 폭(CSS px). 본문 폭 132mm(5.2인치)에 실으므로 1280px로 찍으면 화면 14px 글자가 종이에서 4pt 남짓이 된다.
+# 760px이면 7pt 안팎이다(2026-10-21, TODO 논문 그림 ②). 글자가 흐리지 않게 2배 밀도로 찍는다.
+WIDTH = 760
+SCALE = 2
 
 
 def plan(base: str = BASE) -> list[dict]:
@@ -57,17 +61,19 @@ def plan(base: str = BASE) -> list[dict]:
     map_file = q(f"pp_data/VRP/visualization/vrp_map{DURATION} ({LABEL}).html")
     return [
         dict(key="4-4", name="그림4-4_경로지도", url=f"{base}/files/{map_file}",
-             viewport=(1200, 900), action="popup", what="경로 지도와 정보 창"),
-        dict(key="4-5", name="그림4-5_실행화면", url=f"{base}/run", viewport=(1280, 1000),
-             element="#run", what="실행 화면의 '새 실행' 폼"),
+             viewport=(WIDTH, 620), action="popup", what="경로 지도와 정보 창"),
+        dict(key="4-5", name="그림4-5_실행화면", url=f"{base}/run", viewport=(WIDTH, 1000),
+             element="#run", until_sel='label[for="f-raw"]',
+             what="실행 화면의 '새 실행' 폼(원천 CSV 칸 앞까지)"),
         dict(key="4-6", name="그림4-6_성과지표", url=f"{base}/kpi?run_label={q(LABEL)}",
-             viewport=(1280, 1000), clip_to="실행·회차별 지표", hide_empty="추세",
+             viewport=(WIDTH, 1000), from_sel=".tiles", clip_to="실행·회차별 지표", hide_empty="추세",
              what="성과 지표 화면 윗부분"),
         dict(key="4-7", name="그림4-7_작업지시서", url=f"{base}/orders?{run}&vehicle={VEHICLE}",
-             viewport=(900, 1000), media="print", what=f"작업지시서 인쇄 미리보기({VEHICLE})"),
+             viewport=(WIDTH, 1000), media="print", rows=6,
+             what=f"작업지시서 인쇄 미리보기({VEHICLE}, 앞 6행)"),
         dict(key="4-8", name="그림4-8_실시간대조", url=f"{base}/orders/live?{run}&vehicle={VEHICLE}",
-             viewport=(1280, 1000), live=True, clip_from="지금 재고와 대조", clip_to="footer",
-             what=f"실시간 재고 대조({VEHICLE})"),
+             viewport=(WIDTH, 1000), live=True, clip_from="지금 재고와 대조", rows=4,
+             what=f"실시간 재고 대조({VEHICLE}, 앞 4행)"),
     ]
 
 
@@ -81,7 +87,7 @@ def server_up(base: str, timeout: float = 3.0) -> bool:
 
 def _shoot(browser, item: dict) -> Path:
     width, height = item["viewport"]
-    page = browser.new_page(viewport={"width": width, "height": height})
+    page = browser.new_page(viewport={"width": width, "height": height}, device_scale_factor=SCALE)
     errors: list = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     if item.get("media"):
@@ -123,12 +129,20 @@ def _shoot(browser, item: dict) -> Path:
         page.evaluate("""() => { for (const e of document.querySelectorAll('*')) {
             const p = getComputedStyle(e).position;
             if (p === 'sticky' || p === 'fixed') e.style.position = 'static'; } }""")
-        page.locator(item["element"]).screenshot(path=str(path))
-    elif item.get("clip_to"):
-        # 제목 두 개 사이를 자른다. 제목의 부모 요소로 자르면 부모가 페이지 전체라
-        # 잘리지 않았다(처음 찍은 성과 지표 화면) — 그래서 **다음 제목의 위치**를 경계로 쓴다.
+        box = page.evaluate("""([sel, until]) => {
+            const r = document.querySelector(sel).getBoundingClientRect();
+            const u = until ? document.querySelector(until) : null;
+            const bottom = u ? u.getBoundingClientRect().top - 12 : r.bottom;
+            return [r.left + scrollX, r.top + scrollY, r.width, bottom - r.top];
+        }""", [item["element"], item.get("until_sel")])
+        page.screenshot(path=str(path), full_page=True,
+                        clip={"x": box[0], "y": box[1], "width": box[2], "height": box[3]})
+    elif item.get("clip_to") or item.get("rows") or item.get("from_sel"):
+        # 위 경계는 제목(clip_from) · 선택자(from_sel) · 페이지 맨 위 가운데 하나, 아래 경계는 다음 제목(clip_to)이나
+        # 표의 n번째 행 아래(rows). 제목의 부모 요소로 자르면 부모가 페이지 전체라 잘리지 않았다(처음 찍은
+        # 성과 지표 화면) — 그래서 **경계 요소의 위치**를 쓴다. 760px로 찍으면 세로가 길어져 표는 앞 몇 행만 싣는다.
         box = page.evaluate(
-            """([start, stop]) => {
+            """([start, startSel, stop, rows]) => {
                 const top = (text) => {
                     if (text === 'footer') { const f = document.querySelector('footer');
                                              return f ? f.getBoundingClientRect().top + scrollY : null; }
@@ -136,11 +150,21 @@ def _shoot(browser, item: dict) -> Path:
                         .find(e => e.innerText.trim().startsWith(text));
                     return h ? h.getBoundingClientRect().top + scrollY : null;
                 };
-                return [start ? top(start) : 0, top(stop)];
-            }""", [item.get("clip_from"), item["clip_to"]])
+                const y0 = startSel ? (document.querySelector(startSel)?.getBoundingClientRect().top ?? NaN) + scrollY
+                                    : (start ? top(start) : 0);
+                let y1 = null;
+                if (rows) {
+                    const trs = [...document.querySelectorAll('table tbody tr')]
+                        .filter(r => r.getBoundingClientRect().top + scrollY > y0);
+                    if (trs.length >= rows) y1 = trs[rows - 1].getBoundingClientRect().bottom + scrollY + 14;
+                } else {
+                    y1 = top(stop);
+                }
+                return [Number.isNaN(y0) ? null : y0, y1];
+            }""", [item.get("clip_from"), item.get("from_sel"), item.get("clip_to"), item.get("rows")])
         if None in box:
-            raise RuntimeError(f"자를 경계 제목을 찾지 못했습니다 {item.get('clip_from')!r}~"
-                               f"{item['clip_to']!r} - 화면이 바뀌었습니다.")
+            raise RuntimeError(f"자를 경계를 찾지 못했습니다 {item.get('clip_from') or item.get('from_sel')!r}~"
+                               f"{item.get('clip_to') or item.get('rows')!r} - 화면이 바뀌었습니다.")
         y0 = max(box[0] - 12, 0)
         page.screenshot(path=str(path), full_page=True,
                         clip={"x": 0, "y": y0, "width": width, "height": box[1] - 8 - y0})

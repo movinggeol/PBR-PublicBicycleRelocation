@@ -50,3 +50,12 @@ def test_실시간_대조는_live_없이_서버에_닿지_않는다(tool, monkey
 def test_대시보드가_없으면_띄울_명령을_말한다(tool, capsys):
     assert tool.main(["--only", "4-5", "--base", "http://127.0.0.1:9"]) == 1
     assert "python -m webapp" in capsys.readouterr().out
+
+
+def test_화면은_본문_폭에서_글자가_읽히는_폭으로_찍는다(tool):
+    """1280px로 찍어 132mm에 실으면 화면 14px 글자가 4pt 남짓이었다(2026-10-21). 모든 화면을 760px 이하로,
+    2배 밀도로 찍고, 세로로 긴 표는 앞 몇 행만 자른다."""
+    assert tool.WIDTH <= 760 and tool.SCALE >= 2
+    items = tool.plan("http://x")
+    assert all(i["viewport"][0] == tool.WIDTH for i in items)
+    assert {i["key"]: i.get("rows") for i in items if i.get("rows")} == {"4-7": 6, "4-8": 4}

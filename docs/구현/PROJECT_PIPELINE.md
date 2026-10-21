@@ -53,7 +53,7 @@ CSV 경로로 갈 때를 대비해 파일명 규약은 그대로 지킵니다 �
 │   ├── step3_map/
 │   └── step4_metrics/
 ├── webapp/                               # 웹 대시보드 (FastAPI + Jinja2)
-├── tests/                                # pytest 1350개(43개 파일)
+├── tests/                                # pytest 1352개(43개 파일)
 ├── tools/                                # 합성 데이터·적재·백테스트·재고 수집 도구
 ├── scripts/                              # 수집기 운영·게이트 A 재실행·PATH 셋업 (PowerShell)
 ├── experiments/                          # 파라미터 실험·구조 결정용 측정
