@@ -1456,6 +1456,32 @@ def test_F2_평균이_나아도_한_구간이_나빠지면_통과하지_않는�
     assert f2.bins_not_worse(pair, names)
 
 
+def test_F2_A3는_평소_빔_비율을_넘는_몫만_가중한다(f2):
+    """41장 다음 후보(2026-10-21 등록) — 늘 비는 곳은 확률이 높아도 앞당기지 않는다."""
+    rebal = _재배치량_프레임([9, 6, 5, -8, -7, -5])
+    info = _대여소정보(6)
+    p = pd.Series({"ST0001": 0.2, "ST0002": 0.9, "ST0003": 0.9, "ST0004": 0.0, "ST0005": 0.0, "ST0006": 0.0})
+    base = pd.Series({"ST0001": 0.2, "ST0002": 0.9, "ST0003": 0.1})   # ST0002는 늘 빈다 · ST0003은 평소보다 높다
+
+    got = f2.a3_select(rebal, info, p, base)
+
+    drops = got[got["rebal_qty"] > 0]["station_id"].tolist()
+    assert drops[0] == "ST0003"                        # 5 × (0.5 + 0.8) = 6.5 > 9 × 0.5 = 4.5
+    assert drops.index("ST0001") < drops.index("ST0002")   # 초과분 0이면 rebal_qty 순(9 > 6)
+    same = f2.a3_select(rebal, info, p, p)             # 확률이 모두 평소와 같으면 현행 순서
+    assert list(same["station_id"]) == list(f2.select_ordered(rebal, info)["station_id"])
+
+
+def test_F2_기본_방법은_41장_판정_그대로이고_since는_앞선_날을_뺀다(f2):
+    from datetime import date
+
+    assert f2.METHODS == ("현행", "A1", "A2")
+    stamps = pd.date_range("2026-09-14", "2026-09-25 23:50", freq="10min")
+    frame = pd.DataFrame({"ts": stamps, "station_id": "ST0001", "stock": 1, "빔": 0})
+    days = f2.eval_days(frame, since=date(2026, 9, 23))
+    assert days and min(days) == date(2026, 9, 23)
+
+
 def test_F2_평가하는_날은_앞선_학습_날이_있는_온전한_평일이다(f2):
     """확률은 그날보다 앞선 날로만 학습한다 — 앞선 날이 모자란 날은 평가하지 않는다."""
     from datetime import date

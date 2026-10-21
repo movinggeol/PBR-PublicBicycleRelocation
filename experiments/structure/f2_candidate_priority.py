@@ -8,6 +8,9 @@
 연결 방식 (ML_고도화_계획 3장에 먼저 적었다 — 둘 다 재고, 결과를 본 뒤 하나만 고르지 않는다)
   A1 필터 : 수거 후보에서 P(빔, 1시간) ≥ 0.5인 곳을 뺀다 · 배송 후보는 P(빔, 1시간)가 높은 순
   A2 가중 : 배송 점수 = rebal_qty × (0.5 + P(빔, 창 길이)) 로 상위 N을 자른다 · 수거는 현행
+  A3 초과분 가중 (41장 '다음 후보', 2026-10-21 등록 — 판정은 10-19 이후 새 평일 20일, `--methods 현행,A3 --since 2026-10-19`):
+           배송 점수 = rebal_qty × (0.5 + max(0, P(빔, 창 길이) − 그 대여소의 그 시 과거 빔 비율)) · 수거는 현행.
+           A1 · A2가 평소 자주 비는 곳을 앞당겨 잘 비지 않는 곳에서 진 것(1.26.376)을 덜어 내려는 것이다
 
 어떻게 재나
   · 날: 24시간을 온전히 덮은 **평일**. 날마다 회차 시작 시각의 **관측 재고**를 출발 재고로 둔다.
@@ -55,6 +58,8 @@ TICK_MINUTES = sf.TICK_MINUTES
 PICK_EMPTY_CUT = 0.5          # A1: 수거 후보에서 뺄 확률
 A1_HORIZON = 6                # A1: 1시간 뒤
 A2_FLOOR = 0.5                # A2: 배송 점수의 바닥 가중
+A3_FLOOR = 0.5                # A3: 같은 바닥 가중(A2와 같게 둔다)
+METHODS = ("현행", "A1", "A2")  # 기본 — 41장 판정(1.26.376)이 돌린 그대로. A3는 --methods로만
 SEEDS = (42, 7, 13)
 ADOPT_MIN_DAYS = 20           # 채택 판정은 평일 20일부터
 COST_TOLERANCE = 0.05         # 포화 · 이동거리 · 차량 수 +5% 안
@@ -112,6 +117,14 @@ def a1_select(rebal, st_info, p_hour: pd.Series) -> pd.DataFrame:
                           pick_exclude=doomed)
 
 
+def a3_select(rebal, st_info, p_window: pd.Series, base_rate: pd.Series) -> pd.DataFrame:
+    """A3 초과분 가중 — 배송 점수 = rebal_qty × (0.5 + max(0, P(빔, 창 길이) − 과거 빔 비율))."""
+    def score(d):
+        excess = (d["station_id"].map(p_window).fillna(0.0) - d["station_id"].map(base_rate).fillna(0.0)).clip(lower=0.0)
+        return d["rebal_qty"] * (A3_FLOOR + excess)
+    return select_ordered(rebal, st_info, drop_score=score)
+
+
 def a2_select(rebal, st_info, p_window: pd.Series) -> pd.DataFrame:
     """A2 가중 — 배송 점수 = rebal_qty × (0.5 + P(빔, 창 길이))."""
     return select_ordered(
@@ -130,7 +143,7 @@ def window_ticks(duration: str) -> int:
     return len(duration_hours(duration)) * TICKS_PER_HOUR
 
 
-def eval_days(frame: pd.DataFrame, only=None) -> list:
+def eval_days(frame: pd.DataFrame, only=None, since=None) -> list:
     """평가할 날 — 24시간을 온전히 덮은 평일 중 앞선 학습 날이 `MIN_TRAIN_DAYS` 이상인 날."""
     dense = sf.dense_days(frame)
     ticks = frame.groupby(frame["ts"].dt.date)["ts"].nunique()
@@ -142,6 +155,8 @@ def eval_days(frame: pd.DataFrame, only=None) -> list:
         if sum(1 for d in dense if d < day) < MIN_TRAIN_DAYS:
             continue
         if only and day not in only:
+            continue
+        if since and day < since:
             continue
         out.append(day)
     return out
@@ -296,6 +311,9 @@ def main(argv=None) -> int:
     parser.add_argument("--days", default="", help="평가할 날만 (쉼표, YYYY-MM-DD)")
     parser.add_argument("--seeds", default=",".join(str(s) for s in SEEDS))
     parser.add_argument("--out", help="(날, 회차, 방법, 씨앗) 행을 CSV로 남긴다 — 80분짜리 실행을 되짚으려면 꼭 준다")
+    parser.add_argument("--methods", default=",".join(METHODS),
+                        help="현행 · A1 · A2 · A3 가운데 (기본 현행,A1,A2 = 41장 판정 그대로). 현행은 늘 넣는다")
+    parser.add_argument("--since", default="", help="이 날(YYYY-MM-DD)부터만 평가한다 — A3 판정은 2026-10-19")
     parser.add_argument("--run-label", default="",
                         help="거치대 · 좌표를 읽을 계획 실행 (기본: 자료 끝 전 가장 최근 계획, 41장 등록)")
     args, _ = parser.parse_known_args(argv)
@@ -304,6 +322,11 @@ def main(argv=None) -> int:
     seeds = [int(s) for s in args.seeds.split(",") if s.strip()]
     only = {datetime.strptime(d.strip(), "%Y-%m-%d").date()
             for d in args.days.split(",") if d.strip()} or None
+    since = datetime.strptime(args.since, "%Y-%m-%d").date() if args.since else None
+    methods = ["현행"] + [m.strip() for m in args.methods.split(",") if m.strip() and m.strip() != "현행"]
+    unknown = set(methods) - {"현행", "A1", "A2", "A3"}
+    if unknown:
+        parser.error(f"모르는 방법: {', '.join(sorted(unknown))}")
 
     step1 = bc.load_step1()
     project_config.align_day_type("weekday", bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
@@ -318,7 +341,7 @@ def main(argv=None) -> int:
 
     with db.session() as conn:
         frame = sf.load_grid(conn)
-    days = eval_days(frame, only)
+    days = eval_days(frame, only, since)
     print(f"\n평가할 평일 {len(days)}일: {', '.join(str(d) for d in days) or '없음'}"
           f" · 순수요 {args.period} · 씨앗 {seeds}")
     if not days:
@@ -368,7 +391,9 @@ def main(argv=None) -> int:
         missing = int(p1.reindex(fill.index).isna().sum())
         p1 = p1.reindex(fill.index).fillna(fill)
         pk = pk.reindex(fill.index).fillna(fill)
-        chosen = {"현행": current, "A1": a1_select(rebal, info, p1), "A2": a2_select(rebal, info, pk)}
+        every = {"현행": lambda: current, "A1": lambda: a1_select(rebal, info, p1),
+                 "A2": lambda: a2_select(rebal, info, pk), "A3": lambda: a3_select(rebal, info, pk, base_rate)}
+        chosen = {m: every[m]() for m in methods}
         bins = info["station_id"].map(base_rate).fillna(0.0).map(bin_label)
         bins.index = info["station_id"].to_numpy()
 

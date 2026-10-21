@@ -18,7 +18,12 @@
 손잡이(H는 k 0.85와 표 0.95, K는 k 0.7 고정, 다시 고르지 않는다) · 판정 다섯은 56장 그대로다. 자료 끝 · 참조 계획 · 대여소
 정보는 확인 자료 끝(CONFIRM_UNTIL) 기준이다(54장 확인 실행과 같은 방식).
 
+휴일 실행(57장, 2026-10-21 등록): 같은 하네스를 휴일에 돌린다. 학습은 HOLIDAY_TRAIN_UNTIL까지의 휴일, 시험은 HOLIDAY_TEST_FROM
+뒤의 휴일 회차, K의 손잡이는 평일 운영값 0.7 고정(고르기 휴일을 따로 두기엔 휴일이 모자라다). 순수요 · 기준 통계 · 도로 계수는 휴일 것이다.
+
 실행:
+    python experiments/structure/pick_mix.py --holiday --sanity  # 휴일 실행의 입력 점검(결과 없이)
+    python experiments/structure/pick_mix.py --holiday           # 휴일 실행(57장)
     python experiments/structure/pick_mix.py --sanity --limit 4   # 결과 없이 입력 · 후보 크기 · 고른 손잡이 · DB 지문만
     python experiments/structure/pick_mix.py                      # 등록판(56장)
     python experiments/structure/pick_mix.py --confirm --sanity   # 확인 실행의 입력 점검(결과 없이)
@@ -69,6 +74,12 @@ CONFIRM_FROM = "2026-10-12 15:00"        # 56장 시험에 들지 않은 첫 평
 CONFIRM_UNTIL = "2026-10-19 16:10"       # 회사 PC 자료(10-12 ~ 10-19 16:00)의 끝 + 한 틱. 이 PC가 그 뒤에 모은 틱은 쓰지 않는다
 CONFIRM_K = 0.7                          # 56장에서 고른 K의 손잡이 그대로(다시 고르지 않는다)
 CONFIRM_FINGERPRINT = (8220990, "2026-10-19 16:00", 150)   # 합친 직후(10-20) 찍어 결과 전에 적었다
+# 휴일 실행 (57장, 2026-10-21 등록) — 결과 전에 적는다
+HOLIDAY_UNTIL = "2026-10-19 06:00"       # 마지막 시험 휴일(10-18) 20~05시 회차의 5시간 창이 닫힌 뒤
+HOLIDAY_TRAIN_UNTIL = "2026-10-05"       # 학습: 이 날까지의 휴일(09-12 · 09-19 · 20 · 추석 09-24 ~ 27 · 10-03 ~ 05)
+HOLIDAY_TEST_FROM = "2026-10-09"         # 시험: 10-09 ~ 11 · 10-17 · 18 (5일)
+HOLIDAY_K = 0.7                          # 평일 운영값 그대로(다시 고르지 않는다)
+HOLIDAY_FINGERPRINT = (8149282, "2026-10-19 05:50", 150)   # 등록 전(10-21)에 찍어 적었다
 
 
 def fingerprint_at(conn, until: str) -> tuple:
@@ -234,26 +245,31 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--sanity", action="store_true", help="결과 없이 입력 · 후보 크기 · 고른 손잡이 · DB 지문만 찍는다")
     parser.add_argument("--limit", type=int, default=0, help="--sanity에서 시험 회차를 이만큼만 돈다")
+    parser.add_argument("--holiday", action="store_true",
+                        help=f"휴일 실행(57장): 학습 {HOLIDAY_TRAIN_UNTIL}까지의 휴일 · 시험 {HOLIDAY_TEST_FROM} 뒤 휴일 회차 · k {HOLIDAY_K} 고정")
     parser.add_argument("--confirm", action="store_true",
                         help=f"확인 실행: 56장 설정 그대로, {CONFIRM_FROM} 뒤 평일 회차만 채점(끝 {CONFIRM_UNTIL})")
     args = parser.parse_args(argv)
 
-    until = CONFIRM_UNTIL if args.confirm else UNTIL
-    registered = CONFIRM_FINGERPRINT if args.confirm else FINGERPRINT
+    if args.confirm and args.holiday:
+        parser.error("--confirm과 --holiday는 함께 쓰지 않는다")
+    until = CONFIRM_UNTIL if args.confirm else HOLIDAY_UNTIL if args.holiday else UNTIL
+    registered = CONFIRM_FINGERPRINT if args.confirm else HOLIDAY_FINGERPRINT if args.holiday else FINGERPRINT
+    day_type = "holiday" if args.holiday else "weekday"
     step1 = bc.load_step1()
     solver = bc.ilp_mod.build_solver()
     with db.session() as conn:
         mark = fingerprint_at(conn, until)
         print(f"DB 지문(끝 {until} 전 재고 행 · 마지막 관측 · 실행 수): {mark}")
         if not args.sanity and registered is None:
-            raise SystemExit("확인 실행의 DB 지문이 등록에 없다. 합친 직후 찍은 값을 CONFIRM_FINGERPRINT와 56장 등록에 적고 돌린다")
+            raise SystemExit("이 실행의 DB 지문이 등록에 없다. 찍은 값을 상수(CONFIRM_ · HOLIDAY_FINGERPRINT)와 등록에 적고 돌린다")
         if not args.sanity and mark != registered:
             raise SystemExit(f"DB가 등록 때({registered})와 다르다 — 등록을 고치거나 덧붙임으로 적고 돌린다")
-        refs = pv.load_refs(conn, "weekday", before=until)
+        refs = pv.load_refs(conn, day_type, before=until)
         raw = sf.load_grid(conn)
         label, info = wv.snapshot(conn, until)
     raw = raw[raw["ts"] < pd.Timestamp(until)]
-    net = pv.load_net("weekday")
+    net = pv.load_net(day_type)
     for dur, (frame, _lab) in list(refs.items()):
         refs[dur] = pv.current_stats(frame, net, dur)
     stock = raw.pivot_table(index="ts", columns="station_id", values="stock")
@@ -261,13 +277,16 @@ def main(argv=None) -> int:
                                        freq=pv.TICK, inclusive="left"))
     dense = sf.dense_days(raw)
     hol = dict(zip(dense, holiday_mask(pd.Series(pd.to_datetime(dense)))))
-    weekdays = [d for d in dense if not hol[d]]
+    weekdays = [d for d in dense if hol[d] == args.holiday]   # 휴일 실행이면 휴일만(이름은 옛것 그대로)
     lo_, hi_ = (pd.Timestamp(d).date() for d in TRAIN)
     pk_lo, pk_hi = (pd.Timestamp(d).date() for d in PICK_DAYS)
     test_from = pd.Timestamp(TEST_FROM).date()
     confirm_from = pd.Timestamp(CONFIRM_FROM)
 
     def part(d):
+        if args.holiday:                     # 고르기 날 없음(k 고정)
+            return ("학습" if d <= pd.Timestamp(HOLIDAY_TRAIN_UNTIL).date()
+                    else "시험" if d >= pd.Timestamp(HOLIDAY_TEST_FROM).date() else "쓰지 않음")
         if args.confirm:                     # 학습 날은 56장 그대로, 고르기 날은 쓰지 않는다(K는 고정), 확인 날만 '시험'
             return "학습" if lo_ <= d <= hi_ else "시험" if d >= confirm_from.date() else "쓰지 않음"
         return "학습" if lo_ <= d <= hi_ else "고르기" if pk_lo <= d <= pk_hi else "시험" if d >= test_from else "쓰지 않음"
@@ -281,11 +300,17 @@ def main(argv=None) -> int:
     print(f"관측 자료: {raw['ts'].min()} ~ {raw['ts'].max()} (끝 {until}) · 대여소 정보 '{label}' · 모든 대여소 행 {len(rows_all):,}")
     m1, tt = fit_wide(rows_all, rows_all["시작뒤분"] == 0)
 
-    inst_all = [x for x in wv.instances(raw, grid) if x[2] == "weekday"]
+    inst_all = [x for x in wv.instances(raw, grid) if x[2] == day_type]
     todo_pick = [x for x in inst_all if part(x[0]) == "고르기"]
     todo = [x for x in inst_all if part(x[0]) == "시험"]
-    project_config.align_day_type("weekday", bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
-    if args.confirm:
+    project_config.align_day_type(day_type, bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
+    if args.holiday:
+        last = raw["ts"].max()
+        todo = [x for x in todo if grid.index[x[3]] + pd.Timedelta(minutes=H * project_config.STOCK_TICK_MINUTES) <= last]
+        k_star = HOLIDAY_K
+        print(f"휴일 실행: 학습 휴일 {sorted({d for d in weekdays if part(d) == '학습'})} · K의 손잡이 k = {k_star}(평일 운영값) · 시험 회차 "
+              + ", ".join(f"{d} {u}" for d, u, *_ in todo))
+    elif args.confirm:
         # 56장 시험 뒤의 회차만, 그리고 5시간 창이 자료 끝 전에 닫힌 것만(창이 안 닫힌 회차는 채점할 수 없다)
         last = raw["ts"].max()
         todo = [x for x in todo if grid.index[x[3]] >= confirm_from
@@ -347,7 +372,8 @@ def main(argv=None) -> int:
 
     frame = pd.DataFrame(out)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    frame.to_csv(OUT_DIR / ("rows_confirm.csv" if args.confirm else "rows.csv"), index=False, encoding="utf-8-sig")
+    name = "rows_confirm.csv" if args.confirm else "rows_holiday.csv" if args.holiday else "rows.csv"
+    frame.to_csv(OUT_DIR / name, index=False, encoding="utf-8-sig")
     report(frame, k_star)
     return 0
 
