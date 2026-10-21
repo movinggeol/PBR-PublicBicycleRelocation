@@ -69,6 +69,7 @@ def run_pipeline(raw_path: Path, db_path: Path, durations: str) -> None:
         "--duration", durations,
         "--raw-file", str(raw_path),
         "--day-type", "weekday",
+        "--overwrite-run",          # 재현 전용 DB(data/재현.db)라 지난번 '데모'를 덮어도 된다(1.26.382)
     ]
     env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8",
                PBR_DB_PATH=str(db_path))

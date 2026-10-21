@@ -1107,3 +1107,33 @@ def test_군집_지도의_점은_눌러도_값이_남는다(tmp_path, monkeypatc
     # 팝업은 멈춰 서서 읽는 것이라 풍선보다 더 싣는다 — 같은 글을 두 벌
     # 띄우면 클릭이 아무것도 더 주지 않는다.
     assert "수요 표준편차(sigma)" in html, "팝업이 풍선과 같은 것만 말한다"
+
+
+def test_운영_계획의_기본_라벨은_지금_시각이고_다른_날_만든_실행은_덮지_않는다(tmp_path, monkeypatch, capsys):
+    """🔴 2026-10-21 — `--now` 없이 띄운 운영 계획이 기본 라벨 '2026-05-21 18'로 써서 08-23에 만든 실제 실행의
+    스냅샷을 덮었다(1.26.382). 운영 계획은 지금 시각을 라벨로 쓰고, 다른 날 만든 같은 라벨은 `--overwrite-run`
+    없이는 멈춘다. 같은 날 다시 돌리는 것(웹 폼에서 같은 시각 재실행)은 막지 않는다."""
+    from datetime import datetime
+
+    import db
+    import run_pipeline
+
+    assert run_pipeline.plan_label_now(datetime(2026, 10, 21, 5, 36)) == "2026-10-21 05"
+
+    path = tmp_path / "t.db"
+    monkeypatch.setenv("PBR_DB_PATH", str(path))
+    with db.session() as conn:
+        pass
+        conn.execute("INSERT INTO runs (run_label, duration, created_at, kind) VALUES (?, ?, ?, ?)",
+                     ("2026-05-21 18", "_05_10", "2026-08-23 16:49:20", "plan"))
+        conn.execute("INSERT INTO runs (run_label, duration, created_at, kind) VALUES (?, ?, ?, ?)",
+                     ("2026-10-21 05", "_05_10", "2026-10-21 05:38:00", "plan"))
+        conn.commit()
+    now = datetime(2026, 10, 21, 7, 0)
+    assert "2026-08-23" in run_pipeline.label_conflict("2026-05-21 18", now)
+    assert run_pipeline.label_conflict("2026-10-21 05", now) == ""     # 같은 날 다시 돌리기
+    assert run_pipeline.label_conflict("새 라벨", now) == ""
+
+    monkeypatch.setattr(sys, "argv", ["run_pipeline.py", "--now", "2026-05-21 18", "--skip-map"])
+    assert run_pipeline.main() == 2
+    assert "--overwrite-run" in capsys.readouterr().out

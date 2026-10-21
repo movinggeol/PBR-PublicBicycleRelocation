@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Iterable
 
 from project_config import (
-    CLUSTER_SEED, DAY_TYPE_AUTO, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_FLEET_SIZE,
+    CLUSTER_SEED, DAY_TYPE_AUTO, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_FLEET_SIZE, DEFAULT_NOW,
     DEFAULT_VEHICLES_PER_ROUND, DEFAULT_WARMUP_DAYS, ensure_output_dirs,
     get_runtime_config, normalize_fleet_size, normalize_per_round,
     snapshot_labels, snapshot_paths,
@@ -93,7 +93,10 @@ def parse_args() -> argparse.Namespace:
 
     # 분석 시점과 입력 파일 옵션입니다.
     # 각 하위 스크립트에 전달해 공통 설정으로 사용할 수 있도록 합니다.
-    parser.add_argument("--now", help="분석 시점. 예: 2026-05-21 18")
+    parser.add_argument("--now", help="분석 시점(실행 라벨). 예: 2026-05-21 18."
+                                      " --run-kind plan이면서 주지 않으면 지금 시각(시 단위)을 쓴다")
+    parser.add_argument("--overwrite-run", action="store_true",
+                        help="다른 날 만든 같은 라벨의 실행이 있어도 덮어쓴다(없으면 멈춘다)")
     parser.add_argument("--period", help="순수요 입력 기간. 예: 25년 11월")
     parser.add_argument("--duration", help="시간대 구간. 예: _05_10")
     parser.add_argument("--raw-file", help="원천 CSV 경로(프로젝트 루트 기준)")
@@ -456,6 +459,35 @@ def format_elapsed(seconds: float) -> str:
     return f"{int(seconds // 60)}분 {seconds % 60:.0f}초"
 
 
+def plan_label_now(clock=None) -> str:
+    """운영 계획의 기본 라벨 — 지금 시각(시 단위). 웹 실행 폼의 기본값과 같은 꼴이다."""
+    from datetime import datetime
+    return (clock or datetime.now()).strftime("%Y-%m-%d %H")
+
+
+def label_conflict(label: str, clock=None) -> str:
+    """같은 라벨의 실행이 **다른 날** 만들어져 있으면 그 까닭을, 아니면 빈 문자열을 돌려준다.
+
+    2026-10-21에 `--now` 없이 띄운 계획이 기본 라벨(`DEFAULT_NOW`)로 써서 08-23에 만든 실제 실행의
+    스냅샷을 덮었다(TODO 맨 위 행). 같은 날 다시 돌리는 것(웹 폼에서 같은 시각 재실행)은 막지 않는다.
+    """
+    from datetime import datetime
+    import db
+    try:
+        with db.session() as conn:
+            row = conn.execute("SELECT MIN(created_at) FROM runs WHERE run_label = ?", (label,)).fetchone()
+    except Exception:          # DB가 없거나 runs가 없는 새 클론 — 덮을 것이 없다
+        return ""
+    created = row[0] if row else None
+    if not created:
+        return ""
+    today = (clock or datetime.now()).strftime("%Y-%m-%d")
+    if str(created)[:10] == today:
+        return ""
+    return (f"실행 '{label}'이 이미 있다({created}에 만듦). 덮으면 그 실행의 재고 스냅샷과 산출물이 바뀐다. "
+            f"새 라벨을 --now로 주거나, 정말 덮으려면 --overwrite-run을 준다")
+
+
 def main() -> int:
     """전체 파이프라인을 실행하고 실패 상태를 반환합니다."""
 
@@ -473,6 +505,16 @@ def main() -> int:
     except ValueError as err:
         print(f"설정 오류: {err}")
         return 2
+
+    # 실행 라벨(1.26.382) — 운영 계획은 --now가 없으면 지금 시각을 쓰고, 다른 날 만든 실행은 덮지 않는다.
+    if not args.now and getattr(args, "run_kind", None) == "plan":
+        args.now = plan_label_now()
+        print(f"실행 라벨을 주지 않아 지금 시각으로 정했습니다: '{args.now}'")
+    if not args.dry_run and not args.overwrite_run:
+        problem = label_conflict(args.now or DEFAULT_NOW)
+        if problem:
+            print(f"멈춥니다: {problem}")
+            return 2
 
     print("=== Public Bike Rebalancing Pipeline ===")
     # 요일 구분은 auto일 수 있으므로 **해석된 값**을 보여준다.
