@@ -245,6 +245,8 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--sanity", action="store_true", help="결과 없이 입력 · 후보 크기 · 고른 손잡이 · DB 지문만 찍는다")
     parser.add_argument("--limit", type=int, default=0, help="--sanity에서 시험 회차를 이만큼만 돈다")
+    parser.add_argument("--k", type=float, default=None,
+                        help="비교 실행: K의 손잡이를 이 값으로 바꾼다(격자 안의 값, 판정 아님. 행은 rows_*_k<값>.csv)")
     parser.add_argument("--holiday", action="store_true",
                         help=f"휴일 실행(57장): 학습 {HOLIDAY_TRAIN_UNTIL}까지의 휴일 · 시험 {HOLIDAY_TEST_FROM} 뒤 휴일 회차 · k {HOLIDAY_K} 고정")
     parser.add_argument("--confirm", action="store_true",
@@ -322,6 +324,11 @@ def main(argv=None) -> int:
         k_star, ratio = choose_k([(d, u, dt, grid.index[i], s) for d, u, dt, i, s in todo_pick], info, net, m1, step1)
         print(f"K — 고르기 날 {len(todo_pick)}회차에서 k마다 수거 총량을 채운 비율: "
               + " · ".join(f"{k} {r:.1%}" for k, r in ratio.items()) + f" → k = {k_star}")
+    if args.k is not None:
+        if args.k not in K_GRID:
+            parser.error(f"--k는 격자 {K_GRID} 안의 값이어야 한다")
+        print(f"🔴 비교 실행: K의 손잡이를 {k_star} → {args.k}로 바꾼다. 등록된 판정이 아니다")
+        k_star = args.k
     print(f"시험 회차 {len(todo)}개 · 수거 상한 {TOP_STATION_LIMIT}곳")
     if args.sanity and args.limit:
         todo = todo[:args.limit]
@@ -373,6 +380,8 @@ def main(argv=None) -> int:
     frame = pd.DataFrame(out)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     name = "rows_confirm.csv" if args.confirm else "rows_holiday.csv" if args.holiday else "rows.csv"
+    if args.k is not None:
+        name = name.replace(".csv", f"_k{args.k:g}.csv")
     frame.to_csv(OUT_DIR / name, index=False, encoding="utf-8-sig")
     report(frame, k_star)
     return 0
