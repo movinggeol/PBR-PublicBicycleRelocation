@@ -1496,6 +1496,42 @@ def test_F2_평가하는_날은_앞선_학습_날이_있는_온전한_평일이�
     assert all(d.weekday() < 5 for d in days)
 
 
+def test_F2_A3_조기_확인은_9월_초_평일의_낮_두_회차만_시작_전_3시간이_찬_것으로_고른다(f2):
+    """41장 덧붙임(2026-10-22 등록): 07 ~ 22시만 수집한 날은 하루 80%를 못 채우므로 회차 규칙을 쓴다."""
+    from datetime import date
+
+    stamps = [t for day in pd.date_range("2026-08-25", "2026-09-15")
+              for t in pd.date_range(day + pd.Timedelta(hours=7), day + pd.Timedelta(hours=21, minutes=50), freq="10min")]
+    frame = pd.DataFrame({"ts": stamps, "station_id": "ST0001", "stock": 1, "빔": 0})
+    hole = (frame["ts"] >= "2026-09-02 08:00") & (frame["ts"] < "2026-09-02 10:00")
+    frame = frame[~hole]                               # 09-02 10시 회차는 시작 전 3시간에 6틱뿐
+
+    got = f2.early_rounds(frame)
+
+    assert {d for _, d in got} == {"_10_15", "_15_20"}            # 05시 · 20시 회차는 등록에서 뺐다
+    assert all(f2.EARLY_FROM <= day <= f2.EARLY_UNTIL and day.weekday() < 5 for day, _ in got)
+    assert (date(2026, 9, 2), "_10_15") not in got
+    assert (date(2026, 9, 2), "_15_20") in got
+    assert (date(2026, 9, 1), "_10_15") in got                    # 앞선 날 7일(08-25 ~ 31)
+
+
+def test_F2_A3_조기_확인은_판정_날을_회차마다_센다(f2):
+    """9월 초 날은 회차마다 잰 날이 달라 전체 날 수로 세면 덜 찬 회차를 판정하게 된다."""
+    rows = []
+    for duration, n_days in (("_10_15", 20), ("_15_20", 3)):
+        for i in range(n_days):
+            for method, value in (("현행", 1.0), ("A3", 0.9)):
+                rows.append({"day": f"d{i}", "duration": duration, "method": method, "seed": 42,
+                             "결품": value + i * 0.01, "포화": 1.0, "km": 10.0, "vehicles": 3,
+                             "결품_[0.00,0.20)": value})
+
+    got = {v["duration"]: v for v in f2.evaluate(rows, 20, per_round=True)}
+
+    assert got["_10_15"]["판정"].startswith("✅")
+    assert got["_15_20"]["판정"].startswith("보류") and got["_15_20"]["days"] == 3
+    assert f2.evaluate(rows, 20)[1]["판정"].startswith("❌")   # 전체로 세면 3일짜리도 판정된다(p가 안 된다)
+
+
 # ───────────────────────────── ML 10번 · F3 하네스 (1.26.305) — 포화 확률로 배송 후보를 거른다
 #
 # 9번(결품 예측)의 거울상이다. 9번에서 지킨 절차 — 날짜 분할 · 미래를 안 보는 피처 · 학습 구간에서만

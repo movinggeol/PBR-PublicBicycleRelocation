@@ -11,6 +11,10 @@
   A3 초과분 가중 (41장 '다음 후보', 2026-10-21 등록 — 판정은 10-19 이후 새 평일 20일, `--methods 현행,A3 --since 2026-10-19`):
            배송 점수 = rebal_qty × (0.5 + max(0, P(빔, 창 길이) − 그 대여소의 그 시 과거 빔 비율)) · 수거는 현행.
            A1 · A2가 평소 자주 비는 곳을 앞당겨 잘 비지 않는 곳에서 진 것(1.26.376)을 덜어 내려는 것이다
+  A3 조기 확인 (41장 덧붙임, 2026-10-22 등록, `--early`): 41장 판정(09-15 ~)이 쓰지 않은 9월 초 평일의
+           회차를 판정 날에 더한다. 그때는 07 ~ 22시만 수집해 하루 80% 규칙을 못 채우므로 **회차 규칙**을 쓴다:
+           10 ~ 15시 · 15 ~ 20시 회차만, 시작 틱(10분 안)이 있고 시작 전 3시간(피처가 읽는 18틱)의 80%가
+           관측된 회차. 판정은 **회차마다** 그 회차를 잰 날이 20일이 되면 한다(`early_rounds`).
 
 어떻게 재나
   · 날: 24시간을 온전히 덮은 **평일**. 날마다 회차 시작 시각의 **관측 재고**를 출발 재고로 둔다.
@@ -34,7 +38,7 @@ from __future__ import annotations
 import argparse
 import io
 import sys
-from datetime import datetime, time as clock, timedelta
+from datetime import date, datetime, time as clock, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -70,6 +74,14 @@ BASE_RATE_EDGES = [0, 0.2, 0.4, 0.6, 0.8, 0.95, 1.01]   # ML 9번의 구간 그�
 MIN_TRAIN_DAYS = 5            # 학습 날이 이보다 적은 날은 평가하지 않는다
 FULL_DAY_RATIO = 0.8          # 평가할 날: 하루 144틱의 80% 이상
 START_TOLERANCE_MIN = 10      # 회차 시작 틱이 없으면 10분 안의 첫 틱을 쓴다
+
+# ── A3 조기 확인 (41장 덧붙임, 2026-10-22 등록) · 결과를 보고 바꾸지 않는다
+EARLY_FROM = date(2026, 9, 1)     # 41장 판정 날(09-15 ~ 10-16)이 쓰지 않은 앞선 평일
+EARLY_UNTIL = date(2026, 9, 14)
+# 05시 회차는 시작 틱이 없다(수집이 07시에 시작). 20 ~ 05시 회차는 09-14 전에 밤 수집이 한 번도 없어
+# 학습 날의 9시간 뒤 타깃이 다음 날 낮이 된다(틱 행으로 밀기 때문). 그래서 둘을 뺀다.
+EARLY_DURATIONS = ("_10_15", "_15_20")
+EARLY_LOOKBACK_TICKS = 18         # 시작 전 3시간 = 피처가 읽는 가장 긴 창(최근18틱빔비율)
 
 
 # ───────────────────────────────────────────── 선정 — 순서만 바꾼 step1
@@ -162,6 +174,32 @@ def eval_days(frame: pd.DataFrame, only=None, since=None) -> list:
     return out
 
 
+def early_rounds(frame: pd.DataFrame) -> list:
+    """A3 조기 확인의 (날, 회차). 9월 초는 하루 80%를 못 채우므로 그 규칙을 **회차가 읽는 구간**에 옮겼다.
+
+    날은 `eval_days`와 같게 평일이고 앞선 학습 날이 `MIN_TRAIN_DAYS` 이상이어야 한다. 회차는
+    `EARLY_DURATIONS` 가운데 시작 틱(10분 안)이 있고, 시작 전 3시간의 틱이 `FULL_DAY_RATIO` 이상인 것.
+    틱 행으로 미는 피처(1 · 3 · 6틱 전, 최근 18틱)가 빈 시간을 건너뛰어 다른 시각을 읽지 않게 하려는 것이다.
+    """
+    dense = sf.dense_days(frame)
+    stamps = pd.Series(frame["ts"].unique()).sort_values()
+    need = int(EARLY_LOOKBACK_TICKS * FULL_DAY_RATIO)
+    out = []
+    for day in dense:
+        if not (EARLY_FROM <= day <= EARLY_UNTIL) or is_holiday(day):
+            continue
+        if sum(1 for d in dense if d < day) < MIN_TRAIN_DAYS:
+            continue
+        for duration in EARLY_DURATIONS:
+            start = round_start(day, duration)
+            has_start = ((stamps >= start) & (stamps < start + timedelta(minutes=START_TOLERANCE_MIN))).any()
+            lookback = start - timedelta(minutes=EARLY_LOOKBACK_TICKS * TICK_MINUTES)
+            seen = int(((stamps >= lookback) & (stamps < start)).sum())
+            if has_start and seen >= need:
+                out.append((day, duration))
+    return out
+
+
 def observed_start(frame: pd.DataFrame, start: datetime) -> pd.Series:
     """회차 시작 시각의 관측 재고(station_id → stock). 그 틱이 없으면 10분 안의 첫 틱."""
     near = frame[(frame["ts"] >= start)
@@ -227,8 +265,11 @@ def observed_hit(frame, stations, start: datetime, duration: str) -> float:
     return float(part.groupby("station_id")["빔"].max().reindex(stations).fillna(0).mean())
 
 
-def evaluate(rows: list, day_count: int) -> list:
-    """사전 등록 채택 조건. 평일이 `ADOPT_MIN_DAYS`보다 적으면 판정하지 않는다."""
+def evaluate(rows: list, day_count: int, per_round: bool = False) -> list:
+    """사전 등록 채택 조건. 평일이 `ADOPT_MIN_DAYS`보다 적으면 판정하지 않는다.
+
+    `per_round`(A3 조기 확인)이면 날 수를 회차마다 센다. 9월 초 날은 회차마다 잰 날이 달라서다.
+    """
     from scipy.stats import wilcoxon
 
     table = pd.DataFrame(rows)
@@ -250,11 +291,12 @@ def evaluate(rows: list, day_count: int) -> list:
         worse = bins_worse(pair, bin_names(table))
         passed = (diff.mean() < 0 and p < WILCOXON_ALPHA
                   and all(v <= COST_TOLERANCE for v in cost.values()) and bins_ok)
-        if day_count < ADOPT_MIN_DAYS:
-            word = f"보류 — 평일 {day_count}일(판정은 {ADOPT_MIN_DAYS}일부터)"
+        days_here = int(pair["day"].nunique()) if per_round else day_count
+        if days_here < ADOPT_MIN_DAYS:
+            word = f"보류: 평일 {days_here}일(판정은 {ADOPT_MIN_DAYS}일부터)"
         else:
             word = "✅ 채택 조건 통과" if passed else "❌ 미달"
-        verdicts.append({"duration": duration, "method": method, "n": len(pair),
+        verdicts.append({"duration": duration, "method": method, "n": len(pair), "days": days_here,
                          "결품차": diff.mean(), "p": p, **{f"비용_{k}": v for k, v in cost.items()},
                          "구간": bins_ok, "나빠진_구간": worse, "판정": word})
     return verdicts
@@ -314,6 +356,9 @@ def main(argv=None) -> int:
     parser.add_argument("--methods", default=",".join(METHODS),
                         help="현행 · A1 · A2 · A3 가운데 (기본 현행,A1,A2 = 41장 판정 그대로). 현행은 늘 넣는다")
     parser.add_argument("--since", default="", help="이 날(YYYY-MM-DD)부터만 평가한다 — A3 판정은 2026-10-19")
+    parser.add_argument("--early", action="store_true",
+                        help="A3 조기 확인(41장 덧붙임, 2026-10-22 등록): 9월 초 평일의 회차(`early_rounds`)를 더하고 "
+                             "판정 날을 회차마다 센다")
     parser.add_argument("--run-label", default="",
                         help="거치대 · 좌표를 읽을 계획 실행 (기본: 자료 끝 전 가장 최근 계획, 41장 등록)")
     args, _ = parser.parse_known_args(argv)
@@ -344,14 +389,20 @@ def main(argv=None) -> int:
     days = eval_days(frame, only, since)
     print(f"\n평가할 평일 {len(days)}일: {', '.join(str(d) for d in days) or '없음'}"
           f" · 순수요 {args.period} · 씨앗 {seeds}")
-    if not days:
+    early = [(day, d) for day, d in early_rounds(frame) if d in durations] if args.early else []
+    if args.early:
+        early_rows = int((frame["ts"] < datetime.combine(EARLY_UNTIL + timedelta(days=1), clock())).sum())
+        print(f"조기 확인 회차 {len(early)}개: {', '.join(f'{day} {d}' for day, d in early) or '없음'}"
+              f" · 지문(09-15 전 관측 행) {early_rows:,}")
+    if not days and not early:
         return 1
 
     # 창이 아직 안 닫힌 회차는 뺀다 — 타깃이 없어 피처 행이 통째로 빠지고, 확률이
     # 전부 과거 빈도로 채워져 A1·A2가 조용히 다른 것이 된다.
     last_tick = frame["ts"].max()
-    rounds = [(day, d) for day in days for d in durations
-              if round_start(day, d) + timedelta(hours=len(duration_hours(d))) <= last_tick]
+    rounds = early + [(day, d) for day in days for d in durations
+                      if round_start(day, d) + timedelta(hours=len(duration_hours(d))) <= last_tick]
+    days = sorted({day for day, _ in early} | set(days))
     horizons = sorted({A1_HORIZON, *(window_ticks(d) for d in durations)})
     probs = {}   # (day, duration, horizon) -> (P, 과거 빔 비율)
     for horizon in horizons:
@@ -435,8 +486,8 @@ def main(argv=None) -> int:
     print(agg.to_string(float_format=lambda v: f"{v:.3f}"))
 
     print("\n판정 (사전 등록 — ML_고도화_계획 3장 F2)")
-    for v in evaluate(rows, len(days)):
-        print(f"  {v['duration']:7} {v['method']}  n={v['n']:>3}  결품 {v['결품차']:+.4f}h  p={v['p']:.3f}"
+    for v in evaluate(rows, len(days), per_round=args.early):
+        print(f"  {v['duration']:7} {v['method']}  {v['days']}일 n={v['n']:>3}  결품 {v['결품차']:+.4f}h  p={v['p']:.3f}"
               f"  포화 {v['비용_포화']:+.1%} · km {v['비용_km']:+.1%} · 차량 {v['비용_vehicles']:+.1%}"
               f"  구간 {'✅' if v['구간'] else '❌'}  → {v['판정']}")
         for b, mine, base in v["나빠진_구간"]:
