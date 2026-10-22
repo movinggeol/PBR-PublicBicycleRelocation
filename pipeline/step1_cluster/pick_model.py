@@ -22,8 +22,15 @@
 언제 쓰나
   PICK_MODEL이 auto(기본)면 운영 계획(실행 종류 plan: 웹 실행 폼 · 동시각 계획)에서만, on이면 늘, off면 쓰지 않는다.
   실험 · 재현(종류 experiment 또는 선언 없음)은 지금 방식 그대로라 원고와 실험 기록의 수치가 바뀌지 않는다. 쓰기로 해도
-  다음이면 지금 방식으로 돌아가고 그 이유를 찍는다: 휴일 회차(평일만 배웠다) · 재고 시계열이 없거나 오래됨 · 마지막 관측이
+  다음이면 지금 방식으로 돌아가고 그 이유를 찍는다: 휴일 회차 · 재고 시계열이 없거나 오래됨 · 마지막 관측이
   회차 시작과 멀다 · 학습 평일이 모자람 · 예측이 하나도 없음 · 고른 수거가 0곳.
+
+휴일에는 켜지 않는다 (사용자 결정 2026-10-22, EXPERIMENTS 57장)
+  휴일로 배워 휴일 20회차에 돌린 K도 채택 후보였다(수거 무해 63.9 → 75.0%, 배송 97.3%, 거리 97.9%). 그러나 시간 예산
+  120분을 넘는 군집이 48개에서 78개로(회차당 2.4대에서 3.9대로) 늘었다. 휴일은 군집이 8% 적고 진단 밖 수거 곳이 흩어져
+  군집 소요가 평균 4분 30초 늘었는데, 지금 군집의 42%가 이미 100 ~ 120분이라 문턱을 넘었다. 시간 예산은 사후 점검일 뿐
+  제약이 아니므로 켜면 계획은 그대로 집행되고 운행만 길어진다. 손잡이를 0.6으로 낮춰도 줄지 않았다(85개). 그래서 휴일
+  회차는 지금 선정 그대로 둔다. 다시 켜려면 군집 안으로 수거를 묶는 제약 같은 새 설계를 먼저 재야 한다.
 
 운영 설정 (56장과 다른 점)
   학습 날   56장은 08-25 ~ 09-16으로 고정했다. 여기서는 회차 날 전의 가장 최근 평일 PICK_MODEL_TRAIN_DAYS일로 날마다 다시
@@ -429,7 +436,7 @@ def apply(base: pd.DataFrame, st_rebal: pd.DataFrame, st_info: pd.DataFrame, dur
         return base, "현행"
 
     if day_type == "holiday":
-        return fallback("휴일 계획(모형은 평일만 배웠다)")
+        return fallback("휴일 계획(휴일에는 켜지 않는다: 120분을 넘는 운행이 는다, EXPERIMENTS 57장)")
     if base.empty or not (base["rebal_qty"] < 0).any():
         return fallback("지금 선정에 수거가 없다")
     if conn is None:
@@ -448,7 +455,7 @@ def apply(base: pd.DataFrame, st_rebal: pd.DataFrame, st_info: pd.DataFrame, dur
     if start is None:
         return fallback(f"마지막 관측 {tau:%m-%d %H:%M}이 {duration} 회차 시작과 멀다")
     if is_holiday(start.date()):
-        return fallback(f"회차 날 {start.date()}이 휴일이다")
+        return fallback(f"회차 날 {start.date()}이 휴일이다(휴일에는 켜지 않는다, EXPERIMENTS 57장)")
     days = training_days(conn, start.date())
     if len(days) < MIN_TRAIN_DAYS:
         return fallback(f"학습 평일 {len(days)}일(최소 {MIN_TRAIN_DAYS}일)")
