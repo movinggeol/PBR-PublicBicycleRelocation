@@ -94,6 +94,7 @@ sys.path.insert(0, str(ROOT))
 # step 폴더를 sys.path에 밀어 넣지 않는다 — 폴더 이름으로 부른다(1.26.154).
 
 import db                                                       # noqa: E402
+from experiments._shared import default_run_label  # noqa: E402
 from pipeline.step2_optimize import vrp as vrp_mod              # noqa: E402
 from project_config import (                                    # noqa: E402
     DEPOT_ID, DEPOT_LAT, DEPOT_LON, VEHICLE_CAPACITY, align_day_type,
@@ -841,8 +842,9 @@ def main() -> None:
                         help=f"적재 용량 (기본 {VEHICLE_CAPACITY}는 **상한**이고"
                              " 통상은 7대다 — 둘 다 돌려 볼 것)")
     parser.add_argument("--run-label", default="",
-                        help="통합 비교에 쓸 재배치 실행 (기본: vrp_plan이 있는 가장 최근"
-                             " **계획** 실행 — 실험 라벨은 고르지 않는다)")
+                        help="통합 비교에 쓸 재배치 실행 (기본: 원고의 계획 실행 '2026-08-11 real raw19',"
+                             " 없으면 vrp_plan이 있는 가장 최근 계획 + 경고. 원고 8.6의 세 달은"
+                             " brokenmix-raw19-2511 · 2603 · 2506을 하나씩 준다)")
     parser.add_argument("--audit", action="store_true",
                         help="탐지 방법의 근거를 되짚는다")
     parser.add_argument("--audit-only", action="store_true",
@@ -969,7 +971,8 @@ def main() -> None:
 
         # 사전순 MAX를 쓰지 않는다 — 실험 라벨(`sweep-21`·`obs-cmp-…`)이 날짜 라벨을 이겨
         # '최신 계획'이 아니라 실험의 경로와 겹침을 쟀다(2026-10-08 점검, 1.26.281과 같은 부류).
-        label = args.run_label or db.latest_label(conn, "vrp_plan", kinds=("plan",))
+        # 기본은 원고의 계획 실행이다(2026-10-24). 그 전의 '가장 최근 계획'은 돌릴 때마다 바뀌었다.
+        label = args.run_label or default_run_label(conn, "vrp_plan")
 
         # ② 표는 ③보다 먼저 남긴다 — 아래에서 멈춰도 잰 것을 잃지 않게.
         if args.out:

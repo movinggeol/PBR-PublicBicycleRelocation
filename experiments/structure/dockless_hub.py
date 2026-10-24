@@ -19,8 +19,9 @@
   상위 K 거점 안에 얼마나 들어오나. 거점만 다뤄도 지금 하는 일을 덮는지 본다.
   🔴 정본 실행의 **저장된** 계획은 2026-08-12에 옛 코드·평일/휴일을 섞은 통계·IQR로 깎인
   대여이력으로 세운 것이다(EXPERIMENTS 42장). 논문 8.6은 같은 스냅샷을 지금 코드와 원본
-  19개월로 다시 세운 `--run-label "2026-08-11 real raw19"`의 후보를 쓴다(후보 310·152·167곳 →
-  381·218·211곳). 인자를 빼면 예전처럼 정본의 저장 계획을 읽는다.
+  19개월로 다시 세운 `2026-08-11 real raw19`의 후보를 쓴다(후보 310·152·167곳 →
+  381·218·211곳). 인자를 빼면 그 실행을 읽는다(2026-10-24. 그 전에는 정본의 저장 계획을 읽었다).
+  옛 결과를 재현하려면 `--run-label "2026-08-11 real"`을 준다.
 - Q3 **안정성**: 달마다 상위 K 집합이 얼마나 겹치나(자카드). 거점을 지난 자료로 정해
   다음 달에 그대로 쓸 수 있어야 방식이 성립한다.
 
@@ -88,8 +89,8 @@ import project_config  # (cp949 콘솔에서 '—'·이모지가 죽지 않게 �
 import pandas as pd
 
 import db
+from experiments._shared import default_run_label
 
-CANON_LABEL = "2026-08-11 real"
 COVER_TARGETS = (0.80, 0.90)
 
 # 사전 등록 기준 (위 docstring과 같은 값 — 여기서만 고친다)
@@ -182,8 +183,8 @@ def k_for(frame: pd.DataFrame, target: float) -> int:
     return int(frame.loc[hit[0], "K"]) if len(hit) else len(frame)
 
 
-def candidates(conn, label: str = CANON_LABEL) -> dict:
-    """정본 실행의 회차별 재배치 후보 대여소."""
+def candidates(conn, label: str) -> dict:
+    """그 계획 실행의 회차별 재배치 후보 대여소."""
     frame = pd.read_sql(
         "SELECT duration, station_id, rebal_qty FROM rebalance_plan"
         " WHERE run_label = ?", conn, params=(label,))
@@ -207,8 +208,9 @@ def main(argv=None) -> int:
                         help="거점 선정 기준 — usage: 이용량(1차) · demand: 순수요 편향(2차)")
     parser.add_argument("--exclude-period", default=None,
                         help="거점 점수에서 뺄 기간 (①-b 표본 밖 검사: 정본이 쓰는 '25년 11월')")
-    parser.add_argument("--run-label", default=CANON_LABEL,
-                        help="재배치 후보를 읽을 계획 실행 (기본: 정본의 저장 계획)")
+    parser.add_argument("--run-label", default="",
+                        help="재배치 후보를 읽을 계획 실행 (기본: 원고의 계획 실행 '2026-08-11 real raw19',"
+                             " 없으면 가장 최근 계획 + 경고)")
     args = parser.parse_args(argv)
 
     with db.session() as conn:
@@ -251,8 +253,9 @@ def main(argv=None) -> int:
                 k = max(int(sites * share), 1)
                 print(f"  상위 {share:>4.0%} ({k:>4}곳) → {frame.loc[k - 1, '누적']:6.1%}")
 
-        cand = candidates(conn, args.run_label)
-        print(f"  후보를 읽은 계획: '{args.run_label}'")
+        plan_label = args.run_label or default_run_label(conn, "rebalance_plan")
+        cand = candidates(conn, plan_label)
+        print(f"  후보를 읽은 계획: '{plan_label}'")
         print(f"\n[Q2] 포함률 — 거점 {k80:,}곳이 정본 후보를 얼마나 덮나")
         inclusion, need90 = {}, {}
         for duration, sites_set in sorted(cand.items()):

@@ -18,7 +18,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 1355개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 1356개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -176,8 +176,10 @@ DB에 행이 있으면 CSV를 고쳐도 반영되지 않는다).
    재고 스냅샷(`station_info`)이면 `experiments/_shared.py`의 `resolve_run_label()` · `default_run_label(conn)`로
    (**정본 `2026-08-11 real`, 없으면 가장 최근 계획 + 경고** — 2026-10-14. 정본 문자열은
    `CANONICAL_RUN_LABEL`을 쓰고 다시 적지 마라),
-   그 밖의 표는 `db.latest_label(conn, 표, kinds=("plan",))`로 고르고(저장된 계획 표까지 정본 라벨로 묶지
-   마라 — 원고는 그 표를 `… raw19`로 읽어 정본 라벨에는 옛 코드의 계획이 있다), **출발 재고는 그 계획의 스냅샷**을 써라 —
+   저장된 계획 표(`rebalance_plan` · `pick_drop` · `ilp_plan` · `vrp_plan`)도 `default_run_label(conn, 표)`로 고른다
+   (**원고의 계획 실행 `2026-08-11 real raw19`, 없으면 가장 최근 계획 + 경고**, 2026-10-24. 정본 라벨로 묶지 마라:
+   정본 라벨에는 옛 코드의 계획이 있다. 문자열은 `CANONICAL_PLAN_LABEL`). 그 밖의 표는
+   `db.latest_label(conn, 표, kinds=("plan",))`로 고르고, **출발 재고는 그 계획의 스냅샷**을 써라 —
    `MAX(run_label)`은 스윕 실행(`sweep-10`)을 고른다.
 8. **가상환경은 `.venv`** (검증 환경: Python 3.14.7). 명령은 `.\.venv\Scripts\python.exe ...`로
    실행하라 — 시스템 `python`에는 의존성이 없다.
@@ -394,7 +396,7 @@ python tools/gate_a_compare.py <off 폴더> <on 폴더>  # 끈/켠 결과 장별
 ## 테스트
 
 ```powershell
-python -m pytest                 # 1355개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 1356개, 약 100초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

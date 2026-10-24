@@ -33,6 +33,7 @@ sys.path.insert(0, str(ROOT))
 import pandas as pd
 
 import db
+from experiments._shared import default_run_label  # noqa: E402
 from pipeline.step2_optimize import vrp as vrp_mod                     # noqa: E402  (step2)
 from project_config import (                       # noqa: E402
     TIME_BUDGET_MINUTES, align_day_type,
@@ -58,7 +59,7 @@ def station_points(run_label: str) -> dict:
         if info.empty:      # 그 실행분이 없으면 최신 것으로
             info = pd.read_sql(
                 "SELECT station_id, lat, lon FROM station_info WHERE run_label = ?",
-                conn, params=[db.latest_label(conn, "station_info")])   # 사전순 MAX 아님(1.26.281)
+                conn, params=[default_run_label(conn)])   # 그 실행의 좌표가 없으면 정본 스냅샷(2026-10-24)
     return {r.station_id: (r.lat, r.lon) for r in info.itertuples()}
 
 
@@ -182,14 +183,14 @@ def stockout_compare(label: str, durations: list, budget_sec: float) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="시간 예산을 제약으로 걸면?")
     parser.add_argument("--duration", help="시간대 하나만")
-    parser.add_argument("--run-label", help="실행 라벨 (기본: 최신)")
+    parser.add_argument("--run-label", help="실행 라벨 (기본: 원고의 계획 실행 '2026-08-11 real raw19', 없으면 가장 최근 계획 + 경고)")
     parser.add_argument("--budget", type=float, default=TIME_BUDGET_MINUTES,
                         help=f"예산(분). 기본 {TIME_BUDGET_MINUTES:.0f}")
     args, _ = parser.parse_known_args()
 
     with db.session() as conn:
-        # 사전순 MAX를 쓰지 않는다 — 실험 라벨이 날짜 라벨을 이긴다(1.26.127).
-        label = args.run_label or db.latest_label(conn, "ilp_plan", kinds=("plan",))
+        # 원고(8.2)가 읽은 계획 실행이 기본이다(2026-10-24). 예전 기본 '가장 최근 계획'은 돌릴 때마다 바뀌었다.
+        label = args.run_label or default_run_label(conn, "ilp_plan")
     if not label:
         print("ilp_plan이 비어 있습니다. 파이프라인을 한 번 돌리세요.")
         return 1

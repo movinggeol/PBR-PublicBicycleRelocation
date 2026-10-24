@@ -2310,9 +2310,10 @@ def test_정본이_없으면_가장_최근_계획으로_넘어가되_크게_경�
     assert "⚠️⚠️" not in out, "정본 없음 큰 경고는 `load_inputs()`가 한 번만 찍는다"
 
 
-def test_정본_기본값은_재고_스냅샷에만_건다():
-    """저장된 계획 표(vrp_plan 등)는 원고가 `2026-08-11 real raw19`로 읽는다 — 그 표의 기본까지 정본
-    라벨로 묶으면 **옛 코드가 푼 계획**을 읽는다. 그 표의 기본은 예전대로 가장 최근 계획이다."""
+def test_계획_표의_기본은_정본_라벨이_아니라_원고의_계획_실행이다(capsys):
+    """저장된 계획 표(vrp_plan 등)는 원고가 `2026-08-11 real raw19`로 읽는다. 그 표의 기본까지 정본
+    라벨로 묶으면 **옛 코드가 푼 계획**을 읽는다. 그래서 계획 표의 기본은 raw19이고(사용자 결정 2026-10-24),
+    raw19가 없는 DB에서는 가장 최근 계획으로 넘어가며 크게 경고한다(재고 스냅샷의 정본 규칙과 같은 꼴)."""
     import db
 
     공용 = _실험_공용()
@@ -2326,7 +2327,18 @@ def test_정본_기본값은_재고_스냅샷에만_건다():
             db.record_run(conn, label, kind="plan")
             db.save_frame(conn, "vrp_plan", plan, run_label=label, duration="_05_10")
         assert 공용.CANONICAL_DEFAULT_TABLES == ("station_info",)
-        assert 공용.default_run_label(conn, "vrp_plan") == "2026-10-11 20 휴일 동시각"
+        assert 공용.default_run_label(conn, "vrp_plan") == "2026-10-11 20 휴일 동시각", "raw19가 없으면 가장 최근 계획"
+        out = capsys.readouterr().out
+        assert "⚠️⚠️" in out and "2026-08-11 real raw19" in out, "원고와 다른 계획으로 넘어간 것을 감추지 않는다"
+        assert 공용.default_run_label(conn, "vrp_plan", warn=False) == "2026-10-11 20 휴일 동시각"
+        assert capsys.readouterr().out == ""
+
+        db.record_run(conn, "2026-08-11 real raw19", kind="experiment")
+        db.save_frame(conn, "vrp_plan", plan, run_label="2026-08-11 real raw19", duration="_05_10")
+        assert 공용.default_run_label(conn, "vrp_plan") == 공용.CANONICAL_PLAN_LABEL == "2026-08-11 real raw19"
+        assert capsys.readouterr().out == "", "원고의 계획 실행을 고르면 경고하지 않는다"
+        assert 공용.default_run_label(conn, "rebalance_plan") is None, "그 표가 비면 None (부르는 쪽이 멈춘다)"
+        assert 공용.default_run_note("2026-08-11 real raw19") == "(기본: 원고의 계획 실행)"
 
 
 def test_등록이_최신_계획을_정한_실험은_자료_끝_전_가장_최근_계획을_쓴다():
@@ -2379,17 +2391,19 @@ def test_등록이_최신_계획을_정한_실험은_자료_끝_전_가장_최�
 
 def test_정본_라벨을_스크립트마다_다시_적지_않는다():
     """`--run-label` 기본값으로 정본 문자열을 따로 적던 일곱 곳이 공용 상수를 쓴다 (2026-10-14).
-    기본값을 고칠 일이 생기면 고칠 곳이 다시 여럿이 된다. `dockless_hub.CANON_LABEL`은 재고가 아니라
-    저장된 계획(`rebalance_plan`)을 읽는 라벨이라 남겨 두었다 — 늘어나지 않는지만 본다."""
+    기본값을 고칠 일이 생기면 고칠 곳이 다시 여럿이 된다. 2026-10-24에 원고의 계획 실행(raw19)도 같은 규칙에
+    넣었다(`CANONICAL_PLAN_LABEL`). `dockless_hub.CANON_LABEL`은 그때 걷었다. `rebalance_trace.PLAN_LABEL`은
+    44장 **사전 등록** 상수라 공용 상수가 바뀌어도 따라 바뀌면 안 되므로 남겨 둔다."""
     import re
 
-    식 = re.compile(r"(?:default\s*=\s*|^\s*[A-Z_]+\s*=\s*)[\"']2026-08-11 real[\"']", re.M)
+    식 = re.compile(r"(?:default\s*=\s*|^\s*[A-Z_]+\s*=\s*)[\"']2026-08-11 real(?: raw19)?[\"']", re.M)
     위반 = [f"{relpath}:{source[:m.start()].count(chr(10)) + 1}"
             for relpath, source, _tree in _실험_소스() for m in 식.finditer(source)]
-    남겨둔곳 = {"experiments/structure/dockless_hub.py"}
+    남겨둔곳 = {"experiments/structure/rebalance_trace.py"}
     새로생긴곳 = [v for v in 위반 if v.rsplit(":", 1)[0] not in 남겨둔곳]
-    assert not 새로생긴곳, f"정본 라벨의 복사본: {새로생긴곳} — `experiments._shared.CANONICAL_RUN_LABEL`을 쓴다"
-    assert 위반, "전제 — 남겨 둔 dockless_hub를 이 식이 잡아야 검사가 살아 있다"
+    assert not 새로생긴곳, (f"정본 라벨의 복사본: {새로생긴곳}. `experiments._shared.CANONICAL_RUN_LABEL` · "
+                        "`CANONICAL_PLAN_LABEL`을 쓴다")
+    assert 위반, "전제 — 남겨 둔 rebalance_trace를 이 식이 잡아야 검사가 살아 있다"
 
 
 def test_스냅샷이_하나도_없으면_파이프라인을_돌리라고_말하고_멈춘다():
@@ -2462,10 +2476,12 @@ def test_계획을_다시_푸는_실험은_순수요와_같은_요일로_모듈�
     assert 읽기 and set(읽기) == {day_type}, "순수요를 읽는 요일과 모듈에 맞춘 요일이 다르다"
 
 
-def test_고장_수거의_통합_비교는_실험이_아니라_가장_최근_계획과_맞댄다():
+def test_고장_수거의_통합_비교는_사전순_최대가_아니라_공용_규칙의_계획과_맞댄다():
     """`broken_collect.py`가 `--run-label`을 비우면 `vrp_plan`의 **사전순 최대**를 골랐다
     (2026-10-08 점검) — `sweep-21`·`obs-cmp-…` 같은 실험 라벨이 날짜 라벨을 이겨, '재배치와 얼마나
-    겹치나'(③)를 실험의 경로에 대고 쟀다. 표가 비었으면 `.iloc[0]`의 IndexError 대신 까닭을 말하고 멈춘다.
+    겹치나'(③)를 실험의 경로에 대고 쟀다. 그 뒤 기본은 가장 최근 계획이었고, 2026-10-24부터는 공용 규칙
+    (`default_run_label`: 원고의 계획 실행 raw19, 없으면 가장 최근 계획 + 경고)이다. 표가 비었으면 `.iloc[0]`의
+    IndexError 대신 까닭을 말하고 멈춘다.
     """
     import ast
 
@@ -2477,7 +2493,7 @@ def test_고장_수거의_통합_비교는_실험이_아니라_가장_최근_계
     assert not sql, f"사전순으로 실행을 고른다: {sql}"
 
     body = ast.get_source_segment(source, main)
-    assert 'db.latest_label(conn, "vrp_plan", kinds=("plan",))' in body
+    assert 'default_run_label(conn, "vrp_plan")' in body
     assert body.index("if not label:") < body.index("integration_overlap(conn, broken, label)"), (
         "실행이 하나도 없으면 겹침을 재기 전에 멈춰야 한다")
 
@@ -2554,6 +2570,24 @@ def test_실험이_기본_실행을_고르는_식을_station_info에_다시_쓰�
     # saturation_forecast · cross_station도 2026-10-14에 옮겼다 — 이제 남겨 둔 곳이 없다.
     새로생긴곳 = 위반
     assert not 새로생긴곳, f"기본 실행을 고르는 식의 복사본: {새로생긴곳} — `default_run_label(conn)`을 쓴다"
+
+
+def test_실험이_계획_표의_기본_실행을_스스로_고르지_않는다():
+    """저장된 계획 표(rebalance_plan · pick_drop · ilp_plan · vrp_plan)의 기본 실행도 `default_run_label()`
+    하나가 고른다(2026-10-24). 일곱 실험이 저마다 `db.latest_label(conn, "<표>", kinds=("plan",))`를 적어
+    '가장 최근 계획'을 읽었고, 그 값은 계획을 돌릴 때마다 바뀌었다(10-24에는 휴일 계획)."""
+    import re
+
+    식 = re.compile(r'latest_label\(\s*conn,\s*"(?:rebalance_plan|pick_drop|ilp_plan|vrp_plan)"')
+    위반 = [f"{relpath}:{source[:m.start()].count(chr(10)) + 1}"
+            for relpath, source, _tree in _실험_소스() for m in 식.finditer(source)]
+    assert not 위반, f"계획 표의 기본 실행을 고르는 식의 복사본: {위반}. `default_run_label(conn, 표)`를 쓴다"
+    for relpath in ("experiments/baseline/budget_enforce.py", "experiments/structure/budget_split.py",
+                    "experiments/params/min_qty_sweep.py", "experiments/params/top_limit_sweep.py",
+                    "experiments/structure/broken_collect.py", "experiments/structure/pick_feasibility.py",
+                    "experiments/structure/dockless_hub.py"):
+        source = (PROJECT_ROOT / relpath).read_text(encoding="utf-8")
+        assert re.search(r'default_run_label\(conn, "(?:rebalance_plan|pick_drop|ilp_plan|vrp_plan)"\)', source), relpath
 
 
 def test_실험이_거리_식을_다시_들지_않는다():

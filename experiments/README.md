@@ -28,11 +28,14 @@ experiments/
 **`--run-label`을 비우면 재고 스냅샷은 정본 `2026-08-11 real`(`CANONICAL_RUN_LABEL`)입니다**(2026-10-14).
 그 전의 기본 *"가장 최근 계획"* 은 계획을 돌릴 때마다 바뀌어 라벨 없는 명령이 원고와 다른 재고로 돌았습니다.
 정본이 없는 DB(새 클론 · 합성 데모 · 테스트 DB)에서는 가장 최근 계획으로 넘어가며 **크게 경고합니다** —
-그 값은 원고와 다릅니다(`tools/transfer_run.py`로 정본을 옮기면 됩니다). 정본으로 못박은 것은
-`station_info`뿐이고, 저장된 계획 표(`ilp_plan` · `vrp_plan` · `pick_drop` · `rebalance_plan` …)를 각자
-`db.latest_label()`로 고르는 실험은 그대로입니다 — 원고가 그 표를 `2026-08-11 real raw19`로 읽어서, 같은
-정본 라벨로 묶으면 옛 코드가 푼 계획을 읽게 됩니다. 스크립트의 `--run-label` 기본값으로 정본을 적을
-때도 문자열을 다시 쓰지 말고 `CANONICAL_RUN_LABEL`을 씁니다.
+그 값은 원고와 다릅니다(`tools/transfer_run.py`로 정본을 옮기면 됩니다). **저장된 계획 표**(`ilp_plan` ·
+`vrp_plan` · `pick_drop` · `rebalance_plan`)를 읽는 실험 일곱(`budget_enforce` · `budget_split` · `min_qty_sweep` ·
+`top_limit_sweep` · `broken_collect` · `pick_feasibility` · `dockless_hub`)은 **원고의 계획 실행
+`2026-08-11 real raw19`(`CANONICAL_PLAN_LABEL`)** 이 기본입니다(2026-10-24). 정본 라벨로 묶으면 옛 코드가 푼
+계획을 읽게 되므로 정본과 다른 라벨입니다. raw19가 없는 DB에서는 가장 최근 계획으로 넘어가며 경고합니다.
+raw19는 고정된 과거 계획이라 그 뒤의 코드 변경(K 등)은 담기지 않습니다. 지금 운영 계획을 재려면 라벨을 주십시오.
+스크립트의 `--run-label` 기본값으로 정본을 적을 때도 문자열을 다시 쓰지 말고 `CANONICAL_RUN_LABEL` ·
+`CANONICAL_PLAN_LABEL`을 씁니다.
 
 > 새 실험을 추가할 때: 어느 갈래인지 정하고, 스크립트 맨 위의 `sys.path.insert`는
 > `parents[2]`(저장소 루트)를 가리켜야 합니다. 한 칸 깊어졌기 때문입니다.
@@ -92,7 +95,7 @@ DB에서만 가장 최근 *계획* 실행으로 넘어가며 경고하는데, �
 (`db.latest_label(…, kinds=("plan",))` — 사전순 최대는 `sweep-10` 같은 실험 라벨을 집습니다). `z_sweep.py`·
 `gamma_sweep.py`(1.26.281)에 이어 `cluster_count_sweep.py`·`wanted_vehicles_geo_sweep.py`·
 `diagnostic/tour_length_estimate.py`도 이 공용 규칙을 따릅니다(2026-10-08). `structure/broken_collect.py`는
-재고가 아니라 `vrp_plan`을 읽으므로 지금도 가장 최근 계획입니다.
+재고가 아니라 `vrp_plan`을 읽으므로 원고의 계획 실행(raw19)이 기본입니다(2026-10-24).
 `cluster_count_sweep.py`·`wanted_vehicles_geo_sweep.py`는 인자를 받지 않으므로 라벨은 환경변수
 `PBR_RUN_LABEL`로 고릅니다. 정본이 없는 PC의 기본값은 **계획을 다시 돌리면 바뀌므로** 문서에 실을 값은 라벨을 못박으십시오.
 

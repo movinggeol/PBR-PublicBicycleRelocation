@@ -35,6 +35,7 @@ sys.path.insert(0, str(ROOT))
 import pandas as pd
 
 import db
+from experiments._shared import default_run_label  # noqa: E402
 from project_config import duration_hours
 
 WINDOWS = ("_05_10", "_10_15", "_15_20")
@@ -122,10 +123,7 @@ def by_hour(picks: pd.DataFrame, observed: pd.DataFrame, duration: str) -> pd.Da
 def main() -> int:
     parser = argparse.ArgumentParser(description="pick 후보 실재성 검증")
     parser.add_argument("--duration", help="시간대 하나만")
-    # ⚠️ 기본값은 `db.latest_label()`이 아니라 pick_drop의 **사전순 MAX**다 —
-    #    `sweep-*` 같은 실험 라벨이 날짜 라벨을 이긴다. 계획 실행을 보려면 라벨을
-    #    직접 주십시오(1.26.125 기록 참고).
-    parser.add_argument("--run-label", help="실행 라벨 (기본: 가장 최근 계획)")
+    parser.add_argument("--run-label", help="실행 라벨 (기본: 원고의 계획 실행 '2026-08-11 real raw19', 없으면 가장 최근 계획 + 경고)")
     args, _ = parser.parse_known_args()
 
     observed = load_observed()
@@ -134,8 +132,9 @@ def main() -> int:
         return 1
 
     with db.session() as conn:
-        # 사전순 MAX가 아니다 — 그것은 스윕 실행 `sweep-21`을 골랐다(1.26.281).
-        label = args.run_label or db.latest_label(conn, "pick_drop", kinds=("plan",))
+        # 사전순 MAX가 아니다 — 그것은 스윕 실행 `sweep-21`을 골랐다(1.26.281). 기본은 원고의 계획
+        # 실행이다(2026-10-24). 그 전의 '가장 최근 계획'은 돌릴 때마다 바뀌었다.
+        label = args.run_label or default_run_label(conn, "pick_drop")
     if not label:
         print("pick_drop이 비어 있습니다. 파이프라인을 돌리세요.")
         return 1

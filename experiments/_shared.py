@@ -48,7 +48,7 @@ BASELINE_PATH = ROOT / "experiments" / "baseline" / "baseline_compare.py"
 # 실험이 라벨 없이 돌 때 고르는 실행의 종류. `kinds`를 비우면 `db.latest_label()`이 종류를 안 가려
 # 파라미터 스윕(`sweep-10`) 같은 **실험 스냅샷**을 집는다(1.26.132).
 # 재고 스냅샷(`station_info`)은 정본이 있으면 이 규칙까지 오지 않는다 — 아래 `default_run_label()`이
-# 정본을 먼저 본다. 저장된 계획 표(`vrp_plan` …)의 기본은 지금도 이 규칙이다.
+# 정본을 먼저 본다. 저장된 계획 표(`vrp_plan` …)도 원고의 계획 실행(raw19)이 있으면 오지 않는다(2026-10-24).
 DEFAULT_RUN_KINDS = ("plan",)
 
 # 원고 수치를 잰 **정본 재고 스냅샷**(대여소 1,368곳 · 총재고 3,214대). 라벨 없는 실험의 기본값이다
@@ -62,8 +62,17 @@ CANONICAL_RUN_LABEL = "2026-08-11 real"
 
 # 정본을 기본으로 고르는 표 — **재고 스냅샷만이다.** 저장된 계획 표(ilp_plan · vrp_plan · pick_drop ·
 # rebalance_plan …)는 원고가 `2026-08-11 real raw19`(종류 experiment)로 읽는다. 같은 정본 라벨로
-# 묶으면 그 표에서는 **옛 코드가 푼 계획**을 읽게 되므로, 그 표의 기본은 예전대로 가장 최근 계획이다.
+# 묶으면 그 표에서는 **옛 코드가 푼 계획**을 읽게 되므로, 그 표의 기본은 아래 `CANONICAL_PLAN_LABEL`이다.
 CANONICAL_DEFAULT_TABLES = ("station_info",)
+
+# 저장된 계획 표를 읽는 실험의 기본 실행 (사용자 결정 2026-10-24, docs/기록/TODO.md 색인).
+# 정본 스냅샷을 복사해 그때 코드와 원본 19개월 대여이력으로 다시 세운 실험 실행이다(2026-09-29,
+# EXPERIMENTS 42장 · docs/기록/재측정_계획.md). 원고 7.5 · 8.2 · 8.6이 이 계획을 읽는다. 예전 기본값
+# '가장 최근 계획'은 계획을 돌릴 때마다 바뀌어 10-24에는 10-18 23시 **휴일** 계획을 집었고, 10-20부터는
+# K로 고른 수거(`pick_drop.pick_rule`)가 섞일 수 있다. 세 회차(`_05_10` · `_10_15` · `_15_20`)뿐이다.
+# ⚠️ 고정된 과거 계획이라 그 뒤의 코드 변경(K 등)은 담기지 않는다. 지금 운영 계획을 재려면 라벨을 준다.
+CANONICAL_PLAN_LABEL = "2026-08-11 real raw19"
+CANONICAL_PLAN_TABLES = ("rebalance_plan", "pick_drop", "ilp_plan", "vrp_plan")
 
 
 def load_baseline():
@@ -89,9 +98,10 @@ def default_run_label(conn, table: str = "station_info", *, warn: bool = True):
     **기본 실행을 고르는 규칙은 여기 하나다.**
 
       1. 재고 스냅샷(`CANONICAL_DEFAULT_TABLES`)에 정본(`CANONICAL_RUN_LABEL`)이 있으면 **정본**.
+         저장된 계획 표(`CANONICAL_PLAN_TABLES`)에 원고의 계획 실행(`CANONICAL_PLAN_LABEL`)이 있으면 **그 실행**.
       2. 없으면 그 표에 자료가 있는 **가장 최근 계획**(`db.latest_label(…, kinds=("plan",))` —
          `runs.created_at` 순, 사전순 최대가 아니다 — 1.26.125). 계획이 하나도 없으면 종류를 무시한
-         최신이다. 재고 스냅샷에서 이리로 넘어오면 `warn`이 켜진 동안 **크게 경고한다.**
+         최신이다. 재고 스냅샷 · 계획 표에서 이리로 넘어오면 `warn`이 켜진 동안 **크게 경고한다.**
 
     왜 2를 남겼나 — 정본이 없는 DB(새 클론 · `make_sample_data`의 합성 데모 · 테스트 DB)에서 멈추면
     데모와 시험이 통째로 못 돈다. 대신 원고와 다른 재고라는 것을 감추지 않는다.
@@ -101,13 +111,19 @@ def default_run_label(conn, table: str = "station_info", *, warn: bool = True):
     부르는 곳(대조군의 `load_inputs()` → `_report_snapshot()`)은 두 번째를 `warn=False`로 부른다.
 
     ⚠️ 2의 '가장 최근 계획'은 요일도 회차 구성도 가리지 않는다(휴일 한 회차짜리 동시각 계획이 잡히기도
-    한다 — 1.26.341). 저장된 계획 표의 기본이 여전히 이 규칙인 까닭은 `CANONICAL_DEFAULT_TABLES` 주석.
+    한다 — 1.26.341). 계획 표가 정본 라벨이 아니라 raw19를 고르는 까닭은 `CANONICAL_DEFAULT_TABLES` 주석.
     """
-    if table in CANONICAL_DEFAULT_TABLES and conn.execute(
-            f"SELECT 1 FROM {table} WHERE run_label = ? LIMIT 1",
-            (CANONICAL_RUN_LABEL,)).fetchone():
-        return CANONICAL_RUN_LABEL
+    for tables, canon in ((CANONICAL_DEFAULT_TABLES, CANONICAL_RUN_LABEL),
+                          (CANONICAL_PLAN_TABLES, CANONICAL_PLAN_LABEL)):
+        if table in tables and conn.execute(
+                f"SELECT 1 FROM {table} WHERE run_label = ? LIMIT 1", (canon,)).fetchone():
+            return canon
     label = db.latest_label(conn, table, kinds=DEFAULT_RUN_KINDS)
+    if warn and label is not None and table in CANONICAL_PLAN_TABLES:
+        print(f"⚠️⚠️ 원고의 계획 실행 '{CANONICAL_PLAN_LABEL}'이 이 DB의 {table}에 없습니다. "
+              f"가장 최근 계획 '{label}'로 돕니다.\n"
+              f"   원고 수치와 **다른 계획**입니다. 원고를 재현하려면 그 실행을 가진 PC에서 옮기십시오"
+              f" (tools/transfer_run.py).")
     if warn and label is not None and table in CANONICAL_DEFAULT_TABLES:
         print(f"⚠️⚠️ 정본 스냅샷 '{CANONICAL_RUN_LABEL}'이 이 DB의 {table}에 없습니다 — "
               f"가장 최근 계획 '{label}'로 돕니다.\n"
@@ -120,6 +136,8 @@ def default_run_note(label) -> str:
     """라벨을 안 줬을 때 고른 실행을 [스냅샷] 줄에 덧붙일 말 — 정본인지 아닌지를 가른다."""
     if label == CANONICAL_RUN_LABEL:
         return "(기본: 정본)"
+    if label == CANONICAL_PLAN_LABEL:
+        return "(기본: 원고의 계획 실행)"
     return "(기본: 정본 없음 → 가장 최근 계획 — 원고 수치와 다르다)"
 
 

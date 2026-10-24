@@ -47,6 +47,7 @@ import numpy as np
 import pandas as pd
 
 import db
+from experiments._shared import default_run_label  # noqa: E402
 from project_config import (
     CLUSTER_IMBALANCE_ALLOWANCE, DROP_TIME_SEC, PICK_TIME_SEC, REBAL_MIN_QTY,
     TIME_BUDGET_MINUTES, TRAVEL_MIN_PER_STATION, VEHICLES_PER_ROUND,
@@ -78,7 +79,7 @@ def load_all(run_label: str, duration: str) -> pd.DataFrame:
         if info.empty:
             info = pd.read_sql(
                 "SELECT station_id, lat, lon FROM station_info WHERE run_label = ?",
-                conn, params=[db.latest_label(conn, "station_info")])
+                conn, params=[default_run_label(conn)])   # 그 실행의 좌표가 없으면 정본 스냅샷(2026-10-24)
     return plan.merge(info.drop_duplicates("station_id"), on="station_id", how="left")
 
 
@@ -151,14 +152,14 @@ def stockout(plan: pd.DataFrame, candidates: pd.DataFrame, duration: str) -> flo
 def main() -> int:
     parser = argparse.ArgumentParser(description="후보 상한 스윕")
     parser.add_argument("--limits", default="20,30,50,70,100")
-    parser.add_argument("--run-label", help="실행 라벨 (기본: 최신)")
+    parser.add_argument("--run-label", help="실행 라벨 (기본: 원고의 계획 실행 '2026-08-11 real raw19', 없으면 가장 최근 계획 + 경고)")
     args, _ = parser.parse_known_args()
 
     limits = [int(v) for v in args.limits.split(",") if v.strip()]
     with db.session() as conn:
         # 사전순 MAX를 쓰지 않는다 — 실험 라벨이 날짜 라벨을 이긴다(1.26.127).
-        label = args.run_label or db.latest_label(conn, "rebalance_plan",
-                                                  kinds=("plan",))
+        # 기본은 원고의 계획 실행이다(2026-10-24). 그 전의 '가장 최근 계획'은 돌릴 때마다 바뀌었다.
+        label = args.run_label or default_run_label(conn, "rebalance_plan")
     if not label:
         print("rebalance_plan이 비어 있습니다.")
         return 1

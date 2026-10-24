@@ -38,6 +38,7 @@ import numpy as np
 import pandas as pd
 
 import db
+from experiments._shared import default_run_label  # noqa: E402
 from project_config import (
     PICK_TIME_SEC, DROP_TIME_SEC, TIME_BUDGET_MINUTES, TOP_STATION_LIMIT,
     TRAVEL_MIN_PER_STATION, VEHICLES_PER_ROUND, CLUSTER_IMBALANCE_ALLOWANCE,
@@ -119,15 +120,15 @@ def stockout(plan: pd.DataFrame, candidates: pd.DataFrame, duration: str) -> flo
 def main() -> int:
     parser = argparse.ArgumentParser(description="작업 문턱 스윕")
     parser.add_argument("--thresholds", default="1,2,3,4,5")
-    parser.add_argument("--run-label", help="실행 라벨 (기본: 최신)")
+    parser.add_argument("--run-label", help="실행 라벨 (기본: 원고의 계획 실행 '2026-08-11 real raw19', 없으면 가장 최근 계획 + 경고)")
     args, _ = parser.parse_known_args()
 
     thresholds = [int(t) for t in args.thresholds.split(",") if t.strip()]
     with db.session() as conn:
         # **사전순 MAX를 쓰지 않는다** — 실험 라벨(`obs-cmp-…`)이 `'o' > '2'`라
         # 어떤 날짜 라벨도 이겨서, 계획 대신 실험을 말없이 집었다(1.26.127).
-        label = args.run_label or db.latest_label(conn, "rebalance_plan",
-                                                  kinds=("plan",))
+        # 기본은 원고의 계획 실행이다(2026-10-24). 그 전의 '가장 최근 계획'은 돌릴 때마다 바뀌었다.
+        label = args.run_label or default_run_label(conn, "rebalance_plan")
     if not label:
         print("rebalance_plan이 비어 있습니다. 파이프라인을 돌리세요.")
         return 1
