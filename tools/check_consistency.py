@@ -1085,6 +1085,29 @@ def check_appendix_code() -> list[str]:
     return problems
 
 
+# 원고에 내는 파일에는 줄표 '—'를 쓰지 않는다(사용자 결정 2026-10-24, 논문 README 4장 표기).
+# 여러 세션이 원고를 고치므로 규칙만 적어 두면 다시 들어온다. 작업 문서 둘은 원고가 아니라 뺀다.
+DASH_EXEMPT = {"README.md", "한글_옮기기.md"}
+
+
+def check_em_dash() -> list[str]:
+    """원고 파일에 줄표가 다시 들어오지 않았는지 본다 (1.26.390).
+
+    부록 B는 `make_appendix_code.py`가 쓰므로 거기서 고친다. 빼기 기호 '−'는 다른 글자라 걸리지 않는다.
+    """
+    problems: list[str] = []
+    for path in sorted((ROOT / MANUSCRIPT_DIR).glob("*.md")):
+        if path.name in DASH_EXEMPT:
+            continue
+        rel = path.relative_to(ROOT).as_posix()
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if "—" in line:
+                problems.append(
+                    f"[줄표] {rel}:{lineno}: 원고에 '—'가 있습니다. 덧붙임은 괄호나 쉼표, "
+                    f"제목과 부제는 쌍점, 표의 빈 칸은 '없음'처럼 말로\n      {line.strip()[:110]}")
+    return problems
+
+
 CHECKS = {
     "값": check_values,
     "링크": check_links,
@@ -1097,6 +1120,7 @@ CHECKS = {
     "그림": check_figures,
     "인용": check_citations,
     "부록": check_appendix_code,
+    "줄표": check_em_dash,
 }
 
 
