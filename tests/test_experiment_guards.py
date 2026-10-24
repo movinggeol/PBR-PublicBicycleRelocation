@@ -2482,6 +2482,20 @@ def test_고장_수거의_통합_비교는_실험이_아니라_가장_최근_계
         "실행이 하나도 없으면 겹침을 재기 전에 멈춰야 한다")
 
 
+def test_고장_수거는_이동시간_계수를_평일로_고정한다():
+    """`broken_collect.py`만 요일 맞추기가 없어 돌리는 날의 달력을 따랐다 (2026-10-08 점검 ⑦).
+    고장 수거는 요일과 상관없는 일이라 평일로 고정했다(사용자 결정 2026-10-24). 경로를 세우기 전에 맞춰야 한다.
+    """
+    import ast
+
+    source = (PROJECT_ROOT / "experiments" / "structure" / "broken_collect.py").read_text(encoding="utf-8")
+    main = next(n for n in ast.parse(source).body
+                if isinstance(n, ast.FunctionDef) and n.name == "main")
+    body = ast.get_source_segment(source, main)
+    assert 'align_day_type("weekday", vrp_mod)' in body
+    assert body.index('align_day_type("weekday", vrp_mod)') < body.index("args.base.split")
+
+
 # ───────────────────────────── 2026-10-08 공용 함수 통합 — 복사본이 다시 생기지 않게
 
 _공용_모듈 = PROJECT_ROOT / "experiments" / "_shared.py"

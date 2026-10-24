@@ -96,7 +96,7 @@ sys.path.insert(0, str(ROOT))
 import db                                                       # noqa: E402
 from pipeline.step2_optimize import vrp as vrp_mod              # noqa: E402
 from project_config import (                                    # noqa: E402
-    DEPOT_ID, DEPOT_LAT, DEPOT_LON, VEHICLE_CAPACITY,
+    DEPOT_ID, DEPOT_LAT, DEPOT_LON, VEHICLE_CAPACITY, align_day_type,
 )
 
 # 운영 시설 — **공개 대여소가 아니다.** 라이브 대여소 목록(stock_station_master)에
@@ -865,6 +865,9 @@ def main() -> None:
                         help="무작위 대조 씨앗. 빈 값이면 대조를 돌리지 않는다")
     parser.add_argument("--out", default="", help="정책 표를 CSV로 저장")
     args = parser.parse_args()
+    # 이동시간 계수는 평일로 고정한다(사용자 결정 2026-10-24). 고장 수거는 요일과 상관없는 일인데, 맞추지 않으면
+    # vrp 모듈이 돌리는 날의 달력을 따라 주말에 돌리면 휴일 계수(게이트 B)로 잰다.
+    align_day_type("weekday", vrp_mod)
 
     base_months = [m.strip() for m in args.base.split(",") if m.strip()]
     follow_months = [m.strip() for m in args.follow.split(",") if m.strip()]
