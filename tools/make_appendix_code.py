@@ -21,6 +21,7 @@
 """
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -250,7 +251,11 @@ $\\alpha=1$, $\\beta=100$, $\\gamma=3000$이다. 군집 조정은 대여소를 �
 """
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    # 인자를 받지 않던 때는 `--help`에도 부록을 다시 썼다. 도움말과 모르는 인자는 쓰기 전에 끝낸다.
+    argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+    ).parse_args(argv)
     text = DOC.format(B1=B1, B2=B2, B3=B3, B4=B4, B5=B5, B6=B6, B7=B7)
     (ROOT / OUT).write_text(text, encoding="utf-8")
     print(f"{OUT}을 다시 썼습니다 (발췌 7개)")
