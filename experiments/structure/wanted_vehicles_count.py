@@ -7,7 +7,8 @@
 
 무엇을 재나(결과를 보기 전에 정했다. 바꾸지 말 것):
     입력    정본 스냅샷 '2026-08-11 real' · 부록 A의 19개월 · 평일 · 원고의 세 회차 · 계절 보정 없음(원고 6장 baseline_compare와 같다)
-    규칙    지금 = 배송 합, 새 = min(|수거 합|, 배송 합). 나머지(대여소 수 × 12.5분 · 여유 1.4 · 120분)는 같다.
+    규칙    지금 = 배송 합, 새 = min(|수거 합|, 배송 합). (판정 뒤 1.26.395부터 새 규칙이 기본이다. 이 스크립트는 옛 규칙을 스스로 끼워 같은 값을 다시 낸다)
+            나머지(대여소 수 × 12.5분 · 여유 1.4 · 120분)는 같다.
             회차당 상한(VEHICLES_PER_ROUND)으로 자른 K로 견준다
     판정 묶음  원고가 군집을 쓰는 조합: z = TARGET_Z 후보(제안 방법 P · B3) 19개월 × 세 회차, z = 0 후보(B2) 25년 11월 × 세 회차.
             z = 0의 나머지 달은 찍기만 한다(원고의 19개월 표에는 B2가 없다)
@@ -43,6 +44,7 @@ PERIODS = ["24년 08월", "24년 09월", "24년 10월", "24년 11월", "24년 12
 DURATIONS = ("_05_10", "_10_15", "_15_20")
 B2_PERIOD = "25년 11월"
 SEEDS = (42, 7, 13)
+PIPELINE_WANTED = None     # main()이 채운다: 파이프라인의 wanted_vehicles(식을 옮겨 적은 것이 맞는지 대조)
 
 
 def bikes(pick_drop: pd.DataFrame, rule: str) -> float:
@@ -61,10 +63,10 @@ def k_by(step1, pick_drop: pd.DataFrame, rule: str) -> int:
     return max(1, int(np.ceil(needed)))
 
 
-def moved_rule(step1):
-    """독립 모듈 인스턴스(`bc.load_step1()`)에 끼울 새 규칙. 원래 함수는 다른 인스턴스에 그대로 남는다."""
+def rule_of(step1, rule: str):
+    """독립 모듈 인스턴스(`bc.load_step1()`)에 끼울 규칙. 다른 인스턴스와 패키지 경로의 모듈은 그대로 남는다."""
     def wanted(pick_drop, geo=None):
-        return k_by(step1, pick_drop, "moved")
+        return k_by(step1, pick_drop, rule)
     return wanted
 
 
@@ -79,7 +81,7 @@ def count(step1) -> pd.DataFrame:
                 if cand.empty:
                     continue
                 old, new = k_by(step1, cand, "drop"), k_by(step1, cand, "moved")
-                assert old == step1.wanted_vehicles(cand), "식을 옮겨 적다 어긋났다"
+                assert new == PIPELINE_WANTED(cand), "식을 옮겨 적다 어긋났다(1.26.395부터 파이프라인은 새 규칙)"
                 rows.append({"period": period, "duration": duration, "z": "TARGET_Z" if z is None else "0",
                              "stations": len(cand), "drop": bikes(cand, "drop"), "moved": bikes(cand, "moved"),
                              "K_old": old, "K_new": new,
@@ -133,7 +135,10 @@ def main() -> int:
     args = parser.parse_args()
 
     step1_old, step1_new = bc.load_step1(), bc.load_step1()
-    step1_new.wanted_vehicles = moved_rule(step1_new)
+    global PIPELINE_WANTED
+    PIPELINE_WANTED = step1_new.wanted_vehicles
+    step1_old.wanted_vehicles = rule_of(step1_old, "drop")
+    step1_new.wanted_vehicles = rule_of(step1_new, "moved")
     bc.align_day_type("weekday", bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1_old, step1_new)
 
     if args.sanity:

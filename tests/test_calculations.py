@@ -827,6 +827,24 @@ def test_vehicle_count_follows_the_workload(step1):
         "대상이 없으면 1대로 떨어져야 한다(0으로 나누면 안 된다)"
 
 
+def test_차량_어림은_옮길_수_있는_대수로_센다(step1):
+    """처리 대수는 min(|수거 합|, 배송 합)이다(1.26.395, EXPERIMENTS 60장). 예전에는 배송 합이라, 후보 자르기(cut_point) 뒤
+    배송이 수거보다 많은 회차에서 ILP가 옮길 수 없는 대수까지 세어 K가 위로 어긋났다([-7, -7, 5, 5] → 수거 7 · 배송 10)."""
+    import numpy as np
+    import project_config as pc
+
+    frame = pd.DataFrame({"station_id": [f"ST{i}" for i in range(8)],
+                          "rebal_qty": [-35, -35, 15, 15, 15, 15, 10, 5]})        # 수거 70 · 배송 75
+    assert step1.movable_bikes(frame) == 70
+
+    def k(bikes):
+        minutes = bikes * (pc.PICK_TIME_SEC + pc.DROP_TIME_SEC) / 60 + len(frame) * pc.TRAVEL_MIN_PER_STATION
+        return max(1, int(np.ceil(minutes * pc.CLUSTER_IMBALANCE_ALLOWANCE / pc.TIME_BUDGET_MINUTES)))
+
+    assert k(70) != k(75), "시험 자료가 두 규칙을 가르지 못한다(계수가 바뀌었으면 수치를 다시 고른다)"
+    assert step1.wanted_vehicles(frame, geo=False) == k(70), "배송 합(옛 규칙)으로 세고 있다"
+
+
 def test_geo_wanted_vehicles_reacts_to_spread(step1):
     """`geo=True`는 대여소 수가 같아도 **흩어진 정도**로 필요 대수를 바꿔야 한다.
 

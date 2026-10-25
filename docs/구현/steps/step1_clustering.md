@@ -28,6 +28,7 @@
    - `K = min(wanted_vehicles(작업량), VEHICLES_PER_ROUND)` — 군집 1개 = 차량 1대.
      필요 대수는 **처리 대수 × (수거+배송) + 대여소 수 × 12.5분**을
      불균형 여유(1.4)만큼 늘려 시간 예산으로 나눈 값이다(1.19.1).
+     처리 대수는 옮길 수 있는 대수 min(|수거 합|, 배송 합)이다(`movable_bikes()`, 1.26.395. 그전에는 배송 합, EXPERIMENTS 60장)
      그전에는 `ceil(대상 수 / 7)`이었고 늘 상한 10에 걸렸다
    - `PBR_WANTED_VEHICLES_GEO=1`(`WANTED_VEHICLES_GEO`, 기본 꺼짐)이면 위 식 대신
      `_wanted_vehicles_geo()`가 후보 집합의 기하(BHH 순회거리 어림 + depot 왕복)를

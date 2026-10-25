@@ -87,9 +87,10 @@ B2 = block("pipeline/step1_cluster/top_st_clustering.py", [
 ])
 
 B3 = block("pipeline/step1_cluster/top_st_clustering.py", [
-    ("c", "    # 처리 대수는 배송 합이다. 수거 합과 크기가 같으므로 둘을 더하면 두 번 센다."),
-    ("l", 294, 294), ("b",),
-    ("l", 296, 299),
+    ("c", "    # 처리 대수는 옮길 수 있는 대수 min(|수거 합|, 배송 합)이다(movable_bikes)."),
+    ("c", "    # 둘을 더하면 한 대를 두 번 센다. 후보를 자른 뒤 두 합은 같지 않을 수 있다."),
+    ("l", 300, 300), ("b",),
+    ("l", 302, 305),
 ])
 
 B4 = block("pipeline/step1_cluster/adjust_module.py", [

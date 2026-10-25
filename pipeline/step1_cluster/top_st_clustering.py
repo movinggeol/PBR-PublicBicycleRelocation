@@ -256,6 +256,13 @@ def select_top_unbalanced_st(file_path:str, duration:str, st_info:pd.DataFrame) 
     return pick_drop
 
 
+def movable_bikes(pick_drop: pd.DataFrame) -> float:
+    """후보 집합이 옮길 수 있는 대수: min(|수거 합|, 배송 합). 한 대는 수거 한 번 · 배송 한 번이다."""
+    drop = float(pick_drop.loc[pick_drop['rebal_qty'] > 0, 'rebal_qty'].sum())
+    pick = float(-pick_drop.loc[pick_drop['rebal_qty'] < 0, 'rebal_qty'].sum())
+    return min(pick, drop)
+
+
 def wanted_vehicles(pick_drop: pd.DataFrame, geo: bool = None) -> int:
     """이번 회차의 작업량으로 **필요한 차량(=군집) 수**를 추정한다.
 
@@ -284,14 +291,13 @@ def wanted_vehicles(pick_drop: pd.DataFrame, geo: bool = None) -> int:
     if use_geo:
         return _wanted_vehicles_geo(pick_drop)
 
-    # 처리 대수는 drop 합으로 센다. pick·drop을 모두 더하면 한 대를 두 번 세어 2배가 된다.
-    # ⚠️ "drop 합 = |pick 합|"은 아니다(2026-10-08 점검 — 주석이 그렇게 적고 있었다).
-    #    `select_top_unbalanced_st()`의 cut_point는 누적합이 cut_point **이하**인 행만
-    #    남기므로 한쪽은 그보다 작아질 수 있다(rebal_qty [-7, -7, 5, 5] → pick 7 · drop 10).
-    #    ILP가 실제로 옮기는 것은 군집마다 min(pick, drop)이라 이 값은 **위쪽으로 어긋난다.**
-    # ponytail: K를 정하는 어림이 옮길 수 있는 양보다 크게 잡힐 수 있다 — min(|pick 합|, drop 합)으로
-    #           바꾸면 K가 달라져 원고 수치가 움직이므로, 바꿀 때는 재측정과 함께(docs/기록/TODO.md).
-    bikes = float(pick_drop.loc[pick_drop['rebal_qty'] > 0, 'rebal_qty'].sum())
+    # 처리 대수는 **옮길 수 있는 대수** min(|pick 합|, drop 합)으로 센다(1.26.395). pick·drop을 모두 더하면
+    # 한 대를 두 번 세어 2배가 된다. 예전에는 drop 합이었는데 "drop 합 = |pick 합|"은 아니다(2026-10-08 점검):
+    # `select_top_unbalanced_st()`의 cut_point는 누적합이 cut_point **이하**인 행만 남기므로 한쪽이 더 작아질 수 있고
+    # (rebal_qty [-7, -7, 5, 5] → pick 7 · drop 10), ILP가 옮기는 것은 군집마다 min(pick, drop)이라 drop 합은 위쪽으로 어긋난다.
+    # 바꾸기 전에 쟀다(EXPERIMENTS 60장): 원고 조합 60개(19개월 × 세 회차 · B2의 25년 11월)에서 K가 바뀐 것은 0개,
+    # 판정 밖 z = 0 조합 42개 중 1개(25년 04월 05 ~ 10시, 13 → 12대)였다.
+    bikes = movable_bikes(pick_drop)
 
     work_min = bikes * (PICK_TIME_SEC + DROP_TIME_SEC) / 60.0
     travel_min = len(pick_drop) * TRAVEL_MIN_PER_STATION
@@ -312,6 +318,8 @@ def _wanted_vehicles_geo(pick_drop: pd.DataFrame) -> int:
     `travel_seconds()`를 거치므로 이 추정도 계획과 같은 이동시간 식을 쓴다 — 기본은
     고정비+거리비례(실도로 모형, 1.26.268부터 켜짐)이고 `PBR_USE_ROAD_MODEL=0`이면 상수 속도다.
     """
+    # 이 꺼진 쪽 어림은 아직 배송 합으로 센다. 기본 어림은 1.26.395에 `movable_bikes()`로 바꿨지만(EXPERIMENTS 60장),
+    # 그 재측정은 이 함수를 쓰는 5-G장 격자를 보지 않았다. 켜 쓰려면 같은 재측정을 먼저 한다.
     bikes = float(pick_drop.loc[pick_drop['rebal_qty'] > 0, 'rebal_qty'].sum())
     n = len(pick_drop)
 

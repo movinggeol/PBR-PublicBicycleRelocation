@@ -200,14 +200,14 @@ $$
 한 대가 감당할 수 있는 양을 시간으로 따진다.
 
 $$
-\hat{T} = \Big(\sum_{i \in G'} r_i\Big) \frac{s_{\text{pick}} + s_{\text{drop}}}{60}
+\hat{T} = \min\!\Big( \Big|\sum_{i \in P'} r_i\Big|,\ \sum_{i \in G'} r_i \Big) \frac{s_{\text{pick}} + s_{\text{drop}}}{60}
         + |P' \cup G'| \cdot c_{\text{tr}} \quad [\text{분}],
 \qquad
 K = \min\!\left( \max\!\left(1, \left\lceil \frac{\rho \hat{T}}{B} \right\rceil \right),\ M_{\text{round}} \right)
 $$
 
 $s_{\text{pick}}$·$s_{\text{drop}}$는 **초**라서 60으로 나눠 분으로 맞춘다.
-작업량은 내릴 쪽 합($\sum_{G'} r_i \le \Lambda$ — 누적합 컷 뒤의 값)으로 센다.
+작업량은 **옮길 수 있는 대수**(누적합 컷 뒤 수거 합과 배송 합의 작은 쪽, `movable_bikes()`)로 센다(1.26.395). 1.26.394까지는 배송 합 $\sum_{G'} r_i$였는데, 컷 뒤 두 합은 같지 않을 수 있고(19개월 · 세 회차 102조합 가운데 89조합) ILP는 min만 옮긴다. 원고 조합 60개에서 $K$는 하나도 바뀌지 않았다([EXPERIMENTS](EXPERIMENTS.md) 60장).
 $\hat{T}$는 회차 전체의 추정 소요시간이다. 앞항(작업)은 정확히 계산되고,
 뒷항(이동)은 대여소 수에 비례한다고 본다 — 같은 재고로 $K$만 바꿔 재면 총 소요시간이
 거의 변하지 않기 때문이다(군집을 쪼개면 depot 왕복이 늘지만 군집 안 이동이 그만큼 준다).
