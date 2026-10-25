@@ -18,7 +18,7 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 1360개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 1363개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
 | `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
@@ -222,6 +222,8 @@ DB에 행이 있으면 CSV를 고쳐도 반영되지 않는다).
    08-23에 만든 실제 계획 실행이자 옛 실험 스냅샷이다. 2026-10-21에 K 확인 실행이 그 스냅샷을 덮었다(TODO 맨 위 행).
    지금은 `--run-kind plan`이면 `--now`가 없을 때 지금 시각(시 단위)을 쓰고, **다른 날 만든 같은 라벨이 있으면 멈춘다**
    (`--overwrite-run`으로만 덮는다). 같은 날 다시 돌리는 것은 막지 않는다. 합성 확인은 `tools/reproduce.py`(별도 DB)로 한다.
+   `--duration`도 같다(1.26.393): `--run-kind plan`이면서 주지 않으면 웹 실행 폼처럼 **재고 시각으로 회차 하나**를 정한다
+   (`run_pipeline.plan_duration` → `project_config.auto_duration`, `--skip-api`면 물려받는 재고의 시각). 실험 · 재현과 `PBR_DURATION`은 옛 기본값(`_05_10`)이다.
 
 ## 실행·확인은 `pbr-run` 스킬에 있다
 
@@ -396,7 +398,7 @@ python tools/gate_a_compare.py <off 폴더> <on 폴더>  # 끈/켠 결과 장별
 ## 테스트
 
 ```powershell
-python -m pytest                 # 1360개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 1363개, 약 100초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 

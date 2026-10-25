@@ -98,7 +98,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--overwrite-run", action="store_true",
                         help="다른 날 만든 같은 라벨의 실행이 있어도 덮어쓴다(없으면 멈춘다)")
     parser.add_argument("--period", help="순수요 입력 기간. 예: 25년 11월")
-    parser.add_argument("--duration", help="시간대 구간. 예: _05_10")
+    parser.add_argument("--duration", help="시간대 구간. 예: _05_10."
+                                           " --run-kind plan이면서 주지 않으면 재고 시각으로 회차 하나를 정한다"
+                                           "(웹 실행 폼과 같다)")
     parser.add_argument("--raw-file", help="원천 CSV 경로(프로젝트 루트 기준)")
     parser.add_argument("--day-type", choices=(*DAY_TYPES, DAY_TYPE_AUTO),
                         help=f"요일 구분 (기본 {DEFAULT_DAY_TYPE}). 평일과 휴일은 섞지 않는다."
@@ -390,6 +392,28 @@ def stock_source(label: str, kind: str | None = None) -> str | None:
     return donors[0] if donors else None
 
 
+def stock_time(source: str):
+    """그 라벨의 재고를 받은 시각. 모르면 None.
+
+    재고 파일의 수정 시각(`project_config.snapshot_time`)이 먼저이고, 파일 없이 DB에만 있는 스냅샷이면
+    그 실행의 기록 시각(`runs.created_at`)으로 물러선다. 웹 실행 폼(`store.inherited_stock`)과 명령줄 운영
+    계획(`plan_duration`)이 이 한 벌로 회차를 정한다.
+    """
+    from datetime import datetime
+    from project_config import snapshot_time
+
+    at = snapshot_time(source)
+    if at is not None:
+        return at
+    try:
+        import db
+        with db.session() as conn:
+            row = conn.execute("SELECT created_at FROM runs WHERE run_label = ?", (source,)).fetchone()
+        return datetime.fromisoformat(str(row[0])) if row and row[0] else None
+    except Exception:          # DB가 없거나 시각을 못 읽는다: 모른다고 답한다
+        return None
+
+
 def inherit_snapshot(label: str, kind: str | None = None) -> int:
     """`--skip-api`로 건너뛴 재고 스냅샷을 **가장 최근 실행에서 물려받는다.**
 
@@ -488,6 +512,31 @@ def label_conflict(label: str, clock=None) -> str:
             f"새 라벨을 --now로 주거나, 정말 덮으려면 --overwrite-run을 준다")
 
 
+def plan_duration(label: str, stored_stock: bool, clock=None) -> tuple[str, str]:
+    """운영 계획의 회차를 **재고 시각으로** 정한다: (회차, 그 재고를 말하는 문구).
+
+    웹 실행 폼은 1.26.372(2026-10-18 사용자 결정 "자동으로 하자")부터 이 규칙이다(`webapp.app._auto_round`).
+    명령줄은 그때 기본값(`_05_10`)을 그대로 두어, 2026-10-25 14시에 `--duration` 없이 띄운 확인 실행이
+    14시 재고로 05 ~ 10시 회차를 세웠다. 재고는 실행할 때 한 장만 받으므로 맞는 회차는 그 재고를 들고
+    곧 출발하는 하나다(`project_config.auto_duration`).
+
+    - 재고를 지금 받으면(타슈 API 호출) 지금 시각.
+    - 받지 않으면(`stored_stock`: `--skip-api`, `--skip-fetch`) 쓰게 될 재고(`stock_source`)를 받은 시각.
+      그 시각을 모르면 지금 시각으로 정하고 그렇다고 말한다.
+    """
+    from datetime import datetime
+    from project_config import auto_duration
+
+    now = clock or datetime.now()
+    if not stored_stock:
+        return auto_duration(now), f"지금({now:%H:%M}) 받는 재고"
+    source = stock_source(label, kind="plan")
+    at = stock_time(source) if source else None
+    if at is None:
+        return auto_duration(now), "쓸 재고를 언제 받았는지 몰라 지금 시각"
+    return auto_duration(at), f"재고 '{source}'({at:%m-%d %H:%M}에 받음)"
+
+
 def main() -> int:
     """전체 파이프라인을 실행하고 실패 상태를 반환합니다."""
 
@@ -515,6 +564,12 @@ def main() -> int:
         if problem:
             print(f"멈춥니다: {problem}")
             return 2
+    # 회차(1.26.393): 운영 계획은 --duration이 없으면 웹 실행 폼처럼 재고 시각으로 하나를 정한다.
+    # 실험 · 재현(종류 선언이 plan이 아님)과 PBR_DURATION을 건 실행은 예전 기본값 그대로다.
+    if (not args.duration and getattr(args, "run_kind", None) == "plan"
+            and not os.environ.get("PBR_DURATION")):
+        args.duration, source = plan_duration(args.now, args.skip_api or args.skip_fetch)
+        print(f"회차를 주지 않아 재고 시각으로 정했습니다: {args.duration} ({source})")
 
     print("=== Public Bike Rebalancing Pipeline ===")
     # 요일 구분은 auto일 수 있으므로 **해석된 값**을 보여준다.

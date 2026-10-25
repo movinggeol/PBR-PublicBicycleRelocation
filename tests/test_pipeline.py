@@ -1137,3 +1137,66 @@ def test_운영_계획의_기본_라벨은_지금_시각이고_다른_날_만든
     monkeypatch.setattr(sys, "argv", ["run_pipeline.py", "--now", "2026-05-21 18", "--skip-map"])
     assert run_pipeline.main() == 2
     assert "--overwrite-run" in capsys.readouterr().out
+
+
+def test_운영_계획은_회차를_주지_않으면_재고_시각으로_정한다(tmp_path, monkeypatch):
+    """🔴 2026-10-25 14시에 `--duration` 없이 띄운 확인 실행이 14시 재고로 05 ~ 10시 회차를 세웠다(1.26.393).
+    웹 실행 폼은 1.26.372부터 재고 시각으로 회차를 정하는데 명령줄만 옛 기본값(`_05_10`)이었다.
+    재고를 지금 받으면 지금 시각, 받지 않으면(`--skip-api`) 쓰게 될 재고를 받은 시각이다."""
+    from datetime import datetime
+
+    import db
+    import project_config
+    import run_pipeline
+
+    at = datetime(2026, 10, 25, 14, 0)
+    assert run_pipeline.plan_duration("오늘", False, at)[0] == "_10_15"
+    assert run_pipeline.plan_duration("오늘", False, datetime(2026, 10, 25, 23, 11))[0] == "_20_05"
+
+    # 물려받는 재고가 04:40 것이면 14시에 띄워도 그 재고로 곧 출발하는 05 ~ 10시다.
+    monkeypatch.setattr(project_config, "PP_ROOT", tmp_path)
+    _스냅샷_세_파일(tmp_path, "1025 새벽 계획", "계획", datetime(2026, 10, 25, 4, 40).timestamp())
+    duration, source = run_pipeline.plan_duration("오늘", True, at)
+    assert duration == "_05_10" and "1025 새벽 계획" in source
+
+    # 그 라벨의 스냅샷이 파일 없이 DB에만 있으면 그 실행의 기록 시각이다(웹 폼의 `store.inherited_stock`과 같은 한 벌).
+    monkeypatch.setattr(project_config, "PP_ROOT", tmp_path / "빈 곳")
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "t.db"))
+    with db.session() as conn:
+        conn.execute("INSERT INTO runs (run_label, kind, created_at) VALUES (?, ?, ?)",
+                     ("1024 저녁 계획", "plan", "2026-10-24 21:05:00"))
+        for table in run_pipeline.SNAPSHOT_TABLES:
+            conn.execute(f"INSERT INTO {table} (run_label, station_id) VALUES (?, ?)", ("1024 저녁 계획", "ST1"))
+        conn.commit()
+    assert run_pipeline.stock_time("1024 저녁 계획") == datetime(2026, 10, 24, 21, 5)
+    assert run_pipeline.plan_duration("1024 저녁 계획", True, at)[0] == "_20_05"
+    # 쓸 재고가 없으면 지금 시각으로 정하고 그렇다고 말한다(파이프라인은 물려받기에서 멈춘다).
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "빈.db"))
+    duration, source = run_pipeline.plan_duration("오늘", True, at)
+    assert duration == "_10_15" and "몰라" in source
+
+
+def test_회차를_재고_시각으로_정하는_것은_운영_계획뿐이다(tmp_path, monkeypatch, capsys):
+    """실험 · 재현(종류 선언이 plan이 아님)과 `PBR_DURATION`을 건 실행은 예전 기본값 그대로다. 원고를 다시 내는
+    명령이 띄우는 시각에 따라 다른 회차를 세우면 안 된다. 배선(`main()`)을 함께 본다."""
+    import run_pipeline
+
+    monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "t.db"))
+    monkeypatch.delenv("PBR_DURATION", raising=False)
+
+    monkeypatch.setattr(sys, "argv", ["run_pipeline.py", "--run-kind", "plan", "--now", "시험 계획",
+                                      "--skip-map", "--dry-run"])
+    assert run_pipeline.main() == 0
+    assert "회차를 주지 않아 재고 시각으로 정했습니다" in capsys.readouterr().out
+
+    for argv in (["--now", "시험 실험", "--run-kind", "experiment"], ["--now", "시험 선언 없음"],
+                 ["--run-kind", "plan", "--now", "시험 계획", "--duration", "_15_20"]):
+        monkeypatch.setattr(sys, "argv", ["run_pipeline.py", *argv, "--skip-map", "--dry-run"])
+        assert run_pipeline.main() == 0
+        assert "회차를 주지 않아" not in capsys.readouterr().out, argv
+
+    monkeypatch.setenv("PBR_DURATION", "_15_20")
+    monkeypatch.setattr(sys, "argv", ["run_pipeline.py", "--run-kind", "plan", "--now", "시험 계획",
+                                      "--skip-map", "--dry-run"])
+    assert run_pipeline.main() == 0
+    assert "회차를 주지 않아" not in capsys.readouterr().out

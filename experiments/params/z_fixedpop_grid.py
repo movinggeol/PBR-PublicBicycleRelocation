@@ -148,8 +148,9 @@ def report(df) -> None:
     for p in pops:
         m = table[p].sort_values()
         winners[p] = m.index[0]
-        print(f"  {p:16s} → z={m.index[0]}  ({m.iloc[0]:.4f}),"
-              f" 차순 z={m.index[1]} ({m.iloc[1]:.4f})")
+        # z가 하나뿐이면 차순이 없다(예전에는 `--z-grid`에 값 하나를 주면 여기서 IndexError였다, 2026-10-08 점검 ⑧).
+        runner_up = f", 차순 z={m.index[1]} ({m.iloc[1]:.4f})" if len(m) > 1 else " (z가 하나뿐이라 견줄 것이 없다)"
+        print(f"  {p:16s} → z={m.index[0]}  ({m.iloc[0]:.4f}){runner_up}")
 
     uniq = set(winners.values())
     print()

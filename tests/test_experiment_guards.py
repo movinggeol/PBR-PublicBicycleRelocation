@@ -2772,3 +2772,19 @@ def test_상한_격자의_고정_모집단은_가장_넓은_상한의_후보여�
     source = (PROJECT_ROOT / "experiments/params/limit_fixedpop_grid.py").read_text(encoding="utf-8")
     assert "step1.TOP_STATION_LIMIT = max(limits)" in source
     assert 'os.environ["PBR_TOP_STATION_LIMIT"]' not in source
+
+
+def test_z_고정모집단_격자는_z_하나만_줘도_요약을_낸다(capsys):
+    """2026-10-08 점검 ⑧: `--z-grid`에 값 하나를 주면 `report()`가 차순(두 번째 z)을 찍다 `IndexError`로 죽었다.
+    격자를 다 돌린 뒤 요약에서 죽으므로 계산이 통째로 버려진다."""
+    for path in (PROJECT_ROOT, PROJECT_ROOT / "experiments" / "params", PROJECT_ROOT / "experiments" / "baseline"):
+        if str(path) not in sys.path:
+            sys.path.insert(0, str(path))
+    spec = importlib.util.spec_from_file_location(
+        "z_fixedpop_grid", PROJECT_ROOT / "experiments" / "params" / "z_fixedpop_grid.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    frame = pd.DataFrame({"z": [1.99, 1.99], "after::중립": [0.5, 0.6], "before::중립": [0.9, 0.9],
+                          "candidates": [90, 90], "bikes": [200, 210], "km": [300.0, 310.0], "over": [1, 2]})
+    module.report(frame)
+    assert "견줄 것이 없다" in capsys.readouterr().out

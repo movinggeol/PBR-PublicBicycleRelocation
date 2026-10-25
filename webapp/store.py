@@ -108,12 +108,12 @@ def inherited_stock(label: str) -> Optional[dict]:
     """'API 수집 생략'으로 띄운 운영 계획이 쓸 재고: `{"label": 라벨, "at": 받은 시각}`. 없으면 None.
 
     고르는 규칙은 `run_pipeline.stock_source()` 한 벌이다. 파이프라인이 실제로 물려받는 재고와 같아야
-    실행 폼이 맞는 회차를 말한다(`project_config.auto_duration`, 2026-10-18). 시각은 재고 파일의 수정
-    시각이고, 파일 없이 DB에만 있는 스냅샷이면 그 실행의 기록 시각(`runs.created_at`)으로 물러선다.
+    실행 폼이 맞는 회차를 말한다(`project_config.auto_duration`, 2026-10-18). 시각도 파이프라인과 같은
+    `run_pipeline.stock_time()`이다(재고 파일의 수정 시각, 파일 없이 DB에만 있는 스냅샷이면 그 실행의
+    `runs.created_at`). 명령줄 운영 계획도 이 둘로 회차를 정한다(1.26.393).
     시각을 끝내 모르면 `at`이 None이다(부르는 쪽이 그렇다고 말한다).
     """
     import run_pipeline
-    from project_config import snapshot_time
 
     try:
         source = run_pipeline.stock_source(label, kind="plan")
@@ -122,11 +122,7 @@ def inherited_stock(label: str) -> Optional[dict]:
         return None
     if source is None:
         return None
-    at = snapshot_time(source)
-    if at is None:
-        stamp = pd.to_datetime(_run_created_at().get(source), errors="coerce")
-        at = None if pd.isna(stamp) else stamp.to_pydatetime()
-    return {"label": source, "at": at}
+    return {"label": source, "at": run_pipeline.stock_time(source)}
 
 
 def kpi_run_order(rows: pd.DataFrame, created: Optional[dict] = None) -> list:
