@@ -1,3 +1,5 @@
+import argparse
+
 import matplotlib.pyplot as plt
 from matplotlib import font_manager, rc
 import pandas as pd
@@ -22,6 +24,8 @@ def month_graph(df : pd.DataFrame):
 
 
 if __name__ == '__main__':
+    # 인자를 받지 않는다. 받지 않던 때는 `--help`에도 그대로 그렸다(2026-10-24).
+    argparse.ArgumentParser(description="월별 대여량 그래프(참고 코드)").parse_args()
 
     font_path = 'C:/Windows/Fonts/malgun.ttf'
     font_name = font_manager.FontProperties(fname=font_path).get_name()

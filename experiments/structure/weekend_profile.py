@@ -13,6 +13,7 @@
 
 실행: python experiments/structure/weekend_profile.py
 """
+import argparse
 import sys
 from pathlib import Path
 
@@ -149,4 +150,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # 인자를 받지 않는다. 받지 않던 때는 `--help`에도 그대로 계산했다(2026-10-24). 도움말과 모르는 인자는 계산 전에 끝낸다.
+    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
     raise SystemExit(main())

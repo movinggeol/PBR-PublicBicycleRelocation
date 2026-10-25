@@ -1,4 +1,5 @@
 """`python -m webapp` 실행 진입점."""
+import argparse
 import socket
 import sys
 
@@ -43,6 +44,9 @@ def _lan_ip() -> str | None:
 
 
 if __name__ == "__main__":
+    # 인자를 받지 않는다(DB는 PBR_DB_PATH). 받지 않던 때는 `--help`에도 서버를 띄웠다(2026-10-24).
+    argparse.ArgumentParser(prog="python -m webapp",
+                            description="웹 대시보드를 0.0.0.0:8000에 띄운다(같은 와이파이에서도 열린다).").parse_args()
     check_dependencies()
     lan_ip = _lan_ip()
     if lan_ip:

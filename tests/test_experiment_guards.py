@@ -2590,6 +2590,29 @@ def test_실험이_계획_표의_기본_실행을_스스로_고르지_않는다(
         assert re.search(r'default_run_label\(conn, "(?:rebalance_plan|pick_drop|ilp_plan|vrp_plan)"\)', source), relpath
 
 
+def test_직접_실행하는_스크립트는_도움말_요청에_계산하지_않는다():
+    """`--help`를 받아 주는 곳이 없으면 스크립트는 그 인자를 무시하고 **그대로 계산한다** (2026-10-24 점검).
+
+    `make_appendix_code.py`는 부록 B를 다시 썼고, `forecast_impact.py` · `forecast_grid_impact.py`는 기상청 API를 부를 수
+    있었으며, `python -m webapp --help`는 서버를 띄웠다. 단계 스크립트는 `tests/test_pipeline.py`가 `exit_if_help()`를 본다.
+    여기서는 그 밖의 실행 스크립트(실험 · 도구 · 웹 진입점 · 저장소 최상위)가 파서(`ArgumentParser`, `add_help=False`가 아닌 것)
+    나 `exit_if_help()`를 거치는지 원문으로 본다.
+    """
+    import re
+
+    파일 = sorted({*(PROJECT_ROOT / "experiments").rglob("*.py"), *(PROJECT_ROOT / "tools").rglob("*.py"),
+                  *PROJECT_ROOT.glob("*.py"), PROJECT_ROOT / "webapp" / "__main__.py"})
+    없음 = []
+    for path in 파일:
+        source = path.read_text(encoding="utf-8")
+        if not re.search(r"^if __name__ == ['\"]__main__['\"]", source, re.M):
+            continue
+        파서 = re.search(r"ArgumentParser\((?![^)]*add_help\s*=\s*False)", source)
+        if not (파서 or "exit_if_help(" in source):
+            없음.append(path.relative_to(PROJECT_ROOT).as_posix())
+    assert not 없음, f"`--help`를 받지 않고 그대로 도는 스크립트: {없음}"
+
+
 def test_실험이_거리_식을_다시_들지_않는다():
     """지구 반지름을 든 식이 실험 폴더에 다시 생기면 실패한다 — `project_config.haversine_km()` 하나다.
 
