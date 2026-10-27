@@ -46,3 +46,8 @@ fastapi>=0.141.1
 uvicorn[standard]>=0.52.1
 jinja2>=3.1.6
 python-multipart>=0.0.32
+
+# 한글(HWP) 변환 (tools/hwp/build.py): 선택. 원고(.md)를 학과 양식 한글 파일로 조립할 때만
+# 쓴다. 한컴오피스 한글이 깔린 윈도우에서만 돌므로 기본에 넣지 않는다(docs/연구/논문/한글_옮기기.md 6-1).
+# PyMuPDF는 차례 쪽 번호를 찾으려고 본문 PDF를 읽는다.
+#   pip install comtypes>=1.4.17 pymupdf>=1.28.2
