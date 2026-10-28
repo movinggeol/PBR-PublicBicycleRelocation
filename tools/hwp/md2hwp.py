@@ -320,39 +320,13 @@ class Writer:
             for r in rows[1:]:
                 r[j] = self.refs.source(r[j])
 
-        unit, pad = 1.65, 3.8  # 9pt에서 반각 한 글자 폭(mm), 칸 안 여백(mm)
-
-        def units(c):
-            plain = MATH.sub(lambda m: "x" * max(2, len(m.group(1)) // 3), c).replace("`", "")
-            return sum(2 if ord(ch) > 0x2E80 else 1 for ch in plain)
-
-        def longest_word(c):
-            return max([units(t) for t in c.split()] or [0])
-
-        # 한글은 글자 단위로 줄이 바뀌므로, 칸마다 반각 10자(전각 5자)까지는 한 줄에 들도록 한다
-        nat = [max(10.0, max(units(r[j]) for r in rows) * unit + pad) for j in range(ncol)]
-        lo = [min(nat[j], max(10, max(longest_word(r[j]) for r in rows)) * unit + pad) for j in range(ncol)]
-        # 한 열이 아주 길면 남는 폭이 거의 다 그 열로 가서 짧은 열이 낱말 하나 폭으로 줄고 "<표 / 5-1>"처럼
-        # 꺾인다(<표 A-1>). 짧은 열에도 반각 12자(전각 6자)까지는 먼저 준다
-        floor = [min(nat[j], max(lo[j], 12 * unit + pad)) for j in range(ncol)]
-        if sum(floor) < TEXT_W:
-            lo = floor
-        if sum(nat) <= TEXT_W:
-            widths = [TEXT_W * n / sum(nat) for n in nat]
-        elif sum(lo) >= TEXT_W:
-            widths = [TEXT_W * n / sum(lo) for n in lo]
-        else:
-            extra = [n - m for n, m in zip(nat, lo)]
-            widths = [m + (TEXT_W - sum(lo)) * e / sum(extra) for m, e in zip(lo, extra)]
+        widths = col_widths(rows)
         numeric = [_numeric_col([r[j] for r in rows[1:]]) for j in range(ncol)]
         self.w.para("center", 130)
         # 쪽을 넘길 만큼 긴 표만 쪽 끝에서 나눈다. 짧은 표까지 나누면 쪽 끝에 제목 줄만 남거나 표 제목과
         # 표가 떨어진다(띄워 놓은 표는 제목의 '다음 문단과 함께'가 닿지 않는다). 9pt · 줄 간격 130%의 한 줄은
         # 약 4.1mm, 칸 위아래 여백이 약 1mm. 본문 높이는 207mm
-        def n_lines(c, wmm):
-            return max(1, math.ceil(units(c) * unit / max(wmm - pad, 5.0)))
-
-        est = sum(max(n_lines(c, widths[j]) for j, c in enumerate(r)) * 4.1 + 1.0 for r in rows)
+        est = sum(max(_n_lines(c, widths[j]) for j, c in enumerate(r)) * 4.1 + 1.0 for r in rows)
         split = est > 150
         if split:
             log("  긴 표 나눔: %s… 약 %dmm" % (rows[0][0][:8], est))
@@ -416,6 +390,53 @@ def short_caption(cap):
     label, title = m.group(1), m.group(2)
     title = re.split(r" \(|\. ", title)[0].rstrip(".")
     return label + " " + title
+
+
+UNIT, PAD = 1.65, 3.8  # 9pt에서 반각 한 글자 폭(mm), 칸 안 여백(mm)
+
+
+def _units(c):
+    plain = MATH.sub(lambda m: "x" * max(2, len(m.group(1)) // 3), c).replace("`", "")
+    return sum(2 if ord(ch) > 0x2E80 else 1 for ch in plain)
+
+
+def _longest_word(c):
+    return max([_units(t) for t in c.split()] or [0])
+
+
+def _n_lines(c, wmm):
+    return max(1, math.ceil(_units(c) * UNIT / max(wmm - PAD, 5.0)))
+
+
+def col_widths(rows):
+    """표 열 너비(mm). 합은 본문 폭이다."""
+    ncol = len(rows[0])
+
+    def need(j, rs, head=None):
+        # 한글은 글자 단위로 줄이 바뀌므로, 칸마다 반각 10자(전각 5자)까지는 한 줄에 들도록 한다
+        n = max([_units(r[j]) for r in rs] + [_longest_word(head[j]) if head else 0])
+        return max(10.0, n * UNIT + PAD)
+
+    nat = [need(j, rows) for j in range(ncol)]
+    if sum(nat) <= TEXT_W:
+        return [TEXT_W * n / sum(nat) for n in nat]
+    # 머리글이 먼저 줄을 바꾼다. 머리글 "예산을 넘긴 차량 (대)"가 숫자 열을 넓히면 그만큼 본문 열이 좁아져
+    # "B1 그리 / 디"처럼 이름이 꺾였다(<표 6-3>). 본문 칸이 한 줄에 들고 머리글은 낱말이 안 끊기는 폭을 먼저 주고,
+    # 남는 폭은 머리글이 더 바라는 열에 나눈다
+    body = [need(j, rows[1:], rows[0]) for j in range(ncol)]
+    if sum(body) <= TEXT_W:
+        extra = [n - b for n, b in zip(nat, body)]
+        return [b + (TEXT_W - sum(body)) * e / sum(extra) for b, e in zip(body, extra)]
+    lo = [min(nat[j], max(10, max(_longest_word(r[j]) for r in rows)) * UNIT + PAD) for j in range(ncol)]
+    # 한 열이 아주 길면 남는 폭이 거의 다 그 열로 가서 짧은 열이 낱말 하나 폭으로 줄고 "<표 / 5-1>"처럼
+    # 꺾인다(<표 A-1>). 짧은 열에도 반각 12자(전각 6자)까지는 먼저 준다
+    floor = [min(nat[j], max(lo[j], 12 * UNIT + PAD)) for j in range(ncol)]
+    if sum(floor) < TEXT_W:
+        lo = floor
+    if sum(lo) >= TEXT_W:
+        return [TEXT_W * n / sum(lo) for n in lo]
+    extra = [n - m for n, m in zip(nat, lo)]
+    return [m + (TEXT_W - sum(lo)) * e / sum(extra) for m, e in zip(lo, extra)]
 
 
 def _numeric_col(cells):
