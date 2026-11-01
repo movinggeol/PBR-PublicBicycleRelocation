@@ -1515,6 +1515,24 @@ def test_F2_A3_조기_확인은_9월_초_평일의_낮_두_회차만_시작_전_
     assert (date(2026, 9, 1), "_10_15") in got                    # 앞선 날 7일(08-25 ~ 31)
 
 
+def test_F2_창_끝_관측이_없는_회차는_확률을_내지_않는다(f2):
+    """10-27 밤처럼 창 끝 틱이 비면 시작 행이 통째로 빠진다 — 0행으로 예측하다 멈추지 않고 그 회차만 뺀다."""
+    import numpy as np
+
+    stamps = pd.date_range("2026-10-19", "2026-10-22 23:50", freq="10min")
+    rows = [{"ts": t, "station_id": s, "빔": int((i + k) % 5 == 0), "stock": (i + k) % 5}
+            for i, t in enumerate(stamps) for k, s in enumerate(("ST0001", "ST0002"))]
+    long = f2.sf.build_features(pd.DataFrame(rows), 6)
+    day = stamps[-1].date()
+    inside, edge = pd.Timestamp("2026-10-22 10:00"), pd.Timestamp("2026-10-22 23:30")
+
+    got = f2.predict_day(long, day, [inside.to_pydatetime(), edge.to_pydatetime()])
+
+    assert inside.to_pydatetime() in got and edge.to_pydatetime() not in got
+    assert np.all(got[inside.to_pydatetime()][0].between(0, 1))
+    assert f2.predict_day(long, day, [edge.to_pydatetime()]) == {}
+
+
 def test_F2_A3_조기_확인은_판정_날을_회차마다_센다(f2):
     """9월 초 날은 회차마다 잰 날이 달라 전체 날 수로 세면 덜 찬 회차를 판정하게 된다."""
     rows = []

@@ -224,10 +224,15 @@ def predict_day(long: pd.DataFrame, day, starts: list) -> dict:
     model = HistGradientBoostingClassifier(max_iter=200, learning_rate=0.1, max_depth=6,
                                            random_state=42)
     model.fit(train[FEATURES], train["타깃"])
-    now = now.assign(P=model.predict_proba(now[FEATURES])[:, 1])
     out = {}
+    if now.empty:
+        return out
+    now = now.assign(P=model.predict_proba(now[FEATURES])[:, 1])
     for start in starts:
         at = now[now["ts"] == start]
+        if at.empty:
+            # 창 끝 틱이 비어 타깃이 없으면 시작 행이 통째로 빠진다 — 그 회차는 부른 쪽이 뺀다
+            continue
         base = train[train["시"] == start.hour].groupby("station_id")["지금빔"].mean()
         out[start] = (at.set_index("station_id")["P"], base)
     return out
@@ -414,7 +419,8 @@ def main(argv=None) -> int:
                 continue
             got = predict_day(long, day, [round_start(day, d) for d in need])
             for d in need:
-                probs[(day, d, horizon)] = got[round_start(day, d)]
+                if round_start(day, d) in got:
+                    probs[(day, d, horizon)] = got[round_start(day, d)]
         del long
         print(f"  확률 {horizon}틱 뒤 — 날마다 앞선 날로 학습 끝")
 
@@ -424,6 +430,9 @@ def main(argv=None) -> int:
         stock = observed_start(frame, start)
         if stock.empty:
             print(f"  [건너뜀] {day} {duration}: 회차 시작 관측이 없다")
+            continue
+        if any((day, duration, h) not in probs for h in (A1_HORIZON, window_ticks(duration))):
+            print(f"  [건너뜀] {day} {duration}: 창 끝 관측이 없어 확률을 못 냈다")
             continue
         info = st_info[st_info["station_id"].isin(stock.index)].copy()
         info["stock"] = info["station_id"].map(stock)
