@@ -4106,3 +4106,31 @@ def test_진행_화면은_범위_예상을_숫자로_바꾸지_않는다(client)
             / "run_detail.html").read_text(encoding="utf-8")
     assert "m(d.estimate_minutes)" not in body, "범위 예상을 숫자로 바꾼다 — NaN이 된다"
     assert "d.estimate_note" in body, "갱신된 화면이 EDA가 빠졌다는 말을 잃는다"
+
+
+# ---------------- 열람 전용 (PBR_READONLY, 클라우드 데모) ----------------
+
+def test_열람_전용이면_쓰기와_타슈_호출이_막힌다(client, monkeypatch):
+    monkeypatch.setenv("PBR_READONLY", "1")
+    _reject_start(monkeypatch)                                  # 실행이 새어 나가면 여기서 실패한다
+    assert client.post("/runs", data={}).status_code == 403
+    assert client.post("/runs/x/cancel").status_code == 403
+    assert client.post("/runs/x/kind", data={"kind": "plan"}).status_code == 403
+    assert client.get("/orders/live").status_code == 403
+    assert client.get("/m/live").status_code == 403
+    # 사람이 보는 화면은 JSON이 아니라 안내 화면이다
+    res = client.post("/runs", data={}, headers={"accept": "text/html"})
+    assert res.status_code == 403 and "열람 전용" in res.text
+
+
+def test_열람_전용이어도_읽기와_기기_쿠키는_된다(client, monkeypatch):
+    monkeypatch.setenv("PBR_READONLY", "1")
+    assert client.get("/").status_code == 200
+    res = client.post("/m/vehicle", data={"vehicle": "V07"}, follow_redirects=False)
+    assert res.status_code == 303
+
+
+def test_열람_전용이_아니면_막지_않는다(client, monkeypatch):
+    monkeypatch.delenv("PBR_READONLY", raising=False)
+    res = client.post("/runs/x/kind", data={"kind": "plan"})
+    assert res.status_code != 403 or "열람 전용" not in res.text

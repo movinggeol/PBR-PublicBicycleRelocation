@@ -70,6 +70,7 @@ docs/
 | [COLLECTOR_ROAD.md](구현/COLLECTOR_ROAD.md) | **실도로 소요시간 수집** — 고정 패널·TMAP 한도·재고 수집기와의 차이 | 도로 수집기를 건드리기 전 |
 | [FLEET.md](구현/FLEET.md) | 차량 로테이션·형평성·회차 배정 | 차량/클러스터 수를 건드리기 전 |
 | [WEBAPP.md](구현/WEBAPP.md) | 웹 대시보드 실행·구조·API | 화면·라우트를 다룰 때 |
+| [CLOUD_DEPLOY.md](구현/CLOUD_DEPLOY.md) | GCP VM에 열람 전용으로 올리기 (PBR_READONLY) | 클라우드 배포를 다룰 때 |
 | [DESIGN.md](구현/DESIGN.md) | 화면 디자인 시스템 — 색 토큰·글꼴·내비·타일 | 템플릿을 건드리기 전 |
 | [스크린리더_점검.md](구현/스크린리더_점검.md) | **NVDA로 직접 들어 보는 대본** — 무엇을 어떤 순서로 듣고 무엇이 들리면 문제인지 | 접근성의 마지막 축을 사람이 확인할 때 |
 | [DB_SCHEMA.md](구현/DB_SCHEMA.md) | ERD·테이블 컬럼 레퍼런스·스코프 규칙 | DB를 건드리기 전 |

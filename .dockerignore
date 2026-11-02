@@ -1,0 +1,23 @@
+# 데이터와 비밀키는 이미지에 넣지 않는다 (CLAUDE.md: data/ · *.csv · .env 커밋 금지와 같은 이유)
+data/
+*.csv
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+!.env.example
+
+.git/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.claude/
+
+# 열람 서버에 필요 없는 것 (이미지를 가볍게)
+docs/
+experiments/
+tests/
+scripts/
+deploy/

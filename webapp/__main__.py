@@ -1,5 +1,6 @@
 """`python -m webapp` 실행 진입점."""
 import argparse
+import os
 import socket
 import sys
 
@@ -46,10 +47,12 @@ def _lan_ip() -> str | None:
 if __name__ == "__main__":
     # 인자를 받지 않는다(DB는 PBR_DB_PATH). 받지 않던 때는 `--help`에도 서버를 띄웠다(2026-10-24).
     argparse.ArgumentParser(prog="python -m webapp",
-                            description="웹 대시보드를 0.0.0.0:8000에 띄운다(같은 와이파이에서도 열린다).").parse_args()
+                            description="웹 대시보드를 0.0.0.0:8000에 띄운다(같은 와이파이에서도 열린다). "
+                                        "PBR_PORT로 포트를, PBR_READONLY=1로 열람 전용을 고른다.").parse_args()
     check_dependencies()
+    port = int(os.environ.get("PBR_PORT", "8000"))
     lan_ip = _lan_ip()
     if lan_ip:
-        print(f"같은 와이파이 기기에서: http://{lan_ip}:8000"
+        print(f"같은 와이파이 기기에서: http://{lan_ip}:{port}"
               "  (인증이 없습니다. 신뢰하는 네트워크에서만 쓰세요)")
-    uvicorn.run("webapp.app:app", host="0.0.0.0", port=8000)
+    uvicorn.run("webapp.app:app", host="0.0.0.0", port=port)

@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 import sys
 import threading
@@ -61,6 +62,38 @@ _HERE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(_HERE / "templates"))
 # 글꼴을 같이 담아 서빙한다 — 인터넷이 끊겨도 화면이 같아야 한다.
 app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
+
+
+# ---------------- 열람 전용 (클라우드 데모) ----------------
+
+# PBR_READONLY=1이면 이 서버는 보여 주기만 한다 (docs/구현/CLOUD_DEPLOY.md).
+# 인터넷에 열린 서버가 누구에게나 파이프라인(수 분짜리 subprocess)을 돌려 주거나 실행 종류를
+# 바꾸게 하면 안 되고, 타슈 API 키로 부르는 실시간 재고 대조도 방문자 수만큼 한도를 먹는다.
+# 막는 것은 쓰기 메서드 전부와 타슈 호출 두 곳이다. 예외 하나: `/m/vehicle`은 이 기기 쿠키에만
+# 쓴다(DB·서버 상태를 안 건드린다).
+READONLY_ALLOWED_POSTS = {"/m/vehicle"}
+READONLY_BLOCKED_GETS = {"/orders/live", "/m/live"}
+
+
+def readonly_enabled() -> bool:
+    return os.environ.get("PBR_READONLY", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+@app.middleware("http")
+async def readonly_guard(request: Request, call_next):
+    if readonly_enabled():
+        path = request.url.path
+        blocked = ((request.method not in ("GET", "HEAD", "OPTIONS")
+                    and path not in READONLY_ALLOWED_POSTS)
+                   or path in READONLY_BLOCKED_GETS)
+        if blocked:
+            detail = "열람 전용 데모라 실행·수정과 실시간 재고 조회는 막혀 있습니다."
+            if not _wants_html(request):
+                return JSONResponse({"detail": detail}, status_code=403)
+            return templates.TemplateResponse(
+                request, "error.html",
+                {"code": 403, "title": "열람 전용입니다", "detail": detail}, status_code=403)
+    return await call_next(request)
 
 
 # ---------------- 오류 화면 ----------------
