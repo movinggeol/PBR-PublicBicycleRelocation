@@ -30,6 +30,9 @@ sudo mkdir -p "$APP_DIR"
 sudo chown "$USER" "$APP_DIR"
 if [ -n "${REPO_URL:-}" ]; then
   if [ -d "$APP_DIR/.git" ]; then git -C "$APP_DIR" pull --ff-only; else git clone "$REPO_URL" "$APP_DIR"; fi
+elif [ -d "$APP_DIR/.git" ]; then
+  # 이미 받아 둔 저장소가 있으면 REPO_URL 없이도 갱신한다(두 번째 실행부터)
+  git -C "$APP_DIR" pull --ff-only
 elif [ -d "$HOME/pbr-src" ]; then
   cp -a "$HOME/pbr-src/." "$APP_DIR/"
 else
