@@ -52,13 +52,16 @@ sudo docker rm -f "$NAME" 2>/dev/null || true
 # 데이터는 읽기+쓰기로 마운트한다: db.connect()가 WAL 파일을 만들어서 읽기 전용이면 뜨지 않는다.
 # 쓰기를 막는 것은 PBR_READONLY=1(미들웨어)이다.
 sudo docker run -d --name "$NAME" --restart unless-stopped \
-  -p 8000:8000 \
+  -p 80:8000 -p 8000:8000 \
   -v "$DATA_DIR":/app/data \
   "$IMAGE"
 
 sleep 5
 sudo docker logs --tail 15 "$NAME"
 echo
-echo "접속: http://$(curl -s -H 'Metadata-Flavor: Google' \
-  http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip 2>/dev/null || echo '<VM 외부 IP>'):8000"
+# 80번은 도메인(http://geol.cloud)용이다: 브라우저는 포트가 없으면 80번으로 간다.
+# 방화벽 규칙 pbr-web-80이 있어야 밖에서 열린다(docs/구현/CLOUD_DEPLOY.md '도메인 연결').
+IP="$(curl -s -H 'Metadata-Flavor: Google' \
+  http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip 2>/dev/null || echo '<VM 외부 IP>')"
+echo "접속: http://$IP  (포트 80, 도메인용)  또는  http://$IP:8000"
 echo "갱신할 때: 데이터를 다시 올린 뒤 'sudo docker restart $NAME', 코드를 바꿨으면 이 스크립트를 다시 실행"

@@ -78,6 +78,7 @@ gcloud services enable compute.googleapis.com
 ```
 gcloud compute instances create pbr-web --zone=asia-northeast3-a --machine-type=e2-medium --image-family=debian-12 --image-project=debian-cloud --boot-disk-size=30GB --tags=pbr-web
 gcloud compute firewall-rules create pbr-web-8000 --allow=tcp:8000 --target-tags=pbr-web --source-ranges=<학교 IP>/32,<집 IP>/32
+gcloud compute firewall-rules create pbr-web-80 --allow=tcp:80 --target-tags=pbr-web --source-ranges=<학교 IP>/32,<집 IP>/32
 ```
 
 끝에 찍히는 `EXTERNAL_IP`가 접속 주소가 된다. 디스크 200GB 미만이라는 경고는 무시해도 된다. 처음 `scp`나 `ssh`를 할 때 SSH 키를 만들며 암호를 물으면 엔터 두 번(빈 암호)이다. 서버 키를 저장할지 물으면 `y`.
@@ -215,6 +216,7 @@ gcloud compute firewall-rules update pbr-web-8000 --source-ranges=0.0.0.0/0
 gcloud compute firewall-rules update pbr-web-8000 --disabled
 ```
 
+- **도메인(포트 80)을 쓰면 `pbr-web-80`도 같은 명령으로 같이 여닫는다.** 위 명령에서 규칙 이름만 바꿔 같은 `--source-ranges`를 준다. 하나만 열면 `http://도메인`(80)과 `http://IP:8000` 중 한쪽만 열린다.
 - 학교 망은 공인 IP가 여러 개(NAT 풀)일 수 있다. 학교에서 안 열리면 그 자리의 IP를 다시 확인해 더한다.
 - `default-allow-ssh`(22번, 기본 네트워크가 만드는 규칙)는 키 인증이라 이 결정의 대상이 아니다.
 
@@ -268,3 +270,12 @@ gcloud compute firewall-rules update pbr-web-8000 --disabled
 - 빌드가 끝난 뒤 `e2-small`로 낮춰도 되는지는 재 보지 않았다.
 - 한글 파일 이름 정리(5번)가 손으로 하는 일이다. 올릴 때마다 반복할 거면 `tools/`의 스크립트나 `vm_setup.sh` 안으로 넣는 편이 낫다.
 - Docker 이미지 빌드는 Linux에서 `ortools` · `kmedoids`가 Python 3.14 휠로 설치되어 성공했다(첫 빌드, 2026-11-02).
+
+## 도메인 연결 (포트 없이 `http://도메인`으로 열기)
+
+- 컨테이너를 `-p 80:8000 -p 8000:8000`으로 띄운다(`vm_setup.sh`). VM의 80번이 컨테이너의 8000번으로 이어진다. 브라우저는 주소에 포트가 없으면 80번으로 가므로 `http://geol.cloud`만으로 열린다. 8000번도 그대로 열려 있다.
+- 방화벽 규칙 `pbr-web-80`은 **`pbr-web-8000`과 같은 출처**로 만든다(절차 2단계). 공개 범위 결정(평소 학교 · 집 IP만)이 도메인에도 그대로 걸리므로, 도메인을 알아도 허용된 IP 밖에서는 열리지 않는다. 심사 · 발표 때는 두 규칙을 함께 `0.0.0.0/0`으로 연다.
+- 도메인은 업체의 "포워딩"이 아니라 **DNS의 A 레코드**(`@` → VM 외부 IP)로 건다. 포워딩은 브라우저를 `IP:8000`으로 보내서 주소창에 IP가 보인다. 반영에는 몇 분에서 몇 시간이 걸린다.
+- **VM을 껐다 켜면 외부 IP가 바뀌어** A 레코드가 옛 IP를 가리킨다. 켤 때마다 레코드를 고치거나(TTL을 300초로 짧게) 고정 IP를 예약한다(`gcloud compute addresses create`, 꺼진 동안에도 소액이 청구된다).
+- HTTPS는 붙이지 않기로 했다(공개 범위 결정). 그래서 `http://geol.cloud`로 열리고 브라우저가 "안전하지 않음"을 표시할 수 있다. 읽기만 하는 화면이고 입력받는 값이 없어 시연에는 문제없다. 필요해지면 443을 열고 앞단에 Caddy 같은 프록시를 둔다(인증서는 DNS가 VM을 가리킨 뒤에야 받을 수 있다).
+- 이미 떠 있는 컨테이너에 80번을 붙이려면 컨테이너를 다시 만들어야 한다. 이 변경을 push한 뒤 VM에서 `git -C /opt/pbr pull && bash /opt/pbr/deploy/vm_setup.sh`를 실행한다(VM의 `~/vm_setup.sh`는 옛 사본이라 저장소 쪽 파일을 쓴다).
