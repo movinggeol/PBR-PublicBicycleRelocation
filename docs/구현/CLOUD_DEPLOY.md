@@ -11,10 +11,16 @@
 
 ### 공개 범위 (2026-11-03, 사용자)
 
-- **평소에는 학교 · 집 IP에만 열고, 심사 · 발표 기간에만 모두에게 연다.** 인증(IAP · basic auth)과 HTTPS는 붙이지 않는다.
+- **평소에는 학교 · 집 IP에만 열고, 심사 · 발표 기간에만 모두에게 연다.** 인증(IAP · basic auth)은 붙이지 않는다. (HTTPS는 같은 날 뒤에 붙이기로 바꿨다. 아래 *HTTPS* 항목.)
 - 까닭: 웹에는 인증이 없고, 처음 만든 방화벽 규칙(`pbr-web-8000`)은 출처를 정하지 않아 **인터넷 전체에** 8000번을 열었다. 쓰기는 미들웨어가 막지만
   봇이 화면을 계속 열면 e2-medium(메모리 4GB)에 부하가 가고, 작업지시서 · 계획이 누구에게나 보인다. 열람 데모에는 인증보다 출처를 좁히는 쪽이 손이 덜 든다.
 - 여닫는 명령은 아래 *방화벽 — 여닫기* 절에 있다. 할 일 목록은 [사람이_할_일](../기록/사람이_할_일.md) 0장.
+
+### HTTPS (2026-11-03, 사용자 요청)
+
+- **`https://geol.cloud`로 열기로 했다.** 처음 결정은 "HTTPS는 붙이지 않는다"였지만, `http://`로 열면 브라우저가 "안전하지 않음"을 띄우고 `geol.cloud`만 쳐서는 HTTPS로 가지 않는다. 앞단에 Caddy를 두면 인증서(Let's Encrypt)를 자동으로 받고 갱신하며 `http://`로 온 요청을 `https://`로 이동시킨다.
+- **대가: 80번을 전체에 열어야 한다.** Let's Encrypt가 발급 · 갱신 때 밖에서 80번으로 접속해 보는데 그 출처 IP를 알 수 없다. 80번에서는 Caddy가 HTTPS로 이동시키는 응답만 하므로 대시보드는 노출되지 않는다. **출처 제한은 443번에 건다**(공개 범위 결정은 443번에서 그대로 지킨다).
+- 대시보드 컨테이너는 호스트 포트를 열지 않는다(Caddy를 거쳐서만 닿는다). 그래서 `8000`번 직접 접속은 없어지고, 방화벽 규칙 `pbr-web-8000`은 쓸 일이 없다.
 
 ### 재 본 것 (2026-11-01, Cloud Run을 택할 경우를 위한 기록)
 
@@ -77,9 +83,11 @@ gcloud services enable compute.googleapis.com
 
 ```
 gcloud compute instances create pbr-web --zone=asia-northeast3-a --machine-type=e2-medium --image-family=debian-12 --image-project=debian-cloud --boot-disk-size=30GB --tags=pbr-web
-gcloud compute firewall-rules create pbr-web-8000 --allow=tcp:8000 --target-tags=pbr-web --source-ranges=<학교 IP>/32,<집 IP>/32
-gcloud compute firewall-rules create pbr-web-80 --allow=tcp:80 --target-tags=pbr-web --source-ranges=<학교 IP>/32,<집 IP>/32
+gcloud compute firewall-rules create pbr-web-80 --allow=tcp:80 --target-tags=pbr-web
+gcloud compute firewall-rules create pbr-web-443 --allow=tcp:443 --target-tags=pbr-web --source-ranges=<학교 IP>/32,<집 IP>/32
 ```
+
+80번은 인증서 발급용이라 전체에 연다(Caddy가 HTTPS로 이동시키는 응답만 한다). **출처 제한은 443번에 건다.** 처음 띄울 때 만든 `pbr-web-8000`은 `DOMAIN=none`(IP로만 열기)이 아니면 쓰지 않으니 `gcloud compute firewall-rules delete pbr-web-8000`으로 지운다.
 
 끝에 찍히는 `EXTERNAL_IP`가 접속 주소가 된다. 디스크 200GB 미만이라는 경고는 무시해도 된다. 처음 `scp`나 `ssh`를 할 때 SSH 키를 만들며 암호를 물으면 엔터 두 번(빈 암호)이다. 서버 키를 저장할지 물으면 `y`.
 
@@ -200,23 +208,23 @@ PYEOF
 
 ## 방화벽 — 여닫기
 
-공개 범위 결정(위)에 따른 명령이다. 규칙 이름은 절차 1단계의 `pbr-web-8000`.
+공개 범위 결정(위)에 따른 명령이다. **여닫는 규칙은 `pbr-web-443`이다**(HTTPS 구성, 절차 2단계). 80번 규칙 `pbr-web-80`은 인증서 발급 · 갱신용이라 늘 전체 공개로 둔다.
 
 ```powershell
 # 지금 상태 — 출처와 꺼짐 여부
-gcloud compute firewall-rules describe pbr-web-8000 --format="value(sourceRanges,disabled)"
+gcloud compute firewall-rules describe pbr-web-443 --format="value(sourceRanges,disabled)"
 
 # 평소: 학교 · 집 IP만 (내 공인 IP는 (Invoke-RestMethod https://api.ipify.org) 로 확인)
-gcloud compute firewall-rules update pbr-web-8000 --source-ranges=<학교 IP>/32,<집 IP>/32
+gcloud compute firewall-rules update pbr-web-443 --source-ranges=<학교 IP>/32,<집 IP>/32
 
 # 심사 · 발표 기간: 모두에게
-gcloud compute firewall-rules update pbr-web-8000 --source-ranges=0.0.0.0/0
+gcloud compute firewall-rules update pbr-web-443 --source-ranges=0.0.0.0/0
 
 # 끝나면 다시 좁히거나, 아예 끈다(--no-disabled로 되켠다)
-gcloud compute firewall-rules update pbr-web-8000 --disabled
+gcloud compute firewall-rules update pbr-web-443 --disabled
 ```
 
-- **도메인(포트 80)을 쓰면 `pbr-web-80`도 같은 명령으로 같이 여닫는다.** 위 명령에서 규칙 이름만 바꿔 같은 `--source-ranges`를 준다. 하나만 열면 `http://도메인`(80)과 `http://IP:8000` 중 한쪽만 열린다.
+- **`pbr-web-80`은 좁히거나 끄지 마라.** 80번을 막으면 인증서 갱신이 실패한다(발급은 90일짜리라 만료가 다가와서야 드러난다). 80번에서는 HTTPS로 이동시키는 응답만 나가므로 열어 둬도 대시보드는 노출되지 않는다.
 - 학교 망은 공인 IP가 여러 개(NAT 풀)일 수 있다. 학교에서 안 열리면 그 자리의 IP를 다시 확인해 더한다.
 - `default-allow-ssh`(22번, 기본 네트워크가 만드는 규칙)는 키 인증이라 이 결정의 대상이 아니다.
 
@@ -271,11 +279,12 @@ gcloud compute firewall-rules update pbr-web-8000 --disabled
 - 한글 파일 이름 정리(5번)가 손으로 하는 일이다. 올릴 때마다 반복할 거면 `tools/`의 스크립트나 `vm_setup.sh` 안으로 넣는 편이 낫다.
 - Docker 이미지 빌드는 Linux에서 `ortools` · `kmedoids`가 Python 3.14 휠로 설치되어 성공했다(첫 빌드, 2026-11-02).
 
-## 도메인 연결 (포트 없이 `http://도메인`으로 열기)
+## 도메인과 HTTPS (`https://geol.cloud`)
 
-- 컨테이너를 `-p 80:8000 -p 8000:8000`으로 띄운다(`vm_setup.sh`). VM의 80번이 컨테이너의 8000번으로 이어진다. 브라우저는 주소에 포트가 없으면 80번으로 가므로 `http://geol.cloud`만으로 열린다. 8000번도 그대로 열려 있다.
-- 방화벽 규칙 `pbr-web-80`은 **`pbr-web-8000`과 같은 출처**로 만든다(절차 2단계). 공개 범위 결정(평소 학교 · 집 IP만)이 도메인에도 그대로 걸리므로, 도메인을 알아도 허용된 IP 밖에서는 열리지 않는다. 심사 · 발표 때는 두 규칙을 함께 `0.0.0.0/0`으로 연다.
-- 도메인은 업체의 "포워딩"이 아니라 **DNS의 A 레코드**(`@` → VM 외부 IP)로 건다. 포워딩은 브라우저를 `IP:8000`으로 보내서 주소창에 IP가 보인다. 반영에는 몇 분에서 몇 시간이 걸린다.
-- **VM을 껐다 켜면 외부 IP가 바뀌어** A 레코드가 옛 IP를 가리킨다. 켤 때마다 레코드를 고치거나(TTL을 300초로 짧게) 고정 IP를 예약한다(`gcloud compute addresses create`, 꺼진 동안에도 소액이 청구된다).
-- HTTPS는 붙이지 않기로 했다(공개 범위 결정). 그래서 `http://geol.cloud`로 열리고 브라우저가 "안전하지 않음"을 표시할 수 있다. 읽기만 하는 화면이고 입력받는 값이 없어 시연에는 문제없다. 필요해지면 443을 열고 앞단에 Caddy 같은 프록시를 둔다(인증서는 DNS가 VM을 가리킨 뒤에야 받을 수 있다).
-- 이미 떠 있는 컨테이너에 80번을 붙이려면 컨테이너를 다시 만들어야 한다. 이 변경을 push한 뒤 VM에서 `git -C /opt/pbr pull && bash /opt/pbr/deploy/vm_setup.sh`를 실행한다(VM의 `~/vm_setup.sh`는 옛 사본이라 저장소 쪽 파일을 쓴다).
+- **도메인은 업체의 "포워딩"이 아니라 DNS의 A 레코드**(`@` → VM 외부 IP)로 건다. 포워딩은 카페24 서버를 거치고(유동은 주소창이 IP로 바뀌고 고정은 프레임에 넣는다), 반영에 24~48시간이 걸린다. A 레코드는 30분~1시간이고 주소창이 `geol.cloud`로 유지된다(2026-11-03에 카페24 DNS 관리에서 A 레코드를 넣었더니 구글 DNS에는 바로 반영됐고, 공급자 DNS 캐시가 풀리는 데 몇 시간이 걸렸다). A 레코드가 적용된 뒤에는 포워딩 설정은 필요 없다.
+- **`vm_setup.sh`가 컨테이너 둘을 띄운다.** 대시보드 `pbr-web`(호스트 포트 없음)과 Caddy `pbr-caddy`(80 · 443). 둘은 도커 네트워크 `pbr-net`으로 이어지고 Caddy가 `pbr-web:8000`으로 넘긴다(`deploy/Caddyfile`). 인증서는 볼륨 `pbr_caddy_data`에 남아 컨테이너를 다시 만들어도 새로 받지 않는다(발급 한도 때문이다). 도메인은 환경변수 `DOMAIN`(기본 `geol.cloud`)이고, `DOMAIN=none`이면 Caddy 없이 옛 방식(IP의 80 · 8000번 직접)으로 연다.
+- **띄우는 순서가 있다.** (1) DNS의 A 레코드가 VM 외부 IP를 가리킨다. (2) 방화벽 `pbr-web-80`과 `pbr-web-443`을 만든다(절차 2단계). (3) VM에서 `bash /opt/pbr/deploy/vm_setup.sh`. 끝에 Caddy 로그가 나오고 `certificate obtained successfully` 같은 줄이 보이면 발급된 것이다. 방화벽이나 DNS가 안 맞은 채 돌리면 발급이 실패하고, 한도(시간당 실패 5회)에 걸리면 기다려야 하니 **1 · 2번을 먼저 확인한다.**
+- **발급이 안 될 때**: `sudo docker logs pbr-caddy`. 흔한 원인은 80 · 443번이 막혀 있는 것, A 레코드가 옛 IP를 가리키는 것이다.
+- **VM을 껐다 켜면 외부 IP가 바뀌어** A 레코드가 옛 IP를 가리킨다. 인증서는 도메인에 묶여 있어 DNS만 따라가면 유지된다. 켤 때마다 레코드를 고치거나(TTL을 300초로 짧게) 고정 IP를 예약한다(`gcloud compute addresses create`, 꺼진 동안에도 소액이 청구된다). 갱신(약 60일마다)에는 80번이 밖에서 닿아야 한다.
+- `.cloud` 최상위 도메인이 브라우저에서 HTTPS만 허용하도록 정해져 있는지는 확인하지 못했다. HTTPS를 붙였으니 어느 쪽이든 열린다.
+- 이미 떠 있는 컨테이너를 이 구성으로 바꾸려면 push한 뒤 VM에서 `git -C /opt/pbr pull && bash /opt/pbr/deploy/vm_setup.sh`를 실행한다(기존 `pbr-web`을 지우고 둘을 다시 만든다. DB와 `pp_data`는 VM 디스크라 그대로다).
