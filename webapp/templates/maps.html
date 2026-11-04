@@ -146,6 +146,10 @@
   지도를 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침하세요.
 </p>
 {% endif %}
+{# 좁은 화면에서는 파일 목록을 접어 둔다(1.26.406). 사용자(11-04): *"모바일 화면에서는 표가 기본적으로는 안 나오되,
+   펼치기로 볼 수 있게"*. 카드로 풀린 목록이 분류마다 다섯 장씩 이어져 다음 지도까지 화면 몇 번을 넘겨야 했다.
+   넓은 화면은 늘 펴져 있다(`.m-fold`, base.html). #}
+{% if group.entries %}<details class="m-fold"><summary>{{ group.title }} 파일 {{ group.entries | length }}개 보기</summary>{% endif %}
 <div class="card flush" data-pager="5" data-pager-label="{{ group.title }} 쪽 넘기기">
   {% if group.entries %}
   <div class="table-wrap">
@@ -176,5 +180,6 @@
   <p class="empty">아직 없습니다. <a href="/run#run">계획을 실행</a>하면 만들어집니다.</p>
   {% endif %}
 </div>
+{% if group.entries %}</details>{% endif %}
 {% endfor %}
 {% endblock %}

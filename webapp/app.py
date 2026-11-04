@@ -31,7 +31,7 @@ import pandas as pd
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -47,6 +47,7 @@ from project_config import (ROAD_FIXED_SEC_WEEKDAY, ROAD_SPEED_KMPH_WEEKDAY, USE
     normalize_period, resolve_day_type,
     DEFAULT_NOW, DEPART_LEAD_MINUTES, auto_duration,
 )
+import mapviz
 import tashu
 from webapp import (catalog, charts, collect_view, district_view, jobs, kpi_view, mobile_view,
                     orders, store, upcoming_view, weather_view)
@@ -1953,12 +1954,36 @@ def favicon():
     return Response(status_code=204)
 
 
+# 좁은 틀에서 범례를 줄이는 스타일. 지도 HTML을 내보낼 때 </head> 앞에 끼운다(1.26.406).
+# 사용자(11-04): *"모바일 화면에서는 범례를 훨씬 더 작게 해줘"*. 폰 폭 지도에서 범례가 지도의 1/3을 덮었다.
+# ⚠️ 그린 파일(`mapviz.legend_html`)을 고치지 않고 여기서 끼우는 이유: mapviz.py를 고치면 지문이 바뀌어
+#    이미 그린 지도가 전부 '낡음'이 되고, 다시 그리기 전까지 반영되지 않는다(경로 지도는 TMAP 한도도 쓴다).
+# ⚠️ 판정이 `[data-narrow]`가 아니라 `@media`인 이유: 이 문서는 iframe 안이라 바깥의 data-narrow가 닿지 않고,
+#    범례가 맞춰야 할 것은 화면 모드가 아니라 **지도 틀의 실제 폭**이다(/maps 미리보기 · 새 창 · 크게 보기 모두).
+#    세 지도의 범례는 모두 왼쪽 아래(`legend_html`의 기본 position)라 그 모서리를 기준으로 줄인다.
+NARROW_LEGEND_STYLE = (
+    '<style data-pbr-narrow-legend>'
+    '@media (max-width: 560px) {'
+    f'  [{mapviz.STAMP_ATTR}] {{ transform: scale(.5); transform-origin: left bottom;'
+    '    left: 8px !important; bottom: 8px !important; }'
+    '}'
+    '</style>'
+)
+
+
 @app.get("/files/{relpath:path}")
 def serve_file(relpath: str):
-    """data/ 아래의 지도 HTML·CSV를 서빙한다 (지도는 브라우저에서 바로 열림)."""
+    """data/ 아래의 지도 HTML·CSV를 서빙한다 (지도는 브라우저에서 바로 열림).
+
+    지도 HTML에는 좁은 틀용 범례 스타일(`NARROW_LEGEND_STYLE`)을 끼워 보낸다. 파일은 그대로 둔다."""
     target = catalog.safe_resolve(relpath)
     if target is None:
         raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+    if target.suffix.lower() == ".html":
+        text = target.read_text(encoding="utf-8", errors="replace")
+        if "</head>" in text:
+            text = text.replace("</head>", NARROW_LEGEND_STYLE + "</head>", 1)
+        return HTMLResponse(text)
     return FileResponse(target)
 
 
