@@ -28,6 +28,7 @@ fi
 echo "[2/5] 코드 준비 -> $APP_DIR"
 sudo mkdir -p "$APP_DIR"
 sudo chown "$USER" "$APP_DIR"
+BEFORE="$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || echo none)"
 if [ -n "${REPO_URL:-}" ]; then
   if [ -d "$APP_DIR/.git" ]; then git -C "$APP_DIR" pull --ff-only; else git clone "$REPO_URL" "$APP_DIR"; fi
 elif [ -d "$APP_DIR/.git" ]; then
@@ -37,6 +38,14 @@ elif [ -d "$HOME/pbr-src" ]; then
   cp -a "$HOME/pbr-src/." "$APP_DIR/"
 else
   echo "코드가 없습니다. REPO_URL을 주거나 ~/pbr-src 에 코드를 올려 두세요." >&2; exit 1
+fi
+
+# pull이 이 스크립트 자신을 바꿨으면 새 버전으로 처음부터 다시 돈다. bash는 파일을 읽어 가며
+# 실행해서, 도는 중에 파일이 바뀌면 옛 내용으로 끝까지 가거나 엉뚱한 줄을 읽는다(2026-11-03 겪음).
+AFTER="$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || echo none)"
+if [ "$BEFORE" != "$AFTER" ] && [ -z "${PBR_REEXEC:-}" ]; then
+  echo "스크립트가 갱신되어 새 버전으로 다시 실행합니다."
+  PBR_REEXEC=1 exec bash "$APP_DIR/deploy/vm_setup.sh"
 fi
 
 echo "[3/5] 데이터 배치 -> $DATA_DIR"

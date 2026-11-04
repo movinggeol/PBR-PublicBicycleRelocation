@@ -245,8 +245,9 @@ gcloud compute firewall-rules update pbr-web-443 --disabled
 
 ## 접속 주소의 두 가지
 
-- `http://<VM 외부 IP>:8000`: 접속 주소다. 방화벽 출처를 학교 · 집 IP로 좁힌 경우 그 IP에서만 열린다(출처를 빼면 인터넷 전체). 로그인이 없고 쓰기만 막혀 있다. HTTPS가 아니라 브라우저가 "안전하지 않음"이라고 표시할 수 있다.
-- 로그에 찍히는 `http://172.17.0.2:8000`은 컨테이너 안의 내부 주소다. 로컬 서버의 "같은 와이파이 기기에서" 안내가 그대로 찍힌 것이라 무시한다.
+- `https://geol.cloud`: 접속 주소다. 방화벽 `pbr-web-443`의 출처를 학교 · 집 IP로 좁힌 경우 그 IP에서만 열린다(출처를 빼면 인터넷 전체). 로그인이 없고 쓰기만 막혀 있다. `http://`로 오면 `https://`로 이동한다(308).
+- `DOMAIN=none`으로 띄운 경우에만 `http://<VM 외부 IP>:8000`이 된다(HTTPS 없음, `pbr-web-8000` 규칙 필요).
+- 로그에 찍히는 `http://172.17.0.2:8000`(또는 `172.18.0.2`)은 컨테이너 안의 내부 주소다. 로컬 서버의 "같은 와이파이 기기에서" 안내가 그대로 찍힌 것이라 무시한다.
 
 ## 점검 결과 — 보완할 것 (2026-11-03)
 
@@ -272,8 +273,8 @@ gcloud compute firewall-rules update pbr-web-443 --disabled
 
 ## 열린 것
 
-- 인증은 없다. 도메인 · HTTPS는 두지 않는다(공개 범위 결정: 학교 · 집 IP만). 고정 IP를 예약했는지는 기록이 없다.
-- VM의 DB는 2026-11-02 22:42 스냅샷이다. 그 뒤 수집분은 없다.
+- 인증은 없다. 도메인 · HTTPS는 `https://geol.cloud`로 붙였다(아래 *도메인과 HTTPS*). 공개 범위 결정(학교 · 집 IP만)은 `pbr-web-443`의 출처로 건다. 2026-11-03 현재 443번은 전체 공개 상태이고, 고정 IP는 예약하지 않았다.
+- VM의 DB는 올린 시점의 스냅샷이라 그 뒤 수집분은 없다(2026-11-02 22:42, 2026-11-04 다시 뜸).
 - 위 보완 ① · ② · ⑤는 코드가 남았다([TODO](../기록/TODO.md) 색인).
 - 빌드가 끝난 뒤 `e2-small`로 낮춰도 되는지는 재 보지 않았다.
 - 한글 파일 이름 정리(5번)가 손으로 하는 일이다. 올릴 때마다 반복할 거면 `tools/`의 스크립트나 `vm_setup.sh` 안으로 넣는 편이 낫다.
@@ -287,4 +288,14 @@ gcloud compute firewall-rules update pbr-web-443 --disabled
 - **발급이 안 될 때**: `sudo docker logs pbr-caddy`. 흔한 원인은 80 · 443번이 막혀 있는 것, A 레코드가 옛 IP를 가리키는 것이다.
 - **VM을 껐다 켜면 외부 IP가 바뀌어** A 레코드가 옛 IP를 가리킨다. 인증서는 도메인에 묶여 있어 DNS만 따라가면 유지된다. 켤 때마다 레코드를 고치거나(TTL을 300초로 짧게) 고정 IP를 예약한다(`gcloud compute addresses create`, 꺼진 동안에도 소액이 청구된다). 갱신(약 60일마다)에는 80번이 밖에서 닿아야 한다.
 - `.cloud` 최상위 도메인이 브라우저에서 HTTPS만 허용하도록 정해져 있는지는 확인하지 못했다. HTTPS를 붙였으니 어느 쪽이든 열린다.
+
+**띄워 본 결과 (2026-11-03)**: 밖에서 `https://geol.cloud/kpi` 200(인증서 검증 통과, Let's Encrypt), `http://geol.cloud` 308 → `https://geol.cloud/`, `POST /runs` 403, 첫 화면 제목 "PBR 대시보드". 발급은 TLS-ALPN-01(443번)로 5초 안에 끝났다. 이어서 `pbr-web-8000` 규칙을 지웠다.
+
+**겪은 일 (같은 일을 반복하지 않게)**
+
+- **VM 안의 `gcloud`는 방화벽을 못 바꾼다.** VM 서비스 계정의 권한 범위에 없어 `insufficient authentication scopes`가 난다. 방화벽 · VM 시작 · 중지는 내 PC의 Cloud SDK Shell에서 한다.
+- **scp로 올린 파일이 `git pull`과 충돌한다.** VM의 작업 폴더에 같은 파일이 먼저 있으면 `would be overwritten by merge`로 pull이 멈춘다. 코드는 push한 뒤 pull로만 받는다(급해서 scp로 올렸다면 `rm`이나 `git checkout --`로 치우고 pull).
+- **`vm_setup.sh`가 도는 중에 pull이 자기 자신을 바꿔** 옛 내용으로 끝까지 돌았다. 지금은 pull 뒤 HEAD가 달라졌으면 새 버전으로 처음부터 다시 돈다(`PBR_REEXEC`). 옛 VM 스크립트(`.git` 대체 경로가 없는 버전)를 한 번 넘길 때만 `REPO_URL=... bash vm_setup.sh`로 실행한다.
+- **이 PC의 사용자 이름이 한글이라** 일부 도구에서 `gcloud compute scp`가 `couldn't be escaped for ProxyCommand`로 실패한다. 사용자 Cloud SDK Shell에서는 되므로 올리기는 거기서 한다.
+- **`stop`하면** CPU · 메모리 요금이 멈추고 디스크 요금은 계속 나온다. 임시 외부 IP는 꺼진 동안 무료이고 고정 IP는 소액이 붙는다.
 - 이미 떠 있는 컨테이너를 이 구성으로 바꾸려면 push한 뒤 VM에서 `git -C /opt/pbr pull && bash /opt/pbr/deploy/vm_setup.sh`를 실행한다(기존 `pbr-web`을 지우고 둘을 다시 만든다. DB와 `pp_data`는 VM 디스크라 그대로다).
