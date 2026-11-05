@@ -57,6 +57,7 @@ HISTORY_DOCS = {
     "docs/기록/ORIGINS.md",
     "docs/구현/두_PC_작업.md",   # 1.26.121에 기록/ → 구현/으로 옮겼다
     "docs/기록/RETROSPECTIVE.md",  # "0개 → 548개" 같은 전후 대비를 싣는다
+    "docs/기록/첫_커밋_대비_비교_2026-11-05.md",  # 그날 잰 전후 대비(z 1.65 → 1.99 · 테스트 0 → 1,374)
 }
 
 SKIP_DIRS = {".venv", ".git", "node_modules", "__pycache__", "site-packages"}
