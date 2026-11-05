@@ -794,8 +794,11 @@ def weather_now(refresh: int = 0):
     **화면을 그리는 요청 안에서 부르지 않는다** — 외부 API가 느리면 실행 폼 자체가
     늦게 뜬다. 브라우저가 화면을 띄운 뒤 따로 물어보고, 응답은 10분 캐시한다.
     실패해도 200에 available=false로 답한다(화면이 죽으면 안 된다).
+
+    열람 전용이면 `refresh`를 무시한다 — 방문자가 캐시를 건너뛰어 기상청 키의 한도를 쓰게 두지
+    않는다(CLOUD_DEPLOY.md 점검 ⑤). 지금 VM에는 키가 없지만, 넣는 날 조용히 열리지 않게 미리 막는다.
     """
-    return JSONResponse(weather_view.current(force=bool(refresh)))
+    return JSONResponse(weather_view.current(force=bool(refresh) and not readonly_enabled()))
 
 
 @app.get("/api/forecast")
@@ -808,7 +811,12 @@ def weather_forecast(target_date: str = "", refresh: int = 0):
 
     `/api/weather`와 같은 성향이다 — 화면을 그리는 요청 안에서 부르지 않고,
     실패해도 200에 available=false로 답한다.
+
+    열람 전용이면 `refresh`와 `target_date`를 무시하고 늘 내일을 답한다. 캐시는 날짜 하나만
+    들고 있어서, 날짜를 번갈아 주기만 해도 매번 기상청을 부른다(화면은 어차피 내일만 묻는다).
     """
+    if readonly_enabled():
+        return JSONResponse(weather_view.forecast(target=None, force=False))
     target = None
     if target_date:
         try:
@@ -1503,9 +1511,12 @@ def collect_page(request: Request):
 
     `stock_history`는 이 프로젝트의 유일한 실측인데 확인하는 길이 터미널뿐이라
     수집이 두 번 조용히 멈췄다(1.26.103·1.26.140).
+
+    열람 전용(클라우드 데모)이면 **올린 시점의 사본**이라고 밝힌다 — 그 서버에는 작업 스케줄러가 없어
+    창이 기본값(09~17시)으로 떨어지고, 사본이 멈춰 있으니 멈춤 경보가 뜬다(CLOUD_DEPLOY.md 점검 ②).
     """
     return templates.TemplateResponse(request, "collect.html",
-                                      collect_view.context())
+                                      collect_view.context(readonly=readonly_enabled()))
 
 
 @app.get("/upcoming")

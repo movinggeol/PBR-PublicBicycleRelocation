@@ -2906,7 +2906,7 @@ def test_수집_화면이_어느_기준으로_셌는지_밝힌다(client, monkey
     """
     from webapp import collect_view
 
-    monkeypatch.setattr(collect_view, "context", lambda: _collect_ctx())
+    monkeypatch.setattr(collect_view, "context", lambda **_: _collect_ctx())
     body = client.get("/collect").text
     assert "07:00-22:00" in body
     assert "PBR재고수집" in body, "어느 기준으로 셌는지 화면이 안 밝힌다"
@@ -2918,7 +2918,7 @@ def test_기본값으로_떨어지면_표가_어긋날_수_있다고_말한다(c
 
     monkeypatch.setattr(
         collect_view, "context",
-        lambda: _collect_ctx(window="09:00-17:00",
+        lambda **_: _collect_ctx(window="09:00-17:00",
                              source="기본값 — 등록된 작업을 찾지 못했습니다"))
     body = client.get("/collect").text
     assert "등록된 수집 작업을 찾지 못했습니다" in body
@@ -2931,7 +2931,7 @@ def test_오래_멈췄으면_화면이_먼저_말한다(client, monkeypatch):
 
     monkeypatch.setattr(
         collect_view, "context",
-        lambda: _collect_ctx(last_seen="2026-09-01",
+        lambda **_: _collect_ctx(last_seen="2026-09-01",
                              stalled={"days": 7, "stalled": True}))
     body = client.get("/collect").text
     assert "7일째 새 관측이 없습니다" in body
@@ -2992,7 +2992,7 @@ def test_온전한_날은_이_화면의_기준만_말한다(client, monkeypatch)
     """
     from webapp import collect_view
 
-    monkeypatch.setattr(collect_view, "context", lambda: _collect_ctx())
+    monkeypatch.setattr(collect_view, "context", lambda **_: _collect_ctx())
     body = client.get("/collect").text
     assert "등록된 수집 시간을 빠짐없이 채운 날" in body
     assert "dense_days()" not in body, "내부 함수 이름이 화면에 나왔다"
@@ -3002,7 +3002,7 @@ def test_결측은_아직_판정이_아니라고_말한다(client, monkeypatch):
     """수집기가 두 환경에서 돌고 이 표는 이쪽 DB만 센다(1.26.120에 오독했다)."""
     from webapp import collect_view
 
-    monkeypatch.setattr(collect_view, "context", lambda: _collect_ctx())
+    monkeypatch.setattr(collect_view, "context", lambda **_: _collect_ctx())
     body = client.get("/collect").text
     assert "이 PC가 받은 것만 셉니다" in body
     assert "merge_stock.py" in body
@@ -3016,7 +3016,7 @@ def test_구간이_여러_개면_수집_실패가_아니라_PC_꺼짐이라_말�
     """
     from webapp import collect_view
 
-    monkeypatch.setattr(collect_view, "context", lambda: _collect_ctx())
+    monkeypatch.setattr(collect_view, "context", lambda **_: _collect_ctx())
     body = client.get("/collect").text
     assert "PC 꺼짐" in body
     assert "PC가 꺼져 있었던 것입니다" in body
@@ -3334,7 +3334,7 @@ def test_재고_수집_화면에도_차례가_붙는다(client, monkeypatch):
     """/collect의 h2(날짜별 수집 현황)는 `rows`가 있을 때만 그려지므로 자료를 심어야 한다."""
     from webapp import collect_view
 
-    monkeypatch.setattr(collect_view, "context", lambda: _collect_ctx())
+    monkeypatch.setattr(collect_view, "context", lambda **_: _collect_ctx())
     body = client.get("/collect").text
     assert "data-toc=" in body, "/collect에 차례를 붙일 자리가 없다"
 
@@ -4171,3 +4171,134 @@ def test_열람_전용이_아니면_막지_않는다(client, monkeypatch):
     monkeypatch.delenv("PBR_READONLY", raising=False)
     res = client.post("/runs/x/kind", data={"kind": "plan"})
     assert res.status_code != 403 or "열람 전용" not in res.text
+
+
+def test_열람_전용이면_수집_현황이_사본이라_밝힌다(client, monkeypatch):
+    """클라우드에는 작업 스케줄러가 없어 창이 기본값(09~17시 · 49틱)으로 떨어졌고, 사본이 멈춰 있어
+    멈춤 경보가 떴다 — 데모를 보는 사람에게 *"수집이 멈췄다"* 로 읽힌다(CLOUD_DEPLOY.md 점검 ②).
+    열람 전용이면 수집 PC에 등록된 창으로 세고, 경보 대신 사본 시각을 밝힌다."""
+    from datetime import datetime, time as clock
+    from webapp import collect_view
+
+    class 도구:
+        DEFAULT_WINDOW = "09:00-17:00"; DEFAULT_INTERVAL = 10; TASK_NAME = "PBR재고수집"
+        WINDOW_HISTORY = ((datetime(2026, 9, 14, 17, 27), clock(0, 0), clock(23, 50), 10),)
+        @staticmethod
+        def registered_args():
+            raise RuntimeError("작업 스케줄러가 없다")          # 리눅스 서버처럼
+        @staticmethod
+        def parse_window(window):
+            start, end = window.split("-")
+            return (clock(*map(int, start.split(":"))), clock(*map(int, end.split(":"))))
+        @staticmethod
+        def expected_ticks(start, end, interval):
+            return 144 if start == clock(0, 0) else 49
+        @staticmethod
+        def coverage(start, end, interval):
+            return pd.DataFrame([
+                {"날짜": "2026-11-01", "요일": "휴일", "틱": 144, "기대": 144, "결측": 0, "실패": 0,
+                 "구간": 1, "덮은 시간": "00:00~23:50", "상태": "온전"},
+                {"날짜": "2026-11-02", "요일": "평일", "틱": 137, "기대": 144, "결측": 7, "실패": 0,
+                 "구간": 1, "덮은 시간": "00:00~22:40", "상태": "결측"},
+            ])
+
+    monkeypatch.setattr(collect_view, "_tool", lambda: 도구)
+    monkeypatch.setattr(collect_view.store, "stock_station_count", lambda: 1379)
+
+    monkeypatch.setenv("PBR_READONLY", "1")
+    body = client.get("/collect").text
+    assert "열람 전용 사본입니다 — 2026-11-02 22:40 기준" in body
+    assert "00:00-23:50" in body, "수집 PC의 창이 아니라 기본값으로 셌다"
+    assert "새 관측이 없습니다" not in body, "사본인데 멈춤 경보를 띄운다"
+    assert "등록된 수집 작업을 찾지 못했습니다" not in body
+    assert "사본 끝" in body, "사본을 뜬 시각 뒤의 빈 슬롯이 결측으로 읽힌다"
+
+    monkeypatch.delenv("PBR_READONLY", raising=False)        # 로컬은 예전 그대로
+    body = client.get("/collect").text
+    assert "열람 전용 사본" not in body
+    assert "등록된 수집 작업을 찾지 못했습니다" in body
+
+
+def test_열람_전용이면_날씨_캐시를_건너뛰지_못한다(client, monkeypatch):
+    """`refresh=1`이나 날짜를 번갈아 주면 캐시를 건너뛰어 기상청을 부른다 — 열람 전용 서버에서는
+    방문자가 키의 한도를 쓰게 된다(CLOUD_DEPLOY.md 점검 ⑤). 열람 전용이면 둘 다 무시한다."""
+    from datetime import date
+    from webapp import weather_view
+
+    calls = []
+    empty = {"available": False, "raining": False}
+    monkeypatch.setattr(weather_view, "current",
+                        lambda force=False: calls.append(("지금", force)) or empty)
+    monkeypatch.setattr(weather_view, "forecast",
+                        lambda target=None, force=False: calls.append(("예보", target, force)) or empty)
+
+    monkeypatch.setenv("PBR_READONLY", "1")
+    client.get("/api/weather?refresh=1")
+    client.get("/api/forecast?refresh=1&target_date=2026-12-25")
+    assert calls == [("지금", False), ("예보", None, False)]
+
+    calls.clear()
+    monkeypatch.delenv("PBR_READONLY", raising=False)        # 로컬은 예전 그대로
+    client.get("/api/weather?refresh=1")
+    client.get("/api/forecast?refresh=1&target_date=2026-12-25")
+    assert calls == [("지금", True), ("예보", date(2026, 12, 25), True)]
+
+
+def test_타슈를_부르는_GET은_모두_열람_전용에서_막힌다():
+    """막는 목록(`READONLY_BLOCKED_GETS`)은 손으로 적는다. 타슈를 부르는 GET 주소가 새로 생기면
+    빠뜨리기 쉽고, 빠뜨리면 **조용히 열린다**(CLOUD_DEPLOY.md 점검 ⑤). 구문 트리에서 `tashu.`를 —
+    `/m/live`처럼 도우미 함수를 거쳐서라도 — 부르는 라우트를 찾아 목록에 있는지 본다."""
+    import ast
+
+    src = (Path(__file__).resolve().parents[1] / "webapp" / "app.py").read_text(encoding="utf-8")
+    funcs = {n.name: n for n in ast.parse(src).body
+             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+    def calls_of(fn):
+        tashu, callees = False, set()
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Call):
+                f = node.func
+                if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id == "tashu":
+                    tashu = True
+                elif isinstance(f, ast.Name) and f.id in funcs:
+                    callees.add(f.id)
+        return tashu, callees
+
+    info = {name: calls_of(fn) for name, fn in funcs.items()}
+    reach = {name for name, (tashu, _) in info.items() if tashu}
+    grew = True
+    while grew:                                               # 도우미를 거친 호출까지 따라간다
+        grew = False
+        for name, (_, callees) in info.items():
+            if name not in reach and callees & reach:
+                reach.add(name)
+                grew = True
+
+    routes = {}
+    for name, fn in funcs.items():
+        for dec in fn.decorator_list:
+            if (isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute)
+                    and isinstance(dec.func.value, ast.Name) and dec.func.value.id == "app"
+                    and dec.func.attr == "get" and dec.args and isinstance(dec.args[0], ast.Constant)):
+                routes[dec.args[0].value] = name
+    calling = {path for path, name in routes.items() if name in reach}
+    assert {"/orders/live", "/m/live"} <= calling, f"검사가 낡았다 — 아는 두 곳도 못 찾는다: {calling}"
+    missing = calling - app_module.READONLY_BLOCKED_GETS
+    assert not missing, f"열람 전용에서 열려 있는 타슈 호출 주소: {sorted(missing)}"
+
+
+def test_클라우드_이미지는_한국_시각이고_로그가_끝없이_쌓이지_않는다():
+    """이미지 기본 시각이 UTC라 /run의 지금 회차 · /upcoming의 재고 경과 시간 · 예보의 '내일'이
+    9시간 어긋났다(CLOUD_DEPLOY.md 점검 ①). `TZ`만 두면 시간대 자료가 없을 때 소리 없이 UTC로 남는다.
+    docker 로그는 기본이 무제한이라 오래 켜 두면 봇 요청 로그가 디스크를 채운다(점검 ⑤)."""
+    root = Path(__file__).resolve().parents[1]
+    docker = (root / "Dockerfile").read_text(encoding="utf-8")
+    assert "TZ=Asia/Seoul" in docker
+    assert "tzdata" in docker, "시간대 자료가 없으면 TZ가 듣지 않는다"
+    setup = (root / "deploy" / "vm_setup.sh").read_text(encoding="utf-8")
+    assert "max-size=" in setup and "max-file=" in setup
+    runs = [line for line in setup.splitlines()
+            if "docker run" in line and not line.lstrip().startswith("#")]
+    assert runs, "vm_setup.sh에서 docker run을 못 찾았다 — 검사가 낡았다"
+    assert all("LOG_OPTS" in line for line in runs), f"로그 제한이 빠진 컨테이너: {runs}"

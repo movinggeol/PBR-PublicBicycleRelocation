@@ -28,6 +28,13 @@
 </div>
 {% endif %}
 
+{# 열람 전용(클라우드 데모)은 올린 시점의 사본이다 — 멈춤 경보 대신 언제 사본인지 밝힌다(collect_view.context). #}
+{% if snapshot %}
+<div class="alert">
+  <span><b>열람 전용 사본입니다 — {{ snapshot }} 기준.</b> 수집은 로컬 PC에서 계속되고, 이 화면은 사본을 다시 올리기 전까지 바뀌지 않습니다.</span>
+</div>
+{% endif %}
+
 {% if source.startswith('기본값') %}
 <div class="alert">
   <span><b>등록된 수집 작업을 찾지 못했습니다.</b> 아래 표는 기본 시간({{ window }}) 기준이라 실제와 다를 수 있습니다.</span>

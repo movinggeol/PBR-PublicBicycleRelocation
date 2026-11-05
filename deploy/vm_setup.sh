@@ -64,23 +64,26 @@ echo "[5/5] 컨테이너 실행"
 DOMAIN="${DOMAIN:-geol.cloud}"
 sudo docker network create pbr-net >/dev/null 2>&1 || true
 sudo docker rm -f "$NAME" pbr-caddy 2>/dev/null || true
+# 로그 크기 제한: 기본(json-file)은 끝없이 쌓여, 오래 켜 두면 봇 요청 로그가 디스크(30GB)를 채운다.
+# 컨테이너마다 10MB × 3개까지만 남긴다(CLOUD_DEPLOY.md 점검 ⑤).
+LOG_OPTS=(--log-opt max-size=10m --log-opt max-file=3)
 
 # 데이터는 읽기+쓰기로 마운트한다: db.connect()가 WAL 파일을 만들어서 읽기 전용이면 뜨지 않는다.
 # 쓰기를 막는 것은 PBR_READONLY=1(미들웨어)이다.
 if [ "$DOMAIN" = "none" ]; then
-  sudo docker run -d --name "$NAME" --restart unless-stopped --network pbr-net \
+  sudo docker run -d --name "$NAME" --restart unless-stopped --network pbr-net "${LOG_OPTS[@]}" \
     -p 80:8000 -p 8000:8000 \
     -v "$DATA_DIR":/app/data \
     "$IMAGE"
 else
   # 대시보드는 호스트 포트를 열지 않는다: 밖에서는 Caddy(80 · 443)를 거쳐서만 들어온다.
-  sudo docker run -d --name "$NAME" --restart unless-stopped --network pbr-net \
+  sudo docker run -d --name "$NAME" --restart unless-stopped --network pbr-net "${LOG_OPTS[@]}" \
     -v "$DATA_DIR":/app/data \
     "$IMAGE"
   # Caddy가 인증서를 자동으로 받고 갱신한다(Let's Encrypt). 인증서는 볼륨에 남겨 둔다:
   # 컨테이너를 다시 만들 때마다 새로 받으면 발급 한도(시간당 실패 5회 등)에 걸린다.
   # 발급 때 80번(또는 443번)으로 밖에서 접속해 보므로 두 포트가 인터넷에서 닿아야 한다.
-  sudo docker run -d --name pbr-caddy --restart unless-stopped --network pbr-net \
+  sudo docker run -d --name pbr-caddy --restart unless-stopped --network pbr-net "${LOG_OPTS[@]}" \
     -p 80:80 -p 443:443 \
     -e DOMAIN="$DOMAIN" \
     -v pbr_caddy_data:/data -v pbr_caddy_config:/config \

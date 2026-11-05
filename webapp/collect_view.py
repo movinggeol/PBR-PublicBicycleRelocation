@@ -61,8 +61,12 @@ def _tool():
         return None
 
 
-def _window() -> tuple:
+def _window(readonly: bool = False) -> tuple:
     """(창, 간격, 출처, 매일 도는가). 등록된 작업을 먼저 읽고 없으면 기본값으로 물러선다.
+
+    열람 전용(클라우드 데모)이면 작업 스케줄러를 찾지 않는다 — 그 서버(리눅스)에는 없어서
+    기본값 09:00-17:00 · 하루 49틱으로 떨어졌다(CLOUD_DEPLOY.md 점검 ②). 대신 수집 PC에 마지막으로
+    등록한 창(`WINDOW_HISTORY`의 끝)을 쓴다. 날짜별 표가 이미 그 이력으로 세므로 머리말과 표가 맞는다.
 
     ⚠️ **출처를 함께 돌려주는 것이 핵심이다.** 기본값으로 떨어진 채 결측을
     세면 창이 다른 만큼 표가 통째로 틀리는데, 화면은 그것을 알 수 없다
@@ -76,6 +80,10 @@ def _window() -> tuple:
     tool = _tool()
     if tool is None:
         return None, None, "수집기 모듈을 읽지 못했습니다", True
+    if readonly:
+        _since, start, end, interval = tool.WINDOW_HISTORY[-1]
+        return (f"{start:%H:%M}-{end:%H:%M}", interval,
+                "열람 전용 사본 — 수집 PC에 등록된 창", True)
     found = None
     try:
         found = tool.registered_args()
@@ -90,15 +98,20 @@ def _window() -> tuple:
             "기본값 — 등록된 작업을 찾지 못했습니다", True)
 
 
-def context() -> dict:
-    """수집 현황 화면이 쓸 값. **읽기만 한다** — 타슈 API를 부르지 않는다."""
+def context(readonly: bool = False) -> dict:
+    """수집 현황 화면이 쓸 값. **읽기만 한다** — 타슈 API를 부르지 않는다.
+
+    `readonly`(열람 전용 데모)면 DB가 **올린 시점의 사본**이다. 멈춤 경보 대신 사본의 마지막 틱을
+    `snapshot`으로 밝히고, 사본이 끊긴 마지막 날은 `결측`이 아니라 `사본 끝`이라 적는다 — 그날 뒤쪽이
+    빈 것은 수집이 아니라 사본을 뜬 시각 때문이다.
+    """
     tool = _tool()
-    window, interval, source, daily = _window()
+    window, interval, source, daily = _window(readonly)
     empty = {
         "window": window, "interval": interval, "source": source,
         "rows": [], "total_ticks": 0, "days": 0, "stations": 0,
         "span": None, "last_seen": None, "intact": [], "split_days": 0,
-        "expected": None, "stalled": None, "error": None,
+        "expected": None, "stalled": None, "snapshot": None, "error": None,
     }
     if tool is None:
         empty["error"] = "수집기 모듈(tools/collect_stock.py)을 읽지 못했습니다."
@@ -117,6 +130,11 @@ def context() -> dict:
     rows = table.to_dict(orient="records")
     intact = [r["날짜"] for r in rows if r["상태"] == "온전"]
     last_seen = rows[-1]["날짜"]
+    snapshot = None
+    if readonly:
+        snapshot = f"{last_seen} {str(rows[-1]['덮은 시간']).split('~')[-1]}"
+        if rows[-1]["상태"] == "결측":
+            rows[-1]["상태"] = "사본 끝"
 
     return {
         "window": window, "interval": interval, "source": source,
@@ -135,7 +153,8 @@ def context() -> dict:
         # 하루가 여러 구간이면 수집 실패가 아니라 **PC가 꺼져 있던 것**이다.
         # 둘은 대응이 완전히 다르므로 세어서 화면이 갈라 말하게 한다.
         "split_days": sum(1 for r in rows if r["구간"] > 1),
-        "stalled": _stalled_note(last_seen, daily=daily),
+        "stalled": None if readonly else _stalled_note(last_seen, daily=daily),
+        "snapshot": snapshot,
         "error": None,
     }
 
