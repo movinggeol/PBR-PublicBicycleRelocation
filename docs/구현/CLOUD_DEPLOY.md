@@ -44,6 +44,7 @@
 | `Dockerfile` | Python 3.14 이미지 + `requirements.txt` + 코드. `PBR_READONLY=1` 기본. 워커 1개(작업 상태 · 캐시가 프로세스 메모리에 있다) |
 | `.dockerignore` | `data/` · `.env` · `*.csv` · `*.db` · `docs/` · `experiments/` · `tests/` 제외. **`tools/`는 넣는다**: `/collect`가 `tools.collect_stock`을 불러온다 |
 | `deploy/vm_setup.sh` | VM 안에서 한 번 실행: Docker 설치, 코드 받기, 데이터 배치, 이미지 빌드, 컨테이너 실행 |
+| `deploy/Caddyfile` | 앞단 Caddy 설정: `DOMAIN`(기본 `geol.cloud`)의 인증서를 받고 `pbr-web:8000`으로 넘긴다(아래 *도메인과 HTTPS*) |
 
 ## 올릴 것
 
@@ -154,7 +155,7 @@ PYEOF
 
 서버 재시작은 필요 없다. 목록은 요청마다 새로 읽는다.
 
-**6. 확인**: 브라우저에서 `http://<VM 외부 IP>:8000`. 밖에서 재면 아래가 나와야 한다.
+**6. 확인**: 브라우저에서 `https://geol.cloud`(`DOMAIN=none`으로 띄웠으면 `http://<VM 외부 IP>:8000`). 밖에서 재면 아래가 나와야 한다.
 
 - 화면 200: `/` `/kpi` `/maps` `/data` `/collect` `/upcoming` `/vehicles` `/orders` `/api/kpi` (응답 0.2~0.8초)
 - 열람 전용: `POST /runs`와 `GET /orders/live`가 403
@@ -174,8 +175,10 @@ PYEOF
 | 파일 올리기 | `gcloud compute scp --zone=asia-northeast3-a <파일> pbr-web:/home/<VM 계정>/<이름>` |
 | 폴더 올리기 | `gcloud compute scp --recurse --zone=asia-northeast3-a <폴더> pbr-web:/home/<VM 계정>/` |
 | 방화벽 규칙 목록 | `gcloud compute firewall-rules list` |
-| 8000 포트 열기 | `gcloud compute firewall-rules create pbr-web-8000 --allow=tcp:8000 --target-tags=pbr-web` |
-| 접속 막기 (규칙 삭제) | `gcloud compute firewall-rules delete pbr-web-8000` |
+| 학교 · 집 IP로 좁히기 (평소) | `gcloud compute firewall-rules update pbr-web-443 --source-ranges=<학교 IP>/32,<집 IP>/32` |
+| 모두에게 열기 (심사 · 발표) | `gcloud compute firewall-rules update pbr-web-443 --source-ranges=0.0.0.0/0` |
+| 접속 막기 | `gcloud compute firewall-rules update pbr-web-443 --disabled` (`pbr-web-80`은 막지 않는다 — 아래 *방화벽 — 여닫기*) |
+| (`DOMAIN=none`일 때만) 8000 포트 열기 · 막기 | `gcloud compute firewall-rules create pbr-web-8000 --allow=tcp:8000 --target-tags=pbr-web` · `delete pbr-web-8000` |
 | 계정 · 프로젝트 확인 | `gcloud config list` |
 | 프로젝트 바꾸기 | `gcloud config set project <프로젝트 ID>` |
 | 결제 연결 확인 | `gcloud billing projects describe <프로젝트 ID>` |
@@ -187,7 +190,7 @@ PYEOF
 | --- | --- |
 | 실행 중인 컨테이너 | `sudo docker ps` |
 | 로그 보기 (오류 원인 찾기) | `sudo docker logs --tail 50 pbr-web` |
-| 재시작 (데이터를 바꾼 뒤) | `sudo docker restart pbr-web` |
+| 재시작 | `sudo docker restart pbr-web` — ⚠️ **DB를 바꿀 때는 쓰지 않는다.** 멈추고 옛 `-wal`을 지운 뒤 바꾼다(아래 *갱신 · 끄기*) |
 | 코드 변경 반영 | `bash vm_setup.sh` 다시 실행 |
 
 **중지와 삭제의 차이**: 중지하면 컴퓨터 사용료는 멈추고 디스크(30GB)에 대한 소액만 나온다. 데이터와 컨테이너는 그대로다. 다시 시작하면 컨테이너는 `--restart unless-stopped`라서 자동으로 뜨지만 **외부 IP가 바뀐다**(`list`로 확인). 삭제하면 과금이 완전히 멈추지만 DB를 다시 올려야 한다.
@@ -199,11 +202,11 @@ PYEOF
 회사 PC는 10분마다 재고를 모으는 수집 PC라 **수집기를 멈추지 않는다**(잃은 틱은 되살릴 수 없다). 예전 0단계(`PRAGMA wal_checkpoint(TRUNCATE)` 뒤
 원본 파일을 그대로 올리기)는 수집기를 멈춰야 했다 — 쓰는 중인 DB 파일을 복사하면 WAL에 남은 틱이 빠지거나 반쯤 쓰인 파일이 올라간다.
 
-대신 원본을 **읽기 전용으로 열어 SQLite 백업 API로** 사본을 뜬다(절차 0단계의 한 줄). 하나의 읽기 스냅샷을 복사하므로 수집기가 쓰는 중이어도
+대신 원본을 **읽기 전용으로 열어 SQLite 백업 API로** 사본을 뜬다(절차 1단계의 한 줄). 하나의 읽기 스냅샷을 복사하므로 수집기가 쓰는 중이어도
 어긋나지 않고, 원본에는 아무것도 쓰지 않는다. 끝에 `journal_mode=DELETE`로 바꿔 두어 `-wal` 없이 파일 하나만 옮기면 된다.
 
 - 실측(2026-10-27, 회사 PC): 3.6GB를 **62초**에 떴다. 10분 틱 직후에 시작해 틱을 잃지 않았다.
-- 사본 검사(`PRAGMA quick_check`)는 같은 파일에 **7분 30초**가 걸려 다음 틱과 겹쳤다(그 틱은 성공했다). 돌린다면 틱 직후에 시작한다.
+- 사본 검사(`PRAGMA quick_check`)는 같은 파일에 **7분 30초**가 걸려 다음 틱과 겹쳤다(그 틱은 성공했다). 1단계의 한 줄은 검사까지 하므로 **회사 PC에서는 틱 직후에** 시작한다.
 - `db.session()`을 거치는 도구(`transfer_run.py` 등)로 열지 않는다. 새 코드를 받은 직후면 스키마 맞추기가 원본에 칸을 붙인다(2026-10-22에 `pick_drop.pick_rule`이 그렇게 붙었다).
 
 ## 방화벽 — 여닫기
@@ -241,7 +244,7 @@ gcloud compute firewall-rules update pbr-web-443 --disabled
 
   ⚠️ 서버가 연 채로 파일을 바꾸거나 옛 `-wal`이 남아 있으면 다음에 열 때 SQLite가 옛 WAL을 새 DB에 적용해 **DB가 깨질 수 있다**(2026-11-03 점검). **VM의 DB를 정본으로 삼지 마라.** 정본은 로컬 두 PC다(`두_PC_작업.md`). VM의 DB는 올린 시점의 사본이라 저절로 갱신되지 않는다.
 - **코드를 바꿨을 때**: 저장소에 push한 뒤 VM에서 `vm_setup.sh`를 다시 실행한다(이미지를 새로 빌드한다).
-- **발표 직전**: VM을 시작하고 `list`로 새 IP를 확인한다. **끝나면 중지하거나 삭제한다.** 켜 두면 계속 과금된다.
+- **발표 직전**: VM을 시작하고 `list`로 새 IP를 확인한다. IP가 바뀌었으면 **DNS의 A 레코드도 새 IP로 고친다**(아래 *도메인과 HTTPS*). 그러지 않으면 `geol.cloud`가 옛 IP를 가리켜 아무 응답이 없다. 443번을 모두에게 열지도 이때 정한다(*방화벽 — 여닫기*). **끝나면 중지하거나 삭제한다.** 켜 두면 계속 과금된다.
 
 ## 접속 주소의 두 가지
 
@@ -252,6 +255,8 @@ gcloud compute firewall-rules update pbr-web-443 --disabled
 ## 점검 결과 — 보완할 것 (2026-11-03)
 
 사용자가 VM에 띄운 뒤(2026-11-03) 회사 PC에서 `origin/main`의 웹 코드를 읽어 점검했다. 실제 서버에는 접속하지 않았다(주소 미공유).
+2026-11-05 09:30에 회사 PC에서 `https://geol.cloud`로 GET만 보내 증상을 보려 했으나 443 · 80번 모두 20초 안에 응답이 없었다(DNS는 34.64.226.59).
+80번은 늘 전체 공개이므로 출처 제한 탓이 아니라 VM이 꺼져 있거나 다시 켜며 IP가 바뀐 것으로 본다. 아래 ① · ②는 그래서 아직 코드 읽기로만 확인한 것이다.
 
 **막이는 제대로 막는다** — 고칠 것 없음
 
