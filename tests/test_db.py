@@ -386,6 +386,20 @@ def test_save_kpi_works_after_migration(tmp_path):
     connection.close()
 
 
+def test_save_kpi_stores_infinity_as_null(conn):
+    """개선률은 `개선량 / 작업 전 불균형`이라 불균형 0인 대여소가 섞이면 ±inf가 된다
+    (수거 대수 학습 K가 운영 식으로는 할 일이 없는 곳을 고를 때). SQLite는 inf를 그대로
+    저장하고 `/kpi`의 정수 변환이 OverflowError로 화면 전체를 500으로 만들었다(1.26.408).
+    계산하지 못한 지표처럼 NULL로 남긴다."""
+    db.save_kpi(conn, "R1", "_05_10", {"stations": 3, "avg_improvement_rate": float("-inf"),
+                                        "pick_improvement_rate": float("inf"),
+                                        "drop_improvement_rate": 0.86})
+    row = db.load_kpi(conn).iloc[0]
+    assert pd.isna(row["avg_improvement_rate"]) and pd.isna(row["pick_improvement_rate"])
+    assert row["drop_improvement_rate"] == pytest.approx(0.86)
+    assert row["stations"] == 3
+
+
 def test_migration_is_idempotent(conn):
     """최신 스키마에서는 추가할 것이 없다(두 번 돌려도 마찬가지)."""
     assert db.migrate_schema(conn) == []

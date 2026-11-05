@@ -663,7 +663,14 @@ def start_job(pipeline_args: List[str]) -> Job:
 
         _running_proc = proc
         _jobs[job.id] = job
-        _save_registry()
+        try:
+            _save_registry()
+        except OSError as err:
+            # 🔴 **여기서 올려보내면 감시 스레드가 영영 안 뜬다** (1.26.408). 프로세스는 이미
+            # 돌고 있고 `_running_proc`에 등록됐으니, 상태가 '실행 중'에 굳어 이후 모든 실행이
+            # 409가 되고 서버를 재시작할 때까지 풀리지 않았다. `_watch`와 같은 까닭(동기화
+            # 클라이언트 · 백신 잠금, 1.26.273)이니 같은 대접을 한다 — 끝날 때 다시 저장한다.
+            print(f"[경고] 작업 이력을 저장하지 못했습니다: {type(err).__name__}: {err}")
 
     threading.Thread(target=_watch, args=(job, proc, log_file), daemon=True).start()
     return job

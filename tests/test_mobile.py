@@ -566,6 +566,14 @@ def test_재판정은_남은_곳만_적재를_이어_센다(client, live):
     assert by_no[2]["status"] == by_no[3]["status"] == "가능"
 
 
+def test_끝낸_곳_목록의_숫자_아닌_글자는_무시한다(client, live):
+    """`isdigit()`은 위첨자 '²'도 참으로 보는데 `int('²')`는 ValueError라 손으로 만든 주소
+    하나로 500이 났다(1.26.408). 숫자가 아닌 조각은 버리고 판정은 그대로 한다."""
+    res = _judge(client, done="1,²,x")
+    assert res.status_code == 200
+    assert res.json()["done"] == [1]
+
+
 def test_기사_여럿이_눌러도_60초_안에는_한_번만_받는다(client, live):
     for _ in range(3):
         assert _judge(client).status_code == 200

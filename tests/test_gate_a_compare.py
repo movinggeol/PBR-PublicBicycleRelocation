@@ -76,7 +76,6 @@ def test_행_수가_다르면_값을_견주지_않고_그_사실만_적는다():
 
 
 def test_폴더를_맞대면_변화없음과_실패와_흔들림을_표에_표시한다(tmp_path):
-    same = pd.DataFrame({"outage": [0, 1], "failed": [0, 0]})
     off = _folder(tmp_path, "off", ["budget_enforce_120,5-E,0,0.2", "fleet_outage_stress,25,0,1.0",
                                     "ortools_gap_seeds,24,0,3.0"],
                   {"budget_enforce_120.log": LOG_OFF, "fleet_outage_stress.log": "결원 0대 실패 0\n",

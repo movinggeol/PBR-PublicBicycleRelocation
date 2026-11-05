@@ -360,6 +360,18 @@ def run_tick(stamp: datetime, start: clock, end: clock, interval: int,
         write_log(observed_at, "실패", 0, str(err))
         print(f"[실패] {observed_at} — {err}")
         return 1
+    except Exception as err:              # noqa: BLE001 — 어떤 실패든 로그 한 줄은 남긴다
+        # 🔴 **API 말고 이쪽 실패도 줄을 남긴다** (1.26.408). DB 잠금(60초 뒤
+        # `OperationalError`)이나 Excel이 연 CSV의 `PermissionError`는 예전에 그대로 빠져나가
+        # 줄 없이 사라졌다(pythonw라 트레이스백도 없다). 그러면 `--status`가 그 공백을
+        # "수집기가 아예 실행되지 않은 구간"으로 단정했다 — 틀린 안심이다.
+        detail = f"{type(err).__name__}: {err}"
+        try:
+            write_log(observed_at, "실패", 0, detail)
+        except OSError as log_err:        # 로그 파일까지 잠겼으면 화면에라도 남긴다
+            print(f"[경고] 수집 로그를 쓰지 못했습니다: {type(log_err).__name__}: {log_err}")
+        print(f"[실패] {observed_at} — {detail}")
+        return 1
 
     if dry_run:
         return 0                          # 안내는 collect_once가 이미 했다
@@ -574,17 +586,19 @@ def print_status(start: clock, end: clock, interval: int,
         if len(split) - blamed:
             print(f"             나머지 {len(split) - blamed}일은 수집기가 아예 실행되지")
             print("             않은 구간입니다 — PC 꺼짐·절전(모던 대기)·로그오프·")
-            print("             스케줄러 거부 중 하나입니다. 연결 실패는 아닙니다.")
+            print("             스케줄러 거부, 또는 떴다가 5분 제한에 강제 종료된 것")
+            print("             (메모리 부족 — 2026-11-05 조사)입니다. 연결 실패는 아닙니다.")
 
     failed = table.loc[table["실패"] > 0]
     if not failed.empty:
         worst = failed.sort_values("실패").iloc[-1]
         print(f"  수집 실패: {len(failed)}일 · {int(table['실패'].sum())}틱"
               f" (최다 {worst['날짜']} {int(worst['실패'])}틱)")
-        print("             스크립트는 돌았는데 연결이 안 됐습니다 — 원격 장애일")
-        print("             수도, 이쪽 망(와이파이)이 끊긴 것일 수도 있습니다.")
-        print("             켜 두는 것만으로는 부족하고 망이 붙어 있어야 합니다.")
-        print("             휴일이면 회복에 일주일이 걸립니다.")
+        print("             스크립트는 돌았는데 받거나 저장하지 못했습니다 — 대개")
+        print("             연결이고(원격 장애일 수도, 이쪽 와이파이일 수도), 로그의")
+        print("             detail이 OperationalError·PermissionError면 이 PC 안의")
+        print("             잠금입니다(1.26.408부터 남는다). 켜 두는 것만으로는")
+        print("             부족하고 망이 붙어 있어야 합니다. 휴일이면 회복에 일주일이 걸립니다.")
     print()
     print(table.to_string(index=False))
 

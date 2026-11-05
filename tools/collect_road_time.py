@@ -366,6 +366,15 @@ def collect(chains: list, durations: list, run_label: str, headers: dict,
         with db.session() as conn:
             db.ensure_run(conn, run_label, kind="probe", day_type=day_type)
 
+    def keep(rows: list, duration: str) -> int:
+        # 🔴 **이번에 받은 사슬만 갈아끼운다** (1.26.408). `save_output`은 (라벨, 회차)를 통째로
+        # 지우고 쓰므로, `--if-needed`나 `-Full`로 다시 잰 쪽이 한도 · 예산에 도중에 끊기면
+        # 먼저 받은 사슬이 사라졌다(재현: 80구간 → 20구간). 실측은 같은 시각의 교통량으로
+        # 다시 잴 수 없다. step3는 같은 결함을 1.26.232에 이 함수로 고쳤다 — 여기만 남아 있었다.
+        frame = pd.DataFrame(rows)
+        return db.replace_road_legs(frame, run_label, duration,
+                                    clusters=frame["cluster"].unique())
+
     for duration in durations:
         # 🔴 `lead_min`을 넘기지 않는다 — 파이프라인(step3)은 2026-10-14부터 출발을
         # DEPART_LEAD_MINUTES(30분) 당긴 시각의 교통량을 받지만, 이 패널은 **회차 첫 시각**을
@@ -384,14 +393,12 @@ def collect(chains: list, durations: list, run_label: str, headers: dict,
             except TmapQuotaExceeded as exc:
                 print(f"  ⚠ 일일 한도 소진 — 여기서 멈춥니다. ({exc})")
                 if rows:
-                    saved += db.save_output("road_leg", pd.DataFrame(rows),
-                                            run_label=run_label, duration=duration)
+                    saved += keep(rows, duration)
                 return saved
             except TmapBudgetExceeded as exc:
                 print(f"  ⚠ 호출 예산 소진 — 여기서 멈춥니다. ({exc})")
                 if rows:
-                    saved += db.save_output("road_leg", pd.DataFrame(rows),
-                                            run_label=run_label, duration=duration)
+                    saved += keep(rows, duration)
                 return saved
             except RuntimeError as exc:
                 print(f"  ⚠ 사슬 {chain['chain']}: 호출 실패 ({exc}) → 건너뜁니다.")
@@ -401,8 +408,7 @@ def collect(chains: list, durations: list, run_label: str, headers: dict,
             time.sleep(0.5)          # 순간적인 속도 제한을 피한다
 
         if rows:
-            saved += db.save_output("road_leg", pd.DataFrame(rows),
-                                    run_label=run_label, duration=duration)
+            saved += keep(rows, duration)
     return saved
 
 

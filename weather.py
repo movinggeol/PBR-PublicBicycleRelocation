@@ -89,6 +89,8 @@ WINTER_MONTHS = (11, 12, 1, 2, 3)
 
 # apihub 응답의 결측 표시. 값이 아니라 '없음'이다.
 API_MISSING = -9.0
+# 기온은 실제로 -9도 아래로 내려가므로 따로 둔다 — 이보다 낮으면 `-99` 계열 결측 표지다.
+API_MISSING_TEMP = -50.0
 
 # apihub `kma_sfctm2` 한 줄의 자리 번호 (help=1로 확인).
 API_FIELDS = {"time": 0, "stn": 1, "wind": 3, "temp": 11, "humid": 13,
@@ -290,7 +292,12 @@ def _api_key() -> str:
 
 
 def _value(fields: list, name: str):
-    """자리에서 값을 꺼낸다. -9/-9.0은 값이 아니라 '없음'이므로 None으로 돌려준다."""
+    """자리에서 값을 꺼낸다. -9/-9.0은 값이 아니라 '없음'이므로 None으로 돌려준다.
+
+    🔴 **기온만은 예외다** (1.26.408). 강수 · 풍속 · 습도 · 적설은 음수가 될 수 없어 `-9`
+    이하를 '없음'으로 읽어도 되지만, 기온은 대전 겨울 아침에 영하 9도 아래로 내려간다.
+    같은 규칙을 걸었더니 -12.3°C가 '없음'으로 보였다. 기온은 `-99` 계열 표지만 '없음'이다.
+    """
     position = API_FIELDS[name]
     if position >= len(fields):
         return None
@@ -298,7 +305,8 @@ def _value(fields: list, name: str):
         value = float(fields[position])
     except ValueError:
         return None
-    return None if value <= API_MISSING else value
+    floor = API_MISSING_TEMP if name == "temp" else API_MISSING
+    return None if value <= floor else value
 
 
 def fetch_hour(when=None, stn: int = STATION_ID, timeout: float = 30) -> dict:

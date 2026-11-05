@@ -302,6 +302,25 @@ def test_API_실패는_로그에_남고_종료코드가_1이다(history_dir, mon
         assert db.load_stock_history(conn).empty
 
 
+def test_API가_아닌_실패도_로그에_남고_종료코드가_1이다(history_dir, fake_api, monkeypatch):
+    """DB 잠금(60초 뒤 `OperationalError`)이나 Excel이 연 CSV의 `PermissionError`는
+    `TashuError`가 아니라 예전에는 그대로 빠져나가 **줄 없이** 사라졌다(pythonw라 트레이스백도
+    없다). 그러면 `--status`가 그 공백을 '수집기가 아예 안 돈 구간'으로 단정했다(1.26.408)."""
+    import sqlite3
+
+    def locked(*args, **kwargs):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(collector.db, "save_stock_snapshot", locked)
+    code = collector.run_tick(WEEKDAY.replace(hour=10), *WINDOW, INTERVAL)
+
+    assert code == 1
+    log = pd.read_csv(history_dir / collector.LOG_NAME)
+    assert log["status"].iloc[-1] == "실패"
+    assert "OperationalError" in log["detail"].iloc[-1]
+    assert "database is locked" in log["detail"].iloc[-1]
+
+
 def test_dry_run은_저장하지_않는다(history_dir, fake_api):
     code = collector.run_tick(WEEKDAY.replace(hour=10), *WINDOW, INTERVAL,
                               dry_run=True)

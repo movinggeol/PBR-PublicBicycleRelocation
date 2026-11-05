@@ -232,12 +232,15 @@ def test_순회_도구가_임시_DB에서도_돈다():
     assert crawl.main(["--show", "5"]) == 0
 
 
-@pytest.mark.parametrize("path", ["/", "/data", "/maps", "/kpi", "/vehicles"])
+@pytest.mark.parametrize("path", ["/data", "/maps", "/kpi", "/vehicles"])
 def test_data_tables_are_sortable(client, path):
     """표가 있는 화면은 열 정렬을 켠다.
 
     정렬은 base.html의 공용 스크립트가 `table[data-sortable]`을 찾아 거는 방식이라,
     템플릿에서 속성이 빠지면 조용히 기능만 사라진다.
+
+    `/`는 뺐다(1.26.408) — 홈 화면(`home.html`)에서 표를 걷은 뒤로 이 시험은 **어디서나
+    늘 건너뛰는** 빈 매개변수였다(CI에서도 이 PC에서도).
     """
     html = client.get(path).text
     body = html.split("</style>", 1)[1]      # CSS 안의 선택자는 세지 않는다
@@ -378,6 +381,39 @@ def test_물려받을_재고가_없으면_띄우기_전에_말한다(client, mon
     res = client.post("/runs", data={"skip_api": "1"}, follow_redirects=False)
     assert res.status_code == 400
     assert "물려받을 재고가 없습니다" in res.text
+
+
+def test_이름을_비우면_파이프라인이_쓸_라벨로_재고를_고르고_넘긴다(client, monkeypatch):
+    """1.26.382부터 파이프라인은 `--now`가 없으면 지금 시각을 라벨로 쓰는데, 폼은 그대로
+    `DEFAULT_NOW`로 돈다고 보고 물려받을 재고를 **그 라벨**로 골랐다 — 회차는 08-23 재고로,
+    계획은 다른 재고로 섰다(1.26.408). 같은 시계로 라벨을 정해 회차 고르기와 파이프라인에 함께 준다."""
+    from datetime import datetime
+
+    from webapp import store
+
+    _freeze_clock(monkeypatch, datetime(2026, 11, 5, 14, 7))
+    asked = []
+
+    def inherited(label):
+        asked.append(label)
+        return {"label": "2026-11-05 13", "at": datetime(2026, 11, 5, 13, 50)}
+
+    monkeypatch.setattr(store, "inherited_stock", inherited)
+    captured = _capture_start(monkeypatch)
+    res = client.post("/runs", data={"skip_api": "1"}, follow_redirects=False)
+    assert res.status_code == 303
+    args = captured[0]
+    assert args[args.index("--now") + 1] == "2026-11-05 14", "파이프라인과 같은 라벨을 넘기지 않는다"
+    assert asked == ["2026-11-05 14"], f"파이프라인이 쓰지 않을 라벨로 재고를 골랐다: {asked}"
+
+
+def test_실행_이름이_대시로_시작하면_폼에서_거른다(client, monkeypatch):
+    """`["--now", "-테스트"]`는 argparse가 옵션으로 읽어 파이프라인이 곧바로 죽고 까닭은
+    로그에만 남았다(1.26.408)."""
+    _reject_start(monkeypatch)
+    res = client.post("/runs", data={"now": "-테스트"}, follow_redirects=False)
+    assert res.status_code == 400
+    assert "로 시작할 수 없습니다" in res.text
 
 
 def test_missing_period_is_rejected(client, monkeypatch, tmp_path):
@@ -762,6 +798,30 @@ def test_favicon_no_content(client):
 def test_path_traversal_blocked(client, path):
     """data/ 밖 파일은 서빙되지 않는다."""
     assert client.get(path).status_code == 404
+
+
+@pytest.mark.parametrize("relpath", [
+    "//203.0.113.5/s/a.csv",          # GET /files///호스트/… 가 라우트에 넘기는 모양
+    "\\\\203.0.113.5\\s\\a.html",     # %5C로 보낸 같은 것
+    "/etc/x.csv",
+    "\\x.csv",
+    "C:/Windows/x.csv",
+])
+def test_safe_resolve는_닻이_붙은_경로를_열기_전에_버린다(monkeypatch, relpath):
+    """🔴 위 시험은 `safe_resolve()`에 닿지 않는다 — httpx가 `..` 구간을 먼저 정리해
+    `/etc/passwd` 같은 **없는 라우트**로 보내므로 404는 거기서 난다(1.26.408 리뷰).
+
+    지키는 것: `DATA_ROOT / "//호스트/공유/a.csv"`는 UNC 경로가 되고 윈도우의 `resolve()`는
+    그것을 **실제로 연다** — data/ 안 검사가 거절하기 전에 서버가 바깥 SMB 서버에 접속해
+    계정의 NTLM 해시를 넘긴다. 그래서 `resolve()`가 불리는 것 자체를 실패로 본다.
+    """
+    from webapp import catalog
+
+    def 열면_안_된다(self, *args, **kwargs):
+        raise AssertionError(f"resolve()가 불렸다 — 원격 경로를 열 수 있다: {self}")
+
+    monkeypatch.setattr(catalog.Path, "resolve", 열면_안_된다)
+    assert catalog.safe_resolve(relpath) is None
 
 
 def test_non_allowed_suffix_blocked(client):
@@ -3686,6 +3746,27 @@ def test_이력_저장이_실패해도_완료_훅은_돈다(monkeypatch, capsys)
     assert "저장하지 못했습니다" in capsys.readouterr().out
 
 
+def test_시작할_때_이력_저장이_실패해도_감시_스레드는_뜬다(monkeypatch, capsys):
+    """위 시험의 반대쪽 — `start_job()`의 첫 저장이 OSError를 내면 감시 스레드를 띄우는
+    줄에 닿지 못했다(1.26.408). 프로세스는 이미 돌고 `_running_proc`에 등록돼 있어 작업이
+    '실행 중'에 굳고, 그 뒤 모든 실행이 409였다(서버를 재시작해야 풀렸다)."""
+    class 프로세스:
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(jobs.subprocess, "Popen", lambda command, **kw: 프로세스())
+    monkeypatch.setattr(jobs, "_save_registry", lambda: (_ for _ in ()).throw(OSError("locked")))
+    job = jobs.start_job([])
+    for _ in range(100):                     # 감시 스레드가 끝낼 때까지
+        if not job.is_running:
+            break
+        time.sleep(0.02)
+
+    assert job.status == "success", "감시 스레드가 뜨지 않아 '실행 중'에 굳었다"
+    assert jobs.running_job() is None, "다음 실행이 막힌다"
+    assert "저장하지 못했습니다" in capsys.readouterr().out
+
+
 def test_store는_DB가_죽어도_화면을_살린다(monkeypatch, capsys):
     """세 함수만 예외를 안 삼켰다 — `stockout_calibration`은 `db.session()`이 try 밖,
     `stock_station_count`·`periods_with_rentals`는 try가 없어 /kpi·/run이 500이었다
@@ -3702,6 +3783,20 @@ def test_store는_DB가_죽어도_화면을_살린다(monkeypatch, capsys):
     assert store.periods_with_rentals() == frozenset()
     assert store.backtest().empty and store.net_demand("25년 11월").empty
     assert capsys.readouterr().out.count("[경고]") == 5
+
+
+def test_결품_보정_배율이_빈_행은_화면에_넘기지_않는다(monkeypatch):
+    """측정 쪽은 복원 결품이 0이면 배율을 NULL로 저장한다. 그 행이 `/kpi`의
+    `min`/`format`에 들어가면 None은 TypeError로 화면 전체가 500, NaN은 "nan배"였다(1.26.408)."""
+    from webapp import store
+
+    frame = pd.DataFrame({"duration": ["_05_10", "_10_15", "_15_20"],
+                          "ratio": [None, 1.4, float("nan")]})
+    monkeypatch.setattr(store.db, "latest_stockout_calibration", lambda conn: frame)
+    assert [row["ratio"] for row in store.stockout_calibration()] == [1.4]
+
+    monkeypatch.setattr(store.db, "latest_stockout_calibration", lambda conn: frame.iloc[[0]])
+    assert store.stockout_calibration() == [], "다 비었으면 '실제 결품은 이보다 큽니다' 쪽으로 가야 한다"
 
 
 def test_kpi_view는_db를_직접_부르지_않고_캐시는_DB_지문을_따른다(monkeypatch):

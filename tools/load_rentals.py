@@ -142,9 +142,14 @@ def main() -> int:
         print(f"적재 시작: {raw_path.name}  (period={config.period!r})")
 
     started = time.monotonic()
+    # 인덱스를 둔 채 넣는다 — `--dir`(위)와 같은 까닭이다(1.26.408). 한 파일이라도 표에는 이미
+    # 수백만 행이 있어, 인덱스를 지우면 그 달의 DELETE가 전체 훑기가 되고 끝의 CREATE INDEX 셋이
+    # 쓰기 잠금을 몇 분 쥔다. 그 사이 수집기 틱은 잠금을 기다리다 실패하거나, 틱 프로세스의
+    # `db.session()`(`init_schema`)이 지워진 인덱스를 **스스로 다시 지어** 5분 제한에 걸린다.
     loaded = db.bulk_load_rentals(
         raw_path, period=None if args.split_by_month else config.period,
-        chunksize=args.chunksize, split_by_month=args.split_by_month)
+        chunksize=args.chunksize, split_by_month=args.split_by_month,
+        manage_indexes=False)
     elapsed = time.monotonic() - started
     total = sum(loaded.values())
 

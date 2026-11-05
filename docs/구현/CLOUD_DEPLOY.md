@@ -263,7 +263,7 @@ gcloud compute firewall-rules update pbr-web-443 --disabled
 
 - 타슈 API를 부르는 곳은 웹 전체에서 `/orders/live` · `/m/live` 둘뿐이고(`webapp/app.py`의 `tashu.fetch_stations` 두 곳), 둘 다 `READONLY_BLOCKED_GETS`에 있다.
 - 끝에 `/`를 붙인 주소는 Starlette가 원래 주소로 다시 보내므로 그대로 막힌다.
-- 막히지 않는 GET 주소 가운데 하위 프로세스를 띄우거나(`jobs.start_job`은 `POST /runs`에서만 부른다) DB · 파일에 쓰는 곳은 없다.
+- 막히지 않는 GET 주소 가운데 하위 프로세스를 띄우는 곳은 없다(`jobs.start_job`은 `POST /runs`에서만 부른다). ⚠️ **DB에 쓰는 곳은 있다**(1.26.408 정정 — 처음에 *"DB · 파일에 쓰는 곳은 없다"* 고 적었다): 요청마다 `db.session()`이 `init_schema` · `migrate_schema` 뒤 commit하고, `/vehicles` · `/api/vehicles` · `/m/me`는 `db.ensure_fleet()`가 `INSERT OR IGNORE`로 차량 마스터를 채운다. 둘 다 멱등이고 방문자가 내용을 정할 수 없어 막지 않았다.
 - 그래프는 SVG 문자열(`webapp/charts.py`)이라 서버에 한글 글꼴이 없어도 깨지지 않는다.
 - `rental_history`에는 회원 정보가 없고(자전거 번호 · 대여소 · 시각 · 좌표), 웹은 그 행을 그대로 내보내지 않는다.
 

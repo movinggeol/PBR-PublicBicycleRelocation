@@ -58,6 +58,26 @@ def planned(monkeypatch):
     monkeypatch.setattr(orders.store, "load", fake_load)
 
 
+def test_차량_배정이_빈_회차도_군집별로_지시서를_낸다(monkeypatch):
+    """`vrp_plan`에는 늘 `vehicle_id` 칸이 있다(SELECT *). 배정이 실패한 회차(`vrp.py`가
+    경고만 하고 비운 채 저장)나 배정 전의 옛 실행은 값이 **전부 NULL**인데, 칸이 있다는 것만
+    보고 그 칸으로 묶어 groupby가 NaN 묶음을 버렸다 — 지시서 0장에 화면은 "경로가 없습니다"
+    (1.26.408). 위 시험들은 값이 다 찬 표만 써서 이 길을 못 봤다."""
+    def fake_load(table, run_label=None, duration=None):
+        if table == "vrp_plan":
+            return VRP.assign(vehicle_id=None), "db"
+        if table == "pick_drop":
+            return CANDIDATES.copy(), "db"
+        return pd.DataFrame(), "none"
+
+    monkeypatch.setattr(orders.store, "load", fake_load)
+    sheets = orders.build("R", "_05_10")
+
+    assert [s["cluster"] for s in sheets] == [0, 1], "배정이 비었다고 지시서를 버렸다"
+    assert all(s["vehicle_id"] == "" for s in sheets), "없는 차량 번호를 지어내면 안 된다"
+    assert sum(len(s["stops"]) for s in sheets) == len(VRP)
+
+
 def test_order_sheet_follows_the_visit_order(planned):
     """지시서는 방문 순서대로 나오고, 차에 남는 대수를 이어서 센다."""
     sheets = orders.build("R", "_05_10")

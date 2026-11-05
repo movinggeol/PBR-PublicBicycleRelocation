@@ -209,6 +209,17 @@ def test_API_응답에서_값을_꺼내고_결측은_None(monkeypatch):
     assert observed["time"] == pd.Timestamp("2025-11-03 09:00")
 
 
+@pytest.mark.parametrize("raw, expected", [("-12.3", -12.3), ("-9.0", -9.0), ("-99.0", None)])
+def test_영하_9도_아래_기온은_결측이_아니다(raw, expected):
+    """-9 이하를 '없음'으로 읽는 규칙은 음수가 될 수 없는 칸(강수 · 풍속 · 습도 · 적설)의
+    것이다. 기온에도 걸려 대전 겨울 아침 -12.3°C가 '없음'으로 보였다(1.26.408)."""
+    fields = API_ROW.split()
+    fields[weather.API_FIELDS["temp"]] = raw
+    got = weather._value(fields, "temp")
+    assert got == (pytest.approx(expected) if expected is not None else None)
+    assert weather._value(fields, "rain") is None, "강수의 -9는 그대로 '없음'이다"
+
+
 def test_키가_없으면_사람이_읽을_문구로_알린다(monkeypatch):
     monkeypatch.delenv(weather.API_KEY_ENV, raising=False)
     monkeypatch.setattr(weather, "_api_key",

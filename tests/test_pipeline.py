@@ -508,8 +508,7 @@ def test_지도_다시_그리기가_실패를_종료_코드로_말한다(monkeyp
     """
     import tools.redraw_maps as redraw_maps
 
-    if not redraw_maps.available():
-        pytest.skip("다시 그릴 산출물이 없다")
+    _가짜_대상(monkeypatch, redraw_maps, 2)   # 이 PC의 `data/`에 기대지 않는다 — CI에서도 돈다
 
     # 자식이 전부 실패하는 상황
     def 늘_실패(*args, **kwargs):
@@ -529,8 +528,7 @@ def test_지도_다시_그리기_dry_run은_성공이다(monkeypatch):
     """세어만 보는 것은 실패가 아니다 — 위 시험이 0을 무조건 막지 않는지 함께 본다."""
     import tools.redraw_maps as redraw_maps
 
-    if not redraw_maps.available():
-        pytest.skip("다시 그릴 산출물이 없다")
+    _가짜_대상(monkeypatch, redraw_maps, 2)   # 이 PC의 `data/`에 기대지 않는다 — CI에서도 돈다
 
     monkeypatch.setattr(sys, "argv", ["redraw_maps.py", "--all", "--dry-run"])
     assert redraw_maps.main() == 0
@@ -567,8 +565,7 @@ def test_경로_지도는_with_route를_줘야_TMAP을_부른다(monkeypatch, ca
     """
     import tools.redraw_maps as redraw_maps
 
-    if not redraw_maps.available():
-        pytest.skip("다시 그릴 산출물이 없다")
+    _가짜_대상(monkeypatch, redraw_maps, 2)   # 이 PC의 `data/`에 기대지 않는다 — CI에서도 돈다
 
     부른것 = []
     _가짜_다시그리기(monkeypatch, redraw_maps, 부른것)
@@ -590,8 +587,7 @@ def test_경로_지도가_안_나와도_나머지는_실패가_아니다(monkeyp
     """
     import tools.redraw_maps as redraw_maps
 
-    if not redraw_maps.available():
-        pytest.skip("다시 그릴 산출물이 없다")
+    _가짜_대상(monkeypatch, redraw_maps, 2)   # 이 PC의 `data/`에 기대지 않는다 — CI에서도 돈다
 
     monkeypatch.setattr(redraw_maps, "redraw",
                         lambda label, dur, cand: [f"{label}{dur}.html"])

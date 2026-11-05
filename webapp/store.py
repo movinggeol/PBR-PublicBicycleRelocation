@@ -190,6 +190,10 @@ def kpi(run_label: Optional[str] = None, duration: Optional[str] = None) -> pd.D
     except Exception as err:
         print(f"[경고] KPI 조회 실패: {type(err).__name__}: {err}")
         return pd.DataFrame()
+    # 무한대는 결측으로 읽는다(1.26.408) — `db.save_kpi`가 이제 저장 전에 거르지만, 그 전에
+    # 다른 PC에서 저장된 ±inf가 사본으로 들어올 수 있다. 그대로 두면 `/kpi`는 정수 변환의
+    # OverflowError로, `/api/kpi`는 JSON 직렬화 오류로 500이 된다.
+    rows = rows.replace([float("inf"), float("-inf")], float("nan"))
     return _kpi_newest_first(rows, created)
 
 
@@ -207,6 +211,11 @@ def stockout_calibration(day_type: str = "weekday") -> list:
         # 예전에는 `db.session()`이 try 밖이라 연결 실패가 /kpi를 500으로 만들었다(1.26.273).
         print(f"[경고] 결품 보정 조회 실패: {type(err).__name__}: {err}")
         return []
+    # 🔴 **배율이 비어 있는 행은 뺀다** (1.26.408). 측정 쪽(`observed_stockout.py`)은 복원
+    # 결품이 0이면 배율을 NULL로 저장한다. 그 행이 화면의 `min`/`format`에 들어가면
+    # None은 TypeError로 `/kpi` 전체가 500이 되고, NaN은 "nan배"가 찍혔다.
+    if not frame.empty and "ratio" in frame:
+        frame = frame[pd.to_numeric(frame["ratio"], errors="coerce").notna()]
     return [] if frame.empty else frame.to_dict("records")
 
 

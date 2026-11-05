@@ -102,7 +102,13 @@ def build(run_label: Optional[str] = None, duration: Optional[str] = None,
     # 방문 순서는 seq다. 없으면(구버전) 저장된 순서를 그대로 믿는다.
     if "seq" in plan:
         plan = plan.sort_values(["cluster", "seq"])
-    group_key = "vehicle_id" if "vehicle_id" in plan else "cluster"
+    # 🔴 **칸이 있는지가 아니라 값이 다 찼는지로 가른다** (1.26.408). `vrp_plan`에는 늘
+    # `vehicle_id` 칸이 있고(`store.load`는 SELECT *), 차량 배정이 실패한 회차
+    # (`vrp.py`가 경고만 하고 비운 채 저장한다)나 배정 전의 옛 실행은 값이 전부 NULL이다.
+    # 그 칸으로 묶으면 groupby가 NaN 묶음을 버려 **지시서가 0장**이 되고 화면은
+    # "경로가 없습니다"라고 거짓 안내했다.
+    group_key = ("vehicle_id" if "vehicle_id" in plan and plan["vehicle_id"].notna().all()
+                 else "cluster")
 
     orders = []
     for key, rows in plan.groupby(group_key, sort=True):

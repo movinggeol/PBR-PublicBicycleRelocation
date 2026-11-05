@@ -18,6 +18,7 @@ PostgreSQL 전환 시점에 connect()만 엔진 팩토리로 교체하면 나머
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import sqlite3
@@ -1093,6 +1094,12 @@ def save_kpi(conn: sqlite3.Connection, run_label: str, duration: str,
     그냥 빼고 넘기면 된다(해당 컬럼은 NULL).
     """
     known = {k: metrics[k] for k in KPI_FIELDS if k in metrics}
+    # 🔴 **무한대는 '계산하지 못한 지표'로 남긴다** (1.26.408). 개선률은 `개선량 / 작업 전
+    # 불균형`이라 불균형이 0인 대여소가 섞이면 ±inf가 된다(수거 대수 학습 K가 운영 식으로는
+    # 할 일이 없는 대여소를 고를 때). SQLite는 inf를 그대로 저장하고, `/kpi`의
+    # `(value*100)|round|int`가 OverflowError로 화면 전체를 500으로 만들었다.
+    known = {k: (None if isinstance(v, float) and not math.isfinite(v) else v)
+             for k, v in known.items()}
     columns = ["run_label", "duration", "computed_at", *known]
     placeholders = ", ".join(["?", "?", "datetime('now', 'localtime')"]
                              + ["?"] * len(known))
@@ -1613,6 +1620,22 @@ def rental_period_mismatch(csv_path: Path, period: str,
     return float((labels != period).mean()), top
 
 
+def rental_required_missing(csv_path: Path, encoding: Optional[str] = None) -> int:
+    """`rental_history`의 NOT NULL 칸(대여일시 · 대여소ID)이 비거나 읽히지 않는 행 수.
+
+    🔴 **적재가 그 달을 지우기 전에 본다** (1.26.408). `bulk_load_rentals()`는 청크마다
+    커밋하므로, 이런 행이 하나라도 있으면 앞 청크만 남은 채 NOT NULL 위반으로 멈췄다.
+    다시 돌려도 같은 행에서 멈추고, 그 뒤 `read_rental_source()`는 행이 있으니 **일부만 든
+    달을 출처 'db'로** 돌려주어 순수요가 조용히 깎였다. 필수 칸이 아예 없는 파일도
+    지우기 전에 ValueError로 걸린다(`usecols`).
+    """
+    frame = pd.read_csv(csv_path, encoding=encoding or sniff_csv_encoding(csv_path),
+                        usecols=["대여일시", "대여_대여소ID"], dtype=str)
+    rent_at = pd.to_datetime(frame["대여일시"], errors="coerce")
+    station = frame["대여_대여소ID"].str.strip()
+    return int((rent_at.isna() | station.isna() | (station == "")).sum())
+
+
 def bulk_load_rentals(csv_path: Path, period: Optional[str] = None,
                       db_path: Optional[Path] = None, chunksize: int = 100_000,
                       split_by_month: bool = False,
@@ -1658,6 +1681,11 @@ def bulk_load_rentals(csv_path: Path, period: Optional[str] = None,
                 f"{csv_path.name}: 기간을 '{period}'로 적재하려 했으나 대여일시의 "
                 f"{mismatch:.1%}가 다른 달이다(가장 많은 달: '{top}'). 파일 이름과 "
                 "내용이 다른 파일이다 — 적재하지 않았다.")
+    missing = rental_required_missing(csv_path, encoding)
+    if missing:
+        raise ValueError(
+            f"{csv_path.name}: 대여일시나 대여소ID가 비었거나 읽히지 않는 행이 {missing:,}개다 — "
+            "그대로 넣으면 그 달이 일부만 남으므로 적재하지 않았다(지우지도 않았다).")
 
     conn = connect(db_path)
     try:

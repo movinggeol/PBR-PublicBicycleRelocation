@@ -352,6 +352,40 @@ def _save(collector, label, duration, count):
     return db.save_output("road_leg", frame, run_label=label, duration=duration)
 
 
+def test_다시_재다_끊겨도_먼저_받은_사슬은_남는다(collector, monkeypatch):
+    """`collect()`가 부분 결과를 `save_output`으로 저장해 (라벨, 회차)를 통째로 지웠다 —
+    `--if-needed`로 다시 잰 쪽이 한도에 도중에 끊기면 먼저 받은 사슬이 사라졌다(재현:
+    80구간 → 20구간, 1.26.408). step3는 같은 결함을 1.26.232에 `replace_road_legs`로 고쳤다.
+    이 함수를 부르는 시험이 없어 여기만 남아 있었다."""
+    import db
+
+    label, duration = collector.PROBE_PREFIX + "2026-11-05", "_15_20"
+    chains = [{"chain": i} for i in range(5)]
+    monkeypatch.setattr(collector.time, "sleep", lambda s: None)
+
+    def 첫날(chain, dur, start_time, headers):
+        if chain["chain"] == 4:
+            raise RuntimeError("네트워크 오류")
+        return [_leg_row(cluster=chain["chain"], leg=i) for i in range(2)]
+
+    monkeypatch.setattr(collector, "measure_chain", 첫날)
+    assert collector.collect(chains, [duration], label, {}) == 8
+
+    def 다시(chain, dur, start_time, headers):
+        if chain["chain"] >= 1:
+            raise collector.TmapQuotaExceeded("일일 한도")
+        return [_leg_row(cluster=0, leg=i) for i in range(2)]
+
+    monkeypatch.setattr(collector, "measure_chain", 다시)
+    collector.collect(chains, [duration], label, {})
+
+    with db.session() as conn:
+        kept = pd.read_sql("SELECT cluster, COUNT(*) AS n FROM road_leg WHERE run_label = ?"
+                           " GROUP BY cluster ORDER BY cluster", conn, params=(label,))
+    assert kept["cluster"].tolist() == [0, 1, 2, 3], "먼저 받은 사슬을 지웠다"
+    assert kept["n"].tolist() == [2, 2, 2, 2], "다시 받은 사슬은 겹치지 않고 갈아끼워야 한다"
+
+
 def test_회차_하나가_다_찼을_때의_구간_수(collector):
     """사슬 21지점 = 구간 20개. 지금 패널(5사슬)이면 회차당 100구간이다."""
     chains = [{"points": [None] * 21} for _ in range(5)]

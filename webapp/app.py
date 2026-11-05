@@ -435,6 +435,10 @@ def check_run_label(value: str) -> Optional[str]:
         return "실행 이름에 제어 문자가 있습니다."
     if ".." in value:
         return "실행 이름에 '..'을 쓸 수 없습니다 — 파일 경로로 읽힙니다."
+    if value.startswith("-"):
+        # `["--now", "-테스트"]`로 넘어가 argparse가 값이 아니라 옵션으로 읽는다 — 파이프라인이
+        # 곧바로 "expected one argument"로 죽고 까닭은 로그에만 남았다(1.26.408).
+        return "실행 이름은 '-'로 시작할 수 없습니다 — 명령 옵션으로 읽힙니다."
     if len(value) > RUN_LABEL_MAX_LEN:
         return f"실행 이름이 너무 깁니다({len(value)}자, 최대 {RUN_LABEL_MAX_LEN}자)."
     return None
@@ -857,6 +861,14 @@ def create_run(
     if (problem := check_run_label(now.strip())):
         return invalid(problem)
 
+    # 🔴 **이름 칸을 비우면 라벨을 여기서 정해 넘긴다** (1.26.408). 1.26.382부터 파이프라인은
+    # `--run-kind plan`에 `--now`가 없으면 지금 시각(`plan_label_now`)을 쓰는데, 이 폼은 그대로
+    # `DEFAULT_NOW`로 돈다고 가정해 'API 수집 생략'의 회차를 **그 라벨의 재고 시각**으로 골랐다.
+    # 그러면 회차는 한 재고로, 계획은 다른 재고로 섰다. 같은 함수 · 같은 시계로 정해 둘을 묶는다.
+    if not now.strip():
+        import run_pipeline
+        now = run_pipeline.plan_label_now(_clock())
+
     for flag, value in (("--now", now), ("--raw-file", raw_file)):
         value = value.strip()
         if value:
@@ -882,8 +894,8 @@ def create_run(
         return invalid(str(err))
 
     # 회차는 고르지 않는다: 재고 시각으로 정한다(`_auto_round`, 2026-10-18). 폼이 `duration`을 보내도
-    # 받지 않는다. 이름 칸을 비우면 파이프라인은 `DEFAULT_NOW` 라벨로 돌므로 물려받을 재고도 그 라벨로 고른다.
-    chosen_round = _auto_round(now.strip() or DEFAULT_NOW, bool(skip_api))
+    # 받지 않는다. 물려받을 재고는 파이프라인이 실제로 쓸 라벨로 고른다(이름이 비면 위에서 정했다).
+    chosen_round = _auto_round(now.strip(), bool(skip_api))
     if chosen_round["problem"]:
         return invalid(chosen_round["problem"])
     args.extend(["--duration", chosen_round["duration"]])
@@ -1380,7 +1392,8 @@ def field_live(request: Request, run_label: Optional[str] = None,
     if fp and fp != mobile_view.plan_fingerprint(sheets, names):
         return JSONResponse({"ok": False, "error": "계획이 바뀌었습니다 — 화면을 새로 고친 뒤 다시 판정하세요."},
                             status_code=409)
-    finished = {int(x) for x in done.split(",") if x.strip().isdigit()}
+    # isdecimal이다 — isdigit은 위첨자 '²'도 참으로 보는데 int('²')는 ValueError라 500이 났다.
+    finished = {int(x) for x in done.split(",") if x.strip().isdecimal()}
 
     try:
         live, fetched_at = _field_live_stations()

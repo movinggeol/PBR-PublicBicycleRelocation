@@ -258,6 +258,43 @@ def test_bulk_load_refuses_file_whose_rows_are_another_month(tmp_path):
         assert db.rental_count(conn, "25년 12월") == 3
 
 
+def test_bulk_load_refuses_rows_without_rent_time_before_deleting(tmp_path):
+    """대여일시가 빈 행이 하나라도 있으면 **그 달을 지우기 전에** 거부한다 (1.26.408).
+
+    적재는 청크마다 커밋하므로, 예전에는 앞 청크만 남은 채 NOT NULL 위반으로 멈췄다.
+    다시 돌려도 같은 행에서 멈췄고, 그 뒤 `read_rental_source()`는 행이 있으니 **일부만 든
+    달**을 출처 'db'로 돌려주어 순수요가 조용히 깎였다(재현: CSV 4행 → DB 2행).
+    """
+    db_path = tmp_path / "n.db"
+    good = _write_rentals(tmp_path / "good.csv", ["2025-12-05 08:00:00"] * 3, "utf-8-sig")
+    db.bulk_load_rentals(good, period="25년 12월", db_path=db_path)
+
+    holed = _write_rentals(tmp_path / "holed.csv",
+                           ["2025-12-06 08:00:00", "2025-12-06 09:00:00", "", "2025-12-06 10:00:00"],
+                           "utf-8-sig")
+    with pytest.raises(ValueError, match="1개"):
+        db.bulk_load_rentals(holed, period="25년 12월", db_path=db_path, chunksize=2)
+
+    with db.session(db_path) as conn:
+        assert db.rental_count(conn, "25년 12월") == 3, "거부하면서 멀쩡한 달을 지웠다"
+
+
+def test_load_rentals_single_file_keeps_indexes(tmp_path, monkeypatch):
+    """`--dir`만 인덱스를 둔 채 넣고 단일 파일(`--raw-file` · `--split-by-month`)은 여전히
+    지웠다가 다시 지었다(1.26.408). 수백만 행 표에서는 그 CREATE INDEX가 쓰기 잠금을 몇 분
+    쥐고, 그 사이 수집기 틱의 `init_schema`가 지워진 인덱스를 스스로 다시 지었다."""
+    import tools.load_rentals as load_rentals
+
+    calls = []
+    monkeypatch.setattr(load_rentals.db, "bulk_load_rentals",
+                        lambda *a, **k: calls.append(k) or {"25년 12월": 1})
+    path = _write_rentals(tmp_path / "one.csv", ["2025-12-05 08:00:00"], "utf-8-sig")
+    monkeypatch.setattr(sys, "argv", ["load_rentals.py", "--raw-file", str(path),
+                                      "--period", "25년 12월"])
+    assert load_rentals.main() == 0
+    assert calls and calls[0].get("manage_indexes") is False
+
+
 def test_load_directory_skips_mislabeled_file_and_keeps_going(tmp_path):
     """폴더 적재는 어긋난 파일 하나 때문에 멈추지 않고, 건너뛴 것을 따로 돌려준다."""
     from tools.load_rentals import load_directory

