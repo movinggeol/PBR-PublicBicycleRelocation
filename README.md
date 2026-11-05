@@ -208,7 +208,7 @@ python run_pipeline.py --duration "_05_10,_10_15"   # 여러 시간대 일괄 �
 | --- | --- | --- |
 | `--now` | 실행을 묶는 라벨. 산출물 파일명과 DB `run_label`이 됩니다. `--run-kind plan`이면서 주지 않으면 지금 시각(시 단위)을 씁니다. **다른 날 만든 같은 라벨이 있으면 멈춥니다**(덮으려면 `--overwrite-run`, 1.26.382) | `2026-05-21 18` |
 | `--period` | 순수요를 뽑을 기간 | **계산해 둔 것 중 가장 최근 달** |
-| `--duration` | 시간대. 콤마로 여러 개 (`_05_10`·`_10_15`·`_15_20`·`_20_05`). `--run-kind plan`이면서 주지 않으면 웹 실행 폼처럼 **재고 시각으로 회차 하나**를 정합니다(재고 시각 + 출발 앞당김 30분이 드는 회차, 1.26.393) | `_05_10` |
+| `--duration` | 시간대. 콤마로 여러 개 (`_05_10`·`_10_15`·`_15_20`·`_20_24`·`_00_05` — 1.26.410에 밤을 둘로 나눴다. 옛 `_20_05`는 재현용으로만 받는다). `--run-kind plan`이면서 주지 않으면 웹 실행 폼처럼 **재고 시각으로 회차 하나**를 정합니다(재고 시각 + 출발 앞당김 30분이 드는 회차, 1.26.393) | `_05_10` |
 | `--raw-file` | 원천 대여이력 CSV(루트 기준 상대 경로). ⚠️ 기본 파일은 12개월이 섞여 있어, DB에 없는 새 기간을 돌릴 때는 **그 달만 담긴 CSV**를 지정해야 합니다 | `data/raw_data/타슈 대여이력(25.04~26.03).csv` |
 | `--day-type` | `weekday` \| `holiday` \| `auto`. **휴일 = 주말 ∪ 공휴일** | `auto` |
 | `--target-date` | 계획 대상일(YYYY-MM-DD). `auto` 판정의 기준 | 오늘 |
@@ -306,7 +306,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 
-python -m pytest              # 1404개 통과 확인 (약 100초)
+python -m pytest              # 1407개 통과 확인 (약 100초)
 python tools/reproduce.py     # 합성 데이터 생성 → step0~step4 → 결과 표 (약 20초)
 ```
 
@@ -339,7 +339,7 @@ $env:PBR_DB_PATH = "data/재현.db"; python -m webapp   # http://127.0.0.1:8000
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest                 # 1404개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 1407개, 약 100초 (tests/ 만 수집)
 ```
 
 - `tests/test_pipeline.py` (66) — 합성 데이터로 step0→step1→step2→step4를
@@ -349,7 +349,7 @@ python -m pytest                 # 1404개, 약 100초 (tests/ 만 수집)
 - `tests/test_webapp.py` (262) — 라우트·경로 탈출 차단·실행 폼 입력 검증,
   그리고 **화면이 실제로 무엇을 보여 주는가** — 명암비·400% 확대·인쇄·빈 상태,
   화면이 말하는 범위와 실제로 센 범위가 같은지
-- `tests/test_calculations.py` (90) — **계산 단위 테스트**: 목표재고 공식(`μ + zσ`,
+- `tests/test_calculations.py` (91) — **계산 단위 테스트**: 목표재고 공식(`μ + zσ`,
   거치대 상한, tanh 제한, 0 방향 정수화), 군집 목적함수, VRP 적재·시간 제약,
   ILP 수급 제약, **집행 기준 결품 계산**. 근거는 [docs/분석/FORMULATION.md](docs/분석/FORMULATION.md)
 - `tests/test_day_type.py` (37) — 평일/휴일 분리·공휴일 판정·계절 보정,
@@ -462,7 +462,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/연구/RELATED_WORK.md](docs/연구/RELATED_WORK.md) | **관련 연구** — 문제의 갈래와 본 연구의 위치 |
 | [docs/연구/LITERATURE.md](docs/연구/LITERATURE.md) | **문헌 분석** — 논문 24편 한 편씩 분석·비교표·인용 지도 |
 | [docs/분석/EXPERIMENTS.md](docs/분석/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
-| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 1404개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
+| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 1407개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/구현/PROJECT_PIPELINE.md](docs/구현/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/구현/WEBAPP.md](docs/구현/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/구현/DESIGN.md](docs/구현/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |

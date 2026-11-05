@@ -49,7 +49,7 @@ import db  # noqa: E402
 import pick_path_target as ppt  # noqa: E402
 import plan_validity as pv  # noqa: E402
 import stockout_forecast as sf  # noqa: E402
-from project_config import (DATA_ROOT, DURATIONS, REBAL_MIN_QTY, TICKS_PER_HOUR, duration_hours,  # noqa: E402
+from project_config import (DATA_ROOT, REBAL_MIN_QTY, TICKS_PER_HOUR, duration_hours,  # noqa: E402
                             duration_start_hour, format_seconds, holiday_mask)
 
 HORIZONS = (3 * TICKS_PER_HOUR, 5 * TICKS_PER_HOUR)   # 3 · 5시간
@@ -92,6 +92,9 @@ CONFIRM_KNOBS = {
 }
 OUT_DIR = DATA_ROOT / "exp_54"
 
+# 56장은 네 회차로 쟀다 — 1.26.410에 운영 회차가 다섯(밤을 `_20_24` · `_00_05`로 나눔)이 됐어도 이 실험과
+# 운영의 수거 대수 학습(`pick_model.K_DURATIONS`)은 이 넷이다. 바꾸면 56장의 기록이 이 코드의 것이 아니게 된다.
+DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
 HOUR_DUR = {h: d for d in DURATIONS for h in duration_hours(d)}   # 시 → 그 시각이 속한 회차
 
 

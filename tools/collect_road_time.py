@@ -97,7 +97,7 @@ from dotenv import load_dotenv
 
 import db
 from project_config import (
-    DATA_ROOT, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, DURATIONS, PROJECT_ROOT,
+    DATA_ROOT, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, PROJECT_ROOT,
     haversine_km, is_holiday,
 )
 
@@ -351,6 +351,14 @@ def is_holiday_date(date_text: str) -> bool:
     요일 성격으로 평일/휴일 회귀를 자동으로 고르는 데 쓴다(1.26.158).
     """
     return is_holiday(date_module.fromisoformat(date_text))
+
+
+# 🔴 **패널이 재는 회차는 옛 넷 그대로다** (1.26.410). 운영 회차는 밤을 `_20_24` · `_00_05`로 나눠 다섯이 됐지만
+# (사용자 결정 2026-11-05), 이 패널은 회차 **시작 시각**(05 · 10 · 15 · 20시)의 교통량을 08-31부터 같은 사슬로
+# 쌓아 왔고 게이트 A · B 판정이 그 위에 섰다. 회차를 바꾸면 그날부터의 패널이 다른 시각을 재 날짜별 계수의
+# 흔들림을 가를 수 없고(출발 리드를 넘기지 않는 것과 같은 이유), 0시를 더하면 하루 호출 한도를 더 쓴다.
+# `_20_05`는 20시 출발 교통량이라 `_20_24`의 시작과 같다.
+PANEL_DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
 
 
 def collect(chains: list, durations: list, run_label: str, headers: dict,
@@ -729,8 +737,8 @@ def run(argv=None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="호출 계획만 확인")
     parser.add_argument("--rebuild-panel", action="store_true",
                         help="⚠️ 패널을 새로 만든다 (기존 수집분과 비교 불가해진다)")
-    parser.add_argument("--durations", default=",".join(DURATIONS),
-                        help=f"수집할 회차. 기본 {','.join(DURATIONS)}")
+    parser.add_argument("--durations", default=",".join(PANEL_DURATIONS),
+                        help=f"수집할 회차. 기본 {','.join(PANEL_DURATIONS)}")
     parser.add_argument("--date", default=None,
                         help="run_label에 쓸 날짜(YYYY-MM-DD). 기본 오늘")
     parser.add_argument("--max-calls", type=int, default=None,
@@ -759,12 +767,12 @@ def run(argv=None) -> int:
     headers = {"appKey": api_key, "Content-Type": "application/json"}
 
     durations = [d.strip() for d in args.durations.split(",") if d.strip()]
-    if (unknown := [d for d in durations if d not in DURATIONS]):
-        print(f"[중단] 모르는 회차 {unknown} — {DURATIONS} 중에서 고르세요.")
+    if (unknown := [d for d in durations if d not in PANEL_DURATIONS]):
+        print(f"[중단] 모르는 회차 {unknown} — {PANEL_DURATIONS} 중에서 고르세요.")
         return 1
 
     # --durations로 직접 고른 경우에는 돌리지 않는다 — 사람이 정한 순서가 의도다.
-    if args.durations == ",".join(DURATIONS):
+    if args.durations == ",".join(PANEL_DURATIONS):
         durations = rotate_durations(
             durations, args.date or datetime.now().strftime("%Y-%m-%d"))
 

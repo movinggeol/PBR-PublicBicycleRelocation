@@ -19,7 +19,7 @@ import pandas as pd
 import db
 from project_config import (
     exit_if_help,
-    DATA_ROOT, FILL_IDLE_DAYS, ensure_output_dirs, fill_idle_days, get_runtime_config,
+    DATA_ROOT, LEGACY_NET_DEMAND, ensure_output_dirs, fill_idle_days, get_runtime_config,
     holiday_mask,
 )
 
@@ -27,19 +27,13 @@ from project_config import (
 out_file_path = str(DATA_ROOT / "pp_data/순수요/st_net_daily ({period}).csv")
 
 
-def main() -> None:
-    config = get_runtime_config()
-    period = config.period
+def net_from_rentals(data: pd.DataFrame, legacy: bool = LEGACY_NET_DEMAND) -> pd.DataFrame:
+    """대여이력(대여일시 · 대여_대여소ID · 반납일시 · 반납_대여소ID) → 날짜 × 대여소 × 시각 순수요.
 
-    # DB에 적재돼 있으면 DB에서, 없으면 원천 CSV에서 읽는다 (DB_PLAN 4단계).
-    # 순수요 계산에 실제로 쓰는 4개 컬럼만 읽는다(60만 행에서 전체 12컬럼과 차이가 크다).
-    data, source = db.read_rental_source(
-        period, csv_path=config.raw_path,
-        columns=['대여일시', '대여_대여소ID', '반납일시', '반납_대여소ID'])
-    if data.empty:
-        raise SystemExit(f"대여이력을 찾을 수 없습니다: {config.raw_path}")
-    print(f"대여이력 {len(data):,}행 로드 (출처: {source})")
-
+    반납은 반납한 날짜의 행에, 이용이 없는 날은 0으로(1.26.409 · 1.26.410). `legacy=True`는 옛 정의
+    (반납을 대여한 날짜에, 빈 날 안 채움)다 — 원고의 옛 수치 재현용(`PBR_LEGACY_NET_DEMAND=1`).
+    두 시각 열은 **제자리에서** datetime으로 바꾼다 — 수십만 행을 한 벌 더 만들지 않는다.
+    """
     data['대여일시'] = pd.to_datetime(data['대여일시'])
     data['반납일시'] = pd.to_datetime(data['반납일시'])
 
@@ -58,13 +52,23 @@ def main() -> None:
         .unstack(fill_value=0)
     )
 
+    # 🔴 **반납은 반납한 날짜의 행에 센다** (1.26.410). 예전에는 대여한 날짜(`날짜`)로 묶어 23:50 대여 ·
+    # 이튿날 00:10 반납이 **그 전날 0시** 칸에 들어갔다 — 자정을 넘는 `_20_05`(같은 행의 20 ~ 23시와
+    # 0 ~ 4시를 더했다)에서는 우연히 한 행에 모였지만, 밤을 `_20_24` · `_00_05`로 나누자(사용자 결정
+    # 2026-11-05) 새벽 창이 하루 어긋난 반납을 받게 됐다. 시각은 원래 반납 시각이었다.
+    # 옛 정의 재현(`PBR_legacy=1`)만 대여한 날짜로 묶는다.
+    returned_on = d_data['날짜'] if legacy else d_data['반납일시'].dt.date
     ret = (
         d_data
-        .assign(hour=d_data['반납일시'].dt.hour)
+        .assign(날짜=returned_on, hour=d_data['반납일시'].dt.hour)
         .groupby(['날짜', '반납_대여소ID', 'hour'])
         .size()
         .unstack(fill_value=0)
     )
+    # 이 기간 밖의 날짜(그 달 마지막 밤에 빌려 다음 달 새벽에 반납)는 버린다 — 남기면 아래
+    # fill_idle_days가 그 날을 이 표의 날짜로 지어낸다.
+    # ponytail: 달이 바뀌는 밤의 자정 넘는 반납은 어느 달 표에도 안 든다(다음 달 파일에 그 대여가 없다)
+    ret = ret[ret.index.get_level_values(0).isin(rent.index.get_level_values(0).unique())]
 
     # 인덱스 정렬 및 시간 컬럼 맞춤
     hours = list(range(24))
@@ -83,14 +87,32 @@ def main() -> None:
     net_daily = net_daily.reset_index()
     net_daily.rename(columns={'level_1': 'station_id'}, inplace=True)
 
-    # 🔴 이용이 없는 날도 표본이다 — 0으로 채운다(1.26.409, project_config.FILL_IDLE_DAYS).
+    # 🔴 이용이 없는 날도 표본이다 — 0으로 채운다(1.26.409, project_config.fill_idle_days).
     # 위 `all_index`는 대여·반납이 **있던** 조합의 합집합일 뿐이라, 예전 주석의 "모든 날짜와 대여소
     # 조합"이 아니었다. 0건인 날이 빠져 mu · sigma의 분모가 '활동한 날'이 됐다.
-    if FILL_IDLE_DAYS:
+    if not legacy:
         before = len(net_daily)
         net_daily = fill_idle_days(net_daily, date_column='날짜')
         print(f"이용이 없는 (날짜, 대여소) {len(net_daily) - before:,}개를 0으로 채웠습니다 "
               f"({before:,} → {len(net_daily):,}행)")
+
+    return net_daily
+
+
+def main() -> None:
+    config = get_runtime_config()
+    period = config.period
+
+    # DB에 적재돼 있으면 DB에서, 없으면 원천 CSV에서 읽는다 (DB_PLAN 4단계).
+    # 순수요 계산에 실제로 쓰는 4개 컬럼만 읽는다(60만 행에서 전체 12컬럼과 차이가 크다).
+    data, source = db.read_rental_source(
+        period, csv_path=config.raw_path,
+        columns=['대여일시', '대여_대여소ID', '반납일시', '반납_대여소ID'])
+    if data.empty:
+        raise SystemExit(f"대여이력을 찾을 수 없습니다: {config.raw_path}")
+    print(f"대여이력 {len(data):,}행 로드 (출처: {source})")
+
+    net_daily = net_from_rentals(data)
 
     # csv파일로 저장
     ensure_output_dirs()

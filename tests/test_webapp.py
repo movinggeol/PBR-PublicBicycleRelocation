@@ -326,7 +326,7 @@ def test_실행_폼은_시간대를_고르게_하지_않는다(client, monkeypat
     _freeze_clock(monkeypatch, datetime(2026, 10, 18, 23, 11))
     html = client.get("/run").text
     assert 'name="duration"' not in html, "시간대를 고르는 칸이 남았다"
-    assert "20~05시" in html and "지금(23:11) 받는 재고로 세웁니다" in html
+    assert "20~24시" in html and "지금(23:11) 받는 재고로 세웁니다" in html
 
 
 def test_회차는_지금_시각으로_정해_넘긴다(client, monkeypatch):
@@ -336,7 +336,9 @@ def test_회차는_지금_시각으로_정해_넘긴다(client, monkeypatch):
     import project_config
 
     monkeypatch.setattr(project_config, "DEPART_LEAD_MINUTES", 30)
-    for clock, expected in (((23, 11), "_20_05"), ((4, 30), "_05_10"), ((4, 29), "_20_05")):
+    # 1.26.410부터 밤은 `_20_24` · `_00_05` 둘이다(23:31부터는 출발 23:30의 새벽 회차)
+    for clock, expected in (((23, 11), "_20_24"), ((23, 31), "_00_05"), ((4, 30), "_05_10"),
+                            ((4, 29), "_00_05")):
         _freeze_clock(monkeypatch, datetime(2026, 10, 18, *clock))
         captured = _capture_start(monkeypatch)
         res = client.post("/runs", data={"duration": ["_15_20", "_05_10"]}, follow_redirects=False)

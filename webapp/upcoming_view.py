@@ -110,7 +110,9 @@ def context(hours: int = 1, *, now: Optional[datetime] = None) -> dict:
 
     tau = last + pd.Timedelta(hours=hours)
     duration = duration_of(tau.hour)
-    # 20~05시 회차는 **시작한 날**의 요일 구분으로 세운다 — 새벽 2시는 전날 20시에 시작한 회차다
+    # 옛 20~05시 회차는 **시작한 날**의 요일 구분으로 세웠다 — 새벽 2시는 전날 20시에 시작한 회차였다.
+    # 1.26.410부터 새벽 0 ~ 4시는 그날 0시에 시작하는 `_00_05`라 그날의 요일 구분이다(순수요 · 날씨 창도
+    # 그날 행이다). 아래 `_20_05` 갈래는 옛 회차를 받을 때만 걸린다.
     start_day = tau.normalize() - pd.Timedelta(days=1) if duration == "_20_05" and tau.hour < 5 else tau.normalize()
     holiday = bool(np.asarray(holiday_mask(pd.Series([start_day])), dtype=bool)[0])
     target, label, period = store.latest_plan_targets("holiday" if holiday else "weekday", duration)

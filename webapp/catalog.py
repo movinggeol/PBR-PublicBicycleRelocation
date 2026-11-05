@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import mapviz
 # ⚠️ 여기서 다시 정의하지 마라 — 정본은 `project_config`다. 예전에는 이 파일이
 #    자기 `DATA_ROOT`를 따로 만들어서, 경로를 재정의해도 화면만 옛 폴더를 봤다.
-from project_config import DATA_ROOT, DURATIONS, PP_ROOT, PROJECT_ROOT
+from project_config import DATA_ROOT, DURATIONS, LEGACY_DURATIONS, PP_ROOT, PROJECT_ROOT
 
 ALLOWED_SUFFIXES = {".html", ".csv"}
 
@@ -204,7 +204,8 @@ def _round_of(name: str, label: str) -> Optional[str]:
     (그 실행의 모든 회차가 쓰는 입력이다).
     """
     stem = name[: -len(f" ({label}){Path(name).suffix}")]
-    return next((d for d in DURATIONS if stem.endswith(d)), None)
+    # 옛 회차(`_20_05`)도 본다 — 1.26.410 전 실행의 지도 · CSV가 그 이름이다.
+    return next((d for d in DURATIONS + LEGACY_DURATIONS if stem.endswith(d)), None)
 
 
 def for_run(groups: List[Dict], run_label: str, labels: Iterable[str], *,

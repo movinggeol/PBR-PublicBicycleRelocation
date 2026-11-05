@@ -22,7 +22,7 @@ import pytest
 
 from project_config import (
     CLUSTER_ALPHA, CLUSTER_BETA, CLUSTER_GAMMA, DEPOT_ID, PROJECT_ROOT, TARGET_Z,
-    VEHICLE_CAPACITY,
+    VEHICLE_CAPACITY, duration_hours,
 )
 
 STEP0 = PROJECT_ROOT / "pipeline" / "step0_collect"
@@ -238,6 +238,36 @@ def test_거치대_설명에_슬래시가_없어도_상한이_걸린다(capsys):
     assert "ST0828" in capsys.readouterr().out, "대수를 지어낸 대여소를 알리지 않는다"
     stats = pd.DataFrame({"target_qty": [50.0]})
     assert stats["target_qty"].clip(upper=got["ST0828"] * 1.5).iloc[0] == 15, "상한이 걸려야 한다"
+
+
+def test_자정을_넘는_반납은_반납한_날의_새벽_창에_든다():
+    """예전에는 반납을 **대여한 날짜**의 행에 넣어 11-04 22시 대여 · 11-05 01시 반납이 11-04의 0시 칸에
+    들어갔다. 밤을 `_20_24` · `_00_05`로 나누자(1.26.410, 사용자 결정 2026-11-05) 그 반납이 하루 이른
+    새벽 창에 들어가게 돼 반납 날짜로 옮겼다. 기간 밖 날짜(달이 바뀌는 밤)는 표의 날짜를 지어내지
+    않게 버린다. 옛 정의(`legacy=True`)는 원고 재현용으로 그대로 낸다."""
+    sys.path.insert(0, str(STEP0))
+    raw_to_net = _load(STEP0 / "raw_to_net.py", "_raw_to_net")
+    trips = pd.DataFrame({
+        "대여일시": ["2025-11-04 22:10", "2025-11-05 08:00", "2025-11-05 23:50"],
+        "대여_대여소ID": ["A", "B", "B"],
+        "반납일시": ["2025-11-05 01:20", "2025-11-05 08:30", "2025-11-06 00:10"],   # 마지막은 기간 밖 날짜
+        "반납_대여소ID": ["A", "B", "A"],
+    })
+
+    net = raw_to_net.net_from_rentals(trips.copy(), legacy=False).set_index(["날짜", "station_id"])
+    day4, day5 = pd.Timestamp("2025-11-04").date(), pd.Timestamp("2025-11-05").date()
+    night = [f"net_{h:02d}" for h in duration_hours("_20_24")]
+    dawn = [f"net_{h:02d}" for h in duration_hours("_00_05")]
+
+    assert net.loc[(day4, "A"), night].sum() == 1, "11-04 밤의 대여"
+    assert net.loc[(day5, "A"), dawn].sum() == -1, "반납은 11-05 새벽 창에 들어야 한다"
+    assert net.loc[(day4, "A"), dawn].sum() == 0, "대여한 날의 새벽(그 전날 밤)에 넣었다"
+    assert set(net.index.get_level_values(0)) == {day4, day5}, "기간 밖 날짜(11-06)를 지어냈다"
+    assert (day4, "B") in net.index, "이용이 없는 날도 0으로 채운다"
+
+    old = raw_to_net.net_from_rentals(trips.copy(), legacy=True).set_index(["날짜", "station_id"])
+    assert old.loc[(day4, "A"), "net_01"] == -1, "옛 정의는 대여 날짜의 행에 반납을 넣었다"
+    assert (day4, "B") not in old.index, "옛 정의는 빈 날을 채우지 않았다"
 
 
 def test_build_stats_wraps_past_midnight(target_qty):
@@ -1198,15 +1228,18 @@ def test_all_three_maps_share_one_tile_setting():
 
 
 def test_duration_input_is_checked_against_the_real_list():
-    """시간대는 네 창이 전부다. 맨 앞 밑줄이 빠진 값은 여기서 걸러야 한다.
+    """시간대는 다섯 창이 전부다(1.26.410에 밤을 `_20_24` · `_00_05`로 나눴다). 맨 앞 밑줄이 빠진 값은
+    여기서 걸러야 한다. 옛 `_20_05`는 명령줄에서만 받는다(옛 실행 재현 · 이미 걸린 예약 작업).
 
     1.17.3 이전에는 폼 예시가 `10_15`였고, 그대로 입력한 사용자가 한참 뒤
     step4 duration_hours()에서 크래시를 봤다.
     """
     import project_config
 
-    assert project_config.DURATIONS == ("_05_10", "_10_15", "_15_20", "_20_05")
-    assert set(project_config.DURATION_LABELS) == set(project_config.DURATIONS)
+    assert project_config.DURATIONS == ("_05_10", "_10_15", "_15_20", "_20_24", "_00_05")
+    assert project_config.LEGACY_DURATIONS == ("_20_05",)
+    assert set(project_config.DURATION_LABELS) == set(project_config.DURATIONS + project_config.LEGACY_DURATIONS)
+    assert project_config.normalize_durations("_20_05") == "_20_05", "옛 회차로 걸린 예약 작업이 죽는다"
 
     # 리스트(체크박스)도 콤마 문자열도 받고, 순서는 늘 하루 흐름 순으로 되돌린다.
     assert project_config.normalize_durations(["_15_20", "_05_10"]) == "_05_10,_15_20"
@@ -1924,7 +1957,7 @@ def test_회차_시작_시각과_틱은_공용_정의에서_나온다():
         DURATIONS, STOCK_TICK_MINUTES, TICKS_PER_HOUR, duration_hours, duration_start_hour,
     )
 
-    assert [duration_start_hour(d) for d in DURATIONS] == [5, 10, 15, 20]
+    assert [duration_start_hour(d) for d in DURATIONS] == [5, 10, 15, 20, 0]
     for d in DURATIONS:
         assert duration_start_hour(d) == duration_hours(d)[0]
     assert STOCK_TICK_MINUTES * TICKS_PER_HOUR == 60
@@ -1944,4 +1977,4 @@ def test_회차_시작_시각과_틱은_공용_정의에서_나온다():
         assert not [줄 for 줄 in 소스.splitlines() if 줄.startswith("DURATIONS = ")], \
             f"{파일}이 회차 목록을 다시 들고 있다"
     assert [upcoming_view.duration_of(h) for h in (5, 9, 10, 14, 15, 19, 20, 23, 0, 4)] == \
-        ["_05_10", "_05_10", "_10_15", "_10_15", "_15_20", "_15_20", "_20_05", "_20_05", "_20_05", "_20_05"]
+        ["_05_10", "_05_10", "_10_15", "_10_15", "_15_20", "_15_20", "_20_24", "_20_24", "_00_05", "_00_05"]

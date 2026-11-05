@@ -518,7 +518,8 @@ def test_하루_순서는_문자열이_아니라_설정의_DURATIONS를_따른�
     from webapp import app as app_module
     from webapp import store
 
-    rotated = DURATIONS[-1:] + DURATIONS[:-1]       # 20~05시가 하루의 처음
+    # 밤 두 회차가 하루의 처음 — 다섯 회차(1.26.410)에서는 하나만 돌리면 우연히 문자열 순서와 같아진다
+    rotated = DURATIONS[-2:] + DURATIONS[:-2]
     assert sorted(rotated) != list(rotated), "두 순서가 갈려야 이 시험이 뜻이 있다"
     monkeypatch.setattr(store, "DURATIONS", rotated)
 
@@ -534,7 +535,7 @@ def test_하루_순서는_문자열이_아니라_설정의_DURATIONS를_따른�
     assert f"run_label={quote(PLAN_NEW)}&duration={rotated[0]}" in plans, \
         f"실행 칩이 다른 첫 회차를 넘긴다: {plans}"
 
-    # '최근 작업'의 한 실행 안 늦은 회차도 설정을 따른다 — 문자열로는 `_20_05`가 가장 늦다
+    # '최근 작업'의 한 실행 안 늦은 회차도 설정을 따른다 — 문자열로는 `_20_24`가 가장 늦다
     with db.session() as conn:
         db.ensure_fleet(conn)
         for d in (rotated[0], rotated[-1]):
@@ -1377,9 +1378,9 @@ def test_완료_화면은_경로_기록이_없는_회차를_글로_적는다(run
     q = quote(PLAN_OLD)
     for d in DURATIONS[:3]:
         assert f'href="/orders?run_label={q}&duration={d}">{DURATION_LABELS[d]}</a>' in alert
-    last = DURATIONS[3]
-    assert f"duration={last}" not in alert, "경로가 없는 회차에 링크를 지어냈다"
-    assert f"{DURATION_LABELS[last]}은 경로 기록이 없습니다" in alert, alert
+    missing = DURATIONS[3:]                    # 밤 두 회차(1.26.410부터 다섯 회차)
+    assert all(f"duration={d}" not in alert for d in missing), "경로가 없는 회차에 링크를 지어냈다"
+    assert f"{' · '.join(DURATION_LABELS[d] for d in missing)}은 경로 기록이 없습니다" in alert, alert
 
 
 def test_차량으로_좁힌_알림은_범위를_밝히고_없는_타일을_가리키지_않는다(runs_client):

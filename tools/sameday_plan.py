@@ -51,7 +51,7 @@ sys.path.insert(0, str(ROOT))
 
 import project_config  # noqa: E402,F401  — 콘솔 인코딩을 먼저 맞춘다(— · 이모지)
 from project_config import (  # noqa: E402
-    DATA_ROOT, DURATIONS, duration_start_hour, is_holiday,
+    DATA_ROOT, DURATIONS, LEGACY_DURATIONS, duration_start_hour, is_holiday,
 )
 
 TASK_PREFIX = "PBR-sameday-"
@@ -63,7 +63,7 @@ LOG_DIR = DATA_ROOT / "logs" / "sameday"
 
 
 def start_hour(duration: str) -> int:
-    """회차가 시작하는 시(時). `_20_05`는 20이다."""
+    """회차가 시작하는 시(時). `_20_24`와 옛 `_20_05`는 20, `_00_05`는 0이다."""
     return duration_start_hour(duration)
 
 
@@ -264,7 +264,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_run = sub.add_parser("run", help="지금 한 회차의 계획을 세운다(스케줄러가 부른다)")
-    p_run.add_argument("--duration", required=True, choices=DURATIONS)
+    # 옛 회차(`_20_05`)도 받는다 (1.26.410) — 2026-11-05에 건 휴일 예약 작업(11-07 ~ 11-15)이
+    # `run --duration _20_05`로 걸려 있다. 밤을 나눈 뒤 받지 않으면 그 작업들이 인자 오류로 죽는다.
+    p_run.add_argument("--duration", required=True, choices=DURATIONS + LEGACY_DURATIONS)
     p_run.add_argument("--day-type", default="holiday", choices=("holiday", "weekday"))
     p_run.add_argument("--period", default=PERIOD)
     p_run.add_argument("--run-kind", default="plan", choices=("plan", "experiment", "probe"))
@@ -272,9 +274,10 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--tag", default="", help="라벨 끝에 붙일 말(점검용)")
     p_run.set_defaults(func=run)
 
-    p_install = sub.add_parser("install", help="날짜마다 네 회차의 예약 작업을 건다")
+    p_install = sub.add_parser("install", help="날짜마다 회차별 예약 작업을 건다(기본 다섯 회차)")
     p_install.add_argument("--dates", nargs="+", required=True, help="YYYY-MM-DD ...")
-    p_install.add_argument("--durations", nargs="+", default=list(DURATIONS), choices=DURATIONS)
+    p_install.add_argument("--durations", nargs="+", default=list(DURATIONS),
+                           choices=DURATIONS + LEGACY_DURATIONS)
     p_install.add_argument("--day-type", default="holiday", choices=("holiday", "weekday"))
     p_install.set_defaults(func=install)
 

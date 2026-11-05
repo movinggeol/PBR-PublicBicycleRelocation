@@ -153,8 +153,11 @@ def road_collection_today(day: date | None = None) -> dict:
     ⚠️ 패널이 없을 때 `load_panel()`을 부르지 않는다 — 그 함수는 없으면 **새로 만든다.**
     확인하려다 다른 PC와 대조할 수 없는 패널을 만드는 일은 없어야 한다.
     """
-    from project_config import DURATIONS
     from tools import collect_road_time as road
+
+    # 패널이 재는 회차로 센다 — 운영 회차(1.26.410부터 다섯)가 아니다. 운영 쪽으로 세면 하루 기대치가
+    # 400 → 500구간으로 부풀어 '다 찼다'를 영영 말하지 않고, 남겨 둘 호출도 25건으로 잘못 잡는다.
+    panel = road.PANEL_DURATIONS
 
     day = day or date.today()
     text = day.isoformat()
@@ -170,8 +173,8 @@ def road_collection_today(day: date | None = None) -> dict:
     return {
         "label": label,
         "collected": collected,
-        "expected": road.legs_per_duration(chains) * len(DURATIONS) if chains else None,
-        "reserve": (len(chains) if chains else road.CHAIN_COUNT) * len(DURATIONS),
+        "expected": road.legs_per_duration(chains) * len(panel) if chains else None,
+        "reserve": (len(chains) if chains else road.CHAIN_COUNT) * len(panel),
     }
 
 

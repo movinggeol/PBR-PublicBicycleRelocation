@@ -85,16 +85,18 @@ def test_출발_리드_0이면_회차_시작에_떠난다(monkeypatch):
 
 
 @pytest.mark.parametrize("clock, expected", [
-    ("04:29", "_20_05"),   # 04:59가 드는 야간 회차. 05~10시 계획(출발 04:30)에는 이르다
+    ("04:29", "_00_05"),   # 04:59가 드는 새벽 회차. 05~10시 계획(출발 04:30)에는 이르다
     ("04:30", "_05_10"),   # 출발 시각 그 분부터 다음 회차
     ("09:29", "_05_10"),
     ("09:30", "_10_15"),
     ("14:30", "_15_20"),
     ("19:29", "_15_20"),
-    ("19:30", "_20_05"),
-    ("23:11", "_20_05"),   # 2026-10-18 사용자 화면의 시각
-    ("23:59", "_20_05"),   # 자정을 넘겨도 같은 야간 회차
-    ("02:00", "_20_05"),
+    ("19:30", "_20_24"),
+    ("23:11", "_20_24"),   # 2026-10-18 사용자 화면의 시각
+    ("23:29", "_20_24"),
+    ("23:30", "_00_05"),   # 출발이 23:30이라 그 분부터 새벽 회차(1.26.410 — 밤을 둘로 나눴다)
+    ("23:59", "_00_05"),
+    ("02:00", "_00_05"),
 ])
 def test_회차는_재고_시각에_출발_앞당김을_더한_시각으로_정한다(monkeypatch, clock, expected):
     """2026-10-18 사용자 결정(*"자동으로 하자"*). 재고는 한 장만 받으므로 맞는 회차는 그 재고로 곧 출발하는
@@ -114,14 +116,17 @@ def test_출발_앞당김을_끄면_회차_시작이_경계다(monkeypatch):
     import project_config as pc
 
     monkeypatch.setattr(pc, "DEPART_LEAD_MINUTES", 0)
-    assert pc.auto_duration(datetime(2026, 10, 18, 4, 59)) == "_20_05"
+    assert pc.auto_duration(datetime(2026, 10, 18, 4, 59)) == "_00_05"
+    assert pc.auto_duration(datetime(2026, 10, 18, 23, 59)) == "_20_24"
     assert pc.auto_duration(datetime(2026, 10, 18, 5, 0)) == "_05_10"
 
 
 def test_모든_시각에_회차가_하나씩_걸린다():
     import project_config as pc
 
-    assert [pc.duration_at(h) for h in range(24)].count("_20_05") == 9
+    # 1.26.410부터 밤은 둘이다 — 옛 `_20_05`(9시간)는 고르지 않는다(명령줄에서만 받는 옛 회차)
+    assert "_20_05" not in [pc.duration_at(h) for h in range(24)]
+    assert pc.duration_hours("_20_24") == [20, 21, 22, 23] and pc.duration_hours("_00_05") == [0, 1, 2, 3, 4]
     for name in pc.DURATIONS:
         assert sum(pc.duration_at(h) == name for h in range(24)) == len(pc.duration_hours(name))
 
@@ -261,18 +266,21 @@ def test_이용이_없는_날은_0으로_채우고_없던_날짜는_지어내지
     assert len(fill_idle_days(filled)) == 4, "두 번 채워도 같아야 한다"
 
 
-def test_이용이_없는_날_스위치는_오타를_받지_않는다():
-    """끄는 길(`PBR_FILL_IDLE_DAYS=0`)은 옛 수치 재현용이다. 오타가 조용히 켜지면 재현했다고 믿고
-    새 정의로 돈다 — `PBR_USE_ROAD_MODEL`과 같이 import에서 멈춘다."""
+def test_순수요_옛_정의_스위치는_오타를_받지_않는다():
+    """`PBR_LEGACY_NET_DEMAND=1`은 원고의 옛 수치(빈 날 안 채움 · 반납을 대여 날짜에)를 재현할 때만 쓴다.
+    오타가 조용히 꺼지면 재현했다고 믿고 새 정의로 돈다 — `PBR_USE_ROAD_MODEL`과 같이 import에서
+    멈춘다(1.26.410 — 1.26.409의 `PBR_FILL_IDLE_DAYS`는 반납 귀속이 바뀐 뒤 반쯤만 되돌려 이것으로 바꿨다)."""
     import os
     import subprocess
     import sys
 
-    env = {**os.environ, "PBR_FILL_IDLE_DAYS": "아니오"}
-    done = subprocess.run([sys.executable, "-c", "import project_config"], cwd=_ROOT, env=env,
-                          capture_output=True, text=True, encoding="utf-8", errors="replace")
-    assert done.returncode != 0 and "PBR_FILL_IDLE_DAYS" in done.stderr
-    env["PBR_FILL_IDLE_DAYS"] = "0"
-    done = subprocess.run([sys.executable, "-c", "import project_config as p; print(p.FILL_IDLE_DAYS)"],
-                          cwd=_ROOT, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    assert done.stdout.strip() == "False"
+    def flag(value):
+        env = {**os.environ, "PBR_LEGACY_NET_DEMAND": value}
+        return subprocess.run([sys.executable, "-c", "import project_config as p; print(p.LEGACY_NET_DEMAND)"],
+                              cwd=_ROOT, env=env, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
+
+    done = flag("예")
+    assert done.returncode != 0 and "PBR_LEGACY_NET_DEMAND" in done.stderr
+    assert flag("1").stdout.strip() == "True"
+    assert flag("").stdout.strip() == "False" and flag("0").stdout.strip() == "False"

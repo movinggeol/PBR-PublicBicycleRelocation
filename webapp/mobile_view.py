@@ -77,7 +77,7 @@ def duration_window(duration) -> Optional[tuple]:
 
 
 def clock(start_hour: int, minutes: float = 0, lead_min: int = 0) -> str:
-    """시작 시각 − 출발 리드 + 분 → 'HH:MM'. 자정을 넘기면 돌려 쓴다(`_20_05`).
+    """시작 시각 − 출발 리드 + 분 → 'HH:MM'. 자정을 넘기면 돌려 쓴다(`_00_05`는 전날 23:30에 떠난다).
 
     분은 **올림**이다 — 계획값으로 완료를 앞당겨 약속하지 않는다(7시 3.2분이면 07:04).
     `lead_min`은 **시작 쪽에서** 뺀다 — `minutes`는 음수를 0으로 깎으므로 거기서 빼면

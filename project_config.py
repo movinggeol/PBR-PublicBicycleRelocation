@@ -119,12 +119,22 @@ def env_float(name: str, default) -> float:
 DEFAULT_NOW = os.getenv("PBR_NOW", "2026-05-21 18")
 
 # ---- 시간대 (duration) ----
-# 하루를 창 넷으로 자른다 — 셋은 5시간, 자정을 넘는 `_20_05`는 9시간이다.
+# 하루를 창 다섯으로 자른다 — 낮 셋은 5시간, 밤은 `_20_24`(4시간)와 `_00_05`(5시간)다.
 # **맨 앞 밑줄까지가 값**이다(`_10_15`) — 예시를
 # `10_15`로 적으면 그대로 입력한 사용자가 step4 duration_hours()에서 크래시를 본다.
 # 창마다 수요 방향이 반대라 섞어서 평균 내지 않는다(docs/분석/KPI.md).
-# `_20_05`는 자정을 넘긴다 — 시간 목록을 만드는 곳은 duration_hours() 하나다.
-DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
+#
+# 🔴 **밤을 둘로 나눴다** (1.26.410, 사용자 결정 2026-11-05 "9시간을 나눠서 2개로 하자"). 예전의
+# `_20_05`(9시간)는 같은 달력 행의 20 ~ 23시에 **그날 새벽** 0 ~ 4시(전날 밤의 꼬리)를 더해, 한 표본이
+# 서로 다른 두 밤의 반쪽씩이었다 — 22시 대여 5 · 이튿날 01시 반납 5인 하룻밤(합 0)이 +5와 −5 두
+# 표본이 되어 sigma가 7.07로 부풀었고, 평일 월요일 행에 일요일 밤 꼬리가 들어갔다. 날씨 창은 반대로
+# 새벽을 전날 밤에 붙여 둘이 5시간 어긋났다. 이제 모든 창이 **한 달력 날짜 안**에 든다.
+# 순서는 예전 넷의 자리를 지키고 새벽을 뒤에 붙였다(`DURATIONS.index`를 순번으로 쓰는 곳이 있다).
+DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_24", "_00_05")
+# 옛 회차 — 계획 · 자동 선택 · 웹 폼에는 없고 **명령줄에서만** 받는다. 옛 실행 · 원고 수치 재현과,
+# 이미 걸어 둔 예약 작업(2026-11-05에 건 휴일 동시각 계획 11-07 ~ 11-15)이 이 이름으로 돈다.
+# 도로 패널 수집기와 수거 대수 학습(K)은 검증받은 옛 넷을 그대로 쓴다(그쪽 상수 참고).
+LEGACY_DURATIONS = ("_20_05",)
 
 # ---- 재고 수집 틱 ----
 # `stock_history`는 10분마다 한 틱씩 쌓인다(tools/collect_stock.py의 `DEFAULT_INTERVAL` ·
@@ -139,7 +149,9 @@ DURATION_LABELS = {
     "_05_10": "05~10시 (출근)",
     "_10_15": "10~15시 (낮)",
     "_15_20": "15~20시 (퇴근)",
-    "_20_05": "20~05시 (야간)",
+    "_20_24": "20~24시 (야간)",
+    "_00_05": "00~05시 (새벽)",
+    "_20_05": "20~05시 (옛 야간)",      # LEGACY — 옛 실행을 보여 줄 때만 쓴다
 }
 DEFAULT_DURATION = os.getenv("PBR_DURATION", "_05_10")
 
@@ -1045,14 +1057,20 @@ def select_day_type(frame, date_column: str, day_type: str):
 # 🔴 **채우는 곳은 표를 만드는 `raw_to_net` 하나다** — 읽는 곳(운영 셋 · 실험 서른여 개 · 날 SQL)마다 채우면
 # 한 곳만 빠져도 측정이 거짓말을 한다(`season_ratio`의 교훈). 이미 저장된 표는
 # `python tools/rebuild_net_demand.py --fill-idle`로 채운다.
-# 끄는 길은 `PBR_FILL_IDLE_DAYS=0` — 원고 · EXPERIMENTS의 옛 수치를 같은 정의로 재현할 때만 쓴다(별도 DB로).
-# 모르는 값은 조용히 켜지 않고 멈춘다(`PBR_USE_ROAD_MODEL`과 같은 이유).
-_fill_flag = os.getenv("PBR_FILL_IDLE_DAYS", "").strip().lower()
-if _fill_flag not in _ROAD_ON + _ROAD_OFF:
+#
+# ---- 순수요의 옛 정의 (1.26.410) ----
+# 1.26.409 · 1.26.410이 순수요의 정의를 두 군데 바꿨다 — 이용이 없는 날을 0으로 채우고(위), 반납을 **반납한
+# 날짜**의 행에 센다(예전에는 대여한 날짜의 행이라 23:50 대여 · 이튿날 00:10 반납이 전날 0시 칸에 들어갔다).
+# 원고 · EXPERIMENTS의 수치는 옛 정의로 냈다. 그것을 재현할 때만 `PBR_LEGACY_NET_DEMAND=1`로 **별도 DB에**
+# 순수요를 다시 만든다 — 두 변경을 함께 되돌린다. 하나만 되돌리는 스위치를 두지 않는다: 1.26.409의
+# `PBR_FILL_IDLE_DAYS=0`은 반납 귀속이 바뀐 뒤로는 옛 수치를 재현하지 못해 *지켜 주는 척하는 장치*가
+# 되므로 이 스위치로 바꿨다. 모르는 값은 조용히 넘기지 않고 멈춘다(`PBR_USE_ROAD_MODEL`과 같은 이유).
+_legacy_flag = os.getenv("PBR_LEGACY_NET_DEMAND", "").strip().lower()
+if _legacy_flag not in ("",) + _ROAD_OFF + ("1", "true", "yes", "on"):
     raise ValueError(
-        f"PBR_FILL_IDLE_DAYS는 켜기(1·true·yes·on) 또는 끄기(0·false·no·off)여야 합니다"
-        f" (받은 값: {_fill_flag!r})")
-FILL_IDLE_DAYS = _fill_flag in _ROAD_ON
+        f"PBR_LEGACY_NET_DEMAND는 켜기(1·true·yes·on) 또는 끄기(0·false·no·off)여야 합니다"
+        f" (받은 값: {_legacy_flag!r})")
+LEGACY_NET_DEMAND = _legacy_flag in ("1", "true", "yes", "on")
 
 
 def fill_idle_days(frame, date_column: str = "date", station_column: str = "station_id"):
@@ -1082,8 +1100,8 @@ def fill_idle_days(frame, date_column: str = "date", station_column: str = "stat
 def duration_hours(duration: str) -> list:
     """시간대 문자열(`_05_10`)을 그 창에 드는 시각 목록으로.
 
-    **시간 목록을 만드는 곳은 여기 하나다.** `_20_05`처럼 자정을 넘기는 창이 있어
-    단순한 range로는 안 되는데, 같은 규칙이 step0·step4·demand_model·tools에
+    **시간 목록을 만드는 곳은 여기 하나다.** 옛 회차 `_20_05`처럼 자정을 넘기는 창도 받아야 해서
+    단순한 range로는 안 되는데(운영 회차는 1.26.410부터 자정을 넘지 않는다), 같은 규칙이 step0·step4·demand_model·tools에
     네 번 복제돼 있었다. 한 곳이라도 다르게 고치면 계획을 세운 창과 채점한 창이
     조용히 어긋난다.
     """
@@ -1092,7 +1110,7 @@ def duration_hours(duration: str) -> list:
 
 
 def duration_start_hour(duration: str) -> int:
-    """회차가 시작하는 시(時). `_05_10` → 5, 자정을 넘는 `_20_05` → 20.
+    """회차가 시작하는 시(時). `_05_10` → 5, `_00_05` → 0, 옛 `_20_05` → 20.
 
     `duration_hours()`의 첫 값이다. 같은 계산이 다섯 벌이었고 그중 하나는 정규식으로
     문자열을 다시 팠다(2026-10-08 점검) — 회차의 시각을 읽는 곳을 이 둘로 모은다.
@@ -1137,19 +1155,19 @@ DEPART_LEAD_MINUTES = _depart_lead_minutes()
 
 
 def departure_minute_of_day(duration: str) -> int:
-    """차가 차고지를 떠나는 시각(자정부터 분). `_05_10` → 270(04:30), `_20_05` → 1170(19:30).
+    """차가 차고지를 떠나는 시각(자정부터 분). `_05_10` → 270(04:30), `_20_24` → 1170(19:30).
 
     = 회차 시작 − `DEPART_LEAD_MINUTES`. **회차 시작(`duration_start_hour`)과 다르다** —
-    수요 창 · 동시각 실험 · 도로 패널은 회차 시작을 쓴다. 0시 앞으로 넘어가면 돌려 쓴다
-    (지금 회차로는 일어나지 않는다 — 가장 이른 시작이 05시이고 리드는 300분 미만이다).
+    수요 창 · 동시각 실험 · 도로 패널은 회차 시작을 쓴다. 0시 앞으로 넘어가면 돌려 쓴다 —
+    `_00_05`는 **전날** 23:30(1410)에 떠난다(1.26.410부터 실제로 일어난다).
     """
     return (duration_start_hour(duration) * 60 - DEPART_LEAD_MINUTES) % (24 * 60)
 
 
 def duration_at(hour: int) -> str:
-    """그 시(時)가 드는 회차. 7시는 `_05_10`, 23시와 3시는 자정을 넘는 `_20_05`.
+    """그 시(時)가 드는 회차. 7시는 `_05_10`, 23시는 `_20_24`, 3시는 `_00_05`.
 
-    네 회차가 하루 24시간을 빈틈없이 나누므로 언제나 하나가 걸린다.
+    다섯 회차가 하루 24시간을 빈틈없이 나누므로 언제나 하나가 걸린다(옛 `_20_05`는 고르지 않는다).
     """
     for name in DURATIONS:
         if hour % 24 in duration_hours(name):
@@ -1166,8 +1184,9 @@ def auto_duration(when: datetime) -> str:
     (`DEPART_LEAD_MINUTES`, 기본 30분)을 더한 시각이 드는 회차.
 
     - 04:30 재고: 05:00이 드는 `_05_10` (출발 04:30)
-    - 04:29 재고: 04:59가 드는 `_20_05` (진행 중인 야간 회차. 05~10시 계획에는 이르다)
-    - 23:11 재고: 23:41이 드는 `_20_05`
+    - 04:29 재고: 04:59가 드는 `_00_05` (진행 중인 새벽 회차. 05~10시 계획에는 이르다)
+    - 23:11 재고: 23:41이 드는 `_20_24`
+    - 23:31 재고: 00:01이 드는 `_00_05` (출발 23:30 — 날짜가 바뀌기 전에 떠난다)
     """
     return duration_at((when + timedelta(minutes=DEPART_LEAD_MINUTES)).hour)
 
@@ -1195,13 +1214,14 @@ def normalize_durations(value) -> str:
         items = [str(item).strip() for item in (value or ())]
     items = [item for item in items if item]
 
-    if (unknown := [item for item in items if item not in DURATIONS]):
+    known = DURATIONS + LEGACY_DURATIONS
+    if (unknown := [item for item in items if item not in known]):
         raise ValueError(
             f"시간대는 {', '.join(DURATIONS)} 중에서 고릅니다"
             f" (모르는 값: {', '.join(unknown)})."
         )
     chosen = set(items)
-    return ",".join(duration for duration in DURATIONS if duration in chosen)
+    return ",".join(duration for duration in known if duration in chosen)
 
 
 def normalize_period(value: str) -> str:

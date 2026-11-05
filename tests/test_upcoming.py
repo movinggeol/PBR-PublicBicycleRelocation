@@ -36,7 +36,7 @@ def _seed(conn, *, last=LAST, day_type="weekday"):
     conn.commit()
 
 
-@pytest.mark.parametrize("hour, name", [(4, "_20_05"), (5, "_05_10"), (14, "_10_15"), (19, "_15_20"), (23, "_20_05")])
+@pytest.mark.parametrize("hour, name", [(4, "_00_05"), (5, "_05_10"), (14, "_10_15"), (19, "_15_20"), (23, "_20_24")])
 def test_시각을_회차로_가른다(hour, name):
     assert uv.duration_of(hour) == name
 

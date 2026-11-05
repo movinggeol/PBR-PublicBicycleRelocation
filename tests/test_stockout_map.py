@@ -73,9 +73,10 @@ def test_관측이_없는_시간대를_문제없음으로_읽지_않는다():
     data = frame([("A", [1, 0, 1, 0])])       # 9~12시만 관측
     cov = tool.coverage(data)
 
-    night = cov[cov["시간대"] == "_20_05"].iloc[0]
-    assert night["관측된시간"] == 0
-    assert "관측 없음" in night["판정"]
+    for name in ("_20_24", "_00_05"):          # 1.26.410부터 밤은 둘이다
+        night = cov[cov["시간대"] == name].iloc[0]
+        assert night["관측된시간"] == 0
+        assert "관측 없음" in night["판정"]
 
 
 def test_며칠치로도_돌아간다():

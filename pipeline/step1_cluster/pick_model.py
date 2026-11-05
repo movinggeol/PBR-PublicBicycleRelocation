@@ -49,7 +49,7 @@ import pandas as pd
 
 import db
 import project_config
-from project_config import (DATA_ROOT, DURATIONS, REBAL_MIN_QTY, STOCK_TICK_MINUTES, TICKS_PER_HOUR,
+from project_config import (DATA_ROOT, REBAL_MIN_QTY, STOCK_TICK_MINUTES, TICKS_PER_HOUR,
                             TOP_STATION_LIMIT, duration_hours, duration_start_hour, holiday_mask, is_holiday,
                             select_day_type)
 
@@ -74,7 +74,13 @@ START_AFTER_MIN = 60
 MODEL_DIR = DATA_ROOT / "models"
 MODEL_VERSION = 1
 
-HOUR_DUR = {h: d for d in DURATIONS for h in duration_hours(d)}
+# 🔴 **K는 56장에서 검증한 네 회차로 학습하고 예측한다** (1.26.410). 운영 회차가 다섯이 됐어도(`_20_05` →
+# `_20_24` · `_00_05`, 사용자 결정 2026-11-05) 회차 순번 · 참조 통계 · 학습 행을 그 정의로 두어야 56장의 검증이
+# 이 코드의 것으로 남는다(실험 코드와 맞대는 시험이 지킨다). 계획 회차는 **시작 시각**으로 이 넷에 잇는다 —
+# `_20_24`(20시)는 `_20_05`로. 0시에 시작하는 `_00_05`는 학습한 적이 없어 쓰지 않는다(지금 선정 그대로).
+K_DURATIONS = ("_05_10", "_10_15", "_15_20", "_20_05")
+K_ROUND_BY_START = {duration_start_hour(d): d for d in K_DURATIONS}
+HOUR_DUR = {h: d for d in K_DURATIONS for h in duration_hours(d)}
 INFO_COLS = ["station_id", "station_name", "lat", "lon", "parking_lot", "stock",
              "target_qty", "rebal_qty", "mu", "sigma"]
 TICK = pd.Timedelta(minutes=STOCK_TICK_MINUTES)
@@ -134,7 +140,7 @@ def reference_stats(net_weekday: pd.DataFrame, st_info: pd.DataFrame) -> dict:
     target_mod = _target_mod()
     init = st_info[["station_id", "stock", "parking_lot"]].drop_duplicates("station_id")
     out = {}
-    for duration in DURATIONS:
+    for duration in K_DURATIONS:
         stats, _d, _r = _quiet(target_mod.build_stats, net_weekday, init, duration,
                                warmup_net=None, warmup_days=0, verbose=False)
         ref = stats.drop_duplicates("station_id").set_index("station_id")[["mu", "sigma", "parking_lot"]]
@@ -186,7 +192,7 @@ def _row_frame(row: pd.Series, ts, start, dur, ref, lag6, lag18, max3, min3) -> 
     rebal = replan(ref, s0)
     ids = rebal.index
     frame = pd.DataFrame({
-        "station_id": ids, "ts": ts, "시작": start, "날": start.date(), "회차": DURATIONS.index(dur),
+        "station_id": ids, "ts": ts, "시작": start, "날": start.date(), "회차": K_DURATIONS.index(dur),
         "재고": s0[ids].to_numpy(), "거치대": ref["parking_lot"].reindex(ids).to_numpy(), "계획량": (-rebal).to_numpy(),
         "mu": ref["mu"].reindex(ids).to_numpy(), "sigma": ref["sigma"].reindex(ids).to_numpy(),
         "시": ts.hour + ts.minute / 60, "요일": start.dayofweek,
@@ -451,6 +457,9 @@ def apply(base: pd.DataFrame, st_rebal: pd.DataFrame, st_info: pd.DataFrame, dur
     clock = pd.Timestamp.now() if clock is None else pd.Timestamp(clock)
     if (clock - tau) > pd.Timedelta(minutes=FRESH_MINUTES):
         return fallback(f"마지막 관측 {tau:%m-%d %H:%M}이 {FRESH_MINUTES}분보다 오래됐다")
+    k_round = K_ROUND_BY_START.get(duration_start_hour(duration))
+    if k_round is None:
+        return fallback(f"{duration} 회차는 K가 학습하지 않은 시각(0시)에 시작한다 — 56장은 네 회차였다")
     start = round_start(duration, tau)
     if start is None:
         return fallback(f"마지막 관측 {tau:%m-%d %H:%M}이 {duration} 회차 시작과 멀다")
@@ -468,7 +477,7 @@ def apply(base: pd.DataFrame, st_rebal: pd.DataFrame, st_info: pd.DataFrame, dur
         return fallback("학습 행이 없다")
     grid = load_grid(conn, tau - pd.Timedelta(hours=4), tau)
     plan_stock = st_rebal.drop_duplicates("station_id").set_index("station_id")["stock"].astype(float)
-    safe = predict_safe(bundle, grid, refs, duration, start, plan_stock)
+    safe = predict_safe(bundle, grid, refs, k_round, start, plan_stock)
     if safe.notna().sum() == 0:
         return fallback("예측이 하나도 없다")
     full = (st_rebal.merge(st_info, how="left", on="station_id", suffixes=("", "_info"))[INFO_COLS]

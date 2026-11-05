@@ -1147,7 +1147,7 @@ def test_운영_계획은_회차를_주지_않으면_재고_시각으로_정한�
 
     at = datetime(2026, 10, 25, 14, 0)
     assert run_pipeline.plan_duration("오늘", False, at)[0] == "_10_15"
-    assert run_pipeline.plan_duration("오늘", False, datetime(2026, 10, 25, 23, 11))[0] == "_20_05"
+    assert run_pipeline.plan_duration("오늘", False, datetime(2026, 10, 25, 23, 11))[0] == "_20_24"
 
     # 물려받는 재고가 04:40 것이면 14시에 띄워도 그 재고로 곧 출발하는 05 ~ 10시다.
     monkeypatch.setattr(project_config, "PP_ROOT", tmp_path)
@@ -1165,7 +1165,7 @@ def test_운영_계획은_회차를_주지_않으면_재고_시각으로_정한�
             conn.execute(f"INSERT INTO {table} (run_label, station_id) VALUES (?, ?)", ("1024 저녁 계획", "ST1"))
         conn.commit()
     assert run_pipeline.stock_time("1024 저녁 계획") == datetime(2026, 10, 24, 21, 5)
-    assert run_pipeline.plan_duration("1024 저녁 계획", True, at)[0] == "_20_05"
+    assert run_pipeline.plan_duration("1024 저녁 계획", True, at)[0] == "_20_24"   # 21:05 재고 → 21:35
     # 쓸 재고가 없으면 지금 시각으로 정하고 그렇다고 말한다(파이프라인은 물려받기에서 멈춘다).
     monkeypatch.setenv("PBR_DB_PATH", str(tmp_path / "빈.db"))
     duration, source = run_pipeline.plan_duration("오늘", True, at)

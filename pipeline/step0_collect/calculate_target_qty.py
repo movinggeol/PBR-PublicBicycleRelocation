@@ -110,7 +110,7 @@ def build_stats(net_daily: pd.DataFrame, st_initial_qty: pd.DataFrame, duration:
 def compute_rebal_qty(stats: pd.DataFrame, z=None, up_limit=None,
                       model_target=None) -> pd.DataFrame:
     '''
-    대여소별의 시간대별(_05_10, _10_15, _15_20, _20_05) mu, sigma 를 통해 목표 stock량(target_qty)에 따른 작업량(rebal_qty)를 산출
+    대여소별의 시간대별(_05_10, _10_15, _15_20, _20_24, _00_05) mu, sigma 를 통해 목표 stock량(target_qty)에 따른 작업량(rebal_qty)를 산출
     기본 파라미터 : 신뢰구간 z, 상한/하한 비율
 
     z를 지정하지 않으면 project_config.TARGET_Z(기본 1.99)를 쓴다.
@@ -276,8 +276,8 @@ if __name__ == '__main__':
                   + (f" — 계획 대상 달보다 {gap}개월 앞의 자료입니다." if gap and gap > 1 else "."))
 
     # 시간대 목록은 --duration(콤마 구분)으로 준다. 예: "_05_10,_10_15"
-    # 각 창은 project_config.DURATIONS이고(낮 셋은 5시간, 자정을 넘는 `_20_05`는
-    # 9시간 — duration_hours()), 목표 재고는 **그 창 동안 쓸 양**이다.
+    # 각 창은 project_config.DURATIONS이고(낮 셋과 새벽은 5시간, `_20_24`는 4시간 — duration_hours().
+    # 1.26.410에 자정을 넘던 `_20_05`(9시간)를 나눴다), 목표 재고는 **그 창 동안 쓸 양**이다.
     # 하루 몇 회차를 도는지는 운영 문제다(docs/구현/FLEET.md).
     for duration in duration_list(config):
         net_temp = net_daily
