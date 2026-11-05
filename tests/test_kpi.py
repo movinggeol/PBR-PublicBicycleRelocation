@@ -414,6 +414,30 @@ def _후보_프레임(**추가):
     return pd.DataFrame({**추가, **본문})
 
 
+def test_목표에서_멀어진_곳도_개선량은_절댓값이고_불균형_0은_평균에서_빠진다(step4):
+    """수거 대수 학습(K)은 운영 식으로는 배송 쪽(+1.6)인 곳에서도 수거를 골라, 예전에는 개선률이
+    −375%(회차 평균 −144%)로 튀었다. 사용자 결정(2026-11-05 "절댓값으로 해라")으로 개선량을
+    절댓값으로 센다(1.26.409). 작업 전 불균형이 0이면 개선률은 정의되지 않아 결측이고, 평균이
+    무한대로 번지지 않는다. 목표에서 멀어진 곳은 `af > bf`로 따로 알 수 있어야 한다(지도 점선)."""
+    import math
+
+    frame = _후보_프레임()
+    k_pick = {"station_id": "ST0003", "station_name": "다", "lat": 36.37, "lon": 127.40,
+              "parking_lot": 20, "stock": 14, "target_qty": 15.6, "rebal_qty": -6,
+              "mu": 3.0, "sigma": 1.0, "cluster": 0}
+    at_target = {**k_pick, "station_id": "ST0004", "stock": 10, "target_qty": 10.0}
+    frame = pd.concat([frame, pd.DataFrame([k_pick, at_target])], ignore_index=True)
+
+    got = step4.demand_satisfaction(frame).set_index("station_id")
+
+    assert got.loc["ST0003", "improvement"] == pytest.approx(6.0)
+    assert got.loc["ST0003", "improvement_rate"] == pytest.approx(3.75)
+    assert got.loc["ST0003", "af_imbalance"] > got.loc["ST0003", "bf_imbalance"], "멀어진 것을 알 수 없다"
+    assert pd.isna(got.loc["ST0004", "improvement_rate"]), "불균형 0의 개선률은 정의되지 않는다"
+    assert math.isfinite(got["improvement_rate"].mean())
+    assert (got["improvement"] >= 0).all()
+
+
 def test_demand_satisfaction은_컬럼_순서가_아니라_이름으로_고른다(step4):
     """🔴 DB에서 읽으면 앞에 스코프 컬럼이 붙어 **자리가 밀린다.**
 

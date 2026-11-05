@@ -531,6 +531,9 @@ if __name__ == '__main__':
         if pick_drop.empty:
             print(f"\n[건너뜀] {duration}: 재배치 대상이 없습니다 "
                   f"(Pick 또는 Drop 후보가 없어 옮길 곳이 없음)")
+            # 같은 라벨로 다시 돌린 경우 첫 실행의 후보 · 경로가 남아 뒤 단계가 읽는다(1.26.409).
+            db.forget_plan_stage("pick_drop", now, duration,
+                                 csv_paths=[clustered_file.format(duration=duration, now=now)])
             continue
 
         # 1차-2 : 수거를 수거 대수 학습(K)으로 다시 고른다. 배송 쪽과 수거 총량은 그대로다.

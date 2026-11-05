@@ -234,3 +234,45 @@ def test_env파일_적재가_첫_환경변수_읽기보다_앞선다():
     assert load_at < first_read, (
         f"load_dotenv가 {load_at + 1}번째 줄인데 첫 환경변수 읽기가 "
         f"{first_read + 1}번째 줄이다 — .env가 상수에 반영되지 않는다")
+
+
+def test_이용이_없는_날은_0으로_채우고_없던_날짜는_지어내지_않는다():
+    """순수요 표는 대여 · 반납이 있던 (날짜, 대여소)만 행이 있어 0건인 날이 **없는 날**이 됐다 —
+    mu · sigma의 분모가 '활동한 날'이었다(24년 11월 조합의 11.0%). 사용자 결정(2026-11-05
+    "표본에 넣어라")으로 표에 나온 날짜 × 대여소로 펴서 0으로 채운다(1.26.409)."""
+    import pandas as pd
+
+    from project_config import fill_idle_days
+
+    frame = pd.DataFrame({
+        "period": ["25년 11월"] * 3,
+        "date": ["2025-11-03", "2025-11-03", "2025-11-05"],   # 11-04는 도시 전체에 행이 없다
+        "station_id": ["A", "B", "A"],
+        "net_00": [1, -2, 3], "net_01": [0, 1, 0],
+    })
+    filled = fill_idle_days(frame)
+
+    assert list(filled.columns) == list(frame.columns)
+    assert len(filled) == 4, "날짜 2 × 대여소 2"
+    assert "2025-11-04" not in set(filled["date"]), "행이 없던 날(장애일)을 지어냈다"
+    idle = filled[(filled["date"] == "2025-11-05") & (filled["station_id"] == "B")].iloc[0]
+    assert idle["net_00"] == 0 and idle["net_01"] == 0 and idle["period"] == "25년 11월"
+    assert filled["net_00"].dtype.kind == "i"
+    assert len(fill_idle_days(filled)) == 4, "두 번 채워도 같아야 한다"
+
+
+def test_이용이_없는_날_스위치는_오타를_받지_않는다():
+    """끄는 길(`PBR_FILL_IDLE_DAYS=0`)은 옛 수치 재현용이다. 오타가 조용히 켜지면 재현했다고 믿고
+    새 정의로 돈다 — `PBR_USE_ROAD_MODEL`과 같이 import에서 멈춘다."""
+    import os
+    import subprocess
+    import sys
+
+    env = {**os.environ, "PBR_FILL_IDLE_DAYS": "아니오"}
+    done = subprocess.run([sys.executable, "-c", "import project_config"], cwd=_ROOT, env=env,
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
+    assert done.returncode != 0 and "PBR_FILL_IDLE_DAYS" in done.stderr
+    env["PBR_FILL_IDLE_DAYS"] = "0"
+    done = subprocess.run([sys.executable, "-c", "import project_config as p; print(p.FILL_IDLE_DAYS)"],
+                          cwd=_ROOT, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    assert done.stdout.strip() == "False"

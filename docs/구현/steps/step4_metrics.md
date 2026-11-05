@@ -71,8 +71,8 @@ stock(t+1) = clip(stock(t) − 순수요(t), 0, 거치대 수)
 재배치 후 재고  new_stock    = stock + rebal_qty
 재배치 전 불균형 bf_imbalance = |stock − target_qty|
 재배치 후 불균형 af_imbalance = |new_stock − target_qty|
-개선량          improvement  = bf_imbalance − af_imbalance
-개선률          improvement_rate = improvement / bf_imbalance
+개선량          improvement  = |bf_imbalance − af_imbalance|   (1.26.409부터 절댓값)
+개선률          improvement_rate = improvement / bf_imbalance  (bf_imbalance = 0이면 결측)
 ```
 
 전체 평균과 Pick/Drop 대상별 평균 개선률을 각각 출력합니다.

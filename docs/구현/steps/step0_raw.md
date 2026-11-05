@@ -76,6 +76,9 @@ python tools/load_rentals.py --dir "data/raw_data/대전교통공사_대전시 �
 - **입력**: 1번 출력 (DB `station_stock` 먼저, 비었으면 CSV — 둘 다 없으면 멈춘다)
 - **처리**: `parking_info` 문자열(`"10대용*1, 5대용*2"`)을 정규식으로 파싱해 거치대 수 계산.
   도로뷰로 확인한 4개 대여소(ST0370, ST1133, ST1392, ST1341)는 하드코딩으로 보정
+  **'/'가 없는 설명도 버리지 않는다** (1.26.409) — 설명 전체에서 `N대용`을 찾고, 그래도 없으면(지금
+  `ST0828`, 설명이 이름뿐) 대수를 아는 대여소의 중앙값을 쓰며 경고로 찍는다. 예전에는 그 행을 버려
+  step0의 목표 재고 상한(`clip(upper=parking_lot × 비율)`)이 NaN을 받아 **풀렸다**
 - **출력**: `data/pp_data/대여소별 주차대수/대여소별_주차대수 ({now}).csv`
 
 ### 3. `api_to_info.py`
@@ -90,6 +93,9 @@ python tools/load_rentals.py --dir "data/raw_data/대전교통공사_대전시 �
 - **입력**: 대여이력(DB `rental_history` 또는 원천 CSV)
 - **처리**: **평일·휴일 모두**, 날짜×대여소×시간대(0~23시)별 `순수요 = 대여량 − 반납량`
   (어느 쪽으로 계획할지는 다음 단계가 `--day-type`으로 고른다)
+  **이용이 없는 날도 표본이다** (1.26.409, 사용자 결정 2026-11-05) — 대여·반납이 있던 조합만 행이 생기던
+  것을 **표에 나온 날짜 × 대여소**로 펴서 0으로 채운다(`project_config.fill_idle_days`). 예전에는 0건인 날이
+  빠져 mu·sigma의 분모가 '활동한 날'이었다(24년 11월 조합의 11.0%). 끄는 길은 `PBR_FILL_IDLE_DAYS=0`(옛 수치 재현용)
 - **출력**: `data/pp_data/순수요/st_net_daily ({period}).csv` (net_00 ~ net_23 컬럼)
 
 ## 평일과 휴일은 섞지 않는다 (1.14.0~1.14.1)
@@ -195,6 +201,7 @@ python run_pipeline.py --warmup-days 0        # 보정 끄기
 ```powershell
 python tools/rebuild_net_demand.py            # 적재된 전 기간
 python tools/rebuild_net_demand.py --dry-run  # 대상만 확인
+python tools/rebuild_net_demand.py --fill-idle  # 저장된 표에 이용이 없는 날만 0으로 채운다 (1.26.409, 대여이력을 다시 읽지 않는다)
 ```
 
 > **주의**: 요일 구분은 **산출물 파일명에 들어가지 않습니다.** 평일 계획과 주말

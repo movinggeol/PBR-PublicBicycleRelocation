@@ -317,6 +317,10 @@ def run_vrp_plan(ilp_plan: pd.DataFrame, duration: str):
 
     # CSV·DB 이중 기록 (DB_PLAN 2단계). 방문 순서는 db가 seq 컬럼으로 보존한다.
     db.save_output("vrp_plan", vrp_result, run_label=now, duration=duration)
+    # 경로가 새로 섰으니 **그 뒤 산출물(도로선 · 지표)은 옛 계획의 것**이다(1.26.409). 같은 라벨 재실행에서
+    # step3가 지도를 건너뛰면(`--skip-map` · TMAP 예산) 현장 앱이 옛 계획의 도로선을 그렸다. 배정은
+    # 위 `_assign_fleet`이 이미 새로 썼으므로 도로선부터 지운다 — 이어 도는 step3 · step4가 다시 쓴다.
+    db.forget_plan_stage("road_path", now, duration)
 
 
 def moved_bikes(vrp_result: pd.DataFrame) -> pd.Series:
@@ -443,6 +447,9 @@ if __name__ == '__main__':
                                           run_label=now, duration=duration)
         if ilp_plan.empty:
             print(f"\n[건너뜀] {duration}: ILP 계획이 비어 있습니다(이동할 자전거 없음)")
+            # 같은 라벨의 옛 경로 · 배정 · 지표가 남지 않게(1.26.409 — db.forget_plan_stage).
+            db.forget_plan_stage("vrp_plan", now, duration,
+                                 csv_paths=[vrp_plan_file.format(duration=duration, now=now)])
             continue
 
         run_vrp_plan(ilp_plan, duration)

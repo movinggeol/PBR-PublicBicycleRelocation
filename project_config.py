@@ -1035,6 +1035,50 @@ def select_day_type(frame, date_column: str, day_type: str):
     return frame[mask if normalize_day_type(day_type) == "holiday" else ~mask]
 
 
+# ---- 이용이 없는 날 (1.26.409) ----
+# ✅ **기본은 채운다 — 사용자 결정(2026-11-05 "표본에 넣어라").** 순수요 표는 그날 대여나 반납이 한 건이라도
+# 있던 (날짜, 대여소)만 행이 있었다. 그래서 이용이 0건인 날이 0이 아니라 **없는 날**이 되어 mu · sigma의
+# 분모가 '활동한 날'이었다 — 24년 11월 30일 × 1,231곳의 11.0%가 비었고 모든 날에 행이 있는 곳은 58.2%였다.
+# 20일 중 2일만 −3인 대여소가 mu −3.0 · sigma 0을 받았다(같은 수요에 다른 날 행이 있으면 −0.3 · 0.92).
+# 이용이 드문 곳일수록 |mu|가 부풀고 sigma가 줄어 목표 재고가 흔들렸다. step4 결품 · 수거 대수 학습도 같은 표다.
+#
+# 🔴 **채우는 곳은 표를 만드는 `raw_to_net` 하나다** — 읽는 곳(운영 셋 · 실험 서른여 개 · 날 SQL)마다 채우면
+# 한 곳만 빠져도 측정이 거짓말을 한다(`season_ratio`의 교훈). 이미 저장된 표는
+# `python tools/rebuild_net_demand.py --fill-idle`로 채운다.
+# 끄는 길은 `PBR_FILL_IDLE_DAYS=0` — 원고 · EXPERIMENTS의 옛 수치를 같은 정의로 재현할 때만 쓴다(별도 DB로).
+# 모르는 값은 조용히 켜지 않고 멈춘다(`PBR_USE_ROAD_MODEL`과 같은 이유).
+_fill_flag = os.getenv("PBR_FILL_IDLE_DAYS", "").strip().lower()
+if _fill_flag not in _ROAD_ON + _ROAD_OFF:
+    raise ValueError(
+        f"PBR_FILL_IDLE_DAYS는 켜기(1·true·yes·on) 또는 끄기(0·false·no·off)여야 합니다"
+        f" (받은 값: {_fill_flag!r})")
+FILL_IDLE_DAYS = _fill_flag in _ROAD_ON
+
+
+def fill_idle_days(frame, date_column: str = "date", station_column: str = "station_id"):
+    """순수요 표를 **그 표에 나온 날짜 × 그 표에 나온 대여소**로 펴고 빈 칸을 0으로 채운다.
+
+    날짜는 표에 나온 것만 쓴다 — 도시 전체에 행이 없는 날(시스템 장애일)을 0으로 지어내지 않는다.
+    `net_` 열은 0, 값이 하나뿐인 열(`period`)은 그 값으로 채운다. 이미 꽉 찬 표에는 아무것도 하지 않는다.
+    ponytail: 그 달 중간에 새로 생기거나 없어진 대여소도 없던 날을 0으로 받는다 — 설치일 자료가 없다
+    """
+    import pandas as pd
+
+    if frame.empty:
+        return frame
+    keys = [date_column, station_column]
+    full = pd.MultiIndex.from_product(
+        [sorted(pd.unique(frame[date_column])), sorted(pd.unique(frame[station_column]))],
+        names=keys)
+    out = frame.set_index(keys).reindex(full)
+    for column in out.columns:
+        if column.startswith("net_"):
+            out[column] = out[column].fillna(0).astype(int)
+        elif frame[column].nunique(dropna=False) == 1:
+            out[column] = out[column].fillna(frame[column].iloc[0])
+    return out.reset_index()[list(frame.columns)]
+
+
 def duration_hours(duration: str) -> list:
     """시간대 문자열(`_05_10`)을 그 창에 드는 시각 목록으로.
 

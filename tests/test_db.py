@@ -386,6 +386,42 @@ def test_save_kpi_works_after_migration(tmp_path):
     connection.close()
 
 
+def test_건너뛴_단계는_그_뒤의_옛_산출물과_자기_CSV를_지운다(tmp_path, monkeypatch):
+    """같은 라벨로 다시 돌렸는데 step1 · step2가 '대상 없음'으로 건너뛰면 첫 실행의 산출물이 남아
+    다음 단계가 옛 `pick_drop` · `vrp_plan`을 읽어 새 후보와 옛 경로를 섞었다(1.26.409, 사용자 결정
+    "그래라"). DB만 지우면 `read_step_output`이 옛 CSV로 물러서므로 자기 CSV도 지운다.
+    `road_leg`(TMAP 실측)와 다른 회차 · 앞 단계는 남는다."""
+    db_path = tmp_path / "stale.db"
+    monkeypatch.setenv("PBR_DB_PATH", str(db_path))
+    with db.session() as connection:
+        for table in db.PLAN_STAGE_TABLES + ("road_leg",):
+            columns = [row[1] for row in connection.execute(f"PRAGMA table_info({table})")]
+            for duration in ("_05_10", "_10_15"):
+                values = {c: 1 for c in columns}
+                values.update(run_label="R", duration=duration)
+                if "vehicle_id" in values:
+                    values["vehicle_id"] = "V01"
+                connection.execute(
+                    f"INSERT INTO {table} ({', '.join(values)}) VALUES ({', '.join('?' * len(values))})",
+                    tuple(values.values()))
+        connection.commit()
+    stale_csv = tmp_path / "ILP_plan_05_10 (R).csv"
+    stale_csv.write_text("x\n", encoding="utf-8")
+
+    removed = db.forget_plan_stage("ilp_plan", "R", "_05_10", csv_paths=[stale_csv, tmp_path / "없음.csv"])
+
+    assert not stale_csv.exists(), "옛 CSV가 남으면 read_step_output이 그것을 읽는다"
+    assert removed == len(db.PLAN_STAGE_TABLES) - 1
+    with db.session() as connection:
+        def count(table, duration):
+            return connection.execute(f"SELECT COUNT(*) FROM {table} WHERE run_label = 'R'"
+                                      " AND duration = ?", (duration,)).fetchone()[0]
+        assert count("pick_drop", "_05_10") == 1, "앞 단계는 지우면 안 된다"
+        assert all(count(t, "_05_10") == 0 for t in db.PLAN_STAGE_TABLES[1:])
+        assert all(count(t, "_10_15") == 1 for t in db.PLAN_STAGE_TABLES), "다른 회차를 지웠다"
+        assert count("road_leg", "_05_10") == 1, "TMAP 실측은 다시 잴 수 없다 — 지우지 않는다"
+
+
 def test_save_kpi_stores_infinity_as_null(conn):
     """개선률은 `개선량 / 작업 전 불균형`이라 불균형 0인 대여소가 섞이면 ±inf가 된다
     (수거 대수 학습 K가 운영 식으로는 할 일이 없는 곳을 고를 때). SQLite는 inf를 그대로

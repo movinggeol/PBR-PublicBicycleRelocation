@@ -222,6 +222,24 @@ def test_build_stats_sums_only_the_hours_in_the_duration(target_qty):
     assert ratio is None, "warmup 자료가 없으면 계절 배율은 없다"
 
 
+def test_거치대_설명에_슬래시가_없어도_상한이_걸린다(capsys):
+    """'/' 뒤만 읽어 '/'가 없는 행(`ST0828` — 설명이 대여소 이름뿐)을 버렸고, 그러면 step0의
+    `clip(upper=parking_lot × 비율)`이 NaN을 받아 **상한 없음**이 됐다(1.26.409, 사용자 결정).
+    '/'가 없으면 설명 전체에서 대수를 찾고, 그래도 없으면 대수를 아는 곳의 중앙값을 쓴다."""
+    sys.path.insert(0, str(STEP0))
+    parking = _load(STEP0 / "extract_parking_lot.py", "_parking")
+    info = pd.Series(["A / 10대용*1 / 10", "B / 5대용*1 / 5", "C / 5대용(스텐)*2 / 10",
+                      "오정동 노촌어린이공원", "D / parking_lot 없음", "10대용*1"],
+                     index=["ST1", "ST2", "ST3", "ST0828", "ST4", "ST6"])
+
+    got = parking.parking_capacity(info).to_dict()
+
+    assert got == {"ST1": 10, "ST2": 5, "ST3": 10, "ST0828": 10, "ST4": 0, "ST6": 10}
+    assert "ST0828" in capsys.readouterr().out, "대수를 지어낸 대여소를 알리지 않는다"
+    stats = pd.DataFrame({"target_qty": [50.0]})
+    assert stats["target_qty"].clip(upper=got["ST0828"] * 1.5).iloc[0] == 15, "상한이 걸려야 한다"
+
+
 def test_build_stats_wraps_past_midnight(target_qty):
     """`_20_05`처럼 자정을 넘는 시간대는 이어서 돈다 (20~23시 + 00~04시 = 9시간)."""
     frame = pd.DataFrame({

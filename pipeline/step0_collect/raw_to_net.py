@@ -19,7 +19,8 @@ import pandas as pd
 import db
 from project_config import (
     exit_if_help,
-    DATA_ROOT, ensure_output_dirs, get_runtime_config, holiday_mask,
+    DATA_ROOT, FILL_IDLE_DAYS, ensure_output_dirs, fill_idle_days, get_runtime_config,
+    holiday_mask,
 )
 
 # to_csv
@@ -70,7 +71,7 @@ def main() -> None:
     rent = rent.reindex(columns=hours, fill_value=0)
     ret = ret.reindex(columns=hours, fill_value=0)
 
-    # 모든 날짜와 대여소 조합을 포함하도록 인덱스 재설정
+    # 대여·반납이 **있던** (날짜, 대여소) 조합의 합집합으로 맞춘다 — 0건인 날은 아래 fill_idle_days가 채운다
     all_index = rent.index.union(ret.index)
     rent = rent.reindex(all_index, fill_value=0)
     ret = ret.reindex(all_index, fill_value=0)
@@ -81,6 +82,15 @@ def main() -> None:
 
     net_daily = net_daily.reset_index()
     net_daily.rename(columns={'level_1': 'station_id'}, inplace=True)
+
+    # 🔴 이용이 없는 날도 표본이다 — 0으로 채운다(1.26.409, project_config.FILL_IDLE_DAYS).
+    # 위 `all_index`는 대여·반납이 **있던** 조합의 합집합일 뿐이라, 예전 주석의 "모든 날짜와 대여소
+    # 조합"이 아니었다. 0건인 날이 빠져 mu · sigma의 분모가 '활동한 날'이 됐다.
+    if FILL_IDLE_DAYS:
+        before = len(net_daily)
+        net_daily = fill_idle_days(net_daily, date_column='날짜')
+        print(f"이용이 없는 (날짜, 대여소) {len(net_daily) - before:,}개를 0으로 채웠습니다 "
+              f"({before:,} → {len(net_daily):,}행)")
 
     # csv파일로 저장
     ensure_output_dirs()

@@ -897,6 +897,45 @@ def save_output(table: str, df: pd.DataFrame, run_label: Optional[str] = None,
         return 0
 
 
+# 한 회차(실행 라벨 × 회차)의 계획 산출물 — **만드는 단계 순서대로** (1.26.409).
+# `road_leg`는 넣지 않는다 — 계획이 아니라 TMAP 실측(정답표)이라 같은 시각의 교통량으로 다시 잴 수 없다.
+PLAN_STAGE_TABLES = ("pick_drop", "ilp_plan", "vrp_plan", "vehicle_assignment",
+                     "road_path", "metrics", "route_summary", "kpi_summary")
+
+
+def forget_plan_stage(first: str, run_label: str, duration: str,
+                      csv_paths: Sequence = (), db_path: Optional[Path] = None) -> int:
+    """건너뛴 회차의 **옛 산출물**을 그 단계부터 끝까지 지운다. 지운 DB 행 수를 돌려준다 (1.26.409).
+
+    🔴 **왜 있나.** step1 · step2는 대상이 없는 회차를 크래시 대신 건너뛴다(함정 6). 그런데 같은
+    라벨로 다시 돌리면(같은 날 재실행은 `label_conflict`가 막지 않는다) 첫 실행의 산출물이 그대로
+    남아, 다음 단계가 옛 `pick_drop` · `vrp_plan`을 읽어 **새 후보와 옛 경로를 섞었다** —
+    `save_frame`은 저장할 때만 범위를 지우고 건너뛰는 단계는 저장하지 않기 때문이다.
+
+    ⚠️ **CSV도 지워야 한다.** `read_step_output()`은 DB가 비면 그 회차의 CSV로 물러서므로,
+    DB만 지우면 옛 CSV를 읽는다. 그래서 건너뛰는 단계가 **자기 산출물 CSV**를 `csv_paths`로
+    넘긴다 — 뒤 단계는 입력이 비어 차례로 건너뛰며 각자 자기 것을 지운다.
+    DB 실패는 `save_output`과 같이 경고만 남긴다(전환기 규칙).
+    """
+    removed = 0
+    try:
+        with session(db_path) as conn:
+            for table in PLAN_STAGE_TABLES[PLAN_STAGE_TABLES.index(first):]:
+                removed += conn.execute(
+                    f"DELETE FROM {table} WHERE run_label = ? AND duration = ?",
+                    (run_label, duration)).rowcount
+            conn.commit()
+    except Exception as err:   # noqa: BLE001 — save_output과 같은 전환기 규칙
+        print(f"[경고] 옛 산출물 정리 실패 ({first}~): {type(err).__name__}: {err}")
+    stale = [Path(path) for path in csv_paths if Path(path).is_file()]
+    for path in stale:
+        path.unlink()
+    if removed or stale:
+        print(f"  [정리] 같은 라벨에 남아 있던 옛 산출물을 지웠습니다 — DB {removed}행"
+              f"{f' · 파일 {len(stale)}개' if stale else ''} ({first}부터)")
+    return removed
+
+
 def replace_road_legs(df: pd.DataFrame, run_label: str, duration: str,
                       clusters: Sequence[int], db_path: Optional[Path] = None) -> int:
     """`road_leg`에서 **이번에 실제로 잰 군집만** 갈아끼운다 (1.26.232).

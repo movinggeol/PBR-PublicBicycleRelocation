@@ -23,7 +23,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -94,6 +94,44 @@ async def readonly_guard(request: Request, call_next):
             return templates.TemplateResponse(
                 request, "error.html",
                 {"code": 403, "title": "열람 전용입니다", "detail": detail}, status_code=403)
+    return await call_next(request)
+
+
+# ---------------- 출처 검사 (1.26.409) ----------------
+
+# 🔴 **쓰기 요청은 이 화면에서 온 것만 받는다** (사용자 결정 2026-11-05 "출처 검사해라"). 0.0.0.0 · 무인증
+# (2026-10-21 결정)은 같은 네트워크의 사람을 믿는 것이지, 운영자 브라우저가 연 **바깥 웹페이지**까지 믿는
+# 것은 아니다. 그 페이지가 `POST /runs/{계획}/kind`를 자동 제출하면 최신 계획이 실험으로 바뀌어 `/orders`의
+# 기본이 다른 계획이 되고, `POST /runs now=<기존 계획>`이면 기사가 든 종이와 화면이 어긋난다(재현: Origin
+# `evil.example` → 303). 폼 POST는 교차 사이트 제한이 없어 쿠키가 없어도 된다.
+#
+# 브라우저는 POST에 `Origin`을 붙인다 — 있으면 그 호스트가 `Host`와 같아야 하고, 없으면 `Referer`를 본다.
+# 둘 다 없으면 브라우저가 아닌 호출(curl · 테스트)이라 통과시킨다. `Origin: null`(샌드박스 iframe ·
+# data: 주소)은 막는다 — 위조 요청이 흔히 쓰는 길이다. 열람 서버는 Caddy가 `Host`를 그대로 넘긴다.
+_SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
+
+
+def cross_origin(request: Request) -> Optional[str]:
+    """쓰기 요청이 다른 출처에서 왔으면 그 출처를, 아니면 None."""
+    if request.method in _SAFE_METHODS:
+        return None
+    source = request.headers.get("origin") or request.headers.get("referer")
+    if source is None:
+        return None
+    hosts = {request.headers.get("host", ""), request.headers.get("x-forwarded-host", "")} - {""}
+    netloc = urlsplit(source).netloc if source != "null" else ""
+    return None if netloc and netloc in hosts else source
+
+
+@app.middleware("http")
+async def same_origin_guard(request: Request, call_next):
+    if (source := cross_origin(request)) is not None:
+        detail = f"다른 사이트({source})에서 보낸 요청이라 받지 않았습니다 — 이 화면에서 다시 하십시오."
+        if not _wants_html(request):
+            return JSONResponse({"detail": detail}, status_code=403)
+        return templates.TemplateResponse(
+            request, "error.html",
+            {"code": 403, "title": "다른 사이트에서 온 요청입니다", "detail": detail}, status_code=403)
     return await call_next(request)
 
 

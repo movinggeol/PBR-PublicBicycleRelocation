@@ -300,6 +300,9 @@ if __name__ == "__main__":
         if metrics.empty:
             # step1이 '대상 없음'으로 건너뛴 시간대. 여기서도 건너뛴다.
             print(f"\n[건너뜀] {duration}: step1 후보가 없습니다")
+            # 같은 라벨의 옛 ILP · VRP · 지표가 남지 않게(1.26.409 — db.forget_plan_stage).
+            db.forget_plan_stage("ilp_plan", now, duration,
+                                 csv_paths=[ilp_plan_path.format(duration=duration, now=now)])
             continue
 
         require_columns(metrics, ['station_id', 'lat', 'lon', 'rebal_qty', 'cluster'],

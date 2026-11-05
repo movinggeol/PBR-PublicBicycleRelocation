@@ -407,6 +407,38 @@ def test_이름을_비우면_파이프라인이_쓸_라벨로_재고를_고르�
     assert asked == ["2026-11-05 14"], f"파이프라인이 쓰지 않을 라벨로 재고를 골랐다: {asked}"
 
 
+@pytest.mark.parametrize("headers, blocked", [
+    ({"Origin": "http://evil.example"}, True),
+    ({"Origin": "null"}, True),                                  # 샌드박스 iframe · data: 주소
+    ({"Referer": "http://evil.example/page"}, True),            # Origin이 없으면 Referer
+    ({"Origin": "http://testserver"}, False),                   # 이 화면에서 보낸 것
+    ({"Referer": "http://testserver/run"}, False),
+    ({}, False),                                                # curl · 테스트 — 브라우저가 아니다
+])
+def test_쓰기_요청은_다른_사이트에서_온_것을_받지_않는다(client, monkeypatch, headers, blocked):
+    """운영자가 연 바깥 웹페이지가 폼을 자동 제출하면 최신 계획이 실험으로 바뀌었다(재현: Origin
+    `evil.example` → 303). 0.0.0.0 · 무인증은 같은 네트워크 사람을 믿는 것이지 바깥 페이지까지는
+    아니다(1.26.409, 사용자 결정 "출처 검사해라")."""
+    from webapp import store
+
+    changed = []
+    monkeypatch.setattr(store, "set_run_kind", lambda label, kind: changed.append((label, kind)) or True,
+                        raising=False)
+    res = client.post("/runs/R1/kind", data={"kind": "experiment"}, headers=headers,
+                      follow_redirects=False)
+    if blocked:
+        assert res.status_code == 403, f"{headers}에서 온 쓰기를 받았다"
+        assert changed == []
+    else:
+        assert res.status_code != 403, f"{headers}를 다른 사이트로 잘못 봤다"
+
+
+def test_읽기_요청은_출처를_보지_않는다(client):
+    """링크를 눌러 들어오는 GET은 늘 다른 출처의 Referer를 단다 — 막으면 외부 링크로 못 들어온다."""
+    res = client.get("/run", headers={"Origin": "http://evil.example", "Referer": "http://evil.example/"})
+    assert res.status_code == 200
+
+
 def test_실행_이름이_대시로_시작하면_폼에서_거른다(client, monkeypatch):
     """`["--now", "-테스트"]`는 argparse가 옵션으로 읽어 파이프라인이 곧바로 죽고 까닭은
     로그에만 남았다(1.26.408)."""

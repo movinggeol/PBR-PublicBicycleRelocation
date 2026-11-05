@@ -129,10 +129,20 @@ def demand_satisfaction(reloc: pd.DataFrame):
     temp['af_imbalance'] = abs(temp['new_stock'] - temp['target_qty'])
 
     # 개선량 (imbalance는 절대값이라 bf가 더 큰 값일 테니 af를 뺌) (rebal_qty의 절대값과 같음)
-    temp['improvement'] = temp['bf_imbalance'] - temp['af_imbalance']
+    #
+    # 🔴 **절댓값으로 센다** (1.26.409, 사용자 결정 2026-11-05 "절댓값으로 해라"). 운영 식으로
+    # 세운 계획에서는 bf ≥ af라 그대로였지만(tanh 포화 · 0 방향 절삭 — 목표를 넘지 않는다),
+    # 수거 대수 학습(K, 1.26.375)은 운영 식의 재배치량이 −2 ~ +2인 곳도 고르므로 af > bf가
+    # 되어 개선률이 음수(합성 예 −375%, 회차 평균 −144%)로 튀었다. 운영 식 계획의 값은
+    # 바뀌지 않는다. 목표에서 멀어진 곳인지는 `af_imbalance > bf_imbalance`로 따로 본다(지도).
+    # ponytail: K가 목표에서 멀어지게 옮긴 대수도 '개선'으로 센다 — 방향은 지도의 점선 테두리만 말한다
+    temp['improvement'] = (temp['bf_imbalance'] - temp['af_imbalance']).abs()
 
-    # 개선률
-    temp['improvement_rate'] = (temp['improvement'] / temp['bf_imbalance']).round(2)
+    # 개선률 — 작업 전 불균형이 0이면 정의되지 않는다(결측). 그대로 나누면 ±inf가 되어 회차 평균
+    # 전체가 무한대로 번졌다(1.26.408은 저장 때 NULL로 막았을 뿐이다). 결측은 평균에서 빠진다.
+    # 운영 식 계획은 |재배치량| > 2인 곳만 고르므로 이런 행이 없다 — K 계획에서만 생긴다.
+    temp['improvement_rate'] = (
+        temp['improvement'] / temp['bf_imbalance'].where(temp['bf_imbalance'] > 0)).round(2)
     avg_imp_rate = temp['improvement_rate'].mean(axis=0).round(2)
     pick_avg_imp_rate = temp.loc[temp['rebal_qty'] < 0, 'improvement_rate'].mean(axis=0).round(2)
     drop_avg_imp_rate = temp.loc[temp['rebal_qty'] > 0, 'improvement_rate'].mean(axis=0).round(2)
@@ -677,8 +687,9 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
             #    `improvement`가 |rebal_qty|와 같아(tanh 포화·0 방향 절삭이라
             #    부호가 같고 목표를 넘지 않는다) 음수가 되지 않지만, 0~2대 해소한
             #    점이 3대 해소한 점과 **픽셀까지 똑같아진다.** 아래 점선 테두리는
-            #    입력이 이 규약을 벗어나 음수가 들어왔을 때의 방어다.
-            worsened = row['improvement'] < 0
+            #    목표에서 멀어진 곳의 표시다 — 1.26.409부터 `improvement`가 절댓값이라
+            #    음수로는 알 수 없어 작업 전후 불균형을 직접 맞댄다(수거 대수 학습 K가 만든다).
+            worsened = row['af_imbalance'] > row['bf_imbalance']
             radius = max(3, row['improvement'])
             # 개선률이 음수면 불투명도가 0 아래로 내려가 folium이 무시한다 —
             # 보이는 범위로 잡아 둔다.
