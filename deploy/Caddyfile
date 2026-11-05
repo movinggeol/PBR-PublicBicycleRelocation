@@ -1,0 +1,8 @@
+# HTTPS 앞단 (docs/구현/CLOUD_DEPLOY.md 'HTTPS'). vm_setup.sh가 컨테이너 pbr-caddy로 띄운다.
+# DOMAIN 환경변수가 도메인이다(기본 geol.cloud). 도메인을 적어 두면 Caddy가
+#  - Let's Encrypt에서 인증서를 자동으로 받고 갱신하고,
+#  - http://도메인 으로 온 요청을 https://도메인 으로 자동 이동시킨다.
+{$DOMAIN} {
+	# 안쪽 대시보드 컨테이너(같은 도커 네트워크의 pbr-web:8000)로 넘긴다
+	reverse_proxy pbr-web:8000
+}

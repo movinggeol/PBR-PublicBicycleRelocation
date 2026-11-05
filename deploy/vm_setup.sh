@@ -28,12 +28,24 @@ fi
 echo "[2/5] 코드 준비 -> $APP_DIR"
 sudo mkdir -p "$APP_DIR"
 sudo chown "$USER" "$APP_DIR"
+BEFORE="$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || echo none)"
 if [ -n "${REPO_URL:-}" ]; then
   if [ -d "$APP_DIR/.git" ]; then git -C "$APP_DIR" pull --ff-only; else git clone "$REPO_URL" "$APP_DIR"; fi
+elif [ -d "$APP_DIR/.git" ]; then
+  # 이미 받아 둔 저장소가 있으면 REPO_URL 없이도 갱신한다(두 번째 실행부터)
+  git -C "$APP_DIR" pull --ff-only
 elif [ -d "$HOME/pbr-src" ]; then
   cp -a "$HOME/pbr-src/." "$APP_DIR/"
 else
   echo "코드가 없습니다. REPO_URL을 주거나 ~/pbr-src 에 코드를 올려 두세요." >&2; exit 1
+fi
+
+# pull이 이 스크립트 자신을 바꿨으면 새 버전으로 처음부터 다시 돈다. bash는 파일을 읽어 가며
+# 실행해서, 도는 중에 파일이 바뀌면 옛 내용으로 끝까지 가거나 엉뚱한 줄을 읽는다(2026-11-03 겪음).
+AFTER="$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || echo none)"
+if [ "$BEFORE" != "$AFTER" ] && [ -z "${PBR_REEXEC:-}" ]; then
+  echo "스크립트가 갱신되어 새 버전으로 다시 실행합니다."
+  PBR_REEXEC=1 exec bash "$APP_DIR/deploy/vm_setup.sh"
 fi
 
 echo "[3/5] 데이터 배치 -> $DATA_DIR"
@@ -48,17 +60,47 @@ echo "[4/5] 이미지 빌드 (처음엔 몇 분 걸린다)"
 sudo docker build -t "$IMAGE" "$APP_DIR"
 
 echo "[5/5] 컨테이너 실행"
-sudo docker rm -f "$NAME" 2>/dev/null || true
+# DOMAIN: HTTPS로 열 도메인. 기본 geol.cloud. 'none'이면 Caddy 없이 IP로만(옛 방식: 80 · 8000번 직접).
+DOMAIN="${DOMAIN:-geol.cloud}"
+sudo docker network create pbr-net >/dev/null 2>&1 || true
+sudo docker rm -f "$NAME" pbr-caddy 2>/dev/null || true
+
 # 데이터는 읽기+쓰기로 마운트한다: db.connect()가 WAL 파일을 만들어서 읽기 전용이면 뜨지 않는다.
 # 쓰기를 막는 것은 PBR_READONLY=1(미들웨어)이다.
-sudo docker run -d --name "$NAME" --restart unless-stopped \
-  -p 8000:8000 \
-  -v "$DATA_DIR":/app/data \
-  "$IMAGE"
+if [ "$DOMAIN" = "none" ]; then
+  sudo docker run -d --name "$NAME" --restart unless-stopped --network pbr-net \
+    -p 80:8000 -p 8000:8000 \
+    -v "$DATA_DIR":/app/data \
+    "$IMAGE"
+else
+  # 대시보드는 호스트 포트를 열지 않는다: 밖에서는 Caddy(80 · 443)를 거쳐서만 들어온다.
+  sudo docker run -d --name "$NAME" --restart unless-stopped --network pbr-net \
+    -v "$DATA_DIR":/app/data \
+    "$IMAGE"
+  # Caddy가 인증서를 자동으로 받고 갱신한다(Let's Encrypt). 인증서는 볼륨에 남겨 둔다:
+  # 컨테이너를 다시 만들 때마다 새로 받으면 발급 한도(시간당 실패 5회 등)에 걸린다.
+  # 발급 때 80번(또는 443번)으로 밖에서 접속해 보므로 두 포트가 인터넷에서 닿아야 한다.
+  sudo docker run -d --name pbr-caddy --restart unless-stopped --network pbr-net \
+    -p 80:80 -p 443:443 \
+    -e DOMAIN="$DOMAIN" \
+    -v pbr_caddy_data:/data -v pbr_caddy_config:/config \
+    -v "$APP_DIR/deploy/Caddyfile":/etc/caddy/Caddyfile:ro \
+    caddy:2
+fi
 
-sleep 5
-sudo docker logs --tail 15 "$NAME"
+sleep 8
+sudo docker logs --tail 10 "$NAME"
+if [ "$DOMAIN" != "none" ]; then
+  echo "--- Caddy (인증서 발급 상황)"
+  sudo docker logs --tail 15 pbr-caddy
+fi
 echo
-echo "접속: http://$(curl -s -H 'Metadata-Flavor: Google' \
-  http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip 2>/dev/null || echo '<VM 외부 IP>'):8000"
+IP="$(curl -s -H 'Metadata-Flavor: Google' \
+  http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip 2>/dev/null || echo '<VM 외부 IP>')"
+if [ "$DOMAIN" = "none" ]; then
+  echo "접속: http://$IP  또는  http://$IP:8000"
+else
+  echo "접속: https://$DOMAIN   (VM 외부 IP: $IP, DNS의 A 레코드가 이 IP여야 인증서를 받는다)"
+  echo "인증서가 안 받아지면: sudo docker logs pbr-caddy  (방화벽 80 · 443과 DNS부터 확인)"
+fi
 echo "갱신할 때: 데이터를 다시 올린 뒤 'sudo docker restart $NAME', 코드를 바꿨으면 이 스크립트를 다시 실행"

@@ -3840,6 +3840,43 @@ def test_지도_미리보기는_어느_실행의_것인지_밝힌다(client, mon
     assert "가장 최근에 그린" in caption and f">{run}</a>" in caption, caption
 
 
+def test_지도_파일은_좁은_틀용_범례_스타일을_끼워_보낸다(client, monkeypatch, tmp_path):
+    """폰 폭 지도에서 범례가 지도의 1/3을 덮었다(사용자, 1.26.406). 그린 파일을 고치면 지문이 바뀌어 모든 지도가
+    '낡음'이 되므로 `/files`가 내보낼 때 끼운다. 디스크의 파일은 그대로이고, CSV는 손대지 않는다."""
+    original = ('<html><head><meta charset="utf-8"></head><body>'
+                '<div data-mapviz="abc" style="position: fixed; bottom: 24px; left: 24px;">범례</div></body></html>')
+    page = tmp_path / "m.html"
+    page.write_text(original, encoding="utf-8")
+    sheet = tmp_path / "t.csv"
+    sheet.write_bytes(b"a,b\n1,2\n")
+    monkeypatch.setattr(app_module.catalog, "safe_resolve",
+                        lambda rel: {"m.html": page, "t.csv": sheet}.get(rel))
+
+    body = client.get("/files/m.html").text
+    head = body.split("</head>", 1)[0]
+    assert app_module.NARROW_LEGEND_STYLE in head, "범례 스타일이 <head> 안에 없다"
+    assert "@media (max-width: 560px)" in head and "[data-mapviz]" in head, "좁은 틀에서 범례를 겨누지 않는다"
+    assert body.count("data-pbr-narrow-legend") == 1
+    assert page.read_text(encoding="utf-8") == original, "디스크의 지도 파일이 바뀌었다"
+    assert client.get("/files/t.csv").content == b"a,b\n1,2\n", "CSV까지 손댔다"
+
+
+def test_지도_목록은_좁은_화면에서_접어_둔다(client, monkeypatch):
+    """폰에서 분류마다 파일 카드 다섯 장이 이어져 다음 지도까지 화면 몇 번을 넘겨야 했다(사용자, 1.26.406).
+    목록을 `.m-fold`로 감싼다(넓은 화면은 base.html 스크립트가 늘 편다). 파일이 없는 분류는 접지 않는다
+    (안내 한 줄을 접으면 펼쳐야 빈 것을 안다). 미리보기 지도는 접힌 목록 밖에 있어야 한다."""
+    monkeypatch.setattr(app_module.catalog, "list_maps",
+                        lambda: _file_groups({"경로": ["a_05_10 (r).html", "b_05_10 (r).html"], "빈 분류": []}))
+    html = client.get("/maps").text
+    folds = re.findall(r'<details class="m-fold"><summary>(.*?)</summary>(.*?)</details>', html, re.S)
+    assert len(folds) == 1, f"파일이 있는 분류 하나만 접혀야 한다: {len(folds)}"
+    summary, inside = folds[0]
+    assert summary == "경로 파일 2개 보기", summary
+    assert "<table" in inside and "map-preview" not in inside, "목록만 접고 미리보기 지도는 밖에 둔다"
+    css = client.get("/maps").text
+    assert re.search(r"\[data-narrow\] \.map-preview \.map-frame \{[^}]*width: 90%", css), "모바일 지도 폭 90% 규칙이 없다"
+
+
 def test_결과_묶음_내비가_고른_실행을_싣고_다닌다(client):
     """`/kpi?run_label=X`에서 '지도'·'작업지시서'를 누르면 필터가 풀렸다 — href가 고정이었다
     (1.26.284). 결과 묶음 안에서만 싣고(전역 내비·하단 탭은 맨 주소), 회차는 받는 화면

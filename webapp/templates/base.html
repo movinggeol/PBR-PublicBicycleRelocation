@@ -1408,6 +1408,11 @@
 
     /* ④ 지도 iframe은 화면 높이에 맞춘다 (고정 높이면 폰에서 잘리거나 남는다) */
     [data-narrow] .map-frame { height: 65vh; }
+    /* /maps 미리보기 지도는 더 낮고 좁게(1.26.406). 사용자(11-04): *"지도의 세로는 60% 정도로 줄여주고 가로는
+       90%로 줄여서 좌우에 padding 준 것처럼"*. 폰에서 지도 한 장이 화면을 다 먹어(65vh, 최소 420px) 그 아래
+       목록과 다음 분류에 닿으려면 지도 위를 손가락으로 밀어야 했다(지도가 스크롤을 먹는다). 전용 화면(/view)은 그대로. */
+    [data-narrow] .map-preview .map-frame { height: 39vh; min-height: 240px; width: 90%; display: block; margin: 0 auto; }
+    [data-narrow] .map-preview figcaption { width: 90%; margin-left: auto; margin-right: auto; }
 
     /* ⑤ 인쇄는 언제나 종이 배치다 — 모바일 모드를 켠 채 인쇄해도 차량 한 대가
        한 장이어야 한다. 위 규칙이 종이로 새지 않게 되돌린다. */
