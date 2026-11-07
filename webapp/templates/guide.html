@@ -154,14 +154,14 @@
           {%- else %}
           <tr><th scope="row">평균 주행 속도</th><td class="num">{{ speed | round | int }} km/h</td></tr>
           {%- endif %}
-          <tr><th scope="row">한 회차 시간 예산</th><td class="num">{{ time_budget | round | int }}분</td></tr>
+          <tr><th scope="row">한 회차 자체 목표</th><td class="num">{{ time_budget | round | int }}분</td></tr>
         </tbody>
       </table>
     </div>
     <p class="hint" style="margin-top:var(--sp-sm)"><b>투입 상한은 말 그대로 상한입니다.</b>
       실제로 몇 대가 나갈지는 그 회차의 일감이 정합니다. <b>보유 차량 대수와 회차당
       투입 상한</b>은 실행할 때마다 폼에서 바꿀 수 있고, 적재 용량·주행 속도·시간
-      예산은 코드 설정값입니다.</p>
+      자체 목표는 코드 설정값입니다.</p>
   </div>
   <div class="card">
     <h3>오늘은 <b>{{ today_day_type }}</b>입니다</h3>
@@ -331,10 +331,10 @@
         <td class="muted">투입 대비 효율입니다. 조건을 바꿔 가며 비교할 때 유용합니다.</td>
       </tr>
       <tr>
-        <td><b>최장 작업 · 예산 준수</b></td>
+        <td><b>최장 작업 · 목표 준수</b></td>
         <td class="muted">가장 오래 걸린 차량의 작업 시간과,
           {{ time_budget | round | int }}분 안에 작업을 끝낸 차량의 비율.</td>
-        <td class="muted">넘긴 회차는 <b>붉은 배경에 ⚠</b>로 표시됩니다. 시간 예산은
+        <td class="muted">넘긴 회차는 <b>붉은 배경에 ⚠</b>로 표시됩니다. 자체 목표는
           운영 제약이 아니라 연구에서 세운 목표라 <b>넘겨도 집행은 됩니다</b> — 다만
           겨냥한 시간대를 지나 효과가 줄 수 있습니다.</td>
       </tr>
@@ -383,13 +383,13 @@
           기다리거나, 그 화면에서 <b>실행 중단</b>을 누르세요.</td>
       </tr>
       <tr>
-        <td><b>예산을 넘긴 회차가 있습니다</b></td>
+        <td><b>목표를 넘긴 회차가 있습니다</b></td>
         <td class="muted">먼저 폼의 <b>회차당 투입 상한</b>을 보유 대수보다 줄여 두었는지
           보세요 — 줄였다면 일감보다 적게 나가 한 대가 맡는 덩어리가 커집니다(몇 대가
           모자랐는지 실행 기록에 남습니다). 기본값에서는 상한이 보유 대수({{ fleet_size }}대)와
           같아 상한이 원인이 아니고, 그 회차의 한 덩어리에 일감이 몰린 것입니다.
-          시간 예산은 운영 제약이 아니라 목표라 <b>넘겨도 집행은 됩니다.</b> 넘기지 않게
-          짜려면 터미널에서 <code>--enforce-time-budget</code>으로 실행하세요(예산을 넘는
+          자체 목표는 운영 제약이 아니라 목표라 <b>넘겨도 집행은 됩니다.</b> 넘기지 않게
+          짜려면 터미널에서 <code>--enforce-time-budget</code>으로 실행하세요(목표를 넘는
           작업은 미집행으로 남습니다). 상한을 10 → 15~18대로 올려 초과가 60% → 2%로
           떨어진 실측은 상한이 10대이던 1.19.1 이전 이야기입니다.</td>
       </tr>
@@ -484,7 +484,7 @@
           이동 시간 + 자전거를 싣고 내리는 시간이고, 주행은 직선거리에
           {%- if road_model %} 실도로 계수(고정 {{ road_fixed }} + {{ road_speed | round | int }} km/h)를
           {%- else %} {{ speed | round | int }} km/h를{% endif %} 적용해 잡습니다.</td></tr>
-      <tr><td><b>시간 예산</b></td>
+      <tr><td><b>자체 목표</b></td>
         <td class="muted">한 회차를 마치는 <b>목표</b> 시간({{ time_budget | round | int }}분).
           연구에서 세운 값이라 운영 제약이 아닙니다 — 넘겨도 계획은 그대로 집행할 수 있고,
           겨냥한 시간대를 지나 효과가 줄어들 뿐입니다.</td></tr>

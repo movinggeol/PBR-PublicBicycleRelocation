@@ -261,11 +261,11 @@ def test_time_budget_flags_overrun(fleet_client):
     """시간 예산을 넘긴 작업이 화면에 표시된다."""
     html = fleet_client.get("/vehicles").text
 
-    assert "시간 예산 준수" in html
+    assert "자체 목표 준수" in html
     assert "over-budget" in html, "초과 행이 강조되지 않았다"
     # 3건 중 2건만 예산 내 → 67%
     assert "67%" in html
-    assert "1건이 시간 예산을 넘었습니다" in html
+    assert "1건이 자체 목표를 넘었습니다" in html
 
 
 def test_DB에_없으면_CSV로_물러서지_않는다(tmp_path, monkeypatch):
@@ -1361,7 +1361,7 @@ def test_지표의_예산_초과와_배정_이력의_붉은_행은_같은_예산
         html = unescape(c.get(links[0]).text)
     history = _between(html, 'id="assignments"', "</table>")
     assert history.count('<tr class="over-budget">') == 1, "⚠를 따라왔는데 붉은 행이 알림과 다르다"
-    assert "1건이 시간 예산을 넘었습니다" in html
+    assert "1건이 자체 목표를 넘었습니다" in html
     # 예산이 하나뿐이면 그 값을 적는다 — 예전에는 늘 상수(120분)를 적었다
     assert f"{int(budget)}분 안에 완료" in " ".join(html.split())
 
@@ -1393,13 +1393,13 @@ def test_차량으로_좁힌_알림은_범위를_밝히고_없는_타일을_가�
         db.ensure_fleet(conn)
         db.save_assignments(conn, PLAN_NEW, DURATIONS[0], [_work("V01")])
     html = " ".join(unescape(runs_client.get("/vehicles", params={"vehicle_id": "V01"}).text).split())
-    assert "차량 V01의 모든 작업이 시간 예산 안에서 끝납니다" in html, "알림이 범위를 밝히지 않는다"
-    assert "(시간 예산도 이 차량만 셉니다)" in html
+    assert "차량 V01의 모든 작업이 자체 목표 안에서 끝납니다" in html, "알림이 범위를 밝히지 않는다"
+    assert "(자체 목표도 이 차량만 셉니다)" in html
 
     html = " ".join(unescape(runs_client.get("/vehicles", params={"vehicle_id": "V99"}).text).split())
-    assert "시간 예산 준수" not in html.split('id="assignments"')[0], "시험 전제: 예산 타일이 없어야 한다"
+    assert "자체 목표 준수" not in html.split('id="assignments"')[0], "시험 전제: 예산 타일이 없어야 한다"
     assert "<b>V99</b> 한 대만 보고 있습니다." in html
-    assert "시간 예산도" not in html, "그려지지 않은 타일을 가리켰다"
+    assert "자체 목표도" not in html, "그려지지 않은 타일을 가리켰다"
 
 
 def test_여러_링크가_든_칸은_한_덩어리로_감싸고_지도_링크는_단추_줄을_늘리지_않는다(runs_client):

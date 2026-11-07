@@ -1575,7 +1575,7 @@
        data-tip="실행별 개선률·이동거리·결품 시간.">성과 지표</a>
     <a href="/vehicles{{ q_run }}" {% if path.startswith('/vehicles') %}aria-current="page"{% endif %}
        {# 보유 대수는 실행마다 바뀐다 — 내비 풍선에 숫자를 박지 않는다. #}
-       data-tip="차량별 작업량과 시간 예산.">차량 운용</a>
+       data-tip="차량별 작업량과 자체 목표.">차량 운용</a>
     <a href="/maps{{ q_round }}" {% if path.startswith('/maps') or path.startswith('/view') %}aria-current="page"{% endif %}
        data-tip="군집·경로·재고 지도.">지도</a>
     <a href="/orders{{ q_round }}" {% if path.startswith('/orders') %}aria-current="page"{% endif %}

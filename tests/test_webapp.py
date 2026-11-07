@@ -1116,7 +1116,7 @@ def test_KPI_타일에_용어_설명이_붙는다():
     source = inspect.getsource(webapp_app.kpi_page)
     shared = "목표 재고까지 모자란 양을 몇 % 메웠는지입니다."
     assert shared in source, "타일 설명이 표 머리글과 다른 문구다"
-    for label in ("km당 개선", "시간 예산 준수"):
+    for label in ("km당 개선", "자체 목표 준수"):
         assert label in source
     # '한 번에 닿는 범위'는 일감의 크기라 타일에서 내렸다(1.26.358) — 표의 참고 열에만 있다.
     assert '("한 번에 닿는 범위"' not in source
@@ -1140,7 +1140,7 @@ def test_KPI_타일_설명이_표_머리글과_같은_문구다():
     # '회차 비율'이라 적었다)는 두 곳이 **같이 틀려** 있었다(1.26.358). 같은 문구이면서 맞는 문구여야 한다.
     for shared in ("목표 재고까지 모자란 양을 몇 % 메웠는지입니다.",
                    "1km 움직여 줄인 불균형 대수입니다.",
-                   "시간 예산 안에 작업을 끝낸 차량의 비율입니다."):
+                   "자체 목표 안에 작업을 끝낸 차량의 비율입니다."):
         assert shared in source, shared
         assert shared in template, shared
 
@@ -3872,7 +3872,7 @@ def test_예산_준수는_그_회차가_계획될_때의_예산으로_센다(cli
     monkeypatch.setattr(store, "time_budgets", lambda: {("A", "_05_10"): 90.0, ("B", "_05_10"): 120.0})
     html = client.get("/vehicles").text
     assert "2회차 중 1회차가" in " ".join(html.split()), "A는 90분 예산을 넘었는데 상수 120분으로 통과시켰다"
-    assert "각 실행의 시간 예산 안에" in html
+    assert "각 실행의 자체 목표 안에" in html
 
 
 # ── 실행을 따라가는 길 — /maps·/data를 실행으로 좁히기 (1.26.284) ─────────────────

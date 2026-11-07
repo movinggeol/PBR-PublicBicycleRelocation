@@ -1671,8 +1671,8 @@ def kpi_page(request: Request, run_label: Optional[str] = None):
             ("km당 개선", "improvement_per_km", "total_distance_km", "num",
              "1km 움직여 줄인 불균형 대수입니다."),
             # 분모는 회차가 아니라 **차량(군집)** 이다 — `(군집별 소요시간 ≤ 예산).mean()`.
-            ("시간 예산 준수", "time_budget_met", "clusters", "pct",
-             "시간 예산 안에 작업을 끝낸 차량의 비율입니다."),
+            ("자체 목표 준수", "time_budget_met", "clusters", "pct",
+             "자체 목표 안에 작업을 끝낸 차량의 비율입니다."),
         ]:
             now_value = headline(latest, column, weight)
             before = headline(previous, column, weight) if previous is not None else None

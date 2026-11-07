@@ -89,11 +89,11 @@
       <p class="value">{{ last.distance_km }}<span class="unit">km</span></p>
     </div>
     <div class="tile">
-      <p class="label"><span class="tip" data-tip="가장 오래 걸린 차량의 소요시간입니다. 예산을 넘기면 효과가 줄어듭니다.">최장 소요</span></p>
+      <p class="label"><span class="tip" data-tip="가장 오래 걸린 차량의 소요시간입니다. 목표를 넘기면 효과가 줄어듭니다.">최장 소요</span></p>
       {# 지표가 NULL이면 "nan분"이 아니라 "—"다 (1.26.262). #}
       {% set over = last.max_minutes is not none and last.max_minutes > last.budget %}
       <p class="value {% if over %}bad{% endif %}">{% if last.max_minutes is not none %}{{ last.max_minutes | dur }}{% else %}—{% endif %}</p>
-      <p class="sub muted">예산 {{ last.budget | round | int }}분{% if over %} · <b>초과</b>{% endif %}</p>
+      <p class="sub muted">자체 목표 {{ last.budget | round | int }}분{% if over %} · <b>초과</b>{% endif %}</p>
     </div>
   </div>
   {# 카드 바닥 링크는 **이 카드의 실행**으로 보낸다 (1.26.284).

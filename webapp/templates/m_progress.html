@@ -50,9 +50,9 @@
     <div class="sub">{% if kpi.stockout_cut is not none %}{% if kpi.stockout_cut > 0 %}{{ kpi.stockout_cut }}% 감소{% elif kpi.stockout_cut < 0 %}{{ -kpi.stockout_cut }}% 증가{% else %}변화 없음{% endif %}{% elif kpi.stockout_before is not none %}전 {{ kpi.stockout_before | round(2) }}h{% else %}전 값 없음{% endif %}</div></div>
   <div class="m-tile"><div class="label">총 이동 거리</div>
     <div class="value">{% if kpi.distance_km is not none %}{{ kpi.distance_km | round(0) | int }}<small>km</small>{% else %}—{% endif %}</div></div>
-  <div class="m-tile"><div class="label">예산 안 차량</div>
+  <div class="m-tile"><div class="label">목표 안 차량</div>
     <div class="value">{% if kpi.budget_met is not none %}{{ (kpi.budget_met * 100) | round(0) | int }}<small>%</small>{% else %}—{% endif %}</div>
-    {% if kpi.time_budget is not none %}<div class="sub">예산 {{ kpi.time_budget | round(0) | int }}분</div>{% endif %}</div>
+    {% if kpi.time_budget is not none %}<div class="sub">목표 {{ kpi.time_budget | round(0) | int }}분</div>{% endif %}</div>
 </div>
 {% endif %}
 
