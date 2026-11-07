@@ -10,6 +10,13 @@
         href="/static/fonts/PretendardVariable.subset.woff2">
   {% block head_extra %}{% endblock %}
   <script>
+    /* 화면 배율(아래 CSS '화면 배율 85%' 절). 좌표는 보이는 px로 읽히지만 style.left/top에 넣은 값에는
+       배율이 한 번 더 곱해지므로, 넣을 때 이 값으로 나눈다. 배율이 꺼진 폭에서는 1이다. */
+    window.pbrZoom = function () {
+      var z = document.documentElement.currentCSSZoom ||
+              parseFloat(getComputedStyle(document.documentElement).zoom);
+      return z > 0 ? z : 1;
+    };
     // 첫 페인트 전에 테마를 확정한다 — 안 그러면 새로고침마다 화면이 번쩍인다.
     (function () {
       try {
@@ -59,6 +66,23 @@
     /* ── 기본 ── */
     *, *::before, *::after { box-sizing: border-box; }
     html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+    /* ── 화면 배율 85% (2026-11-07 사용자 요청: "크롬 줌 85% 정도 수준이 기본(100%)으로 보이게") ──
+       글자 · 간격 · 폭을 토큰마다 줄이지 않고 뿌리에 `zoom` 하나를 건다. px를 직접 쓴 자리가 이
+       파일에만 460곳이 넘어 토큰만 줄이면 표 · 그래프 · 지도 높이가 따로 논다. 크롬의 85% 확대와
+       같은 결과를 내려면 세 가지를 맞춘다(크롬 151 실측, 버전관리 1.26.420).
+       1) `vw` · `vh`는 배율 전 값에 배율이 한 번 더 곱해진다(50vw가 화면의 42.5%가 된다). 크롬 확대는
+          그대로 화면의 50%다. 그래서 이 파일의 vw · vh는 `var(--page-zoom)`으로 나눈다
+          (지도 틀 iframe.map-frame만 예외: 거기는 배율을 되돌려 실효 배율이 1이다).
+       2) 폭 기준 @media는 배율과 상관없이 실제 창 폭을 본다. 1200px에서 켜던 차례(.toc)는 85% 확대라면
+          창 1020px부터 켜진다 → 배율이 켜지는 폭을 1020px로 두고 차례도 같은 폭에서 켠다.
+       3) 스크립트: getBoundingClientRect · clientX · innerWidth · scrollY는 모두 보이는 px로 일관되지만,
+          `style.left/top`에 넣은 값에는 배율이 한 번 더 곱해진다 → 넣을 때만 `pbrZoom()`으로 나눈다.
+       1020px보다 좁은 창(태블릿 세로 · 폰)과 모바일 배치(`data-narrow`) · 기기 프레임 안은 100% 그대로다.
+       좁은 화면에서 글자를 더 줄이면 읽기 어렵다. 현장 앱(m_base.html)은 이 파일을 쓰지 않아 닿지 않는다. */
+    :root { --page-zoom: 1; }
+    @media (min-width: 1020px) {
+      html:not([data-narrow]):not([data-device]) { zoom: .85; --page-zoom: .85; }
+    }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
       * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
@@ -619,11 +643,11 @@
       position: fixed; z-index: 60; top: 50%; left: 50%; right: auto;
       transform: translate(-10%, -50%);
       width: fit-content;
-      min-width: min(260px, calc(100vw - 2 * var(--sp-md)));
-      max-width: min(560px, calc(100vw - 2 * var(--sp-md)));
+      min-width: min(260px, calc(100vw / var(--page-zoom) - 2 * var(--sp-md)));
+      max-width: min(560px, calc(100vw / var(--page-zoom) - 2 * var(--sp-md)));
       background: var(--surface); border: 1px solid var(--hairline);
       border-radius: var(--r-lg); box-shadow: var(--shadow-float);
-      display: flex; flex-direction: column; max-height: min(70vh, 34rem);
+      display: flex; flex-direction: column; max-height: min(70vh / var(--page-zoom), 34rem);
     }
     .table-panel[hidden] { display: none; }
     /* 끌 수 있는 머리. 손잡이라는 것이 커서로 드러나야 한다. */
@@ -659,7 +683,7 @@
     @media (max-width: 560px) {
       .table-panel {
         top: auto; bottom: 0; left: 0; right: 0; transform: none;
-        width: auto; max-height: 70vh; border-radius: var(--r-lg) var(--r-lg) 0 0;
+        width: auto; max-height: calc(70vh / var(--page-zoom)); border-radius: var(--r-lg) var(--r-lg) 0 0;
         /* 기본 규칙의 폭 상한(min(560px, 100vw - 2*sp-md))을 풀어야 left·right 0이
            먹는다. 안 풀어서 430px 화면에 396px로 서, 오른쪽 34px 틈으로 뒤 카드가
            비치고 오른쪽 둥근 모서리가 화면 가운데 떠 있었다(1.26.195 실측). */
@@ -743,7 +767,7 @@
       border-radius: var(--r-lg); padding: var(--sp-lg);
       overflow: auto; font-size: 13px; line-height: 1.65; letter-spacing: 0;
       font-family: ui-monospace, SFMono-Regular, "SF Mono", "Cascadia Mono", Consolas, monospace;
-      white-space: pre-wrap; word-break: break-all; max-height: 62vh;
+      white-space: pre-wrap; word-break: break-all; max-height: calc(62vh / var(--page-zoom));
     }
 
     /* ════════ 진행 단계 목록 ════════
@@ -924,7 +948,8 @@
        폭이 모자라면 아예 걷는다 — 본문 위에 겹쳐 놓느니 없는 편이 낫다. */
     :root { --toc-w: 176px; }
     .toc { display: none; }
-    @media (min-width: 1200px) {
+    /* 1020px = 1200px × 85%, 배율이 켜지는 폭과 같다(위 '화면 배율 85%' 절). 배율 전에는 1200px였다. */
+    @media (min-width: 1020px) {
       /* 차례가 설 자리를 본문이 **비워 준다.** 이것이 없으면 겹친다.
          본문 상자의 오른쪽 안쪽 끝 = 50vw + 600px. 차례 왼쪽 끝 =
          100vw - sp-lg - toc-w. 둘 사이 거리 = (50vw+600px) - (100vw-sp-lg-toc-w)
@@ -935,14 +960,14 @@
          화면 폭과 무관하게 항상 같은 크기로 겹쳐서 처음엔 계산이 맞는 것처럼
          보였다(1.26.187, Playwright로 좌표를 재고서야 잡았다). */
       :root[data-has-toc] main {
-        padding-right: max(0px, calc(600px + var(--sp-lg) + var(--toc-w) - 50vw));
+        padding-right: max(0px, calc(600px + var(--sp-lg) + var(--toc-w) - 50vw / var(--page-zoom)));
       }
       :root[data-has-toc] .toc {
         display: block; position: fixed; z-index: 40;
         right: var(--sp-lg);
         width: var(--toc-w);
         /* 2단 내비(전역 + 작업 흐름) 아래에서 시작한다. */
-        top: 168px; max-height: calc(100vh - 200px); overflow-y: auto;
+        top: 168px; max-height: calc(100vh / var(--page-zoom) - 200px); overflow-y: auto;
         padding-left: var(--sp-md); border-left: 1px solid var(--hairline);
       }
     }
@@ -1040,12 +1065,12 @@
     .pick-sub { color: var(--ink-4); font-size: var(--fs-fine); }
     .pick-panel {
       position: absolute; z-index: 40; top: calc(100% + 6px); left: 0;
-      width: min(40rem, calc(100vw - 2 * var(--sp-md)));
-      max-height: min(60vh, 30rem); overflow: auto; padding: var(--sp-sm);
+      width: min(40rem, calc(100vw / var(--page-zoom) - 2 * var(--sp-md)));
+      max-height: min(60vh / var(--page-zoom), 30rem); overflow: auto; padding: var(--sp-sm);
       background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-lg);
       box-shadow: var(--shadow-float);
     }
-    details.pick-sm .pick-panel { width: min(24rem, calc(100vw - 2 * var(--sp-md))); }
+    details.pick-sm .pick-panel { width: min(24rem, calc(100vw / var(--page-zoom) - 2 * var(--sp-md))); }
     .pick-group + .pick-group, .pick-all + .pick-group, .pick-all + .pick-items {
       margin-top: var(--sp-xs); padding-top: var(--sp-xs); border-top: 1px solid var(--divider-soft);
     }
@@ -1136,7 +1161,11 @@
     }
 
     /* 지도는 이 앱의 '제품 사진'이다 — 하나뿐인 제품 그림자를 여기에 쓴다(떠 있는 층의 두 단은 따로) */
+    /* 지도 틀은 배율을 되돌린다(실효 배율 1). 배율이 걸린 부모 안의 iframe에서는 Leaflet이 마우스 자리를
+       어긋나게 읽어 마커 툴팁 · 팝업이 거의 안 떴다(크롬 151 실측: 30곳 중 1곳 · 팝업 0, 배율을 끄면 37곳 중 36곳).
+       그래서 이 틀 안의 지도는 100% 크기로 그려지고, 높이는 실효 배율 1이라 vh를 나누지 않는다. */
     iframe.map-frame {
+      zoom: calc(1 / var(--page-zoom));
       width: 100%; height: 76vh; border: 0;
       border-radius: var(--r-lg); background: var(--canvas);
       box-shadow: var(--shadow-product);
@@ -1149,7 +1178,7 @@
        잘려 군집이 어디까지 퍼졌는지가 안 보인다 — 1.5배인 69vh로 올린다.
        전용 화면(76vh)보다는 여전히 낮아서 아래 목록에 스크롤이 닿는다. */
     .map-preview { margin: 0 0 var(--sp-md); }
-    .map-preview .map-frame { height: 69vh; min-height: 420px; }
+    .map-preview .map-frame { height: 69vh; min-height: calc(420px * var(--page-zoom)); }
     .map-preview figcaption { display: block; margin-top: var(--sp-xs); }
     .back { display: inline-block; margin-top: var(--sp-lg); font-size: var(--fs-ui); }
     .preview-table { font-size: var(--fs-fine); }
@@ -1872,8 +1901,9 @@
          위가 모자랄 때만 아래로 내린다. */
       var top = r.top - b.height - gap;
       if (top < gap) top = r.bottom + gap;
-      box.style.left = left + "px";
-      box.style.top = Math.max(gap, Math.min(top, window.innerHeight - b.height - gap)) + "px";
+      var z = pbrZoom();   /* 위 값은 보이는 px라 넣을 때만 배율로 나눈다 */
+      box.style.left = left / z + "px";
+      box.style.top = Math.max(gap, Math.min(top, window.innerHeight - b.height - gap)) / z + "px";
     }
 
     function show(el) {
@@ -2548,9 +2578,15 @@
       var box = panel.getBoundingClientRect();
       panel.style.transform = "none";
       panel.style.right = "auto";
-      panel.style.left = box.left + "px";
-      panel.style.top = box.top + "px";
+      placeAt(panel, box.left, box.top);
       return box;
+    }
+
+    /* 보이는 px 좌표로 창을 놓는다. style에는 배율로 나눠 넣는다(CSS '화면 배율 85%' 절). */
+    function placeAt(panel, left, top) {
+      var z = pbrZoom();
+      panel.style.left = left / z + "px";
+      panel.style.top = top / z + "px";
     }
 
     function clamp(panel) {
@@ -2559,8 +2595,7 @@
       var maxTop = window.innerHeight - box.height - MARGIN;
       var left = Math.min(Math.max(box.left, MARGIN), Math.max(MARGIN, maxLeft));
       var top = Math.min(Math.max(box.top, MARGIN), Math.max(MARGIN, maxTop));
-      panel.style.left = left + "px";
-      panel.style.top = top + "px";
+      placeAt(panel, left, top);
     }
 
     function drag(panel, head) {
@@ -2577,8 +2612,7 @@
         e.preventDefault();
 
         function move(ev) {
-          panel.style.left = (ev.clientX - dx) + "px";
-          panel.style.top = (ev.clientY - dy) + "px";
+          placeAt(panel, ev.clientX - dx, ev.clientY - dy);
         }
         function done() {
           head.removeEventListener("pointermove", move);
@@ -2616,8 +2650,7 @@
     function cascade(panel, depth) {
       if (depth <= 0) return;
       var box = pin(panel);
-      panel.style.left = (box.left + STEP * depth) + "px";
-      panel.style.top = (box.top + STEP * depth) + "px";
+      placeAt(panel, box.left + STEP * depth, box.top + STEP * depth);
     }
 
     pbrHydrators.push(function (root) { root.querySelectorAll("[data-table-open]").forEach(function (trigger) {

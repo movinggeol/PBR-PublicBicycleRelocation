@@ -3399,9 +3399,12 @@ def test_차례가_본문_안쪽_끝에만_머물지_않는다(client, monkeypat
     start = body.index(":root[data-has-toc] .toc {")
     assert "right: var(--sp-lg);" in body[start:start + 300], (
         "차례가 뷰포트 오른쪽 가장자리에 고정 틈으로 붙지 않는다")
-    assert "max(0px, calc(600px + var(--sp-lg) + var(--toc-w) - 50vw))" in body, (
+    # 50vw는 화면 배율(85%, 2026-11-07)로 나눈다. 안 나누면 배율이 켜진 창에서 vw가 한 번 더
+    # 줄어 본문이 크롬 85% 확대보다 좁아지고 추세 그래프가 4열에서 3열로 떨어졌다(실측).
+    assert ("max(0px, calc(600px + var(--sp-lg) + var(--toc-w) - 50vw / var(--page-zoom)))"
+            in body), (
         "본문의 예약 폭이 넓은 화면에서 0으로 줄지 않거나, 차례의 오른쪽 틈(sp-lg)을 "
-        "안 셈해 본문 글자와 차례가 겹친다")
+        "안 셈해 본문 글자와 차례가 겹친다(또는 vw를 화면 배율로 나누지 않았다)")
 
 
 def test_실행_차량운용_화면에도_차례가_붙는다(client):
@@ -3562,11 +3565,49 @@ def test_지도_미리보기는_납작하지도_화면을_다_먹지도_않는�
     """
     body = client.get("/maps").text
     미리보기 = re.search(r"\.map-preview \.map-frame \{ height: (\d+)vh", body)
-    전용 = re.search(r"iframe\.map-frame \{\s*width: 100%; height: (\d+)vh", body)
+    # 지도 틀은 화면 배율을 되돌려(실효 배율 1) vh를 그대로 쓴다(2026-11-07, 아래 배율 시험).
+    전용 = re.search(r"iframe\.map-frame \{\s*zoom: calc\(1 / var\(--page-zoom\)\);"
+                    r"\s*width: 100%; height: (\d+)vh", body)
     assert 미리보기 and 전용, "지도 높이 규칙을 찾지 못했다"
     assert 60 <= int(미리보기.group(1)) < int(전용.group(1)), (
         f"미리보기 {미리보기.group(1)}vh · 전용 {전용.group(1)}vh — "
         "납작하거나, 전용 화면만큼 커져 목록에 닿지 못한다")
+
+
+def test_관제_화면은_85퍼센트_배율이고_좌표와_지도가_어긋나지_않는다(client):
+    """사용자 요청(2026-11-07): *"크롬 줌 85% 정도 수준이 기본(100%)으로 보이게"* (1.26.420).
+
+    `base.html` 뿌리에 `zoom: .85`를 건다. 크롬 85% 확대와 같게 보이려면 세 가지가 함께 가야 한다
+    (크롬 151 실측). 하나라도 빠지면 화면은 뜨지만 어긋난다. 문자열 검사로 지킨다.
+    - vw · vh에는 배율이 한 번 더 곱해진다 → `/ var(--page-zoom)`로 나눈다(지도 틀만 예외).
+    - 지도 iframe은 배율을 되돌린다. 배율이 걸린 부모 안에서 Leaflet이 마우스 자리를 잘못 읽어
+      마커 툴팁이 30곳 중 1곳만 떴다(되돌리면 37곳 중 36곳).
+    - 스크립트가 style.left/top에 넣는 값은 배율로 나눈다(읽는 좌표는 보이는 px라 그대로).
+    좁은 창(1020px 미만) · 모바일 배치 · 기기 프레임은 100% 그대로이고, 현장 앱은 base.html을 안 쓴다.
+    """
+    body = client.get("/kpi").text
+    assert "html:not([data-narrow]):not([data-device]) { zoom: .85; --page-zoom: .85; }" in body
+    assert re.search(r"@media \(min-width: 1020px\) \{\s*html:not\(\[data-narrow\]\)", body), (
+        "배율은 1020px(= 차례가 켜지는 1200px × 85%) 이상에서만 켠다")
+    assert not re.search(r"(?<![-\w])zoom\s*:", client.get("/m").text), (
+        "현장 앱에 배율이 새어 들었다")
+
+    styles = "".join(re.findall(r"<style>(.*?)</style>", body, flags=re.S))
+    css = re.sub(r"/\*.*?\*/", "", styles, flags=re.S)
+    for m in re.finditer(r"\d+(vw|vh)\b", css):
+        rule = css[css.rfind("}", 0, m.start()) + 1:m.start()]
+        if "map-frame" in rule:
+            continue                          # 지도 틀은 실효 배율이 1이다
+        assert css[m.end():m.end() + 20].startswith(" / var(--page-zoom)"), (
+            f"{css[m.start() - 40:m.end() + 20]!r}: vw · vh를 화면 배율로 나누지 않았다")
+    assert re.search(r"iframe\.map-frame \{\s*zoom: calc\(1 / var\(--page-zoom\)\);", css), (
+        "지도 틀이 배율을 되돌리지 않는다. Leaflet 마커 툴팁 · 팝업이 안 뜬다")
+
+    script = "".join(re.findall(r"<script>(.*?)</script>", body, flags=re.S))
+    sets = re.findall(r"\.style\.(?:left|top) = ([^;]+);", script)
+    assert sets, "좌표를 넣는 자리를 찾지 못했다"
+    for expr in sets:
+        assert "/ z" in expr, f"style.left/top = {expr}: 보이는 px를 배율로 나누지 않았다"
 
 
 # ── 웹 대시보드 6차 점검 — 계산 결함 묶음 (1.26.271) ─────────────────────
