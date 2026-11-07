@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}차량 운용 — PBR 대시보드{% endblock %}
+{% block title %}차량 운용 · PBR 대시보드{% endblock %}
 {% block content %}
 {# 오른쪽 차례. 항목은 스크립트가 아래 h2에서 읽는다 — 여기 손으로 적지 않는다. #}
 <div data-toc="이 화면의 절" hidden></div>
@@ -59,7 +59,7 @@
 {# 막대 길이는 **평균과의 차이**다. 0에서 시작하면 21대가 339~402분이라
    전부 같은 길이로 보여, 정작 물으려던 "몰렸나"에 답을 못 했다(1.26.107). #}
 <div class="card viz-card viz-compact">
-  <h3>누적 작업 시간 — 평균과의 차이
+  <h3>누적 작업 시간: 평균과의 차이
     <span class="hint">오른쪽으로 뻗을수록 많이 일한 차량</span></h3>
   {% if workload_svg %}
   <p class="hint" style="margin:0 0 var(--sp-xs)">가운데 세로선이 평균입니다{% if balance and balance.idle %}(출동한 {{ balance.used }}대 기준){% endif %}.</p>
@@ -96,7 +96,7 @@
       {# 기록에 실제로 있는 한 배정이다(`store.vehicle_workload`, 1.26.283) — 예전에는
          실행·회차를 따로 사전순 MAX로 붙여 21대 모두 없는 조합 `sweep-21 _20_05`였다.
          그 차량의 그 회차 지시서로 바로 간다. 실험이면 밝힌다(표는 실험도 합친다). #}
-      <td class="muted" data-label="최근 작업">{% if v.last_run %}<a class="muted" href="/orders?run_label={{ v.last_run | urlencode }}{% if v.last_duration %}&duration={{ v.last_duration | urlencode }}{% endif %}&vehicle={{ v.vehicle_id | urlencode }}" title="이 차량의 그 회차 작업지시서">{{ v.last_run }} · {{ duration_labels.get(v.last_duration, v.last_duration) }}</a>{% if v.last_kind and v.last_kind != "plan" %} <span class="hint">{{ kind_labels.get(v.last_kind, v.last_kind) }}</span>{% endif %}{% else %}—{% endif %}</td>
+      <td class="muted" data-label="최근 작업">{% if v.last_run %}<a class="muted" href="/orders?run_label={{ v.last_run | urlencode }}{% if v.last_duration %}&duration={{ v.last_duration | urlencode }}{% endif %}&vehicle={{ v.vehicle_id | urlencode }}" title="이 차량의 그 회차 작업지시서">{{ v.last_run }} · {{ duration_labels.get(v.last_duration, v.last_duration) }}</a>{% if v.last_kind and v.last_kind != "plan" %} <span class="hint">{{ kind_labels.get(v.last_kind, v.last_kind) }}</span>{% endif %}{% else %}-{% endif %}</td>
       {# 사람이 보는 표의 링크는 화면으로 보낸다 — 이 차량의 배정 이력을 이 화면에서 좁혀 본다
          (1.26.284, `/run` 저장된 실행이 1.26.264에 고친 것과 같은 부류). 원자료 JSON은 작게 남긴다. #}
       <td data-label="이력"><span class="row-links"><a href="/vehicles?vehicle_id={{ v.vehicle_id | urlencode }}#assignments" title="이 차량의 배정 이력만 봅니다">이력</a> ·
@@ -156,7 +156,7 @@
       <td class="muted" data-label="">{{ a.run_label }}</td>
       {# 회차는 위 '최근 작업'과 같은 사람 이름이다 — 한 화면에서 `_05_10`과
          '05~10시 (출근)'이 섞였다(1.26.283 검토). 정렬은 코드로 한다(`data-sort`). #}
-      <td data-label="회차" data-sort="{{ a.duration or '' }}">{{ duration_labels.get(a.duration, a.duration) or "—" }}</td>
+      <td data-label="회차" data-sort="{{ a.duration or '' }}">{{ duration_labels.get(a.duration, a.duration) or "-" }}</td>
       {# 한 번 누르면 **그 차량의 그 회차 지시서** 한 장이다(1.26.284) — 예전에는 글자뿐이라 ⚠ 행의
          경로를 보려면 /orders에서 실행·회차·차량 칩을 다시 골라야 했다. 이름은 `_sheet_name`과
          같은 값(차량 ID)이다. #}

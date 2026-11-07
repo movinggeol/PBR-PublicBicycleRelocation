@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}지도 — PBR 대시보드{% endblock %}
+{% block title %}지도 · PBR 대시보드{% endblock %}
 {% block head_extra %}
 <style>
   /* 구별 불균형 완화 (1.26.316) — 지도(왼쪽) · 표(오른쪽), 좁으면 위아래. */
@@ -78,8 +78,8 @@
         <td class="num" data-label="작업 대여소">{{ r.worked }} / {{ r.stations }}곳</td>
         <td class="num muted" data-label="수거 · 배송">{{ r.pick }} · {{ r.drop }}대</td>
         <td class="num" data-label="불균형 (대)">{{ "%.0f" | format(r.before) }} → {{ "%.0f" | format(r.after) }}</td>
-        <td class="num" data-label="완화율"><b>{% if r.cut_pct is not none %}{{ r.cut_pct }}%{% else %}—{% endif %}</b></td>
-        <td class="num muted" data-label="작업 대여소 개선률">{% if r.worked_pct is not none %}{{ r.worked_pct }}%{% else %}—{% endif %}</td>
+        <td class="num" data-label="완화율"><b>{% if r.cut_pct is not none %}{{ r.cut_pct }}%{% else %}-{% endif %}</b></td>
+        <td class="num muted" data-label="작업 대여소 개선률">{% if r.worked_pct is not none %}{{ r.worked_pct }}%{% else %}-{% endif %}</td>
       </tr>
       {% endfor %}
       </tbody>
@@ -88,7 +88,7 @@
         <td class="num" data-label="작업 대여소">{{ district.total.worked }} / {{ district.total.stations }}곳</td>
         <td class="num" data-label="수거 · 배송">{{ district.total.pick }} · {{ district.total.drop }}대</td>
         <td class="num" data-label="불균형 (대)">{{ "%.0f" | format(district.total.before) }} → {{ "%.0f" | format(district.total.after) }}</td>
-        <td class="num" data-label="완화율">{% if district.total.cut_pct is not none %}{{ district.total.cut_pct }}%{% else %}—{% endif %}</td>
+        <td class="num" data-label="완화율">{% if district.total.cut_pct is not none %}{{ district.total.cut_pct }}%{% else %}-{% endif %}</td>
         <td data-label=""></td>
       </tr></tfoot>
     </table>

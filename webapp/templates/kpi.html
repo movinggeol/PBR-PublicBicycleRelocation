@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}성과 지표 — PBR 대시보드{% endblock %}
+{% block title %}성과 지표 · PBR 대시보드{% endblock %}
 
 {% macro fmt(value, kind) -%}
-  {%- if value is none -%}—
+  {%- if value is none -%}-
   {%- elif kind == "pct" -%}{{ (value * 100) | round(0) | int }}%
   {%- else -%}{{ value | round(2) }}
   {%- endif -%}
@@ -11,7 +11,7 @@
 {# 계산하지 못한 지표는 DB에 NULL로 남는다(db.KPI_FIELDS). 그대로 round에 넣으면
    화면 전체가 500으로 죽으므로 정수 표기도 결측을 먼저 거른다. #}
 {% macro whole(value, unit) -%}
-  {%- if value is none -%}—
+  {%- if value is none -%}-
   {%- else -%}{{ value | round(0) | int }}{{ unit }}
   {%- endif -%}
 {%- endmacro %}
@@ -171,7 +171,7 @@
           <tbody>
           {% for label, value in t.table %}
           <tr><td class="wrap muted">{{ label }}</td>
-            <td class="num">{% if value is none %}—{% elif t.unit == "분" %}{{ value | dur }}{% else %}{{ "%.2f" | format(value) }}{{ t.unit }}{% endif %}</td></tr>
+            <td class="num">{% if value is none %}-{% elif t.unit == "분" %}{{ value | dur }}{% else %}{{ "%.2f" | format(value) }}{{ t.unit }}{% endif %}</td></tr>
           {% endfor %}
           </tbody>
         </table>
@@ -275,27 +275,27 @@
          않는다 — 위 칩과 겹치고, `.muted` 칸이라 72행 전부에 밑줄이 선다. #}
       <td class="tight" data-label="회차" data-sort="{{ r.duration or '' }}">
         {%- if r.duration %}<a href="/orders?run_label={{ r.run_label | urlencode }}&duration={{ r.duration | urlencode }}" title="이 회차의 작업지시서">{{ duration_labels.get(r.duration, r.duration) }}</a>
-        {%- else %}—{% endif %}</td>
+        {%- else %}-{% endif %}</td>
       <td class="num muted col-more" data-label="대여소">{{ whole(r.stations, "") }}</td>
       <td class="num muted" data-label="차량">{{ whole(r.vehicles_used, "") }}</td>
       <td class="num" data-label="옮긴 대수">{{ whole(r.bikes_moved, "") }}</td>
       <td class="num" data-label="개선률"><b>{{ fmt(r.avg_improvement_rate, "pct") }}</b></td>
       <td class="num col-more" data-label="한 번에 닿는 범위">{{ fmt(r.reachable_ratio, "pct") }}</td>
-      <td class="num muted col-more" data-label="격차 (중앙/최대)">{% if r.gap_median is not none %}{{ r.gap_median | round | int }} / {% if r.gap_max is not none %}{{ r.gap_max | round | int }}{% else %}—{% endif %}대{% else %}—{% endif %}</td>
+      <td class="num muted col-more" data-label="격차 (중앙/최대)">{% if r.gap_median is not none %}{{ r.gap_median | round | int }} / {% if r.gap_max is not none %}{{ r.gap_max | round | int }}{% else %}-{% endif %}대{% else %}-{% endif %}</td>
       <td class="num muted" data-label="이동거리">{{ whole(r.total_distance_km, " km") }}</td>
       {% set over = r.time_budget_minutes and r.max_cluster_minutes
                     and r.max_cluster_minutes > r.time_budget_minutes %}
       {# 지표 행에는 차량 ID가 없다 — 넘긴 차량은 /vehicles 배정 이력의 붉은 행이다(1.26.284). #}
       <td class="num{% if over %} over-budget{% endif %}" data-label="최장 작업" data-sort="{{ r.max_cluster_minutes if r.max_cluster_minutes is not none else '' }}">
-        {% if over %}<a href="/vehicles?run_label={{ r.run_label | urlencode }}#assignments" title="어느 차량이 자체 목표를 넘었는지 — 차량 운용의 배정 이력">{{ r.max_cluster_minutes | dur }} ⚠</a>
+        {% if over %}<a href="/vehicles?run_label={{ r.run_label | urlencode }}#assignments" title="어느 차량이 자체 목표를 넘었는지 보기(차량 운용의 배정 이력)">{{ r.max_cluster_minutes | dur }} ⚠</a>
         {%- else %}{{ r.max_cluster_minutes | dur }}{% endif %}
       </td>
       <td class="num col-more" data-label="목표 준수">{{ fmt(r.time_budget_met, "pct") }}</td>
       <td class="num col-more" data-label="km당 개선">{{ fmt(r.improvement_per_km, "num") }}</td>
       <td class="muted col-more" data-label="결품 (전→후)">
         {% if r.stockout_hours_before is not none %}
-          {{ r.stockout_hours_before | round(2) }} → {% if r.stockout_hours_after is not none %}{{ r.stockout_hours_after | round(2) }}{% else %}—{% endif %}시간
-        {% else %}—{% endif %}
+          {{ r.stockout_hours_before | round(2) }} → {% if r.stockout_hours_after is not none %}{{ r.stockout_hours_after | round(2) }}{% else %}-{% endif %}시간
+        {% else %}-{% endif %}
       </td>
     </tr>
     {% endfor %}
@@ -351,11 +351,11 @@
       {# 회차 이름은 위 표·산점도와 같은 한 벌(`kpi_view.duration_name`), 정렬은 코드(1.26.284). #}
       <td data-label="" data-sort="{{ r.duration }}"><b>{{ r.duration_name }}</b></td>
       <td class="num muted" data-label="월쌍">{{ r.pairs }}</td>
-      <td class="num" data-label="예측 오차">{{ r.mae | round(2) if r.mae is not none else "—" }}대</td>
-      <td class="num muted" data-label="기준선">{{ r.baseline | round(2) if r.baseline is not none else "—" }}대</td>
-      <td class="num" data-label="기준선 대비">{% if r.gain is not none %}{{ "%+.1f" | format(r.gain) }}%{% if r.gain <= 0 %} ⚠{% endif %}{% else %}—{% endif %}</td>
-      <td class="num" data-label="커버리지">{{ r.coverage | round(1) if r.coverage is not none else "—" }}%</td>
-      <td class="num muted" data-label="편향">{{ "%+.2f" | format(r.bias) if r.bias is not none else "—" }}대</td>
+      <td class="num" data-label="예측 오차">{{ r.mae | round(2) if r.mae is not none else "-" }}대</td>
+      <td class="num muted" data-label="기준선">{{ r.baseline | round(2) if r.baseline is not none else "-" }}대</td>
+      <td class="num" data-label="기준선 대비">{% if r.gain is not none %}{{ "%+.1f" | format(r.gain) }}%{% if r.gain <= 0 %} ⚠{% endif %}{% else %}-{% endif %}</td>
+      <td class="num" data-label="커버리지">{{ r.coverage | round(1) if r.coverage is not none else "-" }}%</td>
+      <td class="num muted" data-label="편향">{{ "%+.2f" | format(r.bias) if r.bias is not none else "-" }}대</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -400,7 +400,7 @@
   <div class="table-wrap">{{ heat_svg | safe }}</div>
   {{ heat_legend | safe }}
   <div class="viz-table">
-    <button type="button" class="table-open" data-table-open="수요 구조 — 요일 × 시간">표로 보기</button>
+    <button type="button" class="table-open" data-table-open="수요 구조: 요일 × 시간">표로 보기</button>
     <div class="table-panel" hidden>
       <table>
         <thead><tr><th scope="col">요일</th>{% for c in heat.cols %}<th scope="col" class="num">{{ c }}</th>{% endfor %}</tr></thead>
@@ -408,7 +408,7 @@
         {% for r in range(heat.rows | length) %}
         <tr><td><b>{{ heat.rows[r] }}</b></td>
           {% for v in heat.matrix[r] %}
-          <td class="num muted">{% if v is not none %}{{ v | round(0) | int }}{% else %}—{% endif %}</td>
+          <td class="num muted">{% if v is not none %}{{ v | round(0) | int }}{% else %}-{% endif %}</td>
           {% endfor %}
         </tr>
         {% endfor %}

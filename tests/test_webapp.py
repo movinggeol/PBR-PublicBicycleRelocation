@@ -4083,7 +4083,7 @@ def test_지표_표의_회차는_이름이고_누르면_지시서다(client, mon
     name = project_config.DURATION_LABELS["_10_15"]
     assert ('data-label="회차" data-sort="_10_15"><a href="/orders?run_label=2026-08-27%2023'
             '&duration=_10_15" title="이 회차의 작업지시서">' + name + "</a>") in table
-    assert 'data-label="회차" data-sort="">—</td>' in table, "회차가 비었는데 링크를 만들었다"
+    assert 'data-label="회차" data-sort="">-</td>' in table, "회차가 비었는데 링크를 만들었다"
     assert ">_10_15<" not in table, "표에 회차 코드가 남았다"
     # 136분 > 예산 120분 — ⚠ 칸만 링크다
     assert 'href="/vehicles?run_label=2026-08-27%2023#assignments"' in table
@@ -4398,7 +4398,7 @@ def test_열람_전용이면_수집_현황이_사본이라_밝힌다(client, mon
 
     monkeypatch.setenv("PBR_READONLY", "1")
     body = client.get("/collect").text
-    assert "열람 전용 사본입니다 — 2026-11-02 22:40 기준" in body
+    assert "열람 전용 사본입니다(2026-11-02 22:40 기준)" in body
     assert "00:00-23:50" in body, "수집 PC의 창이 아니라 기본값으로 셌다"
     assert "새 관측이 없습니다" not in body, "사본인데 멈춤 경보를 띄운다"
     assert "등록된 수집 작업을 찾지 못했습니다" not in body

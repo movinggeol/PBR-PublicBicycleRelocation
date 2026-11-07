@@ -309,16 +309,16 @@ def months_apart(older: str, newer: str):
 # 써라"*). 계산 · CSV · DB의 값은 그대로 초나 분 숫자로 둔다 — 바뀌는 것은 글뿐이다. 웹은 같은 함수를 Jinja
 # 필터(`dur` · `secs` · `est`)로 쓰고, 실행 폼의 스크립트(index.html `분()`)는 format_estimate()와 같은 규칙이다.
 def format_seconds(seconds, signed: bool = False) -> str:
-    """초 → '1시간 2분 5초' · '5분 36초' · '40초' — 0이 아닌 칸만 적는다. 값이 없으면 '—'.
+    """초 → '1시간 2분 5초' · '5분 36초' · '40초' — 0이 아닌 칸만 적는다. 값이 없으면 '-'.
 
     `signed`면 양수에 '+'를 붙인다(평균 대비 차이처럼 방향이 뜻을 갖는 자리). 음수는 언제나 '−'.
     """
     try:
         value = float(seconds)
     except Exception:                      # None · 글자 · 템플릿의 정의 안 된 값(jinja2 Undefined는 float()에서 예외를 낸다)
-        return "—"
+        return "-"
     if value != value:                     # NaN
-        return "—"
+        return "-"
     total = int(abs(value) + 0.5)          # 반올림을 스크립트(Math.round)와 맞춘다 — round()는 짝수 쪽으로 간다
     hours, rest = divmod(total, 3600)
     minutes, secs = divmod(rest, 60)
@@ -335,8 +335,8 @@ def format_minutes(minutes, signed: bool = False) -> str:
     """분(소수) → format_seconds()의 글. 화면의 '187.1분'이 '3시간 7분 6초'가 된다."""
     try:
         return format_seconds(float(minutes) * 60, signed=signed)
-    except Exception:                      # format_seconds와 같다 — 템플릿의 정의 안 된 값도 '—'
-        return "—"
+    except Exception:                      # format_seconds와 같다 — 템플릿의 정의 안 된 값도 '-'
+        return "-"
 
 
 def format_estimate(seconds) -> str:
@@ -348,9 +348,9 @@ def format_estimate(seconds) -> str:
     try:
         value = max(float(seconds), 0.0)
     except Exception:
-        return "—"
+        return "-"
     if value != value:
-        return "—"
+        return "-"
     step = 5 if value < 60 else 10
     return format_seconds(int(value / step + 0.5) * step)
 

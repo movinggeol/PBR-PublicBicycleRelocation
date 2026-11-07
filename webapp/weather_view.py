@@ -85,8 +85,8 @@ def _headline(state: str) -> str:
 
 def _note(state: str) -> str:
     if state in ("raining", "rained_today"):
-        return (f"비 오는 날 실제 재배치 필요량은 평소의 {RAINY_NEED_SHARE} 수준이었습니다"
-                " — 계획량을 그대로 내보내면 오지 않을 수요를 채우러 가게 됩니다."
+        return (f"비 오는 날 실제 재배치 필요량은 평소의 {RAINY_NEED_SHARE} 수준이었습니다."
+                " 계획량을 그대로 내보내면 오지 않을 수요를 채우러 가게 됩니다."
                 " 계획은 이 사실을 모르니 현장에서 감안하세요.")
     if state == "unknown":
         return ("겨울(11~3월)에는 기상청이 강수량을 3시간마다만 줍니다."
@@ -259,15 +259,15 @@ def _forecast_headline(state: str, when: str) -> str:
 
 def _forecast_note(state: str) -> str:
     if state == "rain_expected":
-        return (f"비 오는 날 실제 재배치 필요량은 평소의 {RAINY_NEED_SHARE} 수준이었습니다"
-                " — 계획량을 그대로 내보내면 오지 않을 수요를 채우러 가게 됩니다."
+        return (f"비 오는 날 실제 재배치 필요량은 평소의 {RAINY_NEED_SHARE} 수준이었습니다."
+                " 계획량을 그대로 내보내면 오지 않을 수요를 채우러 가게 됩니다."
                 " 계획은 이 사실을 모르니 현장에서 감안하세요.")
     if state == "drizzle_expected":
         return ("예보된 양이 적습니다. 약한 비는 이용에 거의 영향이 없었습니다"
-                f" — 문턱은 {weather.RAIN_MM}mm입니다.")
+                f" (문턱은 {weather.RAIN_MM}mm입니다).")
     if state == "maybe_rain":
         return ("강수확률만 있고 예보 강수량은 확인하지 못했습니다."
-                " **확률은 '얼마나 올지'를 말하지 않습니다** — 나가기 전에 다시 보세요.")
+                " **확률은 '얼마나 올지'를 말하지 않습니다**. 나가기 전에 다시 보세요.")
     if state == "unknown":
         return "예보를 못 받았습니다. 계획은 평소대로 내보내되 현장에서 하늘을 보세요."
     return "평소대로 계획을 내보내면 됩니다."

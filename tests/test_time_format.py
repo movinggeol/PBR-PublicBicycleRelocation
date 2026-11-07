@@ -39,21 +39,21 @@ def test_부호와_빈값():
     assert format_seconds(-90) == "−1분 30초"
     assert format_seconds(90, signed=True) == "+1분 30초"
     assert format_seconds(0, signed=True) == "0초", "0에 부호를 붙이면 '평균보다 많다'로 읽힌다"
-    assert format_seconds(None) == "—"
-    assert format_seconds(float("nan")) == "—"
-    assert format_seconds("abc") == "—"
+    assert format_seconds(None) == "-"
+    assert format_seconds(float("nan")) == "-"
+    assert format_seconds("abc") == "-"
 
 
 def test_템플릿에서_값이_없어도_죽지_않는다():
     """`{{ sheet.minutes }}`는 값이 없으면 빈 글이었는데 `| dur`는 jinja2의 '정의 안 된 값'을 float()로 바꾸다 예외를 냈다
-    (작업지시서 화면 전체가 500 — `test_대조_링크가_보던_차량을_달고_간다`가 잡았다). 없는 값은 '—'다."""
+    (작업지시서 화면 전체가 500 — `test_대조_링크가_보던_차량을_달고_간다`가 잡았다). 없는 값은 '-'다(1.26.421 전에는 줄표였다)."""
     import jinja2
 
     env = jinja2.Environment()
     env.filters["dur"] = format_minutes
     env.filters["est"] = format_estimate
-    assert env.from_string("{{ s.minutes | dur }}").render(s={}) == "—"
-    assert env.from_string("{{ x | est }}").render() == "—"
+    assert env.from_string("{{ s.minutes | dur }}").render(s={}) == "-"
+    assert env.from_string("{{ x | est }}").render() == "-"
 
 
 def test_분을_받아도_같은_글이다():
@@ -61,7 +61,7 @@ def test_분을_받아도_같은_글이다():
     assert format_minutes(187.1) == "3시간 7분 6초"
     assert format_minutes(5.5) == "5분 30초"
     assert format_minutes(-1.5, signed=True) == "−1분 30초"
-    assert format_minutes(None) == "—"
+    assert format_minutes(None) == "-"
 
 
 @pytest.mark.parametrize("seconds, text", [
@@ -70,7 +70,7 @@ def test_분을_받아도_같은_글이다():
     (336, "5분 40초"),          # 그 위는 10초 단위 — 예상은 실행마다 수십 초 흔들린다
     (375.8, "6분 20초"),
     (496.0, "8분 20초"),
-    (None, "—"),
+    (None, "-"),
 ])
 def test_예상은_10초_단위로_반올림한다(seconds, text):
     assert format_estimate(seconds) == text

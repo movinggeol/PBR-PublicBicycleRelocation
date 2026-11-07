@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}작업지시서 — PBR 대시보드{% endblock %}
+{% block title %}작업지시서 · PBR 대시보드{% endblock %}
 
 {# 좌표·이름 복사 단추 (TODO 20). 지시서와 대조표가 **같은 것**을 쓰도록
    매크로로 둔다 — 따로 적으면 한쪽만 고치게 된다.
@@ -226,7 +226,7 @@
   {% if current_group and current_group.kind == "plan" %}{% set kind_name = "계획" %}
   {% elif current_group %}{% set kind_name = folded_kinds | selectattr("kind", "equalto", current_group.kind) | map(attribute="label") | first | default("", true) %}
   {% else %}{% set kind_name = "" %}{% endif %}
-  {% call pick("run-pick", "실행", run_label or "—", kind_name) %}
+  {% call pick("run-pick", "실행", run_label or "-", kind_name) %}
     {% if plan_groups %}
     {% call pick_group("계획", plan_groups | length) %}
       {% for g in plan_groups %}{{ run_item(g, run_label) }}{% endfor %}
@@ -358,15 +358,15 @@
         {{ copy_buttons(stop) }}</td>
       <td data-label="할 일" class="{% if stop.action == 'return' %}back{% else %}{{ stop.action }}{% endif %}">
         {{ stop.action_label }}</td>
-      <td class="num" data-label="수량">{% if stop.qty %}{{ stop.qty }}대{% else %}—{% endif %}</td>
+      <td class="num" data-label="수량">{% if stop.qty %}{{ stop.qty }}대{% else %}-{% endif %}</td>
       <td class="num muted" data-label="싣고 남는 수">{{ stop.load_after }}대</td>
       <td class="num muted" data-label="이동">{{ stop.distance_km }} km</td>
       <td class="num muted" data-label="누적">{{ stop.minutes | dur | replace("분 ", "분\u00a0") }}</td>
-      <td class="num muted" data-label="계획 때 재고">{{ stop.planned_stock if stop.planned_stock is not none else "—" }}</td>
-      <td class="num" data-label="지금 재고">{{ stop.live_stock if stop.live_stock is not none else "—" }}</td>
-      <td class="num muted" data-label="차이">{% if stop.delta is not none %}{{ "%+d" | format(stop.delta) }}{% else %}—{% endif %}</td>
-      <td class="num" data-label="가능">{{ stop.possible if stop.possible is not none else "—" }}</td>
-      <td data-label="판정">{{ stop.status or "—" }}</td>
+      <td class="num muted" data-label="계획 때 재고">{{ stop.planned_stock if stop.planned_stock is not none else "-" }}</td>
+      <td class="num" data-label="지금 재고">{{ stop.live_stock if stop.live_stock is not none else "-" }}</td>
+      <td class="num muted" data-label="차이">{% if stop.delta is not none %}{{ "%+d" | format(stop.delta) }}{% else %}-{% endif %}</td>
+      <td class="num" data-label="가능">{{ stop.possible if stop.possible is not none else "-" }}</td>
+      <td data-label="판정">{{ stop.status or "-" }}</td>
       <td class="wrap muted" data-label="비고">{{ stop.note or "" }}</td>
     </tr>
     {% endfor %}
@@ -432,7 +432,7 @@
         {{ copy_buttons(stop) }}</td>
       <td data-label="할 일" class="{% if stop.action == 'return' %}back{% else %}{{ stop.action }}{% endif %}">
         {{ stop.action_label }}</td>
-      <td class="num" data-label="수량">{% if stop.qty %}{{ stop.qty }}대{% else %}—{% endif %}</td>
+      <td class="num" data-label="수량">{% if stop.qty %}{{ stop.qty }}대{% else %}-{% endif %}</td>
       <td class="num muted" data-label="싣고 남는 수">{{ stop.load_after }}대</td>
       <td class="num muted" data-label="이동">{{ stop.distance_km }} km</td>
       <td class="num muted" data-label="누적">{{ stop.minutes | dur | replace("분 ", "분\u00a0") }}</td>

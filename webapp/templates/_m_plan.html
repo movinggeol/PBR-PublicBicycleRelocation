@@ -6,7 +6,7 @@
 <p class="m-sub">{{ duration_label or duration }} · 계획 <span class="num">{{ run_label }}</span></p>
 {% if current_group and current_group.kind and current_group.kind != 'plan' %}
 <p class="m-alert warn"><span class="m-badge is-warn">{{ kind_labels.get(current_group.kind, current_group.kind) }}</span>
-  운영 계획이 아닙니다 — <a href="{{ tabs.me }}#plans">계획 확인</a></p>
+  운영 계획이 아닙니다. <a href="{{ tabs.me }}#plans">계획 확인</a></p>
 {% endif %}
 {% if field_durations | length > 1 %}
 <nav class="m-seg" aria-label="회차">

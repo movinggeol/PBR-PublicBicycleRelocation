@@ -748,7 +748,7 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
     # ("Legend")에 회색 2px 테두리라, 같은 실행의 산출물인데 다른 도구처럼
     # 보였다(1.26.75 조사 → 1.26.80 채택).
     m.get_root().html.add_child(folium.Element(legend_html(
-        "범례 — 재고 현황",
+        "범례: 재고 현황",
         [(swatch_circle(DROP_COLOR), DROP_LABEL),
          (swatch_circle(PICK_COLOR), PICK_LABEL),
          # 크기로 값을 말했으면 **눈금도 줘야** 읽을 수 있다. 마커 반지름이
@@ -764,7 +764,7 @@ def demand_satisfaction_map(reloc_df: pd.DataFrame, imbalance_df: pd.DataFrame, 
          (swatch_size_scale([3, 6, 9], ["≤3대", "6대", "9대"]), ""),
          (swatch_circle_dashed(), "점선 = 오히려 나빠진 곳")],
         note="원 크기는 불균형 해소량, 원이 진할수록 개선률이 높습니다.<br>"
-             "가장 작은 원은 <b>3대 이하가 모두 같은 크기</b>입니다 — 정확한 값은 "
+             "가장 작은 원은 <b>3대 이하가 모두 같은 크기</b>입니다. 정확한 값은 "
              "점을 눌러 '개선량'에서 보세요.<br>"
              # 이 지도는 진작 팝업이 달려 있었는데 범례가 그 말을 안 했다 —
              # "커서를 대면"까지만 읽고 누를 생각을 못 한다(1.26.209).

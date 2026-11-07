@@ -174,7 +174,7 @@ def make_clustered_map(durations: list):
         #    세로의 2/3를 먹는다(실측). 레이어 컨트롤이 이미 군집을 하나씩
         #    껐다 켤 수 있으므로, 펴 두면 같은 정보가 두 벌 보인다.
         m.get_root().html.add_child(folium.Element(legend_html(
-            "범례 — 군집",
+            "범례: 군집",
             [(swatch_circle(cluster_color(c), str(c)), f"군집 {c}")
              for c in unique_clusters],
             collapse_after=0, collapse_label="군집",

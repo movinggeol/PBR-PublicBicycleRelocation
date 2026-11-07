@@ -177,14 +177,14 @@ def map_svg(rows: list, width: int = 520) -> str:
     by_name = {r["name"]: r for r in rows}
     top = max((r["cut_pct"] or 0) for r in rows) or 1
     parts = [f'<svg viewBox="0 0 {width} {height}" class="viz district-map" role="img" '
-             f'aria-label="구별 불균형 완화율 지도 — 같은 값이 아래 표에 있습니다">']
+             f'aria-label="구별 불균형 완화율 지도. 같은 값이 아래 표에 있습니다">']
     labels = []
     for d in ds:
         r = by_name.get(d["name"], {})
         pct = r.get("cut_pct")
         shade = 0.12 + 0.68 * (max(pct, 0) / top) if pct is not None else 0.05
         tip = (f'data-tip-title="{d["name"]}" data-tip="불균형 {r.get("before", 0):g} → {r.get("after", 0):g}대'
-               f' ({"—" if pct is None else f"{pct:g}% 완화"})" '
+               f' ({"-" if pct is None else f"{pct:g}% 완화"})" '
                f'data-tip-sub="작업 대여소 {r.get("worked", 0)}곳 / {r.get("stations", 0)}곳"')
         for ring in d["rings"]:
             path = "M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in map(xy, ring)) + " Z"
@@ -196,7 +196,7 @@ def map_svg(rows: list, width: int = 520) -> str:
         cy = sum(xy(p)[1] for p in ring) / len(ring)
         labels.append(f'<text x="{cx:.1f}" y="{cy - 4:.1f}" class="district-name" text-anchor="middle">{d["name"]}</text>'
                       f'<text x="{cx:.1f}" y="{cy + 17:.1f}" class="district-value" text-anchor="middle">'
-                      f'{"—" if pct is None else f"{pct:g}%"}</text>')
+                      f'{"-" if pct is None else f"{pct:g}%"}</text>')
     parts.extend(labels)        # 글자는 모든 면 위에 — 옆 구의 면에 가리지 않게
     parts.append("</svg>")
     return "".join(parts)

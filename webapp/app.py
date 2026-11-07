@@ -164,7 +164,7 @@ def cross_origin(request: Request) -> Optional[str]:
 @app.middleware("http")
 async def same_origin_guard(request: Request, call_next):
     if (source := cross_origin(request)) is not None:
-        detail = f"다른 사이트({source})에서 보낸 요청이라 받지 않았습니다 — 이 화면에서 다시 하십시오."
+        detail = f"다른 사이트({source})에서 보낸 요청이라 받지 않았습니다. 이 화면에서 다시 하십시오."
         if not _wants_html(request):
             return JSONResponse({"detail": detail}, status_code=403)
         return templates.TemplateResponse(
@@ -257,7 +257,7 @@ def server_error(request: Request, exc: Exception):
         request, "error.html",
         {"code": 500, "title": ERROR_TITLES[500],
          "detail": f"{type(exc).__name__}: {exc}"[:300]
-                   + " — 서버 로그에 자세한 내용이 있습니다."},
+                   + " (서버 로그에 자세한 내용이 있습니다)"},
         status_code=500)
 
 
@@ -506,15 +506,15 @@ def check_run_label(value: str) -> Optional[str]:
     bad = sorted(ch for ch in set(value) if ch in _LABEL_FORBIDDEN)
     if bad:
         return ("실행 이름에 파일 이름으로 쓸 수 없는 글자가 있습니다: "
-                + " ".join(bad) + " — 예: 2026-09-21 14")
+                + " ".join(bad) + " (예: 2026-09-21 14)")
     if any(ord(ch) < 32 for ch in value):
         return "실행 이름에 제어 문자가 있습니다."
     if ".." in value:
-        return "실행 이름에 '..'을 쓸 수 없습니다 — 파일 경로로 읽힙니다."
+        return "실행 이름에 '..'을 쓸 수 없습니다. 파일 경로로 읽힙니다."
     if value.startswith("-"):
         # `["--now", "-테스트"]`로 넘어가 argparse가 값이 아니라 옵션으로 읽는다 — 파이프라인이
         # 곧바로 "expected one argument"로 죽고 까닭은 로그에만 남았다(1.26.408).
-        return "실행 이름은 '-'로 시작할 수 없습니다 — 명령 옵션으로 읽힙니다."
+        return "실행 이름은 '-'로 시작할 수 없습니다. 명령 옵션으로 읽힙니다."
     if len(value) > RUN_LABEL_MAX_LEN:
         return f"실행 이름이 너무 깁니다({len(value)}자, 최대 {RUN_LABEL_MAX_LEN}자)."
     return None
@@ -958,7 +958,7 @@ def create_run(
     if raw_path and (wanted := (period.strip() or latest_period())) \
             and wanted not in store.periods_with_rentals() \
             and not (PROJECT_ROOT / raw_path).is_file():
-        return invalid(f"원천 대여 이력 CSV가 없습니다: {raw_path} — "
+        return invalid(f"원천 대여 이력 CSV가 없습니다: {raw_path}. "
                        f"'{wanted}'은 DB에 없어 이 파일이 꼭 필요합니다.")
 
     # 기간·시간대는 값이 조금만 어긋나도 한참 뒤 단계에서 파일을 못 찾고 멈춘다.
@@ -1298,6 +1298,12 @@ def orders_live(request: Request, run_label: Optional[str] = None,
         return templates.TemplateResponse(request, "orders.html", context)
 
     compared = orders.compare_stock(planned, live)
+    # 현장 앱이 이어 받을 수 있게 받은 재고 표를 남긴다(1.26.421). 지문은 차량으로 좁히기 **전**
+    # 전체 계획의 것이어야 현장 앱(`_field_context`)이 낸 지문과 맞는다.
+    full = context if not vehicle else _orders_context(context["run_label"], context["duration"])
+    _remember_control_check(context["run_label"], context["duration"],
+                            mobile_view.plan_fingerprint(full["sheets"], full["sheet_names"]),
+                            live, fetched_at)
     live_sheets = orders.build_live(
         context["run_label"], context["duration"], compared,
         sheets=context["_all_sheets"])
@@ -1354,6 +1360,12 @@ def _field_context(request: Request, run_label: Optional[str], duration: Optiona
     # (실행, 회차)라 둘을 싣고, 지도 바탕도 여기서 넘긴다(템플릿에 주소를 박지 않는다).
     plan.update({"run_label": run_label, "duration": duration, "mine": mine,
                  "tiles": mobile_view.tile_source()})
+    # 관제가 이 계획을 지금 재고와 대조했으면 그 시각을 싣는다(1.26.421). 경로 안내는 열릴 때 그 기록으로
+    # 판정을 받아 그리고(`/m/live?source=control`), 오늘 작업은 한 줄로 알린다.
+    check = _control_check(run_label, duration, plan.get("fp", ""))
+    plan["control_check"] = None if check is None else {
+        "checked_at": time.strftime("%H:%M", time.localtime(check["at"])),
+        "age_min": int((time.time() - check["at"]) // 60)}
     # 탭은 **주소에 있던** 실행·회차만 싣고 다닌다 — base.html 3단 내비와 같은 방식이다.
     # 고른 값을 늘 박아 두면, 새 계획이 나온 뒤에도 탭을 오가는 동안 옛 계획에 묶인다.
     carried = {k: request.query_params.get(k) for k in ("run_label", "duration")}
@@ -1448,11 +1460,43 @@ def _field_live_stations():
         return frame, now
 
 
+# ── 관제 대조를 현장 앱이 이어 받는다 (1.26.421) ──
+# 사용자 요청(2026-11-07): "'지금 재고와 대조하기'를 했으면 현장앱 화면에서도 그게 반영되도록 하자".
+# 관제가 `/orders/live`로 대조할 때 받은 재고 표를 (실행, 회차)마다 하나 기억해 두고, 현장 앱 경로 안내가
+# 열릴 때 그 표로 판정해 보여 준다(`/m/live?source=control`). 타슈 API를 다시 부르지 않는다. 판정 규칙은
+# 기사가 누르는 재판정과 같고, 이 기기의 완료 체크도 그대로 반영한다(남은 곳만 판정 · 적재를 이어 셈).
+# - 계획 지문이 다르면(같은 라벨로 다시 돌린 계획) 쓰지 않는다: 방문 번호가 바뀌어 판정이 엉뚱한 곳에 붙는다.
+# - 서버 메모리에만 둔다. 재고는 몇 시간이면 낡는 값이라 디스크에 남길 만하지 않고, 서버를 다시 띄우면
+#   사라진다. CONTROL_CHECK_TTL이 지나면 보이지 않는다(한 회차는 길어야 5시간이다).
+CONTROL_CHECK_TTL = 6 * 3600
+_control_checks: dict = {}
+_control_lock = threading.Lock()
+
+
+def _remember_control_check(run_label: str, duration: str, fp: str, frame, fetched_at: float) -> None:
+    if not run_label or not duration:
+        return
+    with _control_lock:
+        _control_checks[(run_label, duration)] = {"frame": frame, "at": fetched_at, "fp": fp}
+
+
+def _control_check(run_label: Optional[str], duration: Optional[str], fp: str) -> Optional[dict]:
+    """그 계획(지문까지 같은)을 관제가 대조한 기록. 없거나 낡았으면 None."""
+    with _control_lock:
+        check = _control_checks.get((run_label, duration))
+    if not check or check["fp"] != fp or time.time() - check["at"] > CONTROL_CHECK_TTL:
+        return None
+    return check
+
+
 @app.get("/m/live")
 def field_live(request: Request, run_label: Optional[str] = None,
                duration: Optional[str] = None, vehicle: Optional[str] = None,
-               done: str = "", fp: str = ""):
+               done: str = "", fp: str = "", source: str = ""):
     """현장 앱 — **작업 중에** 남은 방문지를 지금 재고로 다시 판정한다(JSON).
+
+    `source=control`이면 타슈 API를 부르지 않고 관제가 `/orders/live`로 대조할 때 받은 재고 표로
+    판정한다(1.26.421, 경로 안내가 열릴 때 스크립트가 부른다). 그 기록이 없으면 404 `{"none": true}`.
 
     `/orders/live`(관제 화면, 출발 전 대조)와 같은 판정 규칙(`orders.compare_stock`)을 쓰되 둘을
     더한다 — 끝낸 방문지(`done=1,2,5`, 이 기기의 체크)는 빼고, 남은 방문지를 순서대로 걸으며
@@ -1469,16 +1513,24 @@ def field_live(request: Request, run_label: Optional[str] = None,
     if sheet is None:
         return JSONResponse({"ok": False, "error": "이 회차에 이 차량의 경로가 없습니다."},
                             status_code=404)
-    if fp and fp != mobile_view.plan_fingerprint(sheets, names):
-        return JSONResponse({"ok": False, "error": "계획이 바뀌었습니다 — 화면을 새로 고친 뒤 다시 판정하세요."},
+    current_fp = mobile_view.plan_fingerprint(sheets, names)
+    if fp and fp != current_fp:
+        return JSONResponse({"ok": False, "error": "계획이 바뀌었습니다. 화면을 새로 고친 뒤 다시 판정하세요."},
                             status_code=409)
     # isdecimal이다 — isdigit은 위첨자 '²'도 참으로 보는데 int('²')는 ValueError라 500이 났다.
     finished = {int(x) for x in done.split(",") if x.strip().isdecimal()}
 
-    try:
-        live, fetched_at = _field_live_stations()
-    except tashu.TashuError as err:
-        return JSONResponse({"ok": False, "error": str(err)}, status_code=502)
+    if source == "control":
+        check = _control_check(context["run_label"], context["duration"], current_fp)
+        if check is None:
+            return JSONResponse({"ok": False, "none": True,
+                                 "error": "이 계획을 관제에서 대조한 기록이 없습니다."}, status_code=404)
+        live, fetched_at = check["frame"], check["at"]
+    else:
+        try:
+            live, fetched_at = _field_live_stations()
+        except tashu.TashuError as err:
+            return JSONResponse({"ok": False, "error": str(err)}, status_code=502)
 
     planned = orders.planned_work(context["run_label"], context["duration"],
                                   frames=context["_frames"])
@@ -1486,6 +1538,7 @@ def field_live(request: Request, run_label: Optional[str] = None,
     judged = orders.rejudge_route(sheet["stops"], orders.compare_stock(planned, live), finished)
     return JSONResponse({
         "ok": True,
+        "source": "control" if source == "control" else "field",
         "vehicle": target,
         "checked_at": time.strftime("%H:%M:%S", time.localtime(fetched_at)),
         "age_sec": int(time.time() - fetched_at),
@@ -1912,7 +1965,7 @@ def vehicles_page(request: Request, run_label: Optional[str] = None, page: int =
         worked_minutes = sorted_wl.loc[sorted_wl["rounds"] > 0, "minutes"]
         workload_svg = charts.deviation_hbar(
             sorted_wl["vehicle_id"].tolist(), sorted_wl["minutes"].tolist(),
-            title="차량별 누적 작업 시간 — 출동한 차량 평균과의 차이", unit="분",
+            title="차량별 누적 작업 시간: 출동한 차량 평균과의 차이", unit="분",
             fmt=format_minutes,              # "+64.8분" → "+1시간 4분 48초"(2026-10-06)
             baseline=float(worked_minutes.mean()),
             baseline_label="출동한 차량 평균",

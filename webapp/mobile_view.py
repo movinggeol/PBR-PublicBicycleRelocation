@@ -92,7 +92,7 @@ def hours_minutes(minutes) -> str:
     """92.4 → '1시간 33분', 40 → '40분'. 올림(위 `clock`과 같은 이유)."""
     value = _num(minutes)
     if value is None:
-        return "—"
+        return "-"
     total = math.ceil(max(value, 0))
     hours, rest = divmod(total, 60)
     if hours and rest:

@@ -881,7 +881,7 @@ def test_최근_작업은_기록에_실제로_있는_한_배정이다(tmp_path, 
     for vehicle, row in rows.items():
         cell = cells[vehicle]
         if row["last_run"] is None:
-            assert cell.strip() == "—", f"{vehicle}: 출동한 적 없는데 최근 작업을 적었다: {cell}"
+            assert cell.strip() == "-", f"{vehicle}: 출동한 적 없는데 최근 작업을 적었다: {cell}"
             continue
         href = (f"/orders?run_label={quote(row['last_run'])}"
                 f"&duration={row['last_duration']}&vehicle={vehicle}")

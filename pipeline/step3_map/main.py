@@ -548,7 +548,7 @@ def make_vrp_map(depot: dict, pick_drop: pd.DataFrame, vrp_plan: pd.DataFrame,
     legend_rows += [(swatch_line(cluster_color(c)), f"군집 {c} 경로")
                     for c in unique_clusters]
     m.get_root().html.add_child(folium.Element(legend_html(
-        "범례 — 경로", legend_rows,
+        "범례: 경로", legend_rows,
         collapse_after=4, collapse_label="군집",
         note="점에 커서를 대면 요약이,<br>누르면 자세한 내용이 뜹니다.")))
 

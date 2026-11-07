@@ -533,7 +533,7 @@ def read_log_tail(job: Job, max_lines: int = 300, text: Optional[str] = None) ->
 def _missing_log_note(job: Job) -> str:
     if job.is_running:
         return "(로그가 아직 없습니다)"
-    return "(로그가 남아 있지 않습니다 — 오래된 실행이라 정리되었습니다)"
+    return "(로그가 남아 있지 않습니다. 오래된 실행이라 정리되었습니다)"
 
 
 # 작업이 끝났을 때 부를 함수들. 화면 쪽 캐시(순수요 히트맵 등)를 비우는 데

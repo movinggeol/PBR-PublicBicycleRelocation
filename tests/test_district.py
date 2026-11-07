@@ -35,5 +35,6 @@ def test_지도는_다섯_구를_그리고_값을_글자로도_적는다():
             for n, p in [("동구", 10.0), ("중구", 20.0), ("서구", None), ("유성구", 25.0), ("대덕구", 0.0)]]
     svg = dv.map_svg(rows)
     assert svg.count("<path") == 5
-    assert "25%" in svg and "—" in svg, "값이 없는 구는 0이 아니라 —로 적는다"
+    assert "25%" in svg and 'class="district-value" text-anchor="middle">-</text>' in svg, (
+        "값이 없는 구는 0이 아니라 -로 적는다")
     assert 'role="img"' in svg

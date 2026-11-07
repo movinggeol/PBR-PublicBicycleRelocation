@@ -83,7 +83,7 @@ def _window(readonly: bool = False) -> tuple:
     if readonly:
         _since, start, end, interval = tool.WINDOW_HISTORY[-1]
         return (f"{start:%H:%M}-{end:%H:%M}", interval,
-                "열람 전용 사본 — 수집 PC에 등록된 창", True)
+                "열람 전용 사본: 수집 PC에 등록된 창", True)
     found = None
     try:
         found = tool.registered_args()
@@ -95,7 +95,7 @@ def _window(readonly: bool = False) -> tuple:
                 f"등록된 작업 '{tool.TASK_NAME}'",
                 bool(found.get("include_holidays", True)))
     return (tool.DEFAULT_WINDOW, tool.DEFAULT_INTERVAL,
-            "기본값 — 등록된 작업을 찾지 못했습니다", True)
+            "기본값(등록된 작업을 찾지 못했습니다)", True)
 
 
 def context(readonly: bool = False) -> dict:

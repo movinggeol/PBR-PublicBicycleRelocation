@@ -454,7 +454,7 @@
     <a class="m-brand" href="{{ tabs.today }}">PBR</a>
     {# 사진 시안의 프로필 자리. 로그인이 없으므로 '내 차량'이 신원을 대신한다. #}
     <a class="m-chip m-hit{% if not mine %} is-empty{% endif %}" href="{{ tabs.me }}"
-       aria-label="{% if mine %}내 차량 {{ mine }} — 바꾸기{% else %}내 차량 고르기{% endif %}">
+       aria-label="{% if mine %}내 차량 {{ mine }}, 바꾸기{% else %}내 차량 고르기{% endif %}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16V8.5A1.5 1.5 0 0 1 4.5 7H14v9"/><path d="M14 10h3.6l2.9 3.2V16H14"/><circle cx="7" cy="17" r="1.8"/><circle cx="17" cy="17" r="1.8"/></svg>
       {% if mine %}{{ mine }}{% else %}차량 고르기{% endif %}</a>
   </div>
@@ -463,7 +463,7 @@
 <main id="main">
 {# 체크를 저장하지 못하는 브라우저(프라이빗 모드 등)에서만 뜬다 — 공용 스크립트가 켠다. #}
 <p class="m-alert warn" id="m-store-warn" role="status" hidden>이 브라우저는 체크 기록을 저장하지
-  못합니다 — 새로 고치면 사라집니다.</p>
+  못합니다. 새로 고치면 사라집니다.</p>
 {% block content %}{% endblock %}
 </main>
 
@@ -646,7 +646,7 @@
       opts = opts || {};
       if (!box) return null;
       if (!plan || !plan.vehicles.length) { fallback(box, "그릴 경로가 없습니다."); return null; }
-      if (!window.L) { fallback(box, "지도를 불러오지 못했습니다 — 인터넷 연결이 필요합니다. 아래 목록으로 진행하세요."); return null; }
+      if (!window.L) { fallback(box, "지도를 불러오지 못했습니다. 인터넷 연결이 필요합니다. 아래 목록으로 진행하세요."); return null; }
       if (!plan.tiles || !plan.tiles.url) { fallback(box, "지도 바탕을 정하지 못했습니다(MAP_TILES). 아래 목록으로 진행하세요."); return null; }
       box.innerHTML = "";
       // 확대 단추는 오른쪽 위(Apple 지도와 같은 자리) — 왼쪽 위에 두면 북서쪽 차고지 표지를 덮는다.
@@ -708,7 +708,7 @@
       // 여백은 표지 반지름만큼만 — 32px이면 지도를 210px로 줄인 뒤 확대가 한 단계 내려가
       // 대여소가 가운데에 뭉쳐 보였다(390px 실측, 1.26.308).
       map.fitBounds(bounds, { padding: [14, 14], maxZoom: 16 });
-      credit(box, noRoad ? (opts.only ? "실도로 경로가 기록되지 않은 계획이라 선 없이 번호만 보입니다 — 길은 '안내 시작'이 찾습니다."
+      credit(box, noRoad ? (opts.only ? "실도로 경로가 기록되지 않은 계획이라 선 없이 번호만 보입니다. 길은 '안내 시작'이 찾습니다."
                                       : "실도로 경로가 없는 차량 " + noRoad + "대는 선 없이 점만 보입니다.") : null);
       return { map: map, pins: pins };
     }

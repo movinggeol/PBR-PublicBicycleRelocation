@@ -46,7 +46,7 @@
    같은 규칙 · 같은 문구다. 예전에는 여기만 "2~4분"을 하드코딩으로 냈다(2026-10-14 — 옛 안내의
    "보통 5~10분"처럼 사람이 적은 숫자는 조건이 바뀐 뒤에도 남는다). EDA를 못 넣은 사정도 진행
    화면과 같은 `_estimate_note()` 말로 붙인다. #}
-<div class="alert"><span><b>계획을 계산하고 있습니다</b> — {{ running.id }}
+<div class="alert"><span><b>계획을 계산하고 있습니다</b>: {{ running.id }}
   {%- if running_minutes is not none %} (예상 {{ running_minutes }}{% if running_note %} · {{ running_note }}{% endif %}){% endif %}.
   <a href="/runs/{{ running.id }}">진행 상황 보기</a></span></div>
 {% endif %}
@@ -74,7 +74,7 @@
   <div class="tiles">
     <div class="tile">
       <p class="label"><span class="tip" data-tip="자전거가 없어 빌리지 못한 시간입니다(대여소·일 평균). 낮을수록 좋습니다.">결품 시간</span></p>
-      <p class="value">{% if last.stockout_after is not none %}{{ last.stockout_after }}<span class="unit">h</span>{% else %}—{% endif %}</p>
+      <p class="value">{% if last.stockout_after is not none %}{{ last.stockout_after }}<span class="unit">h</span>{% else %}-{% endif %}</p>
       {# 비율은 `/kpi` 결품 타일과 같은 함수(`kpi_view.stockout_cut_pct`)이고, 부호에 따라 말을 바꾼다 —
          예전에는 결품이 늘어도 '-3.0% 감소'로 찍혔다(1.26.284). #}
       <p class="sub muted">{% if last.stockout_before is not none %}재배치 전 {{ last.stockout_before }}h{% if last.cut_pct is not none %} · <b>{% if last.cut_pct > 0 %}{{ last.cut_pct }}% 감소{% elif last.cut_pct < 0 %}{{ -last.cut_pct }}% 증가{% else %}변화 없음{% endif %}</b>{% endif %}{% else %}재배치 전 값이 없습니다{% endif %}</p>
@@ -92,7 +92,7 @@
       <p class="label"><span class="tip" data-tip="가장 오래 걸린 차량의 소요시간입니다. 목표를 넘기면 효과가 줄어듭니다.">최장 소요</span></p>
       {# 지표가 NULL이면 "nan분"이 아니라 "—"다 (1.26.262). #}
       {% set over = last.max_minutes is not none and last.max_minutes > last.budget %}
-      <p class="value {% if over %}bad{% endif %}">{% if last.max_minutes is not none %}{{ last.max_minutes | dur }}{% else %}—{% endif %}</p>
+      <p class="value {% if over %}bad{% endif %}">{% if last.max_minutes is not none %}{{ last.max_minutes | dur }}{% else %}-{% endif %}</p>
       <p class="sub muted">자체 목표 {{ last.budget | round | int }}분{% if over %} · <b>초과</b>{% endif %}</p>
     </div>
   </div>

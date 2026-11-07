@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}재고 수집 — PBR 대시보드{% endblock %}
+{% block title %}재고 수집 · PBR 대시보드{% endblock %}
 {% block content %}
 {# 오른쪽 차례. 항목은 스크립트가 아래 h2에서 읽는다 — 여기 손으로 적지 않는다. #}
 <div data-toc="이 화면의 절" hidden></div>
@@ -31,7 +31,7 @@
 {# 열람 전용(클라우드 데모)은 올린 시점의 사본이다 — 멈춤 경보 대신 언제 사본인지 밝힌다(collect_view.context). #}
 {% if snapshot %}
 <div class="alert">
-  <span><b>열람 전용 사본입니다 — {{ snapshot }} 기준.</b> 수집은 로컬 PC에서 계속되고, 이 화면은 사본을 다시 올리기 전까지 바뀌지 않습니다.</span>
+  <span><b>열람 전용 사본입니다({{ snapshot }} 기준).</b> 수집은 로컬 PC에서 계속되고, 이 화면은 사본을 다시 올리기 전까지 바뀌지 않습니다.</span>
 </div>
 {% endif %}
 

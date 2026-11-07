@@ -56,8 +56,8 @@ def test_소요_시간_표기():
     assert mobile_view.hours_minutes(92.4) == "1시간 33분"
     assert mobile_view.hours_minutes(40) == "40분"
     assert mobile_view.hours_minutes(120) == "2시간"
-    assert mobile_view.hours_minutes(None) == "—"
-    assert mobile_view.hours_minutes(float("nan")) == "—"
+    assert mobile_view.hours_minutes(None) == "-"
+    assert mobile_view.hours_minutes(float("nan")) == "-"
     # 타일은 숫자·단위를 쪼개 쓴다 — 통째 글자가 360px에서 칸 밖으로 넘쳤다(실측).
     assert mobile_view.hours_minutes_parts(130) == [(2, "시간"), (10, "분")]
     assert mobile_view.hours_minutes_parts(120) == [(2, "시간")]
@@ -594,3 +594,68 @@ def test_계획이_바뀌었거나_차량이_없거나_API가_죽으면_말로_�
     monkeypatch.setattr(tashu, "fetch_stations", boom)
     res = _judge(client)
     assert res.status_code == 502 and "TASHU_API_KEY" in res.json()["error"]
+
+
+# ─────────────── 관제 대조를 현장 앱이 이어 받는다 (1.26.421) ───────────────
+
+@pytest.fixture
+def no_control(monkeypatch):
+    """관제 대조 기록은 서버 메모리에 남으므로 테스트마다 비운다."""
+    from webapp import app as webapp_app
+    monkeypatch.setattr(webapp_app, "_control_checks", {})
+    return webapp_app
+
+
+def _control(client, **params):
+    return client.get("/orders/live", params={"run_label": LABEL, "duration": DURATION, **params})
+
+
+def test_관제가_대조하면_현장_앱이_그_재고로_판정하고_API를_다시_부르지_않는다(client, live, no_control):
+    """사용자 요청(2026-11-07): *"'지금 재고와 대조하기'를 했으면 현장앱 화면에서도 그게 반영되도록 하자"*.
+    예전에는 관제의 대조와 현장 앱의 재판정이 같은 규칙을 쓰면서도 서로의 결과를 몰랐다."""
+    res = _judge(client, source="control")
+    assert res.status_code == 404 and res.json()["none"] is True, "대조 전에 기록이 있다고 답했다"
+    assert "지금 재고와 대조했습니다" not in client.get("/m").text
+    assert live == []
+
+    assert _control(client).status_code == 200
+    assert len(live) == 1
+    data = _judge(client, source="control").json()
+    assert data["ok"] and data["source"] == "control"
+    assert len(live) == 1, "관제가 받은 표로 판정하는데 타슈 API를 다시 불렀다"
+    by_no = {r["no"]: r for r in data["stops"]}
+    assert [by_no[n]["status"] for n in (1, 2, 3)] == ["부족", "부족", "불가"], \
+        "기사가 누르는 재판정과 같은 규칙이어야 한다"
+    # 이 기기의 완료 체크도 그대로 반영한다(남은 곳만 판정 · 적재를 이어 셈).
+    by_no = {r["no"]: r for r in _judge(client, source="control", done="1").json()["stops"]}
+    assert by_no[1]["status"] == "완료" and by_no[2]["status"] == by_no[3]["status"] == "가능"
+
+    today = client.get("/m").text
+    assert "지금 재고와 대조했습니다" in today
+    assert '"control_check": {' in today, "경로 안내 스크립트가 읽을 대조 시각이 계획 JSON에 없다"
+    assert 'ask("control")' in client.get("/m/route?vehicle=V01").text
+
+
+def test_차량으로_좁혀_대조해도_전체_계획의_지문으로_남긴다(client, live, no_control):
+    """관제가 한 대만 보며 대조해도(`?vehicle=V01`) 현장 앱이 내는 지문은 전체 계획의 것이다.
+    좁힌 지시서로 지문을 내면 둘이 영영 맞지 않는다."""
+    assert _control(client, vehicle="V01").status_code == 200
+    assert _judge(client, source="control").json()["ok"]
+
+
+def test_지문이_다르거나_낡은_대조는_쓰지_않는다(client, live, no_control):
+    """같은 라벨로 다시 돌린 계획은 방문 번호가 바뀌어 판정이 엉뚱한 곳에 붙는다. 재고는 몇 시간이면 낡는다."""
+    import time
+    webapp_app = no_control
+    _control(client)
+    (check,) = webapp_app._control_checks.values()
+    fp, at = check["fp"], check["at"]
+
+    check["fp"] = "옛지문"
+    assert _judge(client, source="control").status_code == 404
+    assert "지금 재고와 대조했습니다" not in client.get("/m").text
+
+    check.update(fp=fp, at=time.time() - webapp_app.CONTROL_CHECK_TTL - 1)
+    assert _judge(client, source="control").status_code == 404
+    check["at"] = at
+    assert _judge(client, source="control").status_code == 200

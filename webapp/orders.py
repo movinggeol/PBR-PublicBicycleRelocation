@@ -502,7 +502,7 @@ def rejudge_route(stops: list, compared: pd.DataFrame, done=()) -> list:
                 status = "부족" if can > 0 else "불가"
                 note = (f"실어 온 자전거가 {load}대뿐이라 {need}대 중 {can}대만 내릴 수 있습니다"
                         if can > 0 else "실어 온 자전거가 없어 내릴 것이 없습니다")
-                advice = "앞 수거지에서 덜 실은 만큼입니다 — 남은 수거지에서 더 실을 수 있으면 메우세요"
+                advice = "앞 수거지에서 덜 실은 만큼입니다. 남은 수거지에서 더 실을 수 있으면 메우세요"
             if possible is not None:
                 possible = can
             load -= can

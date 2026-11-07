@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}다음 회차 예상 — PBR 대시보드{% endblock %}
+{% block title %}다음 회차 예상 · PBR 대시보드{% endblock %}
 {% block content %}
 <div data-toc="이 화면의 절" hidden></div>
 
@@ -78,7 +78,7 @@
 <h2>이 목록을 읽는 법</h2>
 <p class="hint">목표 재고는 같은 요일 구분·회차의 가장 최근 계획(<code>{{ plan_label }}</code>, {{ period }} 통계)에서 가져옵니다.
   평일 검증에서 매 시각 격차가 큰 50곳 가운데 실제로 대상이 된 비율은 {{ hours }}시간 뒤 수거 {{ validated['수거'] }}% ·
-  배송 {{ validated['배송'] }}%였습니다{% if day_type == '휴일' %} — <b>휴일은 아직 재지 않았습니다</b>(관측한 휴일이 적습니다){% endif %}.
+  배송 {{ validated['배송'] }}%였습니다{% if day_type == '휴일' %}. <b>휴일은 아직 재지 않았습니다</b>(관측한 휴일이 적습니다){% endif %}.
   계획을 바꾸지 않고 보여 주기만 합니다.</p>
 {% endif %}
 {% endblock %}

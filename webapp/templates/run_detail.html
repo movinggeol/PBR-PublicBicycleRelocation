@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ run_label or ("실행 " ~ job.id) }} — PBR 대시보드{% endblock %}
+{% block title %}{{ run_label or ("실행 " ~ job.id) }} · PBR 대시보드{% endblock %}
 
 {% block head_extra %}
 {# 진행 중이면 3초마다 /api/runs/{id}를 받아 **바뀐 칸만** 고친다(아래 스크립트,
@@ -132,7 +132,7 @@
   <table>
     <tbody>
       <tr><th scope="row" style="width:9rem">시작</th><td>{{ job.started_at }}</td></tr>
-      <tr><th scope="row">종료</th><td>{{ job.finished_at or "—" }}</td></tr>
+      <tr><th scope="row">종료</th><td>{{ job.finished_at or "-" }}</td></tr>
       {# 예상과 실제를 **나란히** 둔다. 예상만 보여 주면 그게 맞았는지 아무도
          모르고, 틀린 채로 남는다 — 다음 예상이 이 기록에서 나오기 때문에
          어긋남이 눈에 보여야 한다(1.26.214). #}
@@ -140,9 +140,9 @@
         {%- if elapsed_text is not none %}{{ elapsed_text }}{% if job.is_running %} 경과{% endif %}
           {%- if estimate_minutes is not none %} <span class="muted">(예상 {{ estimate_minutes }}{% if estimate_note %} · {{ estimate_note }}{% endif %})</span>{% endif %}
         {%- elif estimate_minutes is not none %}<span class="muted">예상 {{ estimate_minutes }}{% if estimate_note %} · {{ estimate_note }}{% endif %}</span>
-        {%- else %}—{% endif %}</td></tr>
+        {%- else %}-{% endif %}</td></tr>
       <tr><th scope="row"><span class="tip" data-tip="0이면 정상 종료입니다. 그 밖의 값은 어딘가에서 오류가 났다는 뜻입니다.">종료 코드</span></th>
-          <td>{{ job.returncode if job.returncode is not none else "—" }}</td></tr>
+          <td>{{ job.returncode if job.returncode is not none else "-" }}</td></tr>
       <tr><th scope="row">인자</th><td class="muted wrap">{{ " ".join(job.args) or "(기본값)" }}</td></tr>
     </tbody>
   </table>
@@ -211,7 +211,7 @@
       } else if (est) {
         text = "예상 " + est;
       } else {
-        text = "—";
+        text = "-";
       }
       el.innerHTML = "";
       /* 예상은 흐리게 — 서버 템플릿과 같은 모양이어야 첫 화면과 갱신된 화면이 다르지 않다 */
