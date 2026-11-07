@@ -59,6 +59,32 @@ app = FastAPI(title="PBR 파이프라인 대시보드", docs_url="/api/docs")
 # 화면 모듈을 알면 층이 거꾸로 된다.
 jobs.add_finished_hook(lambda job: kpi_view.reset_cache())
 
+
+def _push_plan_after_run(job) -> None:
+    """`PBR_PUSH_AFTER_RUN=1`이면 계획이 성공으로 끝난 뒤 그 회차를 클라우드 서버로 보낸다.
+
+    로컬이 계획을 세우고 서버는 보여 주기만 하는 구성이다(`tools/push_plan.py`). **꺼져 있는 것이 기본**이고
+    열람 전용 서버에서는 하지 않는다. VM이 꺼져 있거나 보내기가 실패해도 계획은 이미 로컬에 있으므로
+    경고만 남기고 넘어간다 — 완료 훅이 던지면 안 된다. 보내는 데 수십 초가 걸려 스레드로 돌린다."""
+    if not _env_on("PBR_PUSH_AFTER_RUN") or readonly_enabled() or job.status != "success":
+        return
+    label = jobs.job_label(job)
+    if not label:
+        return
+
+    def work():
+        try:
+            from tools import push_plan
+            code = push_plan.push(label)
+            print(f"[알림] 서버로 보내기 {'끝' if code == 0 else '실패'}: {label}")
+        except BaseException as err:                       # noqa: BLE001 — SystemExit 포함
+            print(f"[경고] 서버로 보내기 실패: {type(err).__name__}: {err}")
+
+    threading.Thread(target=work, name="push-plan", daemon=True).start()
+
+
+jobs.add_finished_hook(_push_plan_after_run)
+
 _HERE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(_HERE / "templates"))
 # 글꼴을 같이 담아 서빙한다 — 인터넷이 끊겨도 화면이 같아야 한다.

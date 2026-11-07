@@ -286,6 +286,26 @@ gcloud compute firewall-rules update pbr-web-443 --disabled
 - **로컬 수집기와 같은 키**라 한도를 같이 쓴다. 타슈의 일일 한도는 문서에 없다.
 - 옛 계획을 지금 재고와 대조하면 모든 대여소가 어긋나 보인다. 계획 시각과의 거리를 화면에 밝히는 일과, 계획 표만 작게 올리는 절차는 이어서 한다.
 
+## 계획 보내기 (`tools/push_plan.py`, 2026-11-07)
+
+계획은 로컬이 세우고 서버는 보여 주기만 한다. 서버에 계획을 넣는 길은 이것 하나다(웹의 `POST`는 막혀 있다).
+
+```
+python tools/push_plan.py --list                     # 보낼 수 있는 라벨
+python tools/push_plan.py "2026-11-07 19"            # 한 회차 (생략하면 가장 최근 계획)
+python tools/push_plan.py "2026-11-07 19" --dry-run  # 명령만 보여 준다
+```
+
+- **DB 전체를 올리지 않는다.** `tools/transfer_run.py`가 그 라벨의 표만 내보내고(2026-11-07 19 회차: 5,880행 · 1.3MB), VM에서 `docker exec pbr-web python tools/transfer_run.py --import ... --overwrite`로 합친다. 서버는 정본이 아니라 사본이라 같은 라벨은 덮어쓴다.
+- **VM은 이름(`pbr-web`)으로 찾는다.** 외부 IP를 쓰지 않으니 IP가 바뀌어도 상관없다. VM이 꺼져 있으면 알리고 멈춘다(`--start`를 주면 켠다. 켜 두면 과금된다). 켠 직후에는 SSH가 뜰 때까지 1분쯤 기다린다.
+- **지도 HTML · CSV(`pp_data`)는 따라가지 않는다.** `/orders` · `/orders/live` · 현장 앱은 DB만 보므로 새 계획이 바로 나오지만, `/maps` 지도는 옛 것일 수 있다.
+- **계획이 끝나면 자동으로 보내기**: 로컬 웹을 띄울 때 `PBR_PUSH_AFTER_RUN=1`을 주면, 웹에서 돌린 계획이 성공으로 끝난 뒤 그 회차를 자동으로 보낸다(기본은 꺼짐, 열람 전용 서버에서는 하지 않는다). VM이 꺼져 있거나 실패하면 경고만 남기고 계획은 로컬에 그대로 있다.
+- 서버에 보낸 뒤 대조(`/orders/live`)를 열면 그 계획과 지금 재고를 견준다. 옛 계획이면 모든 대여소가 어긋나 보이므로 발표 직전에 최신 계획을 보내 둔다.
+
+### 고정 IP (2026-11-07)
+
+VM의 외부 IP를 **고정으로 예약했다**: `pbr-web-ip` = `34.64.121.146`(asia-northeast3). 이제 VM을 껐다 켜도 같은 IP라 Cafe24 A 레코드(`geol.cloud` → `34.64.121.146`)를 다시 고치지 않는다. 대가는 예약한 IP의 소유 요금이다(꺼 둔 동안에도 붙는다. 금액은 결제 화면에서 확인). **쓰지 않게 되면 풀어야 요금이 멈춘다**: `gcloud compute addresses delete pbr-web-ip --region=asia-northeast3`(푼 뒤 VM을 켜면 임시 IP로 돌아가 A 레코드를 다시 고쳐야 한다).
+
 ## 열린 것
 
 - 인증은 없다. 도메인 · HTTPS는 `https://geol.cloud`로 붙였다(아래 *도메인과 HTTPS*). 공개 범위 결정(학교 · 집 IP만)은 `pbr-web-443`의 출처로 건다. 2026-11-03 현재 443번은 전체 공개 상태이고, 고정 IP는 예약하지 않았다.
