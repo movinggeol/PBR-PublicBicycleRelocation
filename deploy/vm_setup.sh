@@ -56,6 +56,15 @@ sudo chown "$USER" "$DATA_DIR"
 [ -f "$DATA_DIR/bike_system.db" ] || { echo "DB가 없습니다: $DATA_DIR/bike_system.db" >&2; exit 1; }
 [ -d "$DATA_DIR/pp_data" ] || echo "[경고] pp_data가 없습니다. 지도 · CSV 화면이 비어 보입니다." >&2
 
+# 타슈 API 키(실시간 재고 대조용). ~/tashu.env(한 줄: TASHU_API_KEY=...)를 올려 두면 root 전용으로 옮긴다.
+# 이미지에는 넣지 않는다(.dockerignore가 .env를 뺀다). 키가 있으면 PBR_LIVE=1로 대조를 연다.
+SECRETS=/opt/pbr-secrets.env
+if [ -f "$HOME/tashu.env" ]; then
+  sudo install -m 600 -o root -g root "$HOME/tashu.env" "$SECRETS" && rm -f "$HOME/tashu.env"
+fi
+LIVE_ARGS=()
+if [ -f "$SECRETS" ]; then LIVE_ARGS=(--env-file "$SECRETS" -e PBR_LIVE=1); fi
+
 echo "[4/5] 이미지 빌드 (처음엔 몇 분 걸린다)"
 sudo docker build -t "$IMAGE" "$APP_DIR"
 
@@ -71,13 +80,13 @@ LOG_OPTS=(--log-opt max-size=10m --log-opt max-file=3)
 # 데이터는 읽기+쓰기로 마운트한다: db.connect()가 WAL 파일을 만들어서 읽기 전용이면 뜨지 않는다.
 # 쓰기를 막는 것은 PBR_READONLY=1(미들웨어)이다.
 if [ "$DOMAIN" = "none" ]; then
-  sudo docker run -d --name "$NAME" --restart unless-stopped --network pbr-net "${LOG_OPTS[@]}" \
+  sudo docker run -d --name "$NAME" --restart unless-stopped --network pbr-net "${LOG_OPTS[@]}" "${LIVE_ARGS[@]}" \
     -p 80:8000 -p 8000:8000 \
     -v "$DATA_DIR":/app/data \
     "$IMAGE"
 else
   # 대시보드는 호스트 포트를 열지 않는다: 밖에서는 Caddy(80 · 443)를 거쳐서만 들어온다.
-  sudo docker run -d --name "$NAME" --restart unless-stopped --network pbr-net "${LOG_OPTS[@]}" \
+  sudo docker run -d --name "$NAME" --restart unless-stopped --network pbr-net "${LOG_OPTS[@]}" "${LIVE_ARGS[@]}" \
     -v "$DATA_DIR":/app/data \
     "$IMAGE"
   # Caddy가 인증서를 자동으로 받고 갱신한다(Let's Encrypt). 인증서는 볼륨에 남겨 둔다:

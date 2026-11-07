@@ -76,8 +76,20 @@ READONLY_ALLOWED_POSTS = {"/m/vehicle"}
 READONLY_BLOCKED_GETS = {"/orders/live", "/m/live"}
 
 
+def _env_on(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def readonly_enabled() -> bool:
-    return os.environ.get("PBR_READONLY", "").strip().lower() in ("1", "true", "yes", "on")
+    return _env_on("PBR_READONLY")
+
+
+def live_enabled() -> bool:
+    """`PBR_LIVE=1`이면 열람 전용에서도 실시간 재고 대조(타슈 호출 두 곳)를 연다.
+
+    저장하는 것이 없는 읽기이고, 열람 전용에서는 두 주소 모두 `_field_live_stations()`의 60초 공유
+    캐시를 거쳐 방문자가 몇이든 타슈 호출은 분당 1회가 상한이다."""
+    return _env_on("PBR_LIVE")
 
 
 @app.middleware("http")
@@ -86,7 +98,7 @@ async def readonly_guard(request: Request, call_next):
         path = request.url.path
         blocked = ((request.method not in ("GET", "HEAD", "OPTIONS")
                     and path not in READONLY_ALLOWED_POSTS)
-                   or path in READONLY_BLOCKED_GETS)
+                   or (path in READONLY_BLOCKED_GETS and not live_enabled()))
         if blocked:
             detail = "열람 전용 데모라 실행·수정과 실시간 재고 조회는 막혀 있습니다."
             if not _wants_html(request):
@@ -1250,7 +1262,11 @@ def orders_live(request: Request, run_label: Optional[str] = None,
                                   frames=context["_frames"])
 
     try:
-        live = tashu.fetch_stations()
+        if readonly_enabled():
+            # 인터넷에 열린 서버: 누를 때마다 부르면 방문자가 타슈 호출 한도를 쓴다 → 60초 공유 캐시
+            live, fetched_at = _field_live_stations()
+        else:
+            live, fetched_at = tashu.fetch_stations(), time.time()
     except tashu.TashuError as err:
         context["live_error"] = str(err)
         return templates.TemplateResponse(request, "orders.html", context)
@@ -1268,7 +1284,7 @@ def orders_live(request: Request, run_label: Optional[str] = None,
         live_sheets = [s for s in live_sheets if _sheet_name(s) == vehicle]
     context["compared_sheets"] = live_sheets
     context["live_summary"] = orders.summarize(compared)
-    context["checked_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    context["checked_at"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(fetched_at))
     return templates.TemplateResponse(request, "orders.html", context)
 
 

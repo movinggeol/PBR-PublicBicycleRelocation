@@ -4289,6 +4289,27 @@ def test_열람_전용이면_쓰기와_타슈_호출이_막힌다(client, monkey
     assert res.status_code == 403 and "열람 전용" in res.text
 
 
+def test_열람_전용이어도_PBR_LIVE면_실시간_대조가_열리고_타슈는_캐시로_부른다(client, monkeypatch):
+    """심사위원이 계획과 지금 재고를 대조해 본다. 열어도 쓰기는 막혀 있고, 방문자 수와 상관없이
+    타슈 호출은 60초에 한 번이다(`/orders/live`도 열람 전용에서는 `/m/live`와 같은 캐시를 쓴다)."""
+    calls = []
+    live = pd.DataFrame({"station_id": ["x"], "station_name": ["가"], "parking_info": [10],
+                         "lat": [36.3], "lon": [127.4], "stock": [3]})
+    monkeypatch.setattr(app_module.tashu, "fetch_stations",
+                        lambda timeout=30: calls.append(timeout) or live)
+    monkeypatch.setitem(app_module._field_live, "frame", None)
+    monkeypatch.setenv("PBR_READONLY", "1")
+    monkeypatch.setenv("PBR_LIVE", "1")
+    _reject_start(monkeypatch)
+    assert client.post("/runs", data={}).status_code == 403          # 쓰기는 그대로 막힌다
+    for _ in range(3):
+        assert client.get("/orders/live").status_code != 403
+    assert len(calls) == 1                                           # 세 번 눌러도 타슈는 한 번
+
+    monkeypatch.delenv("PBR_LIVE")
+    assert client.get("/orders/live").status_code == 403             # 옵션이 없으면 예전대로
+
+
 def test_열람_전용이어도_읽기와_기기_쿠키는_된다(client, monkeypatch):
     monkeypatch.setenv("PBR_READONLY", "1")
     assert client.get("/").status_code == 200
