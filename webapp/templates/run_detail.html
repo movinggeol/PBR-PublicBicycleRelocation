@@ -95,7 +95,8 @@
 <h2>진행 단계</h2>
 <p class="section-lead"><span data-run-done>전체 {{ progress | length }}단계 중 {{ done }}단계 완료.</span>
   앞 단계의 결과가 다음 단계의 입력이라 순서를 건너뛸 수 없습니다.</p>
-<div class="card flush">
+{# 단계 이름과 상태가 화면 양끝으로 갈려 가운데가 텅 비었다 — 카드 폭을 줄여 붙인다(2026-11-07). #}
+<div class="card flush" style="max-width: 44rem;">
   <ol class="steps" data-run-steps>
     {% for s in progress %}
     <li class="step {{ s.status }}" data-step="{{ loop.index0 }}">

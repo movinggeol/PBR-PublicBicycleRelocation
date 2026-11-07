@@ -345,7 +345,9 @@
        `.value.bad`는 없어서, 122.8분(예산 120분)이 평범한 검은 글씨로
        떴다 — 화면이 경고를 붙였다고 믿으면서 아무것도 안 하고 있었다.
        색만으로 두지 않는다: 밑줄의 '· 초과'가 같은 말을 글자로 한다. */
-    .tile .value.bad { color: var(--critical-ink); }
+    /* 시간 예산(120분 등)은 계획을 세울 때 사용자가 정한 참고 기준이다. 넘어도 오류가 아니므로
+       붉은 경고가 아니라 차분한 색으로만 짚는다(2026-11-07). 밑줄의 '· 초과'가 글자로 말한다. */
+    .tile .value.bad { color: var(--ink-2); }
     .tile .unit {
       font-size: var(--fs-fine); font-weight: 400; color: var(--ink-4);
       letter-spacing: -.08px; margin-left: 2px;
@@ -380,8 +382,8 @@
       color: var(--ink); font-size: var(--fs-ui); line-height: 1.5;
     }
     .alert::before { content: "⚠"; color: var(--warning-ink); font-weight: 600; flex: none; }
-    .alert.bad { background: var(--critical-soft); }
-    .alert.bad::before { content: "⚠"; color: var(--critical-ink); }
+    .alert.bad { background: var(--surface-2); }
+    .alert.bad::before { content: "⚠"; color: var(--ink-3); }
     .alert.ok { background: var(--good-soft); }
     .alert.ok::before { content: "✓"; color: var(--good-ink); }
     /* 경고문 속 흐린 글자 — 붉은 바탕 위 --ink-3은 4.42:1로 미달이다(axe
@@ -433,9 +435,10 @@
     .table-prose code { overflow-wrap: anywhere; word-break: normal; }
     .card.flush table th:first-child, .card.flush table td:first-child { padding-left: var(--sp-lg); }
     .card.flush table th:last-child, .card.flush table td:last-child { padding-right: var(--sp-lg); }
-    tr.over-budget td { background: var(--critical-soft); }
-    tr.over-budget td:first-child { box-shadow: inset 3px 0 0 var(--critical); }
-    td.over-budget, .over { color: var(--critical-ink); font-weight: 600; }
+    /* 예산 초과 행: 참고 표시다. 붉은 바탕 · 굵은 글씨 대신 옅은 바탕과 왼쪽 가는 선으로만 짚는다. */
+    tr.over-budget td { background: var(--surface-2); }
+    tr.over-budget td:first-child { box-shadow: inset 3px 0 0 var(--ink-4); }
+    td.over-budget, .over { color: var(--ink-2); font-weight: 500; }
     /* 예산을 넘긴 칸이 **링크**여도 경고 색을 잃지 않는다 (1.26.284). `/kpi` 표의 최장 작업 ⚠가
        차량 운용의 배정 이력으로 가는 링크가 되자 파랑으로 칠해져, 넘긴 칸과 안 넘긴 칸이
        색으로 갈리지 않았다. 색은 상태가 가지고, 누를 수 있다는 것은 밑줄이 말한다. */

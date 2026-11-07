@@ -140,7 +140,7 @@
      — 나머지 표들처럼 min-content로 열 폭의 합만큼만 차지하게 한다. */
   .sheet table.cmp-table { table-layout: fixed; width: min-content; }
   .sheet table.cmp-table th:nth-child(1)  { width: 44px; }  /* 순번 */
-  .sheet table.cmp-table th:nth-child(2)  { width: 130px; } /* 대여소 */
+  .sheet table.cmp-table th:nth-child(2)  { width: 210px; } /* 대여소 */
   .sheet table.cmp-table th:nth-child(3)  { width: 72px; }  /* 할 일 */
   .sheet table.cmp-table th:nth-child(4)  { width: 56px; }  /* 수량 */
   .sheet table.cmp-table th:nth-child(5)  { width: 76px; }  /* 싣고 남는 수 */
@@ -151,7 +151,7 @@
   .sheet table.cmp-table th:nth-child(10) { width: 52px; }  /* 차이 */
   .sheet table.cmp-table th:nth-child(11) { width: 52px; }  /* 가능 */
   .sheet table.cmp-table th:nth-child(12) { width: 72px; }  /* 판정 */
-  .sheet table.cmp-table th:nth-child(13) { width: 220px; } /* 비고 */
+  .sheet table.cmp-table th:nth-child(13) { width: 130px; } /* 비고 */
   /* max-width는 <td>에 직접 걸면 auto 표 레이아웃이 무시하고 남는 폭을
      도로 채워 넣는다 — <td> 안의 블록 요소에 걸어야 실제로 먹힌다. */
   .sheet td.station .station-name {
@@ -161,6 +161,8 @@
   /* 지시서 표는 이름 밑에 대여소 ID를 함께 적는다. break-all을 그대로
      물려받으면 "ST1221"처럼 코드 중간이 잘린다 — 따로 줄을 주고 붙여 둔다. */
   .sheet td.station .hint { display: block; white-space: nowrap; word-break: keep-all; }
+  /* 대조 표는 대여소 열을 210px로 넓혔다(2026-11-07): 이름이 석 줄로 접히던 것을 한두 줄로. */
+  .sheet table.cmp-table td.station .station-name { max-width: 16em; }
 
   /* 복사 단추 둘("좌표"·"이름")이 한 줄에 서야 한다. 이름 칸은 .station-name의
      max-width: 10em에 묶여 110px까지 좁아지는데, 단추 둘이 50px+50px+간격이라

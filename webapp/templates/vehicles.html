@@ -44,7 +44,8 @@
 {% if budget and budget.over %}
 <div class="alert bad">
   <span><b>{{ who }}{{ budget.over }}건이 시간 예산을 넘었습니다.</b>
-  아래 표의 ⚠ 행입니다{% if pages > 1 %}({{ pages }}쪽에 나뉘어 있습니다){% endif %}.</span>
+  아래 표의 ⚠ 행입니다{% if pages > 1 %}({{ pages }}쪽에 나뉘어 있습니다){% endif %}.
+  <span class="muted">시간 예산은 계획을 세울 때 정한 참고 기준이라, 넘는다고 오류는 아닙니다.</span></span>
 </div>
 {% elif budget %}
 <div class="alert ok"><span>{% if selected_vehicle %}차량 {{ selected_vehicle }}의 {% endif %}모든 작업이 시간 예산 안에서 끝납니다.</span></div>
