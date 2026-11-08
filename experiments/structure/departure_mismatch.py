@@ -111,6 +111,7 @@ def one(ref, s_plan, s_dep, grid, i_dep, rng) -> dict:
                 out[f"{name}|{label}|{key}"] = value
     for name, plan in plans.items():            # 집행량 — 출발 시각 재고로 실제 옮길 수 있는 대수
         p = plan.reindex(ids).dropna()
+        p = p[p.abs() > REBAL_MIN_QTY]            # 계획 줄만(등록 정의). 지시량 2대 이하는 줄이 아니다 - 1차 실행이 이 줄을 빠뜨려 A · C의 집행량이 부풀었다
         stock = s_dep.reindex(p.index)
         cap = ref["parking_lot"].reindex(p.index) * project_config.TARGET_QTY_UPPER_RATIO
         moved_pick = np.minimum((-p).clip(lower=0), stock).sum()
