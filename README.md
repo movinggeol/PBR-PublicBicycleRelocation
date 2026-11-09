@@ -460,7 +460,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/연구/THESIS.md](docs/연구/THESIS.md) | **졸업작품·논문** — 장별 재료 매핑, 대조군·반복 실험 설계, 체크리스트 |
 | [docs/분석/FORMULATION.md](docs/분석/FORMULATION.md) | **문제 정형화** — 기호표·목표재고·군집 목적함수·ILP·VRP 수식 |
 | [docs/연구/RELATED_WORK.md](docs/연구/RELATED_WORK.md) | **관련 연구** — 문제의 갈래와 본 연구의 위치 |
-| [docs/연구/LITERATURE.md](docs/연구/LITERATURE.md) | **문헌 분석** — 논문 24편 한 편씩 분석·비교표·인용 지도 |
+| [docs/연구/LITERATURE.md](docs/연구/LITERATURE.md) | **문헌 분석** — 논문 27편 한 편씩 분석·비교표·인용 지도 |
 | [docs/분석/EXPERIMENTS.md](docs/분석/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
 | [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 1417개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/구현/PROJECT_PIPELINE.md](docs/구현/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
