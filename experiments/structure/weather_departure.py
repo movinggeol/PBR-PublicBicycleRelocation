@@ -95,7 +95,7 @@ def departure_frame(raw: pd.DataFrame, duration: str, lookback: int) -> pd.DataF
     hours = [(last - k) % 24 for k in range(lookback)]
     part = raw[raw["time"].dt.hour.isin(hours)].copy()
     part["date"] = part["time"].dt.normalize()
-    # 자정을 넘겨 거슬러 가면(시작이 이른 회차) 전날 몫이다 — 지금 세 회차는 해당하지 않지만 막아 둔다
+    # 자정을 넘겨 거슬러 가면(시작이 이른 회차) 전날 몫이다. 지금 세 회차는 해당하지 않지만 막아 둔다
     part.loc[part["time"].dt.hour > last, "date"] += pd.Timedelta(days=1)
     rain = part.groupby("date")["rain"].sum()
     at_last = raw[raw["time"].dt.hour == last].assign(date=lambda f: f["time"].dt.normalize())
