@@ -401,7 +401,7 @@ def test_진행_현황은_계획_지표를_계획_지표라고_적는다(client)
     html = client.get("/m/progress").text
     assert "이 기기에서 체크한 기록으로 셉니다" in html
     assert "0.39<small>h</small>" in html and "78.9% 감소" in html   # kpi_view.stockout_cut_pct와 같은 값
-    assert "50<small>%</small>" in html and "예산 120분" in html
+    assert "50<small>%</small>" in html and "목표 120분" in html
     assert "오늘 현장에서 잰 값이 아닙니다" in html
     # 시안의 '총 이용 횟수·신고 건수'는 자료가 없어 싣지 않는다.
     assert "이용 횟수" not in html and "신고" not in html
