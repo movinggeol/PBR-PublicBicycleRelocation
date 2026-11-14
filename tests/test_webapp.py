@@ -1893,7 +1893,6 @@ def test_접기_상태를_기억한다():
 def test_저장이_막혀도_접기는_동작한다():
     """프라이빗 모드에서는 localStorage 접근 자체가 예외를 던진다. 테마가
     try/catch로 감싼 것과 같은 이유 — 기억이 안 될 뿐 기능은 돌아야 한다."""
-    import re as _re
     from pathlib import Path
 
     from webapp import app as webapp_app
@@ -2807,7 +2806,7 @@ def test_예산_타일은_전체_실행을_센다(monkeypatch):
     여기서 지키는 것은 **쪽을 넘겨도 타일이 안 흔들리는가**다.
     """
     import pandas as pd
-    from webapp import app as app_module, store
+    from webapp import store
 
     # 86건 중 9건 초과 — 실제 자료와 같은 모양으로 만든다.
     총 = 86

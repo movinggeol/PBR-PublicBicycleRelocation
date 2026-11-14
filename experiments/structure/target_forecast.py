@@ -81,7 +81,6 @@ def build_rows(stock: pd.DataFrame, targets: dict, capacity: pd.Series, mu_weekd
     ts = stock.index
     stations = stock.columns
     S = stock.to_numpy(dtype=float)
-    T = len(ts)
 
     def shifted(k: int) -> np.ndarray:            # k > 0: k틱 전 · k < 0: k틱 뒤
         out = np.full_like(S, np.nan)

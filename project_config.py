@@ -1154,16 +1154,6 @@ def _depart_lead_minutes() -> int:
 DEPART_LEAD_MINUTES = _depart_lead_minutes()
 
 
-def departure_minute_of_day(duration: str) -> int:
-    """차가 차고지를 떠나는 시각(자정부터 분). `_05_10` → 270(04:30), `_20_24` → 1170(19:30).
-
-    = 회차 시작 − `DEPART_LEAD_MINUTES`. **회차 시작(`duration_start_hour`)과 다르다** —
-    수요 창 · 동시각 실험 · 도로 패널은 회차 시작을 쓴다. 0시 앞으로 넘어가면 돌려 쓴다 —
-    `_00_05`는 **전날** 23:30(1410)에 떠난다(1.26.410부터 실제로 일어난다).
-    """
-    return (duration_start_hour(duration) * 60 - DEPART_LEAD_MINUTES) % (24 * 60)
-
-
 def duration_at(hour: int) -> str:
     """그 시(時)가 드는 회차. 7시는 `_05_10`, 23시는 `_20_24`, 3시는 `_00_05`.
 
@@ -1198,30 +1188,6 @@ def duration_list(config: RuntimeConfig) -> Tuple[str, ...]:
     """
 
     return tuple(item.strip() for item in config.duration.split(",") if item.strip())
-
-
-def normalize_durations(value) -> str:
-    """시간대 입력을 검사해 콤마 표기 하나로 되돌린다.
-
-    체크박스 여러 개(리스트)도, `_05_10,_10_15` 같은 콤마 문자열도 받는다.
-    **DURATIONS에 없는 값은 되돌린다** — 오타가 step4 duration_hours()까지
-    흘러가면 크래시가 된다(1.17.3에서 실제로 겪었다).
-    중복은 지우고 순서는 DURATIONS를 따른다 — 하루 흐름 순서로 돌아야 한다.
-    """
-    if isinstance(value, str):
-        items = [item.strip() for item in value.split(",")]
-    else:
-        items = [str(item).strip() for item in (value or ())]
-    items = [item for item in items if item]
-
-    known = DURATIONS + LEGACY_DURATIONS
-    if (unknown := [item for item in items if item not in known]):
-        raise ValueError(
-            f"시간대는 {', '.join(DURATIONS)} 중에서 고릅니다"
-            f" (모르는 값: {', '.join(unknown)})."
-        )
-    chosen = set(items)
-    return ",".join(duration for duration in known if duration in chosen)
 
 
 def normalize_period(value: str) -> str:

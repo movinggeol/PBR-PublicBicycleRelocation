@@ -51,7 +51,6 @@ DURATIONS = "_05_10,_10_15,_15_20"
 DEFAULT_DB = DATA_ROOT / "재현.db"
 
 PP_ROOT = DATA_ROOT / "pp_data"
-STOCK_CSV = PP_ROOT / "대여소별 재고" / f"대여소별_자전거대수 ({LABEL}).csv"
 INFO_CSV = PP_ROOT / "대여소 정보" / f"st_info ({LABEL}).csv"
 
 

@@ -15,8 +15,6 @@
                                         # 운영 설정으로 등록 (docs/구현/두_PC_작업.md 0장)
                                         # 인자를 빼면 파라미터 기본값(평일 09:00-17:00)으로
                                         # 기존 작업까지 덮어쓴다
-    .\scripts\collector.ps1 install -Window 07:00-22:00 -HolidaysOnly
-                                        # 옛 구성(11장) — 지금은 두 PC 모두 -IncludeHolidays
     .\scripts\collector.ps1 pause       # 일시정지 — 작업은 남기고 안 깨움
     .\scripts\collector.ps1 resume      # 재개
     .\scripts\collector.ps1 uninstall   # 완전 중지 — 작업 삭제
@@ -38,11 +36,6 @@ param(
     # 평일에 더해 주말·공휴일에도 수집한다. 트리거를 7일로 넓히고 스크립트의
     # 휴일 가드도 함께 푼다 — 둘 중 하나만 풀면 깨워도 안 모으거나 그 반대가 된다.
     [switch]$IncludeHolidays,
-
-    # **휴일에만** 수집한다. 두 번째 PC가 휴일을 맡는 구성용
-    # (docs/구현/COLLECTOR.md 11장). 트리거는 7일로 넓히되 평일은 스크립트가
-    # 거른다 — 공휴일은 요일이 평일이라 토·일 트리거로는 잡을 수 없다.
-    [switch]$HolidaysOnly,
 
     # 로그오프 상태에서도 돌린다. 비밀번호를 저장해야 하므로 기본값이 아니다.
     [switch]$RunWhenLoggedOff
@@ -211,24 +204,17 @@ function Invoke-Install {
     Assert-Paths
     $span = Get-WindowSpan
 
-    if ($IncludeHolidays -and $HolidaysOnly) {
-        throw "-IncludeHolidays와 -HolidaysOnly는 함께 쓸 수 없습니다. 휴일만 모으려면 -HolidaysOnly 하나만 주세요."
-    }
-
     $arguments = '"{0}" --once --window {1} --interval {2}' -f $Script, $Window, $Interval
     if ($IncludeHolidays) { $arguments += ' --include-holidays' }
-    if ($HolidaysOnly)    { $arguments += ' --holidays-only' }
     $action = New-ScheduledTaskAction -Execute $PythonW -Argument $arguments -WorkingDirectory $Root
 
     # 스케줄러는 요일만 알고 **공휴일을 모른다.** 그래서 요일 트리거만으로는
     # '휴일'을 표현할 수 없다 — 공휴일은 요일이 평일이기 때문이다(어린이날=화).
     #   · 평일 수집  : 주말 트리거를 아예 만들지 않고, 공휴일은 스크립트가 거른다.
-    #   · 휴일만 수집: 7일을 깨우고 **평일을 스크립트가 거른다.** 토·일만 걸면
-    #                  공휴일을 통째로 놓친다.
-    $DayLabel = if ($HolidaysOnly) { '휴일만' }
-                elseif ($IncludeHolidays) { '매일(휴일 포함)' }
-                else { '평일' }
-    $days = if ($IncludeHolidays -or $HolidaysOnly) {
+    #   · 휴일 포함  : 7일을 깨우고 스크립트의 휴일 가드도 푼다.
+    #   (휴일만 모으던 -HolidaysOnly는 옛 B PC 분담용이라 1.26.430에서 제거했다 · COLLECTOR.md 11장)
+    $DayLabel = if ($IncludeHolidays) { '매일(휴일 포함)' } else { '평일' }
+    $days = if ($IncludeHolidays) {
         [System.DayOfWeek[]]@('Monday', 'Tuesday', 'Wednesday', 'Thursday',
                               'Friday', 'Saturday', 'Sunday')
     } else {

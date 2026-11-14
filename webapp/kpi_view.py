@@ -182,11 +182,6 @@ def run_conditions(rows: pd.DataFrame, runs: pd.DataFrame,
             for label in labels}
 
 
-def run_condition(rows: pd.DataFrame, runs: pd.DataFrame, label: str) -> dict:
-    """실행 하나의 조건 — `run_conditions`의 한 칸(같은 규칙 한 벌)."""
-    return run_conditions(rows, runs, [label])[str(label)]
-
-
 def _compare_key(condition: dict) -> tuple:
     return tuple(condition[key] for key in COMPARE_KEYS)
 

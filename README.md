@@ -107,10 +107,10 @@ TASHU API·공공데이터 → 원천 데이터 정제 → 순수요·목표 재
 ├── webapp/                                # 웹 대시보드 (FastAPI, 파이썬 단독)
 ├── tests/                                 # 스모크 테스트 (pytest)
 ├── tools/                                 # 합성 데이터 생성기 등 보조 도구
-├── scripts/                               # PowerShell — 재고·도로 수집기 스케줄러 등록, 실험 일괄 재실행, PATH 셋업
-├── experiments/                           # 검증·실험 스크립트 (성격별 5분류)
+├── scripts/                               # PowerShell — 재고·도로 수집기 스케줄러 등록, 실험 일괄 재실행
+├── experiments/                           # 검증·실험 스크립트 (성격별 4분류)
 │   ├── params/ baseline/ structure/       #   파라미터·대조군·설계 측정
-│   └── diagnostic/ learning/              #   산출물 진단·학습용 예제
+│   └── diagnostic/                        #   산출물 진단
 ├── project_config.py                      # 공통 설정(now/period/duration/day_type/…)·운영 상수
 ├── demand_model.py                        # 수요 피처·계절 보정(warmup)·모델 하네스
 ├── tashu.py                               # 타슈 API 클라이언트 (수집·실시간 대조 공용)
@@ -306,7 +306,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 
-python -m pytest              # 1417개 통과 확인 (약 100초)
+python -m pytest              # 1412개 통과 확인 (약 100초)
 python tools/reproduce.py     # 합성 데이터 생성 → step0~step4 → 결과 표 (약 20초)
 ```
 
@@ -339,7 +339,7 @@ $env:PBR_DB_PATH = "data/재현.db"; python -m webapp   # http://127.0.0.1:8000
 
 ```powershell
 pip install -r requirements-dev.txt
-python -m pytest                 # 1417개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 1412개, 약 100초 (tests/ 만 수집)
 ```
 
 - `tests/test_pipeline.py` (66) — 합성 데이터로 step0→step1→step2→step4를
@@ -457,12 +457,12 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/README.md](docs/README.md) | **문서 목차** — 어느 폴더에 무엇이 있는지, 겹치는 내용의 정본은 어디인지 |
 | [docs/기록/ORIGINS.md](docs/기록/ORIGINS.md) | **시작 기록** — 초기 문제 인식·시행착오·현장 확인 (노션에서 옮김) |
 | [docs/기록/RETROSPECTIVE.md](docs/기록/RETROSPECTIVE.md) | **작업 회고** — 전체 조망, 측정이 뒤집은 가설, 설계 결정 |
-| [docs/연구/THESIS.md](docs/연구/THESIS.md) | **졸업작품·논문** — 장별 재료 매핑, 대조군·반복 실험 설계, 체크리스트 |
+| [docs/연구/논문/README.md](docs/연구/논문/README.md) | **졸업논문 원고**: 1~9장 · 초록 · 부록과 장 상태. 쓰기 전의 재료 매핑이던 ~~[docs/연구/THESIS.md](docs/연구/THESIS.md)~~는 원고를 다 써서 끝났다 |
 | [docs/분석/FORMULATION.md](docs/분석/FORMULATION.md) | **문제 정형화** — 기호표·목표재고·군집 목적함수·ILP·VRP 수식 |
 | [docs/연구/RELATED_WORK.md](docs/연구/RELATED_WORK.md) | **관련 연구** — 문제의 갈래와 본 연구의 위치 |
 | [docs/연구/LITERATURE.md](docs/연구/LITERATURE.md) | **문헌 분석** — 논문 24편 한 편씩 분석·비교표·인용 지도 |
 | [docs/분석/EXPERIMENTS.md](docs/분석/EXPERIMENTS.md) | **실험 기록** — `z`·학습 창·`γ`를 실데이터로 정한 과정과 근거 |
-| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 1417개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
+| [docs/구현/TESTING.md](docs/구현/TESTING.md) | **테스트** — 1412개가 무엇을 지키는지, 외부 API 수동 검증 절차 |
 | [docs/구현/PROJECT_PIPELINE.md](docs/구현/PROJECT_PIPELINE.md) | 전체 데이터 파이프라인 상세 설명 |
 | [docs/구현/WEBAPP.md](docs/구현/WEBAPP.md) | 웹 대시보드 실행·구조·API |
 | [docs/구현/DESIGN.md](docs/구현/DESIGN.md) | 화면 디자인 시스템 — 색·글꼴·내비게이션 규칙 |
@@ -485,7 +485,7 @@ python tools/load_rentals.py --status   # 기간별 적재 현황
 | [docs/분석/ML_ATTEMPTS.md](docs/분석/ML_ATTEMPTS.md) | **ML 시도 기록** — 해 보고 안 된 것과 **왜 안 됐는지** |
 | [docs/분석/VISUALIZATION.md](docs/분석/VISUALIZATION.md) | **시각화 대안 조사** — HTML 말고 더 나은 수단이 있나 (조사) |
 | [docs/연구/COMPARISON.md](docs/연구/COMPARISON.md) | **선행연구 축별 비교** — 문헌 전부를 한 줄에 놓고 본 표 |
-| [docs/연구/초안/](docs/연구/초안/) | **논문 초안** — 초록 · 1~9장 + 3-보(방법 선택의 근거) · 참고문헌 · 그림 |
+| ~~[docs/연구/초안/](docs/연구/초안/)~~ | ~~**논문 초안**~~ 끝남: 원고가 대신한다. 그림(`초안/그림/`)만 원고가 싣는 정본이다 |
 | [docs/구현/steps/step0_raw.md](docs/구현/steps/step0_raw.md) | Step 0: 수집·전처리·순수요·재배치량 |
 | [docs/구현/steps/step0_eda.md](docs/구현/steps/step0_eda.md) | Step 0: 이력 병합·EDA |
 | [docs/구현/steps/step1_clustering.md](docs/구현/steps/step1_clustering.md) | Step 1: Pick/Drop 선정·클러스터링 |

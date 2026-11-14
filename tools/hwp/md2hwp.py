@@ -15,7 +15,6 @@ import sys
 import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hwpkit import Hwp  # noqa: E402
 from latex2hwp import convert, forms  # noqa: E402
 from refs import Refs  # noqa: E402
 from PIL import Image  # noqa: E402

@@ -1,16 +1,17 @@
 # experiments/
 
 파이프라인에 속하지 않는 검증·실험 스크립트 모음입니다. 1.20.7에 29개가 되면서 **성격별로
-다섯 갈래로 나눴고**, 지금은 **78개**입니다(2026-10-13 기준 — params 19 · baseline 6 ·
-structure 44 · diagnostic 6 · learning 3. params의 둘은 사람이 직접 띄우지 않는 워커입니다).
+다섯 갈래로 나눴고**, 지금은 네 갈래 **84개**입니다(2026-11-14 기준: params 22 · baseline 7 ·
+structure 50 · diagnostic 5. params의 둘은 사람이 직접 띄우지 않는 워커입니다). 파이프라인과 무관한
+학습용 예제(`learning/` 셋)와 실행 결과를 적어 둔 메모(`diagnostic/step1_cluster_memo.py`)는
+1.26.430에서 지웠습니다. 필요하면 git 이력에서 꺼냅니다.
 
 ```text
 experiments/
 ├── params/       파라미터를 정한 실험 (z · γ · 학습 창)
 ├── baseline/     대조군 비교와 반복 실행 (논문용)
 ├── structure/    설계를 정하기 위한 측정 (섞어도 되나 · 붙일 값어치가 있나)
-├── diagnostic/   중간 산출물 진단 (수급 격차 · 군집 결과)
-└── learning/     학습용 예제 (파이프라인과 무관)
+└── diagnostic/   중간 산출물 진단 (수급 격차 · 수집 간격)
 ```
 
 **`baseline/baseline_compare.py`는 갈래를 가리지 않고 공용으로 불립니다** —
@@ -235,7 +236,6 @@ python experiments/structure/dockless_hub.py       # 도크리스 거점(가상�
 | --- | --- | --- |
 | `tick_interval.py` | **재고를 10분마다 찍어야 하나** — 10분 자료를 솎아 성긴 수집을 흉내 낸다 | 결품은 둔감(60분 −1.3%) · 사건은 민감(55.6% 소실). **촘촘히 모으면 솎을 수 있지만 반대는 안 된다** ([EXPERIMENTS.md](../docs/분석/EXPERIMENTS.md) 35장) |
 | `step0_rebal_qty_check.py` | 재배치량 진단 — 작업 대상 수와 **Pick·Drop 수급 격차** (1.18.8에서 되살림) | `step0_collect/test.py` |
-| `step1_cluster_memo.py` | 클러스터링 실행 결과 메모 | `step1 (...)/test.py` |
 | `survey_crosscheck.py` | **공식 통계와 본 연구 자료가 같은 것을 세나** — 「2025 교통현황조사」 조사 주간(2025-10-20~26)을 `rental_history`와 맞대 요일 모양·수준·최다 지점·규모를 본다 | 요일변동계수 차 최대 0.03 · 수준은 날마다 82~87%로 **일정하게 낮다** · 관제센터 1위 일치. 격차 원인은 미확인이라 문의로 넘겼다 ([THESIS.md](../docs/연구/THESIS.md) 10-D절) |
 | `stage_timing.py` | 3단계 분해가 정말 '풀리는 크기'를 만드나 — 군집화·ILP·경로를 나누어 잰다 | **군집화 2.2~2.8초 · ILP 군집당 0.03초 · 경로 1ms 미만**(환경 A). 원고가 적고 있던 *42초 · 군집당 수 초* 는 1.23.8 이전의 조건 없는 값이었다(37장) |
 | `tour_length_estimate.py` | 순회거리 어림 셋(BHH 근사·최근접 이웃·최소 신장 트리) 중 무엇이 실제 경로에 가까운가(현행 '대여소 수 비례'는 대조군으로 함께 잰다) — **세 어림 모두 현행(대여소 수 비례)보다 못하다**(13장, 5-H의 BHH 보류를 확정) | — |
@@ -269,12 +269,8 @@ python experiments/structure/dockless_hub.py       # 도크리스 거점(가상�
 
 셋 다 `tests/test_mapviz.py`가 지킵니다.
 
-## learning/ — 학습용 예제
+## ~~learning/ — 학습용 예제~~ (1.26.430에서 지움)
 
-**파이프라인과 무관합니다.** 라이브러리를 익히며 남긴 것이라 지우지 않고 모아 뒀습니다.
-
-| 파일 | 내용 | 원래 위치 |
-| --- | --- | --- |
-| `pulp_test.py` | PuLP 라이브러리 튜토리얼 | `test/` |
-| `pulp_test2.py` | PuLP 최소 예제 | `test/` |
-| `matplotlib_month_graph.py` | 월별 대여량 그래프(더미 데이터, 한글 폰트 설정 예시) | `test/test.py` |
+라이브러리를 익히며 남긴 예제 셋(`pulp_test.py` PuLP 튜토리얼 · `pulp_test2.py` PuLP 최소 예제 ·
+`matplotlib_month_graph.py` 월별 대여량 그래프)이 있었습니다. 파이프라인과 무관하고 어디서도 불리지 않아
+지웠습니다. 내용은 git 이력에 남아 있습니다.

@@ -495,8 +495,8 @@ def stockout_simulation(duration: str, imbalance_df: pd.DataFrame) -> dict:
         print(f"  Pick 쪽 손실은 Drop 쪽 이득의 {harm_share * 100:.2f}%입니다"
               f" (문턱 {PICK_HARM_WARN_SHARE * 100:.0f}%).")
     if harm_share > PICK_HARM_WARN_SHARE:
-        print(f"  ⚠ Pick 대여소의 결품 증가가 문턱을 넘었습니다 —"
-              f" 회수량이 과한지 target_qty를 확인하세요.")
+        print("  ⚠ Pick 대여소의 결품 증가가 문턱을 넘었습니다 —"
+              " 회수량이 과한지 target_qty를 확인하세요.")
     return result
 
 

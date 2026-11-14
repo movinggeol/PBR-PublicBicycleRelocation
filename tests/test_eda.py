@@ -76,7 +76,7 @@ def test_그래프를_화면에_띄우지_않는다():
 
 
 def test_글꼴_경로를_하드코딩하지_않는다():
-    """참고 코드(experiments/learning/matplotlib_month_graph.py)에 있던
+    """참고 코드(experiments/learning/matplotlib_month_graph.py, 1.26.430에서 지움)에 있던
     `C:/Windows/Fonts/malgun.ttf`를 그대로 가져오면 리눅스·CI에서 죽는다."""
     code = _code_only().lower()
 

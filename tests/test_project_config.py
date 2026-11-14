@@ -67,10 +67,9 @@ def test_출발_리드_기본은_30분이고_회차_시작에서_뺀다(monkeypa
 
     monkeypatch.delenv("PBR_DEPART_LEAD_MINUTES", raising=False)
     assert pc._depart_lead_minutes() == pc.DEFAULT_DEPART_LEAD_MINUTES == 30
-    monkeypatch.setattr(pc, "DEPART_LEAD_MINUTES", 30)
-    assert pc.departure_minute_of_day("_05_10") == 4 * 60 + 30
-    assert pc.departure_minute_of_day("_20_05") == 19 * 60 + 30
-    # 회차 시작 · 수요 창은 그대로다 — 바뀌는 것은 출발 시각 하나다.
+    # 출발 = 회차 시작 − 리드. `_05_10`이면 04:30이다(현장 앱 · step3 지도가 이 식으로 센다).
+    assert pc.duration_start_hour("_05_10") * 60 - pc._depart_lead_minutes() == 4 * 60 + 30
+    # 회차 시작 · 수요 창은 그대로다. 바뀌는 것은 출발 시각 하나다.
     assert pc.duration_start_hour("_05_10") == 5
     assert pc.duration_hours("_05_10")[0] == 5
 
@@ -80,8 +79,7 @@ def test_출발_리드_0이면_회차_시작에_떠난다(monkeypatch):
 
     monkeypatch.setenv("PBR_DEPART_LEAD_MINUTES", "0")
     assert pc._depart_lead_minutes() == 0
-    monkeypatch.setattr(pc, "DEPART_LEAD_MINUTES", 0)
-    assert pc.departure_minute_of_day("_05_10") == 5 * 60
+    assert pc.duration_start_hour("_05_10") * 60 - pc._depart_lead_minutes() == 5 * 60
 
 
 @pytest.mark.parametrize("clock, expected", [

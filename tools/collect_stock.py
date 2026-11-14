@@ -115,8 +115,7 @@ def registered_args() -> Optional[dict]:
         found["interval"] = int(m.group(1))
     # 요일 범위도 되읽는다 — `/collect`가 멈춤 판정 기준(매일 2일 · 평일만
     # 4일)을 고르는 데 쓴다(1.26.262).
-    found["include_holidays"] = ("--include-holidays" in text
-                                 or "--holidays-only" in text)
+    found["include_holidays"] = "--include-holidays" in text
     return found or None
 
 
@@ -146,11 +145,11 @@ def tick_of(stamp: datetime, start: clock, interval: int) -> datetime:
 
 
 def window_state(stamp: datetime, start: clock, end: clock, interval: int,
-                 *, include_holidays: bool = False, holidays_only: bool = False
+                 *, include_holidays: bool = False
                  ) -> Tuple[Optional[datetime], bool, str]:
     """(틱, 수집해도 되는가, 건너뛰는 이유).
 
-    요일 가드는 **어느 날에 받아올지**만 정한다. 셋 다 창 가드는 그대로 지킨다 —
+    요일 가드는 **어느 날에 받아올지**만 정한다. 둘 다 창 가드는 그대로 지킨다.
     `--force`처럼 둘 다 풀어 버리면 등록한 창이 무의미해져 아무 시각에나 틱이
     들어오고 격자 대조가 깨진다.
 
@@ -158,20 +157,15 @@ def window_state(stamp: datetime, start: clock, end: clock, interval: int,
     | --- | --- | --- | --- |
     | (없음) | ✅ | ❌ | 파라미터 기본값 — 지금 운영에서는 쓰지 않는다 |
     | `include_holidays` | ✅ | ✅ | **두 PC 모두 이것이다**(2026-09-03부터, 두_PC_작업.md 0장) |
-    | `holidays_only` | ❌ | ✅ | 옛 B PC 휴일 전담 분담용 — 2026-09-03에 폐기했다 |
 
-    `holidays_only`가 이기므로 둘을 같이 줘도 모순되지 않는다(argparse가 애초에
-    막지만, 함수만 직접 부르는 경우를 위해 여기서도 정한다).
+    옛 B PC 휴일 전담 분담용이던 휴일 전용(`--holidays-only`)은 2026-09-03에 분담을 폐기했고
+    1.26.430에서 옵션을 제거했다.
 
     ⚠️ 이것은 **관측을 남기는 범위**지 분석의 `--day-type`이 아니다. 평일과 휴일을
     섞어 통계를 내지 말라는 규약은 그대로다 — 거를 때는
     `db.load_stock_history(day_type=...)`을 쓴다(3장).
     """
-    holiday = is_holiday(stamp.date())
-    if holidays_only:
-        if not holiday:
-            return None, False, "평일(휴일만 수집)"
-    elif holiday and not include_holidays:
+    if is_holiday(stamp.date()) and not include_holidays:
         return None, False, "휴일(주말·공휴일)"
     tick = tick_of(stamp, start, interval)
     lower = datetime.combine(tick.date(), start)
@@ -216,14 +210,6 @@ def window_at(moment: datetime) -> Tuple[clock, clock, int]:
     return chosen
 
 
-def window_on(day: date) -> Tuple[clock, clock, int]:
-    """그날 **끝에** 등록돼 있던 수집 창. 그날 안에서 바뀌었으면 바뀐 뒤의 창이다.
-
-    경계일의 기대 틱은 이것 하나로 셀 수 없다 — `expected_slots_on()`을 쓴다.
-    """
-    return window_at(datetime.combine(day, clock.max))
-
-
 def expected_slots_on(day: date, until: Optional[datetime] = None) -> list:
     """그날 기대되는 격자 슬롯(시각 목록). **슬롯마다 그 시각의 창**으로 가린다.
 
@@ -243,11 +229,6 @@ def expected_slots_on(day: date, until: Optional[datetime] = None) -> list:
             slots.append(t)
         t += timedelta(minutes=1)
     return slots
-
-
-def expected_ticks_on(day: date) -> int:
-    """**그날** 기대 틱 수 — 경계일은 시각별 창으로 센다. 표의 '기대' 열이 쓴다."""
-    return len(expected_slots_on(day))
 
 
 # ---- 절전 ----
@@ -333,11 +314,10 @@ def tick_already_collected(observed_at: str) -> bool:
 
 def run_tick(stamp: datetime, start: clock, end: clock, interval: int,
              *, force: bool = False, dry_run: bool = False,
-             include_holidays: bool = False, holidays_only: bool = False) -> int:
+             include_holidays: bool = False) -> int:
     """창 가드 → 수집 → 로그. 종료 코드를 돌려준다(0 성공·건너뜀, 1 실패)."""
     tick, allowed, reason = window_state(stamp, start, end, interval,
-                                         include_holidays=include_holidays,
-                                         holidays_only=holidays_only)
+                                         include_holidays=include_holidays)
     if not allowed and not force:
         print(f"[건너뜀] {reason} — {stamp:%Y-%m-%d %H:%M}")
         return 0
@@ -381,13 +361,12 @@ def run_tick(stamp: datetime, start: clock, end: clock, interval: int,
 
 
 def run_loop(start: clock, end: clock, interval: int, *, dry_run: bool = False,
-             include_holidays: bool = False, holidays_only: bool = False) -> int:
+             include_holidays: bool = False) -> int:
     """창이 끝날 때까지 상주하며 틱마다 수집한다."""
     now = datetime.now()
     opening = datetime.combine(now.date(), start)
     # 오늘 수집할 날이 아니면 기다릴 이유가 없다.
-    collects_today = (is_holiday(now.date()) if holidays_only
-                      else include_holidays or not is_holiday(now.date()))
+    collects_today = include_holidays or not is_holiday(now.date())
     if collects_today and now < opening:
         wait = (opening - now).total_seconds()
         if wait > 3600:
@@ -399,14 +378,12 @@ def run_loop(start: clock, end: clock, interval: int, *, dry_run: bool = False,
     while True:
         stamp = datetime.now()
         tick, allowed, reason = window_state(stamp, start, end, interval,
-                                             include_holidays=include_holidays,
-                                             holidays_only=holidays_only)
+                                             include_holidays=include_holidays)
         if not allowed:
             print(f"[종료] {reason} — {stamp:%Y-%m-%d %H:%M}")
             return 0
         run_tick(stamp, start, end, interval, dry_run=dry_run,
-                 include_holidays=include_holidays,
-                 holidays_only=holidays_only)
+                 include_holidays=include_holidays)
         remaining = (tick + timedelta(minutes=interval) - datetime.now()).total_seconds()
         if remaining > 0:
             time.sleep(remaining)
@@ -627,13 +604,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="창이 끝날 때까지 상주하며 반복")
     parser.add_argument("--force", action="store_true",
                         help="창 밖·휴일에도 수집한다")
-    days = parser.add_mutually_exclusive_group()
-    days.add_argument("--include-holidays", action="store_true",
-                      help="평일에 더해 휴일에도 수집한다(창은 그대로 지킨다)")
-    days.add_argument("--holidays-only", action="store_true",
-                      help="휴일에만 수집하고 평일은 건너뛴다. "
-                           "두 번째 PC가 휴일만 맡던 옛 분담용 — 2026-09-03에 폐기했고 "
-                           "지금은 두 PC 모두 --include-holidays다(두_PC_작업.md 0장)")
+    parser.add_argument("--include-holidays", action="store_true",
+                        help="평일에 더해 휴일에도 수집한다(창은 그대로 지킨다). "
+                             "지금은 두 PC 모두 이것으로 돈다(두_PC_작업.md 0장)")
     parser.add_argument("--dry-run", action="store_true",
                         help="호출만 하고 저장하지 않는다")
     parser.add_argument("--status", action="store_true",
@@ -699,12 +672,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if args.loop:
         return run_loop(start, end, args.interval, dry_run=args.dry_run,
-                        include_holidays=args.include_holidays,
-                        holidays_only=args.holidays_only)
+                        include_holidays=args.include_holidays)
     return run_tick(datetime.now(), start, end, args.interval,
                     force=args.force, dry_run=args.dry_run,
-                    include_holidays=args.include_holidays,
-                    holidays_only=args.holidays_only)
+                    include_holidays=args.include_holidays)
 
 
 if __name__ == '__main__':

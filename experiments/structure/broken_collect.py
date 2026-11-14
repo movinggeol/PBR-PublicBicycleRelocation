@@ -653,7 +653,7 @@ def positive_control(conn, horizon_days: int = CONTROL_HORIZON_DAYS) -> dict:
         from scipy.stats import chi2_contingency, fisher_exact
 
         table = [[처치_재등장, 처치 - 처치_재등장], [대조_재등장, 대조 - 대조_재등장]]
-        chi2, chi_p, _, expected = chi2_contingency(table, correction=False)
+        _, chi_p, _, expected = chi2_contingency(table, correction=False)
         if expected.min() >= 5:
             p, 방법 = float(chi_p), "카이제곱(연속성 보정 없음)"
         else:

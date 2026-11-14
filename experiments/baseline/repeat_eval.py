@@ -38,7 +38,6 @@ def collect(args):
     # 안 줬을 때 모듈은 오늘 달력을 따른다. 1.26.311부터 휴일 이동 계수(`ROAD_*_HOLIDAY`)가 따로 있어
     # 어긋나면 수치가 바뀐다(1.26.310까지는 평일로 폴백해 같았다 — project_config.align_day_type).
     bc.align_day_type(args.day_type, bc.ilp_mod, bc.vrp_mod, bc.kpi_mod, step1)
-    import pulp
     solver = bc.ilp_mod.build_solver()   # 파이프라인과 같은 솔버 설정
 
     rows = []

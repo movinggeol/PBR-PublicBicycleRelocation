@@ -171,8 +171,6 @@ def select_top_unbalanced_st(file_path:str, duration:str, st_info:pd.DataFrame) 
     1차 : 재배치 작업 시, 대상 대여소(pick/drop)를 선택한다.
     '''
 
-    types = ['pick', 'drop']
-
     # file_path는 호출부에서 이미 완전히 포맷된 경로 — DB에 없을 때의 폴백이다.
     # 앞 단계(step0 calculate_target_qty)의 재배치량을 DB에서 먼저 읽는다(1.26.166).
     #
@@ -440,9 +438,6 @@ def adjust_clustering(pick_drop):
         # 상태 계산
         balance = pick_drop.groupby('cluster')['rebal_qty'].sum()
         c_size = pick_drop.groupby('cluster').size()
-
-        # 클러스터별 상태 계산 및 출력 ()
-        cluster_info = cal_cluster_info(pick_drop)
 
         # 종료 조건
         if balance.abs().max() <= THRESHOLD:

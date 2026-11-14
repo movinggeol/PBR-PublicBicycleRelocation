@@ -145,7 +145,7 @@ def line(labels: Sequence[str], values: Sequence[Optional[float]], *,
                      f'y2="{y:.1f}" class="viz-grid"/>')
         parts.append(_text(pad_l - 6, y + 4, _fmt(v), "viz-tick", "end"))
 
-    parts.append(f'<polyline class="viz-line" points="'
+    parts.append('<polyline class="viz-line" points="'
                  + " ".join(f"{px(i):.1f},{py(v):.1f}" for i, v in pairs) + '"/>')
 
     # ── x축 밴드 — **y를 정확히 맞히지 않아도 된다** (1.26.175)

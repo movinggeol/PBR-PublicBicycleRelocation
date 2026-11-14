@@ -35,7 +35,6 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-import pulp
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -250,7 +249,6 @@ def main():
     print("=" * 88)
     for duration, part in frame.groupby("duration", sort=False):
         over_now = (part["greedy_min"] > TIME_BUDGET_MINUTES).sum()
-        over_with = (part["with_return_min"] > TIME_BUDGET_MINUTES).sum()
         solved = part.dropna(subset=["gap_pct"])
         missing = len(part) - len(solved)
         note = f" (해 못 찾은 클러스터 {missing}개 제외)" if missing else ""

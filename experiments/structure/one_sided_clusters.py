@@ -109,9 +109,9 @@ def main() -> int:
                                 ids=part["station_id"].tolist())
                     return clustered
 
-                cand_a, routes_a = bc.plan_with_clusters(base.copy(), step1, solver,
+                _, routes_a = bc.plan_with_clusters(base.copy(), step1, solver,
                                                          adjust=True, seed=seed, post=record)
-                cand_b, routes_b = bc.plan_with_clusters(
+                _, routes_b = bc.plan_with_clusters(
                     base.copy(), step1, solver, adjust=True, seed=seed,
                     post=merge_one_sided)
                 # 모집단은 둘 다 **작업 대상 전체**(`base`)다 — 붙여도 대상은 같다.

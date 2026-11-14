@@ -446,8 +446,6 @@ def test_ilp_respects_supply_demand_and_moves_the_feasible_maximum(step2):
     총 이동량 강제 제약이 없으면 '아무 것도 옮기지 않는 해'가 최적이 된다
     (docs/분석/FORMULATION.md 5장).
     """
-    import pulp
-
     ilp, _vrp = step2
     cluster = pd.DataFrame({
         "station_id": ["P1", "P2", "D1"],
@@ -469,8 +467,6 @@ def test_ilp_respects_supply_demand_and_moves_the_feasible_maximum(step2):
 
 def test_ilp_returns_nothing_when_one_side_is_missing(step2):
     """Pick만 있고 Drop이 없으면 옮길 곳이 없다 — 크래시가 아니라 빈 계획이다."""
-    import pulp
-
     ilp, _vrp = step2
     cluster = pd.DataFrame({
         "station_id": ["P1"], "pick_qty": [4], "drop_qty": [0],
@@ -710,7 +706,9 @@ def test_work_time_constants_come_from_project_config(step2):
     _ilp, vrp = step2
     assert vrp.PICK_TIME_SEC is project_config.PICK_TIME_SEC
     assert vrp.DROP_TIME_SEC is project_config.DROP_TIME_SEC
-    assert vrp.VEHICLE_SPEED_KMPH is project_config.VEHICLE_SPEED_KMPH
+    # 이동시간은 속도 상수가 아니라 `travel_seconds()` 한 곳에서 센다. vrp가 들여오기만 하던
+    # `VEHICLE_SPEED_KMPH`는 1.26.430에서 제거했고, ILP · VRP가 같은 식을 쓰는지는 이것으로 본다.
+    assert vrp.travel_seconds is project_config.travel_seconds
 
 
 def test_solver_factory_survives_pulp4_removing_the_legacy_solver(step2, monkeypatch):
@@ -1228,27 +1226,18 @@ def test_all_three_maps_share_one_tile_setting():
 
 
 def test_duration_input_is_checked_against_the_real_list():
-    """시간대는 다섯 창이 전부다(1.26.410에 밤을 `_20_24` · `_00_05`로 나눴다). 맨 앞 밑줄이 빠진 값은
-    여기서 걸러야 한다. 옛 `_20_05`는 명령줄에서만 받는다(옛 실행 재현 · 이미 걸린 예약 작업).
+    """시간대는 다섯 창이 전부다(1.26.410에 밤을 `_20_24` · `_00_05`로 나눴다). 옛 `_20_05`는
+    명령줄에서만 받는다(옛 실행 재현 · 이미 걸린 예약 작업).
 
-    1.17.3 이전에는 폼 예시가 `10_15`였고, 그대로 입력한 사용자가 한참 뒤
-    step4 duration_hours()에서 크래시를 봤다.
+    폼 입력을 거르던 `normalize_durations()`는 1.26.372에 실행 폼이 회차를 고르지 않게 되며
+    부르는 곳이 사라져 1.26.430에서 지웠다(1.17.3 이전에는 폼 예시가 `10_15`였다).
     """
     import project_config
 
     assert project_config.DURATIONS == ("_05_10", "_10_15", "_15_20", "_20_24", "_00_05")
     assert project_config.LEGACY_DURATIONS == ("_20_05",)
     assert set(project_config.DURATION_LABELS) == set(project_config.DURATIONS + project_config.LEGACY_DURATIONS)
-    assert project_config.normalize_durations("_20_05") == "_20_05", "옛 회차로 걸린 예약 작업이 죽는다"
-
-    # 리스트(체크박스)도 콤마 문자열도 받고, 순서는 늘 하루 흐름 순으로 되돌린다.
-    assert project_config.normalize_durations(["_15_20", "_05_10"]) == "_05_10,_15_20"
-    assert project_config.normalize_durations("_10_15,_10_15") == "_10_15"
-    assert project_config.normalize_durations([]) == ""
-
-    for bad in ("10_15", "_05_09", "all"):
-        with pytest.raises(ValueError, match="시간대는"):
-            project_config.normalize_durations(bad)
+    assert project_config.duration_hours("_20_05") == [20, 21, 22, 23, 0, 1, 2, 3, 4], "옛 회차로 걸린 예약 작업이 죽는다"
 
 
 def test_period_default_follows_the_data_we_have(tmp_path, monkeypatch):
@@ -1672,7 +1661,6 @@ def test_이동_시도가_원본을_건드리지_않는다():
     후보를 시험하려고 라벨 배열을 제자리에서 바꾸므로, 되돌리는 것을 빠뜨리면
     다음 후보가 오염된 상태에서 평가된다.
     """
-    import numpy as np
     import pandas as pd
 
     adjust = _load("pipeline/step1_cluster/adjust_module.py", "adjust_move")

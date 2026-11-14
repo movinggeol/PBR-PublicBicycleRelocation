@@ -17,7 +17,6 @@
 3. **범례가 지도를 가리지 않는다** — 군집 18개를 한 줄씩 세우면 범례가
    610~688px, 화면 세로의 2/3가 된다(실측). 긴 목록은 접어야 한다.
 """
-import importlib.util
 import re
 import sys
 from pathlib import Path

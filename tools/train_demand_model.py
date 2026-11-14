@@ -52,10 +52,10 @@ def main() -> int:
 
     print(f"기간 {len(periods)}개 → 학습 표본 {len(frame):,}행"
           f" · 대여소 {frame['station_id'].nunique():,}곳")
-    print(f"  시간대별: "
+    print("  시간대별: "
           + ", ".join(f"{demand_model.DURATIONS[i]} {n:,}"
                       for i, n in frame['duration_idx'].value_counts().sort_index().items()))
-    print(f"  요일별:   "
+    print("  요일별:   "
           + ", ".join(f"{demand_model.DAY_TYPES[i]} {n:,}"
                       for i, n in frame['day_type_idx'].value_counts().sort_index().items()))
 

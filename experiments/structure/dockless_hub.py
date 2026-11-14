@@ -91,8 +91,6 @@ import pandas as pd
 import db
 from experiments._shared import default_run_label
 
-COVER_TARGETS = (0.80, 0.90)
-
 # 사전 등록 기준 (위 docstring과 같은 값 — 여기서만 고친다)
 CRIT_SHARE_OF_SITES = 0.30      # ① 거점 수 / 전 지점 수
 CRIT_COVERAGE = 0.80            # ① 통행 끝점 커버리지

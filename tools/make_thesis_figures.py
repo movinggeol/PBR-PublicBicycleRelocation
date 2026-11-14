@@ -412,7 +412,7 @@ def fig_3_2():
     clipped = np.clip(np.trunc(gap), -Q, Q)
 
     fig, ax = plt.subplots(figsize=(BODY_W, 3.1))
-    ax.plot(gap, clipped, color="#999", ls="--", lw=1.3, label=f"단순 절단  $[-Q, Q]$")
+    ax.plot(gap, clipped, color="#999", ls="--", lw=1.3, label="단순 절단  $[-Q, Q]$")
     ax.step(gap, rebal, where="post", color="#3182bd", lw=1.8,
             label=r"$\tanh$ 완화 (식 (3.5), 정수화 뒤)")
     for g in (5, 8):
@@ -457,7 +457,6 @@ def fig_4_3():
 
     fig, ax = plt.subplots(figsize=(BODY_W, 2.4))
     for i, key in enumerate(months):
-        tick = f"{key // 100:02d}.{key % 100:02d}"
         if key not in label:
             # '공개 자료 없음'이 아니다 — 그 달 이름의 파일은 공개됐으나 내용이 다른 달의 것이라 쓰지 않았다(4.2)
             ax.text(i, 12_000, "쓰지 않음", ha="center", va="bottom", fontsize=6.5, color="#888", rotation=90)

@@ -8,7 +8,6 @@
   4. 대시보드가 없으면 무엇을 띄울지 말하고 1로 끝난다.
 """
 import importlib.util
-import sys
 from pathlib import Path
 
 import pytest

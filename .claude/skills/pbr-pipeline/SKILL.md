@@ -18,9 +18,9 @@ description: PBR(공공자전거 재배치) 프로젝트에서 코드를 읽거�
 | `docs/기록/ORIGINS.md` | 시작 기록 — 초기 시행착오와 현장 확인 (값의 출처가 궁금할 때) |
 | `docs/분석/EXPERIMENTS.md` | `z`·학습 창·`γ`의 실측 근거 (**모델 파라미터를 건드리기 전 필독**) |
 | `docs/분석/DEMAND_DISTRIBUTION.md` | 순수요 분포 진단·정정과 ML 방향 (**예측을 건드리기 전 필독**) |
-| `docs/구현/TESTING.md` | 테스트 1417개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
+| `docs/구현/TESTING.md` | 테스트 1412개가 지키는 것·격리 장치·외부 API 수동 검증 (**테스트 추가 전 필독**) |
 | `docs/기록/TODO.md` | 알려진 버그·개선 과제 전체 목록 (우선순위 🔴🟡🟢) |
-| `docs/연구/THESIS.md` | 졸업작품·논문 준비 — 대조군·반복 실험·선행연구 (**논문용 실험을 추가하기 전 필독**) |
+| `docs/연구/논문/README.md` | 제출한 졸업논문 원고(1~9장 · 초록 · 부록)와 장 상태. 쓰기 전의 재료 매핑이던 `docs/연구/THESIS.md`와 `docs/연구/초안/`은 끝난 문서다(2026-11-14) |
 | `docs/분석/FORMULATION.md` | 기호·수식·제약 (**수식을 인용하거나 모델을 바꾸기 전 필독**) |
 | `docs/연구/RELATED_WORK.md` | 관련 연구와 본 연구의 위치 |
 | `docs/연구/LITERATURE.md` | 문헌 24편 분석·비교 (**선행연구를 인용하기 전 필독**) |
@@ -135,15 +135,13 @@ DB에 행이 있으면 CSV를 고쳐도 반영되지 않는다).
    수집기(`tools/collect_stock.py`)는 `runs`·`station_stock`을 건드리지 않는다 —
    테스트가 지킨다. **휴일을 거르는 것은 스케줄러가 아니라 스크립트의 창 가드다**
    (작업 스케줄러는 요일만 안다). 자세한 것은 docs/구현/COLLECTOR.md.
-   **수집기의 요일 옵션은 세 갈래다** — 없음(평일만) / `--include-holidays`
-   (평일+휴일) / `--holidays-only`(휴일만 — 옛 B PC 전담 분담용이고 2026-09-03에
-   폐기됐다. 지금은 두 PC 모두 `--include-holidays`다 · docs/구현/두_PC_작업.md
-   0장). 셋 다 **창 가드는 지킨다**
+   **수집기의 요일 옵션은 두 갈래다**: 없음(평일만) / `--include-holidays`
+   (평일+휴일. 지금은 두 PC 모두 이것이다 · docs/구현/두_PC_작업.md 0장). 옛 B PC
+   전담 분담용이던 `--holidays-only`(휴일만)는 2026-09-03에 분담을 폐기했고 1.26.430에서
+   옵션을 제거했다. 둘 다 **창 가드는 지킨다**
    (`--force`만 창까지 푼다). 이것은 **관측 범위**지 분석의 `--day-type`이
-   아니다 — 평일·휴일을 섞어 통계 내지 말라는 규약은 그대로고, 거를 때는
+   아니다. 평일·휴일을 섞어 통계 내지 말라는 규약은 그대로고, 거를 때는
    `db.load_stock_history(day_type=...)`을 쓴다.
-   `--holidays-only`에서 **트리거가 7일인 것이 의도다**: 토·일만 걸면
-   공휴일(어린이날=화)을 놓친다. 7일을 깨우고 평일은 스크립트가 거른다.
    ⚠️ **저장 규칙이 두 곳에서 정반대다.** 수집기 `save_stock_snapshot()`은
    `INSERT OR REPLACE`(재실행 멱등 — 나중 값이 이긴다), 병합기
    `tools/merge_stock.py`는 `INSERT OR IGNORE`(**먼저 수집한 것이 이긴다** —
@@ -161,7 +159,7 @@ DB에 행이 있으면 CSV를 고쳐도 반영되지 않는다).
    하루 여러 회차를 돌리므로 **한쪽 후보만 있는 시간대는 크래시가 아니라 건너뛴다** —
    step1/step2/step3/step4의 건너뛰기 가드를 지우지 마라.
 7. **일회성 스크립트는 `experiments/<분류>/`에 둔다** — step 폴더나 루트에 test.py를
-   만들지 마라. 분류는 params·baseline·structure·diagnostic·learning 다섯이고,
+   만들지 마라. 분류는 params·baseline·structure·diagnostic 넷이고(학습용 예제 `learning`은 1.26.430에서 지웠다),
    스크립트 상단의 `sys.path.insert`는 **`parents[2]`**(저장소 루트)를 가리켜야 한다.
    루트에 있던 `db_test.py`는 1.20.7에서 `tools/show_schema.py`로 옮겼다 —
    **여러 번 쓰는 도구는 `tools/`, 한 번 재고 마는 것은 `experiments/`다.**
@@ -295,7 +293,7 @@ python tools/gate_a_compare.py <off 폴더> <on 폴더>  # 끈/켠 결과 장별
   `PBR_USE_ROAD_MODEL=0`일 때만 쓰인다 — 기본은 함정 15번의 실도로 모형이다),
   depot=타슈 관제센터(ST0001). 한 회차에 차량 1대 = 클러스터 1개 + depot 복귀.
 - 🔴 **출발 시각 ≠ 회차 시작** (2026-10-14) — 차는 회차 시작보다 `DEPART_LEAD_MINUTES`(기본 30분,
-  `PBR_DEPART_LEAD_MINUTES=0`이면 끔) 먼저 떠난다(`departure_minute_of_day()` · EXPERIMENTS 51장 끝 사용자 결정).
+  `PBR_DEPART_LEAD_MINUTES=0`이면 끔) 먼저 떠난다(출발 = 회차 시작 − `DEPART_LEAD_MINUTES` · EXPERIMENTS 51장 끝 사용자 결정).
   이것을 읽는 곳은 step3 지도의 교통량 시각(`start_time_for(lead_min=…)`)과 현장 앱 시각 **둘뿐**이다 —
   수요 창(`duration_hours`) · 동시각 실험(`sameday_plan` · `is_same_day_plan`) · 도로 패널 수집기는 **회차 시작 기준**을
   지킨다. 계획의 재고 시각도 당기지 않았다(51장은 같은 계획을 일찍 집행한 효과만 쟀다). 마지막 배송 목표 60분은 회차 시작 기준이다.
@@ -398,7 +396,7 @@ python tools/gate_a_compare.py <off 폴더> <on 폴더>  # 끈/켠 결과 장별
 ## 테스트
 
 ```powershell
-python -m pytest                 # 1417개, 약 100초 (tests/ 만 수집)
+python -m pytest                 # 1412개, 약 100초 (tests/ 만 수집)
 python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 ```
 
@@ -441,7 +439,7 @@ python tools/make_sample_data.py --now "데모"   # 합성 데이터만 생성
 | 변경 이유 | `docs/기록/버전관리.md` (판 번호 절) |
 | 남은 과제·기각 결정 | `docs/기록/TODO.md` (+ '지금 열려 있는 것' 색인) |
 | 실험 스크립트 | `experiments/README.md` 표 |
-| 논문에 걸리는 것 | `docs/연구/THESIS.md` · `docs/연구/초안/` 해당 장 |
+| 논문에 걸리는 것 | `docs/연구/논문/` 해당 장(원고). `THESIS.md` · `초안/`은 끝난 문서다 |
 
 ⚠️ **스크립트 자체에도 적어라.** docstring에 *"왜 이 실험이 필요한가 · 무엇을
 묻는가 · 어떻게 판정하는가"* 를 쓴다. 문서를 읽어야만 피할 수 있는 함정은

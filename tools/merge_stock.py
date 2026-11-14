@@ -36,7 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 
 import db
-from project_config import DATA_ROOT, is_holiday
+from project_config import is_holiday
 
 CSV_GLOB = "stock_*.csv"
 CSV_COLUMNS = ("observed_at", "station_id", "stock")

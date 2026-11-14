@@ -82,8 +82,7 @@ pyplot을 들이기 **전에** `matplotlib.use("Agg")`로 백엔드를 고정합
 - [x] ~~`month_graph(df)` 호출 인자 수정~~ (1.0.3)
 - [x] ~~`concat_file`/`preprocessing` 실행을 CLI 인자(`--concat`/`--preprocess`)로 선택~~ (1.0.3)
 - [x] ~~`month_graph`에 matplotlib 시각화 통합~~ (1.26.77) — 월별·시간대별·요일별
-  3장을 PNG로 남깁니다. 참고 코드
-  ([matplotlib_month_graph.py](../../../experiments/learning/matplotlib_month_graph.py))의
-  `plt.show()`와 글꼴 경로 하드코딩은 **가져오지 않았습니다**(위 ⚠️ 참고).
+  3장을 PNG로 남깁니다. 참고 코드(`experiments/learning/matplotlib_month_graph.py`, 1.26.430에서
+  지움)의 `plt.show()`와 글꼴 경로 하드코딩은 **가져오지 않았습니다**(위 ⚠️ 참고).
 - [x] ~~이상치 제거 기준(IQR×1.5) 명시~~ — 본 문서 `concat_1year_file.py` 항목과
   [DECISIONS.md](../../분석/DECISIONS.md) 6-1(근거·측정·결론, 1.20.8)

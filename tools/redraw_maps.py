@@ -82,8 +82,6 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import pandas as pd
-
 from project_config import DATA_ROOT, ensure_output_dirs
 
 # 두 지도가 함께 읽는 입력. step1 후보 파일 하나로 둘 다 그릴 수 있다.

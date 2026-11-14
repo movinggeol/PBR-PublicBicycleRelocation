@@ -22,7 +22,7 @@ import time
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 from urllib.parse import quote, urlencode, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -37,7 +37,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from project_config import (ROAD_FIXED_SEC_WEEKDAY, ROAD_SPEED_KMPH_WEEKDAY, USE_ROAD_MODEL,
-    DAY_TYPE_AUTO, DAY_TYPE_LABELS, DAY_TYPES, DEFAULT_DAY_TYPE, DEFAULT_DURATION,
+    DAY_TYPE_AUTO, DAY_TYPE_LABELS, DAY_TYPES, DEFAULT_DAY_TYPE,
     DEFAULT_RAW_FILE, DEFAULT_WARMUP_DAYS, DEPOT_NAME, DURATION_LABELS, DURATIONS,
     FLEET_SIZE, MAX_FLEET_SIZE, PROJECT_ROOT, REBAL_MIN_QTY, TARGET_QTY_UPPER_RATIO, TARGET_Z,
     TIME_BUDGET_MINUTES, TOP_STATION_LIMIT, VEHICLE_CAPACITY, VEHICLE_SPEED_KMPH,

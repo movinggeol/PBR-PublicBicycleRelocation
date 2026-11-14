@@ -447,14 +447,14 @@ def inherit_snapshot(label: str, kind: str | None = None) -> int:
 
     donors = donor_labels(label, kind)
     if not donors:
-        print(f"설정 오류: --skip-api를 켰지만 물려받을 재고 스냅샷이 없습니다.")
+        print("설정 오류: --skip-api를 켰지만 물려받을 재고 스냅샷이 없습니다.")
         print(f"  '{label}' 라벨의 파일이 없고, 다른 실행의 스냅샷도 없습니다.")
         synthetic = [other for other in snapshot_labels()
                      if other.startswith(SYNTHETIC_LABEL_PREFIXES)]
         if synthetic:
             print(f"  (시험·합성 자료 라벨 {len(synthetic)}개는 가짜 재고라 후보에서 뺐습니다:"
                   f" {', '.join(synthetic[:3])}{' …' if len(synthetic) > 3 else ''})")
-        print(f"  --skip-api를 빼고 한 번 수집하세요.")
+        print("  --skip-api를 빼고 한 번 수집하세요.")
         return -1
 
     donor = donors[0]
@@ -462,8 +462,8 @@ def inherit_snapshot(label: str, kind: str | None = None) -> int:
     print(f"[안내] --skip-api: '{donor}'의 재고 스냅샷을 물려받습니다"
           f" (요청 라벨 '{label}'에 파일이 없음 · 기증자 종류 {donor_kind}).")
     if kind == "plan" and donor_kind != "plan":
-        print(f"  ⚠ 계획 실행 중에는 물려받을 스냅샷이 없어 실험 실행의 재고를 씁니다.")
-    print(f"  ⚠ 그 시점 재고로 계획을 세웁니다. 지금 재고로 세우려면 --skip-api를 빼세요.")
+        print("  ⚠ 계획 실행 중에는 물려받을 스냅샷이 없어 실험 실행의 재고를 씁니다.")
+    print("  ⚠ 그 시점 재고로 계획을 세웁니다. 지금 재고로 세우려면 --skip-api를 빼세요.")
 
     copied = 0
     for source, target in zip(snapshot_paths(donor), snapshot_paths(label)):

@@ -32,7 +32,6 @@
     python experiments/structure/pick_qty_ml.py --until "2026-10-11 00:00"    # 54장 등록판(약 30분)
 """
 import argparse
-import math
 import sys
 import time
 from pathlib import Path

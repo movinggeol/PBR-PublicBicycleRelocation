@@ -15,7 +15,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from project_config import DATA_ROOT, PP_ROOT, PROJECT_ROOT
+from project_config import PP_ROOT, PROJECT_ROOT
 
 DURATION = "_05_10"
 LABEL = f"smoketest-{os.getpid()}"
@@ -1002,7 +1002,7 @@ def test_CSV를_전부_지워도_DB만으로_다시_돈다(tmp_path):
     출력 = 둘째판.stdout + 둘째판.stderr
     assert "물려받을 재고 스냅샷이 없습니다" not in 출력, "스냅샷 가드가 DB를 못 봤다"
     건너뜀 = [줄 for 줄 in 출력.splitlines() if "입력이 없습니다" in 줄]
-    assert not 건너뜀, f"아직 파일에 매인 단계가 있다:\n" + "\n".join(건너뜀)
+    assert not 건너뜀, "아직 파일에 매인 단계가 있다:\n" + "\n".join(건너뜀)
 
 
 # ---- 빈 산출물은 크래시가 아니다 — 같은 부류 쓸기 (1.26.188) ----

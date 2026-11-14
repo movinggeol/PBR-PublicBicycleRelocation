@@ -31,7 +31,7 @@ from project_config import (
     exit_if_help,
     DATA_ROOT, DEPOT_ID, DEPOT_LAT, DEPOT_LON, DROP_TIME_SEC, PICK_TIME_SEC, 
     ENFORCE_TIME_BUDGET, TIME_BUDGET_MINUTES, VEHICLE_CAPACITY,
-    VEHICLE_SPEED_KMPH, format_minutes,
+    format_minutes,
     duration_list, ensure_output_dirs, get_runtime_config, require_columns,
     travel_seconds,
 )
@@ -45,9 +45,9 @@ vrp_plan_file = str(DATA_ROOT / "pp_data/VRP/VRP_plan{duration} ({now}).csv")
 config = get_runtime_config()
 now = config.now
 
-# 이동 속도(VEHICLE_SPEED_KMPH)와 작업시간(PICK/DROP_TIME_SEC)은 project_config
-# 한 곳에서 읽는다 — 속도는 ILP와 같은 값이어야 한다.
-# (1.13.2 이전에는 여기서 30을 따로 쓰고 ILP는 25를 써서 두 단계가 어긋나 있었다.
+# 이동시간(`travel_seconds()`)과 작업시간(PICK/DROP_TIME_SEC)은 project_config 한 곳에서 읽는다.
+# 이동시간은 ILP와 같은 식이어야 한다(속도 상수는 그 안에서만 쓰여 1.26.430에 이 파일의 import를 제거했다).
+# (1.13.2 이전에는 여기서 속도 30을 따로 쓰고 ILP는 25를 써서 두 단계가 어긋나 있었다.
 #  작업시간은 1.18.6까지 이 파일에 박혀 있어 다른 운영 상수와 따로 놀았다.)
 
 # 한 회차에 차량 1대가 클러스터 1개를 맡고 depot으로 복귀한다(사용자 결정, 1.13.2).

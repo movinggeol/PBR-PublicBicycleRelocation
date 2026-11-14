@@ -17,8 +17,6 @@
     python experiments/structure/pick_qty_worklist.py                      # 등록판(54장 덧붙임)
 """
 import argparse
-import contextlib
-import io
 import sys
 import time
 from pathlib import Path
@@ -36,7 +34,7 @@ import pick_qty_ml as pq  # noqa: E402
 import plan_validity as pv  # noqa: E402
 import stockout_forecast as sf  # noqa: E402
 import worklist_validity as wv  # noqa: E402
-from project_config import DATA_ROOT, DURATIONS, REBAL_MIN_QTY, TICKS_PER_HOUR, format_seconds, holiday_mask  # noqa: E402
+from project_config import DATA_ROOT, REBAL_MIN_QTY, TICKS_PER_HOUR, format_seconds, holiday_mask  # noqa: E402
 
 bc = wv.bc
 UNTIL = "2026-10-11 00:00"               # 54장과 같다

@@ -247,7 +247,7 @@ python tools/rebuild_net_demand.py --fill-idle  # 저장된 표에 이용이 없
 
 | 우선순위 | 문제 |
 | --- | --- |
-| 🟢 | `설명.txt` 4·5번 항목 미완 — 본 문서로 대체 후 삭제 검토 |
+| ✅ | ~~`설명.txt` 4·5번 항목 미완 — 본 문서로 대체 후 삭제 검토~~ → 본 문서가 대신하므로 1.26.430에서 지웠다 |
 
 ※ 구 `test.py`는 `experiments/diagnostic/step0_rebal_qty_check.py`로 이동했습니다 (1.2.0).
 
