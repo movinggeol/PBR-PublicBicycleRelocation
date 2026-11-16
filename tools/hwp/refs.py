@@ -20,6 +20,7 @@ ENTRIES = {
     ("조근민", 2020): "조근민, 이상수, 남두희, “딥러닝 모형을 활용한 공공자전거 대여량 예측에 관한 연구”, 한국ITS학회논문지, 19(3), pp. 28–37, 2020.",
     ("지창훈", 2007): "지창훈, 김미이, 이영훈, “배달과 수집을 수행하는 차량경로문제 휴리스틱에 관한 연구: 수도권 레미콘 운송사례”, 경영과학, 24(2), pp. 143–156, 2007.",
     ("한지혜", 2024): "한지혜, “대전교통공사, AI 활용 타슈 배치 효율성 높인다”, 디트뉴스24, 2024.7.24. https://www.dtnews24.com/news/articleView.html?idxno=775777",
+    ("Demšar", 2006): "J. Demšar, “Statistical comparisons of classifiers over multiple data sets”, Journal of Machine Learning Research, 7, pp. 1–30, 2006.",
     ("Contardo", 2012): "C. Contardo, C. Morency, and L.-M. Rousseau, “Balancing a dynamic public bike-sharing system”, Technical Report CIRRELT-2012-09, CIRRELT, 2012.",
     ("Ghosh", 2017): "S. Ghosh, P. Varakantham, Y. Adulyasak, and P. Jaillet, “Dynamic repositioning to reduce lost demand in bike sharing systems”, Journal of Artificial Intelligence Research, 58, pp. 387–430, 2017.",
     ("O'Mahony", 2015): "E. O'Mahony and D. B. Shmoys, “Data analysis and optimization for (Citi)Bike sharing”, Proceedings of the Twenty-Ninth AAAI Conference on Artificial Intelligence, pp. 687–694, 2015.",
@@ -33,7 +34,9 @@ ENTRIES = {
 }
 SOURCES = [("공공데이터포털", "@data"), ("기상청", "@kma"), ("타슈 공개 API", "@tashu"), ("TMAP", "@tmap")]
 
-NAME = r"[가-힣A-Za-z']+"
+# 라틴 확장 글자(À-ÿ, Ā-ɏ)도 이름으로 센다. Demšar의 š를 놓치면 인용이 번호로 바뀌지 않는다(1.26.433).
+# ×(U+00D7)와 ÷(U+00F7)는 뺀다. 원고가 곱셈 기호로 쓴다.
+NAME = r"[가-힣A-Za-zÀ-ÖØ-öø-ɏ']+"
 NARRATIVE = re.compile(r"(?P<name>%s)(?P<rest> 외|·[가-힣]+|와 [A-Za-z']+)?\((?P<y>\d{4})\)" % NAME)
 PAREN = re.compile(r"\(([^()]*\d{4})\)")
 ITEM = re.compile(r"^(?P<name>%s)(?: 외|·[가-힣]+)?, (?P<y>\d{4})$" % NAME)

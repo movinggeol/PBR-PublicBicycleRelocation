@@ -600,6 +600,24 @@ def test_이름을_적지_않은_자료_출처를_잡는다(checker, tmp_path):
     assert len(문제) == 1 and "티맵모빌리티" in 문제[0], 문제
 
 
+def test_라틴_확장_글자가_든_저자도_짝짓는다(checker, tmp_path):
+    """🔴 회귀(1.26.433) — 이름 규칙이 A-Za-z뿐이어서 Demšar의 š에서 이름이 끊겼다.
+
+    본문의 (Demšar, 2006)을 인용으로 보지 못해 참고문헌이 떠 있다고 물었다.
+    곱셈 기호 ×는 이름으로 세지 않아야 한다(원고가 '셋 × 셋'으로 쓴다).
+    """
+    참고문헌 = _참고문헌 + """
+Demšar, J. (2006). Statistical comparisons of classifiers over multiple data sets.
+*Journal of Machine Learning Research*, 7, 1–30.
+"""
+    문제 = _인용_문제(checker, tmp_path, 참고문헌, {
+        "2장_관련연구.md": "Raviv 외(2013)를 보라. 7인 1개 조이다(김영일, 2022).",
+        "4장_시스템설계.md": "티맵모빌리티 TMAP API로 수집하였다.",
+        "6장_성능평가.md": "19개월 × 시드 셋을 짝지어 검정하였다(Demšar, 2006).",
+    })
+    assert 문제 == [], 문제
+
+
 def test_저자와_연도가_줄바꿈으로_갈려도_통과한다(checker, tmp_path):
     """🔴 오탐 회귀 — 줄 단위로 읽으면 멀쩡한 인용 스무 건을 짝이 없다고 물었다."""
     문제 = _인용_문제(checker, tmp_path, _참고문헌, {
