@@ -159,7 +159,7 @@ def window_state(stamp: datetime, start: clock, end: clock, interval: int,
     | `include_holidays` | ✅ | ✅ | **두 PC 모두 이것이다**(2026-09-03부터, 두_PC_작업.md 0장) |
 
     옛 B PC 휴일 전담 분담용이던 휴일 전용(`--holidays-only`)은 2026-09-03에 분담을 폐기했고
-    1.26.430에서 옵션을 제거했다.
+    1.26.431에서 옵션을 제거했다.
 
     ⚠️ 이것은 **관측을 남기는 범위**지 분석의 `--day-type`이 아니다. 평일과 휴일을
     섞어 통계를 내지 말라는 규약은 그대로다 — 거를 때는

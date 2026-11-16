@@ -212,7 +212,7 @@ function Invoke-Install {
     # '휴일'을 표현할 수 없다 — 공휴일은 요일이 평일이기 때문이다(어린이날=화).
     #   · 평일 수집  : 주말 트리거를 아예 만들지 않고, 공휴일은 스크립트가 거른다.
     #   · 휴일 포함  : 7일을 깨우고 스크립트의 휴일 가드도 푼다.
-    #   (휴일만 모으던 -HolidaysOnly는 옛 B PC 분담용이라 1.26.430에서 제거했다 · COLLECTOR.md 11장)
+    #   (휴일만 모으던 -HolidaysOnly는 옛 B PC 분담용이라 1.26.431에서 제거했다 · COLLECTOR.md 11장)
     $DayLabel = if ($IncludeHolidays) { '매일(휴일 포함)' } else { '평일' }
     $days = if ($IncludeHolidays) {
         [System.DayOfWeek[]]@('Monday', 'Tuesday', 'Wednesday', 'Thursday',

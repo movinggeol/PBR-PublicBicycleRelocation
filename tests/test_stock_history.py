@@ -217,7 +217,7 @@ def test_기본값은_여전히_휴일을_거른다(history_dir, fake_api):
 # ---- 휴일 전용 옵션은 없다 ----
 
 def test_휴일_전용_옵션은_제거됐다():
-    """옛 B PC 휴일 전담 분담용 `--holidays-only`는 2026-09-03에 분담을 폐기했고 1.26.430에서
+    """옛 B PC 휴일 전담 분담용 `--holidays-only`는 2026-09-03에 분담을 폐기했고 1.26.431에서
     옵션을 제거했다. 다시 등록하려 하면 조용히 평일까지 모으지 않고 인자 오류로 멈춰야 한다."""
     with pytest.raises(SystemExit):
         collector.build_parser().parse_args(["--holidays-only"])
@@ -411,7 +411,7 @@ def test_현황은_오늘_창이_아니라_그날_창으로_기대를_센다(his
 
 
 def _window_at_end_of(day: date):
-    """그날 **끝에** 등록돼 있던 수집 창(옛 `window_on()`, 1.26.430에서 제거)."""
+    """그날 **끝에** 등록돼 있던 수집 창(옛 `window_on()`, 1.26.431에서 제거)."""
     return collector.window_at(datetime.combine(day, time.max))
 
 

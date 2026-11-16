@@ -137,7 +137,7 @@ DB에 행이 있으면 CSV를 고쳐도 반영되지 않는다).
    (작업 스케줄러는 요일만 안다). 자세한 것은 docs/구현/COLLECTOR.md.
    **수집기의 요일 옵션은 두 갈래다**: 없음(평일만) / `--include-holidays`
    (평일+휴일. 지금은 두 PC 모두 이것이다 · docs/구현/두_PC_작업.md 0장). 옛 B PC
-   전담 분담용이던 `--holidays-only`(휴일만)는 2026-09-03에 분담을 폐기했고 1.26.430에서
+   전담 분담용이던 `--holidays-only`(휴일만)는 2026-09-03에 분담을 폐기했고 1.26.431에서
    옵션을 제거했다. 둘 다 **창 가드는 지킨다**
    (`--force`만 창까지 푼다). 이것은 **관측 범위**지 분석의 `--day-type`이
    아니다. 평일·휴일을 섞어 통계 내지 말라는 규약은 그대로고, 거를 때는
@@ -159,7 +159,7 @@ DB에 행이 있으면 CSV를 고쳐도 반영되지 않는다).
    하루 여러 회차를 돌리므로 **한쪽 후보만 있는 시간대는 크래시가 아니라 건너뛴다** —
    step1/step2/step3/step4의 건너뛰기 가드를 지우지 마라.
 7. **일회성 스크립트는 `experiments/<분류>/`에 둔다** — step 폴더나 루트에 test.py를
-   만들지 마라. 분류는 params·baseline·structure·diagnostic 넷이고(학습용 예제 `learning`은 1.26.430에서 지웠다),
+   만들지 마라. 분류는 params·baseline·structure·diagnostic 넷이고(학습용 예제 `learning`은 1.26.431에서 지웠다),
    스크립트 상단의 `sys.path.insert`는 **`parents[2]`**(저장소 루트)를 가리켜야 한다.
    루트에 있던 `db_test.py`는 1.20.7에서 `tools/show_schema.py`로 옮겼다 —
    **여러 번 쓰는 도구는 `tools/`, 한 번 재고 마는 것은 `experiments/`다.**

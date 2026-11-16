@@ -707,7 +707,7 @@ def test_work_time_constants_come_from_project_config(step2):
     assert vrp.PICK_TIME_SEC is project_config.PICK_TIME_SEC
     assert vrp.DROP_TIME_SEC is project_config.DROP_TIME_SEC
     # 이동시간은 속도 상수가 아니라 `travel_seconds()` 한 곳에서 센다. vrp가 들여오기만 하던
-    # `VEHICLE_SPEED_KMPH`는 1.26.430에서 제거했고, ILP · VRP가 같은 식을 쓰는지는 이것으로 본다.
+    # `VEHICLE_SPEED_KMPH`는 1.26.431에서 제거했고, ILP · VRP가 같은 식을 쓰는지는 이것으로 본다.
     assert vrp.travel_seconds is project_config.travel_seconds
 
 
@@ -1230,7 +1230,7 @@ def test_duration_input_is_checked_against_the_real_list():
     명령줄에서만 받는다(옛 실행 재현 · 이미 걸린 예약 작업).
 
     폼 입력을 거르던 `normalize_durations()`는 1.26.372에 실행 폼이 회차를 고르지 않게 되며
-    부르는 곳이 사라져 1.26.430에서 지웠다(1.17.3 이전에는 폼 예시가 `10_15`였다).
+    부르는 곳이 사라져 1.26.431에서 지웠다(1.17.3 이전에는 폼 예시가 `10_15`였다).
     """
     import project_config
 
