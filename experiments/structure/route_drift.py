@@ -646,6 +646,79 @@ def q3_table(frames: list) -> None:
             print(f"  {limit} · {budget}분 | {lead}분 | {gap_share(last):.1%} | {exec_rate(g):.1%} | {x:,.0f} | {u:,.0f} | {h:.1%}")
 
 
+def extra_tables(frame: pd.DataFrame, inst: pd.DataFrame) -> None:
+    """찍기만(65장 등록): 경로 길이별 · 재고 변화가 큰 상위 10% 회차 · 출발 직전 비 · D가 다시 푼 군집 수. 판정에 쓰지 않는다."""
+    wk = frame[(frame["dt"] == "weekday")]
+    print("\n### 찍기만 평일: 경로(군집) 길이별 마지막 3분의 1의 못 채우는 지시량 (A안)")
+    edges = (0, 60, 90, 120, 180, math.inf)
+    for lead in (30, 360):
+        g = wk[(wk["arm"] == "A") & (wk["lead"] == lead)]
+        if g.empty:
+            continue
+        cells = []
+        for k in range(len(edges) - 1):
+            b = g[(g["route_last"] / 60 >= edges[k]) & (g["route_last"] / 60 < edges[k + 1])]
+            last = b[third(b) >= 2 / 3]
+            name = f"{int(edges[k])}~{'' if math.isinf(edges[k + 1]) else int(edges[k + 1])}분"
+            cells.append(f"{name} {gap_share(last):.1%}" if len(last) else f"{name} -")
+        print(f"  리드 {lead}분: " + " · ".join(cells))
+    keyed = ["day", "dur", "lead"]
+    for label, pick in (("재고 변화가 큰 상위 10% 회차", "vol"), ("출발 직전 3시간 강수 1mm 이상 회차", "rain")):
+        print(f"\n### 찍기만 평일: {label}")
+        for lead in sorted(x for x in wk["lead"].unique() if x > 0):
+            g = wk[wk["lead"] == lead]
+            ins = g[g["arm"] == "A"][keyed + ["vol", "rain"]].drop_duplicates(keyed)
+            if pick == "vol":
+                chosen = ins[ins["vol"] >= ins["vol"].quantile(0.9)][keyed]
+            else:
+                chosen = ins[ins["rain"].fillna(False).astype(bool)][keyed]
+            if chosen.empty:
+                print(f"  리드 {lead}분: 해당 회차 없음")
+                continue
+            sub = g.merge(chosen, on=keyed)
+            a_part = sub[sub["arm"] == "A"]
+            last = a_part[third(a_part) >= 2 / 3]
+            ua = arm_scores(a_part)[0]
+            line = f"  리드 {lead}분 ({len(chosen)}회차): A 마지막 3분의 1 못 채움 {gap_share(last):.1%} · 집행률 {exec_rate(a_part):.1%}"
+            for arm in ("D", "E"):
+                part = sub[sub["arm"] == arm]
+                if not part.empty:
+                    line += f" · {arm} 유효 배송 {rate(arm_scores(part)[0], ua):.2f}배(A 대비)"
+            print(line)
+    if not inst.empty and "d_replanned" in inst.columns:
+        print("\n### 찍기만: D가 다시 푼 군집 수와 종이와 어긋난 정류장 (회차 평균)")
+        for (dt, lead), g in inst[inst["lead"] > 0].groupby(["dt", "lead"]):
+            print(f"  {pv.DAY_TYPES[dt]} 리드 {lead}분: 다시 푼 군집 {g['d_replanned'].mean():.1f}개 / 군집 {g['clusters'].mean():.1f}개 · "
+                  f"바뀐 정류장 {g['d_changed'].mean():.1f}곳 / 정류장 {g['stops'].mean():.1f}곳")
+
+
+def frontier(frames: list) -> None:
+    """Q3 요약(65장 판정 (4), 보고만): 마지막 3분의 1 못 채움이 문턱 이하인 칸과 그 칸의 일의 양을 현행과 견준다."""
+    rows = []
+    for f in frames:
+        for (limit, budget, lead), g in f.groupby(["limit", "budget", "lead"]):
+            if lead not in SWEEP_LEADS:
+                continue
+            last = g[third(g) >= 2 / 3]
+            u, _h, x = arm_scores(g)
+            rows.append(dict(limit=limit, budget=budget, lead=lead, gap=gap_share(last), moved=x, useful=u))
+    table = pd.DataFrame(rows)
+    if table.empty:
+        return
+    print("\n### Q3 요약: 마지막 3분의 1 못 채움이 문턱 이하인 칸 (옮긴 대수 · 유효 배송은 현행 50 · 120분 대비)")
+    for lead in SWEEP_LEADS:
+        t = table[table["lead"] == lead]
+        cur = t[(t["limit"] == CURRENT[0]) & (t["budget"] == CURRENT[1])]
+        if cur.empty:
+            continue
+        cm, cu = float(cur["moved"].iloc[0]), float(cur["useful"].iloc[0])
+        for floor in (0.03, 0.05, 0.10):
+            ok = t[t["gap"] <= floor].sort_values("moved", ascending=False)
+            names = ", ".join(f"{int(r.limit)} · {int(r.budget)}분(옮긴 {rate(r.moved, cm):.0%} · 유효 {rate(r.useful, cu):.0%})"
+                              for r in ok.itertuples()) or "없음"
+            print(f"  리드 {lead}분 · {floor:.0%} 이하: {names}")
+
+
 def report() -> int:
     files = sorted(OUT_DIR.glob("main_*.csv"))
     files = [f for f in files if not f.stem.endswith("_회차")]
@@ -670,10 +743,14 @@ def report() -> int:
     for arm, name in (("D", "(2) D가 값을 내기 시작하는 리드"), ("C", "(3) 다시 세워야 하는 리드")):
         passed = sorted(lead for (a, lead), ok in verdict.items() if a == arm and ok)
         print(f"  {name}: {f'{passed[0]}분' if passed else '없음 (어느 리드에서도 기준 미달)'}")
+    inst_files = sorted(OUT_DIR.glob("main_*_회차.csv"))
+    inst = pd.concat([pd.read_csv(f) for f in inst_files], ignore_index=True) if inst_files else pd.DataFrame()
+    extra_tables(frame, inst)
     sweep = [pd.read_csv(f) for f in sorted(OUT_DIR.glob("sweep_*.csv")) if not f.stem.endswith("_회차")]
     if sweep:
         cur = frame[(frame["dt"] == "weekday") & (frame["arm"] == "A") & frame["lead"].isin(SWEEP_LEADS)]
         q3_table([cur] + sweep)
+        frontier([cur] + sweep)
     return 0
 
 
