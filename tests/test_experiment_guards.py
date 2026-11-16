@@ -2806,3 +2806,24 @@ def test_z_고정모집단_격자는_z_하나만_줘도_요약을_낸다(capsys)
                           "candidates": [90, 90], "bikes": [200, 210], "km": [300.0, 310.0], "over": [1, 2]})
     module.report(frame)
     assert "견줄 것이 없다" in capsys.readouterr().out
+
+
+# --- 65장 보고의 비 회차 표 (2026-11-17) ----------------------------------------------------
+# 날씨 자료가 2026-07-31에서 끝나 실험 기간(08-25 ~ 11-07)의 비 표시가 모두 빈 값이었는데, 보고는 리드마다
+# *"해당 회차 없음"* 을 찍었다. 비가 오지 않았다는 말로 읽힌다.
+
+def test_경로_어긋남_보고는_날씨_자료가_없을_때_비_회차가_없다고_하지_않는다(capsys):
+    rd = _load_experiment("experiments/structure/route_drift.py")
+    row = dict(dt="weekday", day="2026-09-01", dur="_05_10", arm="A", cluster=0, order=1, station_id="ST-1",
+               action="pick", q=3, arr_sec=600.0, route_last=1800.0, status="가능", possible=3, x=3.0,
+               useful=0.0, harmless=1.0, vol=1.0, rain=float("nan"))
+    frame = pd.DataFrame([dict(row, lead=30), dict(row, lead=360)])
+    rd.extra_tables(frame, pd.DataFrame())
+    out = capsys.readouterr().out
+    assert "날씨 자료가 이 기간을 덮지 않아" in out
+    assert "해당 회차 없음" not in out, "비 표시가 빈 값인 것을 '비 온 회차가 없다'로 찍었다"
+
+    frame["rain"] = False                     # 자료가 있고 비가 안 왔으면 그때는 '해당 회차 없음'이 맞다
+    rd.extra_tables(frame, pd.DataFrame())
+    out = capsys.readouterr().out
+    assert "해당 회차 없음" in out and "날씨 자료가 이 기간을 덮지 않아" not in out

@@ -665,6 +665,11 @@ def extra_tables(frame: pd.DataFrame, inst: pd.DataFrame) -> None:
     keyed = ["day", "dur", "lead"]
     for label, pick in (("재고 변화가 큰 상위 10% 회차", "vol"), ("출발 직전 3시간 강수 1mm 이상 회차", "rain")):
         print(f"\n### 찍기만 평일: {label}")
+        if pick == "rain" and wk["rain"].isna().all():
+            # 날씨 자료가 기간을 덮지 않으면 모든 회차가 빈 값이다. "해당 회차 없음"으로 찍으면 비가 오지 않았다는 뜻으로
+            # 읽힌다(65장 첫 보고, 2026-11-17: 날씨 자료가 2026-07-31에서 끝났다).
+            print("  날씨 자료가 이 기간을 덮지 않아 가르지 못했다 (weather_departure.load_raw_hourly()의 마지막 날을 확인)")
+            continue
         for lead in sorted(x for x in wk["lead"].unique() if x > 0):
             g = wk[wk["lead"] == lead]
             ins = g[g["arm"] == "A"][keyed + ["vol", "rain"]].drop_duplicates(keyed)
@@ -690,6 +695,39 @@ def extra_tables(frame: pd.DataFrame, inst: pd.DataFrame) -> None:
         for (dt, lead), g in inst[inst["lead"] > 0].groupby(["dt", "lead"]):
             print(f"  {pv.DAY_TYPES[dt]} 리드 {lead}분: 다시 푼 군집 {g['d_replanned'].mean():.1f}개 / 군집 {g['clusters'].mean():.1f}개 · "
                   f"바뀐 정류장 {g['d_changed'].mean():.1f}곳 / 정류장 {g['stops'].mean():.1f}곳")
+
+
+def age_tables(frame: pd.DataFrame) -> None:
+    """사후 표(65장 결과를 정리하며 더함. 등록에 없고 판정에 쓰지 않는다): 계획 나이별 못 채움, 경로 앞 · 뒤의 수거 · 배송.
+
+    사용자 물음 "회차를 몇 시간 안에 마쳐야 몇 % 안인가"에 바로 답하려고 리드와 도착 분을 더한 '계획 나이'로 다시 묶는다.
+    출발 전에 흐른 시간(리드)과 출발 뒤에 흐른 시간(도착 분)은 길이가 같아도 무게가 달라 리드 0 · 30분과 120분을 나눠 적는다.
+    앞 · 뒤 표는 그 까닭을 보인다. 경로는 빈 차로 떠나 수거가 앞에, 배송이 뒤에 몰리고, 배송은 거치대 × 1.5의 여유가 있다.
+    """
+    edges = (0, 30, 60, 90, 120, 150, 180, 240, 300)
+    for dt in ("weekday", "holiday"):
+        g = frame[(frame["dt"] == dt) & frame["arm"].isin(["A", "C"])]
+        if g.empty:
+            continue
+        print(f"\n### 사후 {pv.DAY_TYPES[dt]}: 계획 나이(리드 + 도착 분)별 못 채우는 지시량 (등록에 없음, 판정에 쓰지 않음)")
+        age = g["lead"] + g["arr_sec"] / 60
+        for name, leads in (("리드 0 · 30분", (0, 30)), ("리드 120분", (120,))):
+            cells = []
+            for k in range(len(edges) - 1):
+                b = g[g["lead"].isin(leads) & (age >= edges[k]) & (age < edges[k + 1])]
+                if len(b):
+                    cells.append(f"{edges[k]}~{edges[k + 1]}분 {gap_share(b):.1%} ({len(b):,})")
+            print(f"  {name}: " + " · ".join(cells))
+        print("  경로 앞 3분의 1 · 뒤 3분의 1: 수거 비중 · 수거의 못 채움 · 배송의 못 채움")
+        for lead in sorted(g["lead"].unique()):
+            part = g[g["lead"] == lead]
+            pos = third(part)
+            line = []
+            for name, sel in (("앞", pos < 1 / 3), ("뒤", pos >= 2 / 3)):
+                s = part[sel]
+                picks, drops = s[s["action"] == "pick"], s[s["action"] == "drop"]
+                line.append(f"{name} 수거 {rate(len(picks), len(s)):.0%} · {gap_share(picks):.1%} · {gap_share(drops):.1%}")
+            print(f"  리드 {lead}분: " + " | ".join(line))
 
 
 def frontier(frames: list) -> None:
@@ -746,6 +784,7 @@ def report() -> int:
     inst_files = sorted(OUT_DIR.glob("main_*_회차.csv"))
     inst = pd.concat([pd.read_csv(f) for f in inst_files], ignore_index=True) if inst_files else pd.DataFrame()
     extra_tables(frame, inst)
+    age_tables(frame)
     sweep = [pd.read_csv(f) for f in sorted(OUT_DIR.glob("sweep_*.csv")) if not f.stem.endswith("_회차")]
     if sweep:
         cur = frame[(frame["dt"] == "weekday") & (frame["arm"] == "A") & frame["lead"].isin(SWEEP_LEADS)]
