@@ -730,6 +730,70 @@ def age_tables(frame: pd.DataFrame) -> None:
             print(f"  리드 {lead}분: " + " | ".join(line))
 
 
+STOCK_DELAYS = (30, 60, 90, 120, 180, 240, 360)   # 분. 아래 사후 표(2026-11-18)
+
+
+def stock_change_tables(frame: pd.DataFrame) -> None:
+    """사후 표(2026-11-18 사용자 물음 *"계획 생성 뒤 2시간이 지나면 계획 당시 재고와 몇 % 다른가"*. 등록에 없고 판정에 쓰지 않는다).
+
+    (가) 전체 대여소: 관측이 촘촘한 날 05 ~ 21시 정시마다, Δ 뒤 재고가 바뀐 대여소 비율과 평균 변화.
+    (나) 계획 대상: C안(출발 시각에 세운 계획)의 정류장을 **같은 계획 그대로 Δ 늦게** 집행했다고 보고, 운영 판정 함수
+         (`judge` → `compare_stock`)로 못 채우는 지시량을 센다. 경로 이동 시간은 뺀다(모든 정류장을 Δ 뒤 재고로 본다).
+         거치대는 자료를 다시 읽지 않으려고 참조 계획 대신 정본 실행의 station_info를 쓴다.
+    65장의 판정(계획의 값: 유효 배송)과 다른 자다. 이 표는 *재고가 얼마나 달라지나* 만 말한다.
+    """
+    cache = OUT_DIR / ("grid_" + UNTIL.replace(":", "").replace(" ", "_") + ".pkl")
+    if not cache.exists():
+        print(f"\n### 사후: 재고 변화 표는 관측 격자({cache.name})가 없어 건너뛴다 (먼저 --run main)")
+        return
+    grid, days = pd.read_pickle(cache)
+    obs = Observed(grid)
+    with db.session() as conn:
+        info = db.load_frame(conn, "station_info", run_label=default_run_label(conn))
+    parking = info.drop_duplicates("station_id").set_index("station_id")["parking_lot"].astype(float)
+    dense = {pd.Timestamp(d).date() for d in days}
+    starts = [i for i, ts in enumerate(grid.index) if ts.date() in dense and ts.minute == 0 and 5 <= ts.hour <= 21]
+    print("\n### 사후: 계획을 세운 뒤 시간이 지나면 재고가 얼마나 달라지나 (2026-11-18, 등록에 없음, 판정에 쓰지 않음)")
+    print(f"  (가) 전체 대여소 · 관측 날 05 ~ 21시 정시 {len(starts):,}곳에서")
+    for delay in STOCK_DELAYS:
+        k = delay // STOCK_TICK_MINUTES
+        rows = [i for i in starts if i + k < obs.n]
+        a, b = obs.values[rows], obs.values[[i + k for i in rows]]
+        seen = np.isfinite(a) & np.isfinite(b)
+        diff = np.abs(b - a)[seen]
+        print(f"    {delay}분 뒤: 재고가 바뀐 대여소 {np.mean(diff >= 1):.1%} · 3대 이상 {np.mean(diff >= 3):.1%} · 평균 변화 {diff.mean():.2f}대")
+    fresh = frame[frame["arm"] == "C"]
+    for dt in ("weekday", "holiday"):
+        part = fresh[fresh["dt"] == dt]
+        if part.empty:
+            continue
+        judged = {delay: [] for delay in STOCK_DELAYS}
+        moved = {delay: [] for delay in STOCK_DELAYS}
+        for (day, dur), stops in part.groupby(["day", "dur"]):
+            i_dep = obs.index.get(pd.Timestamp(day) + pd.Timedelta(hours=duration_start_hour(dur)))
+            if i_dep is None:
+                continue
+            s_plan = obs.row(i_dep)
+            for delay in STOCK_DELAYS:
+                k = delay // STOCK_TICK_MINUTES
+                later = {(c, o): obs.at(i_dep + k, sid)
+                         for c, o, sid in zip(stops["cluster"], stops["order"], stops["station_id"])}
+                judged[delay].append(judge(stops[["cluster", "order", "station_id", "action", "q"]], s_plan, later, parking))
+                before = s_plan.reindex(stops["station_id"]).to_numpy(dtype=float)
+                after = np.array([np.nan if v is None else v for v in later.values()], dtype=float)
+                moved[delay].append(np.abs(after - before))
+        print(f"  (나) {pv.DAY_TYPES[dt]} C안 정류장 {len(part):,}곳을 같은 계획 그대로 늦게 집행하면")
+        for delay in STOCK_DELAYS:
+            g = pd.concat(judged[delay], ignore_index=True)
+            seen = g[g["status"] != "관측 없음"]
+            change = np.concatenate(moved[delay])
+            change = change[np.isfinite(change)]
+            picks, drops = seen[seen["action"] == "pick"], seen[seen["action"] == "drop"]
+            print(f"    {delay}분 늦게: 재고가 바뀐 곳 {np.mean(change >= 1):.0%} · 평균 변화 {change.mean():.2f}대 · "
+                  f"못 채우는 지시량 {gap_share(g):.1%}(수거 {gap_share(picks):.1%} · 배송 {gap_share(drops):.1%}) · "
+                  f"걸리는 줄 {rate((seen['status'] != '가능').sum(), len(seen)):.1%}")
+
+
 def frontier(frames: list) -> None:
     """Q3 요약(65장 판정 (4), 보고만): 마지막 3분의 1 못 채움이 문턱 이하인 칸과 그 칸의 일의 양을 현행과 견준다."""
     rows = []
@@ -785,6 +849,7 @@ def report() -> int:
     inst = pd.concat([pd.read_csv(f) for f in inst_files], ignore_index=True) if inst_files else pd.DataFrame()
     extra_tables(frame, inst)
     age_tables(frame)
+    stock_change_tables(frame)
     sweep = [pd.read_csv(f) for f in sorted(OUT_DIR.glob("sweep_*.csv")) if not f.stem.endswith("_회차")]
     if sweep:
         cur = frame[(frame["dt"] == "weekday") & (frame["arm"] == "A") & frame["lead"].isin(SWEEP_LEADS)]
