@@ -596,6 +596,36 @@ def test_계획이_바뀌었거나_차량이_없거나_API가_죽으면_말로_�
     assert res.status_code == 502 and "TASHU_API_KEY" in res.json()["error"]
 
 
+def test_재판정은_끝낸_곳과_다른_차의_곳을_계획_밖이라_권하지_않는다(client, live, monkeypatch):
+    """계획 밖 안내(1.26.444)는 **회차 계획 전체**(끝낸 방문지 · 다른 차량 포함)를 빼고 찾는다.
+
+    `/m/live`는 끝낸 방문지를 뺀 계획으로 판정하므로, 그 표로 '계획 밖'을 가리면 방금 들른 수거지가
+    '계획 밖인 가까운 곳'으로 권해진다. 대여소2(배송 3대)가 넘치게 두고, 가까운 세 곳을 놓는다:
+    끝낸 대여소1(100m) · V02의 대여소4(50m) · 계획 밖 대여소9(300m)."""
+    import tashu
+
+    with db.session() as conn:
+        ids = ["ST1001", "ST1002", "ST1003", "ST1004", "ST1005", "ST1009"]
+        db.save_frame(conn, "rebalance_plan", pd.DataFrame({
+            "station_id": ids, "mu": [1.0] * 6, "sigma": [0.5] * 6, "parking_lot": [10, 10, 12, 8, 10, 10],
+            "stock": [9, 1, 0, 7, 2, 1], "target_qty": [5.0] * 6, "rebal_qty": [-4, 3, 2, -3, 3, 0]}),
+            run_label=LABEL, duration=DURATION)
+        conn.commit()
+    base = (36.32, 127.37)
+    spots = {"ST1001": (0.0009, 0, "대여소1"), "ST1002": (0, 0, "대여소, 둘"), "ST1003": (0.02, 0, "대여소3"),
+             "ST1004": (0.00045, 0, "대여소4"), "ST1005": (0.03, 0, "대여소5"), "ST1009": (0.0027, 0, "대여소9")}
+    stock = {"ST1001": 0, "ST1002": 14, "ST1003": 16, "ST1004": 0, "ST1005": 2, "ST1009": 1}
+    frame = pd.DataFrame([{"station_id": sid, "station_name": name, "lat": base[0] + dlat, "lon": base[1] + dlon,
+                           "stock": stock[sid]} for sid, (dlat, dlon, name) in spots.items()])
+    monkeypatch.setattr(tashu, "fetch_stations", lambda timeout=30: frame)
+
+    by_no = {r["no"]: r for r in _judge(client, done="1").json()["stops"]}
+    assert by_no[2]["status"] == "넘침", by_no[2]
+    advice = by_no[2]["advice"]
+    assert "계획 밖인 가까운 대여소9(300m)에 2대 내려놓으세요" in advice, advice
+    assert "대여소1" not in advice and "대여소4" not in advice, "끝낸 곳이나 다른 차의 곳을 계획 밖이라 권했다"
+
+
 # ─────────────── 관제 대조를 현장 앱이 이어 받는다 (1.26.421) ───────────────
 
 @pytest.fixture

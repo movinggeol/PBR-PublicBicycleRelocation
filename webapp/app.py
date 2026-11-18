@@ -1312,7 +1312,10 @@ def orders_live(request: Request, run_label: Optional[str] = None,
         context["live_error"] = str(err)
         return templates.TemplateResponse(request, "orders.html", context)
 
-    compared = orders.compare_stock(planned, live)
+    # 군집 안에 여유가 없으면 계획 밖의 가까운 대여소를 안내에 더한다(1.26.444). 판정은 그대로다.
+    compared = orders.compare_stock(planned, live,
+                                    reference=orders.plan_reference(context["run_label"], context["duration"]),
+                                    exclude=set(planned["station_id"]) if not planned.empty else set())
     # 현장 앱이 이어 받을 수 있게 받은 재고 표를 남긴다(1.26.421). 지문은 차량으로 좁히기 **전**
     # 전체 계획의 것이어야 현장 앱(`_field_context`)이 낸 지문과 맞는다.
     full = context if not vehicle else _orders_context(context["run_label"], context["duration"])
@@ -1549,8 +1552,12 @@ def field_live(request: Request, run_label: Optional[str] = None,
 
     planned = orders.planned_work(context["run_label"], context["duration"],
                                   frames=context["_frames"])
+    # 계획 밖 안내(1.26.444)는 끝낸 곳까지 포함한 **회차 계획 전체**를 빼고 찾는다 — 끝낸 수거지를 '계획 밖'이라 하지 않게.
+    in_plan = set(planned["station_id"]) if not planned.empty else set()
     planned = orders.without_done(planned, sheet["stops"], finished)
-    judged = orders.rejudge_route(sheet["stops"], orders.compare_stock(planned, live), finished)
+    judged = orders.rejudge_route(sheet["stops"], orders.compare_stock(
+        planned, live, reference=orders.plan_reference(context["run_label"], context["duration"]),
+        exclude=in_plan), finished)
     return JSONResponse({
         "ok": True,
         "source": "control" if source == "control" else "field",

@@ -69,7 +69,7 @@ import stockout_forecast as sf  # noqa: E402
 from experiments._shared import default_run_label, load_baseline  # noqa: E402
 from project_config import (DATA_ROOT, DURATIONS, REBAL_MIN_QTY, STOCK_TICK_MINUTES, TARGET_QTY_UPPER_RATIO,  # noqa: E402
                             TIME_BUDGET_MINUTES, TOP_STATION_LIMIT, VEHICLE_CAPACITY, duration_start_hour,
-                            holiday_mask)
+                            haversine_km, holiday_mask)
 from webapp import orders  # noqa: E402
 
 UNTIL = "2026-11-08 00:00"                 # 63장과 같은 자료 끝
@@ -897,6 +897,80 @@ def report() -> int:
     return 0
 
 
+NEARBY_RADII = (0.3, 0.5, 1.0)              # km. 사후 추정(2026-11-18)
+
+
+def nearby_report(until: str = UNTIL) -> int:
+    """사후 추정(2026-11-18, 등록에 없음): 작업 직전 계획(A안 리드 30분)의 수거 부족 · 배송 넘침을, 그때의 관측 재고로
+    **계획 밖의 가장 가까운 여유 대여소 한 곳** 으로 메울 수 있었나. `webapp.orders.NEARBY_RADIUS_KM`(1.26.444)의 근거다.
+
+    여유는 운영 안내(`orders._nearby_pool`)와 같은 자다. 더 실을 수 = 재고 − 목표(올림), 더 내릴 수 = min(목표 − 재고,
+    거치대 × 상한 − 재고). 목표는 그 회차 계획 시각 재고로 다시 셈한 `compute_rebal_qty`의 `target_qty`다. 그 회차 계획에
+    든 대여소(모든 차량)는 뺀다. 배송은 자리가 모자란 것(넘침 · 불가)만 센다(적재가 모자란 것은 내릴 곳의 문제가 아니다).
+    """
+    cache = OUT_DIR / ("grid_" + until.replace(":", "").replace(" ", "_") + ".pkl")
+    if not cache.exists():
+        print(f"관측 격자({cache.name})가 없습니다 — 먼저 --run main")
+        return 1
+    bc = load_baseline()
+    print("### 사후: 계획 밖의 가까운 대여소로 메울 수 있었나 (리드 30분 A안, 2026-11-18, 등록에 없음)")
+    for dt in ("weekday", "holiday"):
+        main = OUT_DIR / f"main_{dt}.csv"
+        if not main.exists():
+            continue
+        refs, grid, coords, days, hol = load_world(until, (dt,), cache=str(cache))
+        obs = Observed(grid)
+        frame = pd.read_csv(main)
+        a = frame[(frame["arm"] == "A") & (frame["lead"] == 30)]
+        ids = np.array(coords.index)
+        lat, lon = coords["lat"].to_numpy(float), coords["lon"].to_numpy(float)
+        pos = {sid: k for k, sid in enumerate(ids)}
+        total = {"pick": 0.0, "drop": 0.0}
+        lack = {"pick": 0.0, "drop": 0.0}
+        events = {"pick": 0, "drop": 0}
+        filled = {r: {"pick": 0.0, "drop": 0.0, "n_pick": 0, "n_drop": 0, "km": []} for r in NEARBY_RADII}
+        for (day, dur), stops in a.groupby(["day", "dur"]):
+            i_dep = obs.index.get(pd.Timestamp(day) + pd.Timedelta(hours=duration_start_hour(dur)))
+            if i_dep is None or dur not in refs[dt]:
+                continue
+            ref = refs[dt][dur][0]
+            stats = ref[["mu", "sigma", "parking_lot"]].copy()
+            stats["stock"] = obs.row(i_dep - 30 // STOCK_TICK_MINUTES).reindex(stats.index)
+            stats = stats.dropna(subset=["stock", "mu", "sigma", "parking_lot"])
+            target = np.ceil(quiet(bc.target_mod.compute_rebal_qty, stats.copy())["target_qty"].reindex(ids).to_numpy(float))
+            ceiling = ref["parking_lot"].reindex(ids).to_numpy(float) * TARGET_QTY_UPPER_RATIO
+            outside = ~np.isin(ids, stops["station_id"].unique())
+            seen = stops[stops["status"] != "관측 없음"]
+            for action in ("pick", "drop"):
+                total[action] += seen.loc[seen["action"] == action, "q"].sum()
+            for row in seen.itertuples():
+                short = row.q - (row.possible if pd.notna(row.possible) else row.q)
+                if short <= 0 or row.station_id not in pos or (row.action == "drop" and row.status not in ("넘침", "불가")):
+                    continue
+                lack[row.action] += short
+                events[row.action] += 1
+                now = np.array([np.nan if obs.at(int(row.i_arr), s) is None else obs.at(int(row.i_arr), s) for s in ids])
+                spare = now - target if row.action == "pick" else np.minimum(target - now, np.trunc(ceiling - now))
+                km = haversine_km(lat[pos[row.station_id]], lon[pos[row.station_id]], lat, lon)
+                for radius in NEARBY_RADII:
+                    cand = outside & np.isfinite(spare) & (spare >= 1) & (km > 0) & (km <= radius)
+                    if cand.any():
+                        j = int(np.argmin(np.where(cand, km, np.inf)))
+                        filled[radius][row.action] += min(short, int(spare[j]))
+                        filled[radius]["n_" + row.action] += 1
+                        filled[radius]["km"].append(float(km[j]))
+        print(f"  {pv.DAY_TYPES[dt]}: 수거 지시 {total['pick']:,.0f}대 중 부족 {lack['pick']:,.0f}대"
+              f"({rate(lack['pick'], total['pick']):.2%}, {events['pick']}건) · 배송 지시 {total['drop']:,.0f}대 중 넘침 "
+              f"{lack['drop']:,.0f}대({rate(lack['drop'], total['drop']):.2%}, {events['drop']}건)")
+        for radius in NEARBY_RADII:
+            f = filled[radius]
+            mean_km = float(np.mean(f["km"])) if f["km"] else float("nan")
+            print(f"    반경 {radius}km: 수거 부족 {f['n_pick']}/{events['pick']}건 · {f['pick']:,.0f}대 메움"
+                  f"(부족의 {rate(f['pick'], lack['pick']):.0%}, 수거 지시의 {rate(f['pick'], total['pick']):.2%})"
+                  f" | 배송 넘침 {f['n_drop']}/{events['drop']}건 · {f['drop']:,.0f}대 | 권한 곳까지 평균 {mean_km:.2f}km")
+    return 0
+
+
 def fine_report() -> int:
     """66장(사전 등록 2026-11-18): 다시 세울 리드를 30분과 2시간 사이로 좁힌다. 판정은 65장 (3)과 같은 `q2_table` 기준이다."""
     main = OUT_DIR / "main_weekday.csv"
@@ -968,6 +1042,7 @@ def main(argv=None) -> int:
     parser.add_argument("--run", choices=("main", "sweep", "all", "fine"))
     parser.add_argument("--report", action="store_true")
     parser.add_argument("--report-fine", action="store_true", help="66장 판정(60 · 90분 리드)")
+    parser.add_argument("--report-nearby", action="store_true", help="사후 추정: 계획 밖 가까운 대여소로 메울 수 있었나")
     parser.add_argument("--until", default=UNTIL)
     parser.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--leads", default=",".join(map(str, LEADS)), help=argparse.SUPPRESS)
@@ -989,6 +1064,8 @@ def main(argv=None) -> int:
         return report()
     if args.report_fine:
         return fine_report()
+    if args.report_nearby:
+        return nearby_report(args.until)
     parser.print_help()
     return 0
 

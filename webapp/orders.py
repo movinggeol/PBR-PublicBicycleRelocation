@@ -15,12 +15,20 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import numpy as np
 import pandas as pd
 
 from project_config import (
-    DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, TARGET_QTY_UPPER_RATIO,
+    DEPOT_ID, DEPOT_LAT, DEPOT_LON, DEPOT_NAME, TARGET_QTY_UPPER_RATIO, haversine_km,
 )
 from webapp import store
+
+# 같은 군집에 여유가 없을 때 **계획 밖에서** 더 실을 · 내릴 곳을 찾는 반경(km, 1.26.444). **실측에서 골랐다**
+# (EXPERIMENTS 65장 사후 표, 2026-11-18): 작업 직전에 세운 계획(리드 30분)의 수거 부족을 그때의 관측 재고로 보면,
+# 계획 밖에서 목표 재고보다 여유가 있는 가장 가까운 대여소로 평일 부족의 52%(0.5km) · 61%(1km), 휴일 45% · 61%를
+# 메울 수 있었다. 가장 가까운 곳을 권하므로 실제 거리는 평균 0.3km 안팎이고, 반경을 0.5에서 1km로 넓혀도 편도 이동은
+# 1분 남짓 늘 뿐이다(이동시간의 대부분이 고정 320초다). 계획을 다시 세우는 것이 아니라 기사가 고를 수 있는 선택지다.
+NEARBY_RADIUS_KM = 1.0
 
 
 def _int(value, default: int = 0) -> int:
@@ -54,6 +62,16 @@ def load_frames(run_label: Optional[str], duration: Optional[str]) -> dict:
     plan, _ = store.load("vrp_plan", run_label=run_label, duration=duration)
     candidates, _ = store.load("pick_drop", run_label=run_label, duration=duration)
     return {"plan": plan, "candidates": candidates}
+
+
+def plan_reference(run_label: Optional[str], duration: Optional[str]) -> pd.DataFrame:
+    """그 실행 · 회차의 `rebalance_plan`(전 대여소의 목표 재고 · 거치대). 없으면 빈 표.
+
+    `compare_stock(reference=)`가 군집 안에 여유가 없을 때 **계획 밖의 가까운 대여소**를 찾는 데 쓴다(1.26.444).
+    대조 단추를 누를 때만 읽는다 — 지시서를 그릴 때는 필요 없다.
+    """
+    frame, _ = store.load("rebalance_plan", run_label=run_label, duration=duration)
+    return frame
 
 
 def _station_names(candidates: pd.DataFrame) -> dict:
@@ -207,7 +225,9 @@ def planned_work(run_label: Optional[str] = None,
     return grouped
 
 
-def compare_stock(planned: pd.DataFrame, live: pd.DataFrame) -> pd.DataFrame:
+def compare_stock(planned: pd.DataFrame, live: pd.DataFrame,
+                  reference: Optional[pd.DataFrame] = None,
+                  exclude: Optional[set] = None) -> pd.DataFrame:
     """계획이 본 재고와 **지금 재고**를 나란히 놓고 집행 가능 여부를 판정한다.
 
     **저장하지 않는 순수 계산이다** — 테스트가 규칙만 따로 검사한다.
@@ -222,6 +242,11 @@ def compare_stock(planned: pd.DataFrame, live: pd.DataFrame) -> pd.DataFrame:
 
     작업량이 `REBAL_MIN_QTY` 이하인 대여소는 애초에 계획에 들어오지 않는다
     (step1의 작업 대상 선정). 여기서 다시 거르지 않는다.
+
+    `reference`(그 실행 · 회차의 `rebalance_plan`: 전 대여소의 `target_qty` · `parking_lot`)를 주면, 같은 군집에
+    여유가 없을 때 **계획 밖의 가까운 대여소**를 안내에 더한다(1.26.444, `NEARBY_RADIUS_KM`). `exclude`는 그 회차
+    계획에 든 대여소(모든 차량)이고, 주지 않으면 `planned`의 대여소다. 둘 다 판정(`status` · `possible`)은 바꾸지
+    않는다 — 주지 않으면 예전과 같다(실험 하네스가 그렇게 부른다).
     """
     columns = ["station_id", "station_name", "cluster", "seq", "parking_lot",
                "planned_stock", "live_stock", "delta", "need", "action",
@@ -304,7 +329,8 @@ def compare_stock(planned: pd.DataFrame, live: pd.DataFrame) -> pd.DataFrame:
             "note": note,
         })
 
-    _suggest_actions(rows)
+    _suggest_actions(rows, _nearby_pool(
+        live, reference, set(planned["station_id"]) if exclude is None else set(exclude)))
 
     frame = pd.DataFrame(rows, columns=columns)
     # '확인 불가' 행의 None 하나 때문에 열 전체가 실수가 되면 화면에 2.0대로 찍힌다.
@@ -316,15 +342,19 @@ def compare_stock(planned: pd.DataFrame, live: pd.DataFrame) -> pd.DataFrame:
     return frame.reset_index(drop=True)
 
 
-def _suggest_actions(rows: list) -> None:
+def _suggest_actions(rows: list, nearby: Optional[dict] = None) -> None:
     """'불가'·'부족'·'넘침' 행에 **무엇을 하라**를 채운다 (수정안 39).
 
     지금까지는 가능/불가만 알려 주고 끝이라, 현장에서 막히면 판단이 사람 몫이었다.
     **계획을 다시 세우지는 않는다** — 그건 재실행이 할 일이고, 여기서는 기사가
     그 자리에서 고를 수 있는 선택지만 짚는다.
 
-    같은 군집 안에서 찾는 이유: 차량 1대가 군집 1개를 맡으므로
-    (docs/구현/FLEET.md), 군집을 벗어나면 그 회차에 갈 수 없는 곳이다.
+    같은 군집 안에서 먼저 찾는 이유: 차량 1대가 군집 1개를 맡으므로
+    (docs/구현/FLEET.md), 군집 안의 다른 계획 대여소가 가장 덜 돌아가는 길이다.
+    군집 안에 여유가 없고 `nearby`(`_nearby_pool`)가 있으면 **계획 밖의 가까운 대여소**를
+    권한다(1.26.444). 다른 차의 계획 대여소는 그 차의 몫이라 권하지 않는다. 회차 중간에
+    계획 전체를 다시 푸는 것은 작업 직전 계획에서 이득이 없었다(65장 D안) — 이것은 그보다
+    가벼운, 기사가 고를 수 있는 한 곳이다.
     """
     by_cluster = {}
     for row in rows:
@@ -350,12 +380,17 @@ def _suggest_actions(rows: list) -> None:
         spare = sorted([(r, s) for r, s in spare if s > 0],
                        key=lambda pair: pair[1], reverse=True)
 
+        near = None if (spare or not nearby) else _nearest(nearby, row.get("station_id"), action)
         if action == "pick":
             # 실을 것이 모자란다 -> 같은 군집에서 **더 실을 수 있는 곳**
             if spare:
                 best, extra = spare[0]
                 row["advice"] = (f"{best['station_name']}에서 {min(short, extra)}대 더 실어 "
                                  f"메우세요 (여유 {extra}대)")
+            elif near:
+                name, km, extra = near
+                row["advice"] = (f"{short}대가 빕니다. 같은 군집에 여유가 없으니 계획 밖인 가까운 "
+                                 f"{name}({_distance_text(km)})에서 {min(short, extra)}대 더 실어 메우세요")
             else:
                 row["advice"] = (f"{short}대가 빕니다. 같은 군집에 여유가 없으니 "
                                  f"내려놓을 곳에서 그만큼 덜 내리세요")
@@ -365,9 +400,66 @@ def _suggest_actions(rows: list) -> None:
                 best, extra = spare[0]
                 row["advice"] = (f"{best['station_name']}에 {min(short, extra)}대 더 내려놓으세요 "
                                  f"(여유 {extra}대)")
+            elif near:
+                name, km, extra = near
+                row["advice"] = (f"{short}대가 남습니다. 같은 군집에 자리가 없으니 계획 밖인 가까운 "
+                                 f"{name}({_distance_text(km)})에 {min(short, extra)}대 내려놓으세요")
             else:
                 row["advice"] = (f"{short}대가 남습니다. 같은 군집에 자리가 없으니 "
                                  f"차고지로 가져가거나 실을 곳에서 그만큼 덜 실으세요")
+
+
+def _nearby_pool(live: pd.DataFrame, reference: Optional[pd.DataFrame], exclude: set) -> Optional[dict]:
+    """계획 밖에서 **더 실을 · 더 내릴** 수 있는 대여소(1.26.444). 기준이 없거나 좌표가 없으면 None(예전 안내 그대로).
+
+    여유는 계획과 같은 자로 잰다 — 그 회차 목표 재고(`target_qty`, 올림)와 지금 재고의 차이다.
+      · 더 실을 수 있는 대수: 지금 재고 − 목표 재고   (목표 밑으로 빼지 않는다)
+      · 더 내릴 수 있는 대수: min(목표 재고 − 지금 재고, 상한 − 지금 재고)   (상한은 `compare_stock`의 배송과 같다)
+    """
+    if reference is None or reference.empty or live.empty or not {"lat", "lon", "stock"} <= set(live.columns):
+        return None
+    ref = reference.drop_duplicates("station_id").set_index("station_id")
+    if not {"target_qty", "parking_lot"} <= set(ref.columns):
+        return None
+    pool = live.drop_duplicates("station_id").set_index("station_id")
+    coords = {sid: (float(lat), float(lon)) for sid, lat, lon in zip(pool.index, pool["lat"], pool["lon"])
+              if pd.notna(lat) and pd.notna(lon)}
+    pool = pool[~pool.index.isin(exclude)].join(ref[["target_qty", "parking_lot"]], how="inner")
+    pool = pool.dropna(subset=["lat", "lon", "stock", "target_qty"])
+    if pool.empty:
+        return None
+    target = np.ceil(pool["target_qty"].astype(float))
+    now = pool["stock"].astype(float)
+    room = (pool["parking_lot"].fillna(0).astype(float) * TARGET_QTY_UPPER_RATIO - now).astype(int)
+    pool = pool.assign(pick=(now - target).clip(lower=0).astype(int),
+                       drop=np.minimum(target - now, room).clip(lower=0).astype(int))
+    if "station_name" not in pool.columns:
+        pool["station_name"] = pool.index
+    return {"coords": coords, "pool": pool[["station_name", "lat", "lon", "pick", "drop"]]}
+
+
+def _nearest(nearby: Optional[dict], station_id, action: str) -> Optional[tuple]:
+    """그 대여소에서 `NEARBY_RADIUS_KM` 안의 가장 가까운 계획 밖 여유 대여소: (이름, km, 여유 대수). 없으면 None."""
+    if not nearby:
+        return None
+    here = nearby["coords"].get(station_id)
+    if here is None:
+        return None
+    cand = nearby["pool"][nearby["pool"][action] >= 1]
+    if cand.empty:
+        return None
+    km = pd.Series(np.atleast_1d(haversine_km(here[0], here[1], cand["lat"].to_numpy(float),
+                                              cand["lon"].to_numpy(float))), index=cand.index)
+    km = km[(km > 0) & (km <= NEARBY_RADIUS_KM)]
+    if km.empty:
+        return None
+    sid = km.idxmin()
+    return str(cand.at[sid, "station_name"]), float(km[sid]), int(cand.at[sid, action])
+
+
+def _distance_text(km: float) -> str:
+    """'250m' · '1.0km' — 10m 단위로 반올림한다."""
+    return f"{int(round(km * 100)) * 10}m" if km < 1 else f"{km:.1f}km"
 
 
 def _spare(row: dict) -> int:

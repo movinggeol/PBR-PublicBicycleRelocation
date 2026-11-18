@@ -547,3 +547,74 @@ def test_순서를_건너뛴_체크로_적재가_음수가_되지_않는다():
         ROUTE, orders.compare_stock(orders.without_done(_work(ROUTE), ROUTE, {2}), _live(A=5, C=3)), {2})}
     assert judged[1]["load"] == 5
     assert judged[3]["status"] == "가능" and judged[3]["load"] == 3
+
+
+# ─────────────── 계획 밖의 가까운 대여소 (1.26.444) ───────────────
+# 사용자 결정(2026-11-18) *'더 가벼운 대안으로 간다'*: 작업 중 대조에서 같은 군집에 여유가 없으면 계획을 다시 풀지
+# 않고 **계획 밖의 가까운 대여소 한 곳**을 권한다(회차 중간 재계획은 작업 직전 계획에서 이득이 없었다, 65장 D안).
+# 여유는 계획과 같은 자(목표 재고)로 재고, 판정(status · possible)은 바꾸지 않는다.
+
+BASE_LAT, BASE_LON = 36.35, 127.38
+
+
+def _near_live(**stations):
+    """station_id=(위도 차, 경도 차, 지금 재고). 위도 0.0009도가 약 100m다."""
+    return pd.DataFrame([{"station_id": sid, "station_name": f"{sid} 대여소", "lat": BASE_LAT + dlat,
+                          "lon": BASE_LON + dlon, "stock": stock} for sid, (dlat, dlon, stock) in stations.items()])
+
+
+def _reference(**stations):
+    """station_id=(목표 재고, 거치대) — 그 회차 `rebalance_plan`의 두 칸."""
+    return pd.DataFrame([{"station_id": sid, "target_qty": t, "parking_lot": p} for sid, (t, p) in stations.items()])
+
+
+def _pick(sid, cluster, need, lot=10):
+    return {"station_id": sid, "station_name": f"{sid} 대여소", "cluster": cluster, "seq": 1,
+            "parking_lot": lot, "stock": need + 2, "need": need, "action": "pick"}
+
+
+def test_군집에_여유가_없으면_계획_밖의_가까운_대여소에서_메우라고_한다():
+    work = pd.DataFrame([_pick("P", 0, 6), _pick("Q", 1, 2)])          # Q는 다른 차(군집 1)의 계획
+    live = _near_live(P=(0, 0, 2),             # 6대 중 2대 → 4대 부족
+                      Q=(0.0009, 0, 30),       # 100m · 여유가 많지만 다른 차의 계획
+                      N=(0.0027, 0, 9),        # 300m · 계획 밖 · 목표 5 → 4대 여유
+                      F=(0.018, 0, 30))        # 2km · 반경 밖
+    ref = _reference(P=(4.0, 10), Q=(3.0, 20), N=(5.0, 10), F=(5.0, 40))
+    row = orders.compare_stock(work, live, reference=ref).set_index("station_id").loc["P"]
+    assert row["status"] == "부족" and row["possible"] == 2, "계획 밖 안내가 판정을 바꿨다"
+    assert "계획 밖인 가까운 N 대여소(300m)에서 4대 더 실어 메우세요" in row["advice"]
+    assert "Q 대여소" not in row["advice"], "다른 차의 계획 대여소를 권했다"
+    assert "F 대여소" not in row["advice"], f"반경({orders.NEARBY_RADIUS_KM}km) 밖을 권했다"
+
+
+def test_내릴_자리가_넘치면_계획_밖의_모자란_대여소에_내리라고_한다():
+    work = pd.DataFrame([{"station_id": "D", "station_name": "D 대여소", "cluster": 0, "seq": 2,
+                          "parking_lot": 10, "stock": 3, "need": 6, "action": "drop"}])
+    ceiling = int(10 * TARGET_QTY_UPPER_RATIO)
+    live = _near_live(D=(0, 0, ceiling - 2),    # 자리 2대 → 4대 넘침
+                      E=(0.0018, 0, 1),         # 200m · 목표 6 → 5대 모자람
+                      G=(0.0009, 0, 9))         # 100m · 목표 5보다 많다 → 내릴 곳이 아니다
+    ref = _reference(D=(8.0, 10), E=(6.0, 10), G=(5.0, 10))
+    row = orders.compare_stock(work, live, reference=ref).set_index("station_id").loc["D"]
+    assert row["status"] == "넘침" and row["possible"] == 2
+    assert "계획 밖인 가까운 E 대여소(200m)에 4대 내려놓으세요" in row["advice"], row["advice"]
+
+
+def test_같은_군집에_여유가_있으면_계획_밖보다_먼저_권한다():
+    """군집 안의 다른 계획 대여소는 이미 들를 곳이라 덜 돌아간다(수정안 39의 순서 그대로)."""
+    work = pd.DataFrame([_pick("P", 0, 6), _pick("R", 0, 2)])
+    live = _near_live(P=(0, 0, 2), R=(0.0045, 0, 9), N=(0.0009, 0, 9))
+    ref = _reference(P=(4.0, 10), R=(3.0, 10), N=(5.0, 10))
+    advice = orders.compare_stock(work, live, reference=ref).set_index("station_id").loc["P", "advice"]
+    assert advice.startswith("R 대여소에서 4대 더 실어 메우세요"), advice
+    assert "계획 밖" not in advice
+
+
+def test_기준_표를_주지_않으면_예전_안내_그대로다():
+    """실험 하네스(63 · 65장)는 `reference` 없이 부른다 — 판정도 안내도 1.26.443까지와 같아야 한다."""
+    work = pd.DataFrame([_pick("P", 0, 6)])
+    live = _near_live(P=(0, 0, 2), N=(0.0027, 0, 9))
+    row = orders.compare_stock(work, live).set_index("station_id").loc["P"]
+    assert row["advice"] == "4대가 빕니다. 같은 군집에 여유가 없으니 내려놓을 곳에서 그만큼 덜 내리세요"
+    with_ref = orders.compare_stock(work, live, reference=_reference(N=(5.0, 10)))
+    assert with_ref[["status", "possible"]].equals(orders.compare_stock(work, live)[["status", "possible"]])
