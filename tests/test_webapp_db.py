@@ -518,19 +518,24 @@ def _alert_tag(html: str, marker: str) -> str:
     return head[head.rindex("<div"):]
 
 
-def test_작업지시서는_2시간이_지난_재고로_세운_계획이면_다시_세우라고_알린다(runs_client, monkeypatch, tmp_path):
+def test_작업지시서는_경계가_지난_재고로_세운_계획이면_다시_세우라고_알린다(runs_client, monkeypatch, tmp_path):
+    """경계는 1시간 30분이다(66장, 1.26.442). 서버는 출발했는지 모르므로 출발 뒤에는 다시 세우지 말라는 말도 함께 한다
+    (회차 중간에 다시 풀어도 1.00배, 65장 D안)."""
     from datetime import datetime
+    from html import unescape
 
     marker = "받은 재고로 세운 계획입니다"
     # PLAN_NEW는 2026-09-22 15:06:39에 기록됐다.
-    html = _orders_at(runs_client, monkeypatch, tmp_path, PLAN_NEW, datetime(2026, 9, 22, 17, 30))
-    assert "2시간 전 " + marker in html
+    html = unescape(_orders_at(runs_client, monkeypatch, tmp_path, PLAN_NEW, datetime(2026, 9, 22, 16, 40)))
+    assert "1시간 33분 전 " + marker in html, "경계(1시간 30분)를 넘었는데 알리지 않았거나 나이를 시간으로 내렸다"
     assert _alert_tag(html, marker).startswith('<div class="alert no-print">'), \
         "하루가 안 됐으면 홈의 '오래된 계획'(.bad)보다 가볍게 띄운다"
     assert '<a href="/run">새로 계획</a>' in html, "알리기만 하고 길을 주지 않는다"
+    assert "1시간 30분이 지난 계획은" in html, "경계를 상수가 아니라 글로 박았다"
+    assert "이미 출발했으면 다시 세우지 말고 '지금 재고와 대조하기'로 남은 곳을 확인하세요" in html
 
     html = _orders_at(runs_client, monkeypatch, tmp_path, PLAN_NEW, datetime(2026, 9, 22, 16, 30))
-    assert marker not in html, "2시간이 안 된 계획에 알렸다(30분 전 계획은 다시 세워도 차이가 없었다)"
+    assert marker not in html, "1시간 23분 된 계획에 알렸다(60분 전 계획은 다시 세워도 1.03배였다)"
 
     html = _orders_at(runs_client, monkeypatch, tmp_path, PLAN_NEW, datetime(2026, 9, 24, 9, 0))
     assert "1일 전 " + marker in html

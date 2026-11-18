@@ -569,7 +569,8 @@ def _auto_round(label: str, skip_api: bool) -> dict:
             result["note"] = "물려받는 재고를 언제 받았는지 몰라 지금 시각으로 정했습니다."
         else:
             at = found["at"]
-            # 2시간이 지난 재고로 세운 계획은 출발 때 다시 세운 계획보다 덜 배송했다(EXPERIMENTS 65장, 1.26.439).
+            # 경계(`store.PLAN_REPLAN_HOURS`)가 지난 재고로 세운 계획은 출발 때 다시 세운 계획보다 덜 배송했다
+            # (EXPERIMENTS 65 · 66장, 1.26.439 · 442).
             age = store.age_note(at, now=now)
             if age and age["replan"]:
                 result["note"] = f"{age['text']} 받은 재고입니다. 지금 재고로 세우려면 'API 수집 생략'을 끄세요."
@@ -1233,9 +1234,10 @@ def _orders_context(run_label: Optional[str], duration: Optional[str],
     if vehicle:
         sheets = [s for s in sheets if _sheet_name(s) == vehicle]
 
-    # 재고 나이(1.26.439, EXPERIMENTS 65장). 출발 직전에 이 종이를 보는 사람에게 *"2시간이 지났으면 다시 세우라"*
-    # 고 알린다. 실행 시각이 아니라 그 계획이 쓴 재고를 받은 시각으로 잰다(`store.stock_age`). 계획이 아닌
-    # 실행(실험 · 수집)은 옛 자료를 일부러 다시 돌린 것이라 재지 않는다.
+    # 재고 나이(1.26.439 · 442, EXPERIMENTS 65 · 66장). 출발 직전에 이 종이를 보는 사람에게 *"1시간 30분이
+    # 지났으면 다시 세우라"* 고, 이미 출발했으면 다시 세우지 말고 대조만 하라고 알린다. 실행 시각이 아니라 그
+    # 계획이 쓴 재고를 받은 시각으로 잰다(`store.stock_age`). 계획이 아닌 실행(실험 · 수집)은 옛 자료를 일부러
+    # 다시 돌린 것이라 재지 않는다.
     stock_age = None
     if sheets and current_group and current_group.get("kind") == "plan":
         stock_age = store.stock_age(run_label, now=_clock())
@@ -1263,6 +1265,7 @@ def _orders_context(run_label: Optional[str], duration: Optional[str],
         # 유효성 검사가 아니라 **그대로 전달**이 맞다 — 화면이 판단한다.
         "selected_vehicle": vehicle,
         "stock_age": stock_age,
+        "replan_hours": store.PLAN_REPLAN_HOURS,
         "capacity": VEHICLE_CAPACITY,
         "depot_name": DEPOT_NAME,
         "upper_ratio": TARGET_QTY_UPPER_RATIO,
