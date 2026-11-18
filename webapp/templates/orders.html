@@ -266,6 +266,14 @@
 </div>
 {% endif %}
 
+{# 재고 나이 (1.26.439, EXPERIMENTS 65장). 2시간이 지난 재고로 세운 계획은 출발 때 다시 세운 계획보다 빈 대여소에
+   덜 배송했다(평일 1.15배 차이). 출발 직전에 이 종이를 보는 사람에게만 하는 말이라 인쇄하지 않는다. 하루가
+   지났으면 홈의 '오래된 계획'과 같은 무게(.bad)로 띄운다. 계획이 아닌 실행에는 서버가 값을 넘기지 않는다. #}
+{% if stock_age and stock_age.replan %}
+<div class="alert no-print{% if stock_age.stale %} bad{% endif %}"><span><b>{{ stock_age.text }} 받은 재고로 세운 계획입니다.</b>
+  출발 전이면 <a href="/run">새로 계획</a>하세요. 2시간이 지난 계획은 출발 때 다시 세운 계획보다 빈 대여소에 덜 배송합니다.</span></div>
+{% endif %}
+
 {% if selected_vehicle %}
 <div class="alert no-print"><span><b>{{ selected_vehicle }}</b> 한 대만 보고 있습니다. 인쇄하면 이 한 장만 나옵니다.
   <a href="/orders?run_label={{ run_label | urlencode }}{% if duration %}&duration={{ duration | urlencode }}{% endif %}">전체 {{ sheet_names | length }}대 보기</a></span></div>

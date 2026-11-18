@@ -375,6 +375,27 @@ def test_API_수집_생략이면_물려받는_재고의_시각으로_정한다(c
     assert "물려받는 재고(2026-10-18 14, 14:40 수집)로 세웁니다" in html
 
 
+def test_물려받는_재고가_2시간을_넘으면_실행_폼이_지금_재고를_권한다(client, monkeypatch):
+    """EXPERIMENTS 65장(1.26.439): 2시간이 지난 재고로 세운 계획은 출발 때 다시 세운 계획보다 덜 배송했다.
+    'API 수집 생략'은 그런 재고를 물려받는데, 폼은 수집 시각만 적어 몇 시간 묵었는지는 읽는 사람이 셈해야 했다."""
+    from datetime import datetime
+    from html import unescape
+
+    from webapp import store
+
+    _freeze_clock(monkeypatch, datetime(2026, 10, 18, 23, 11))
+    monkeypatch.setattr(store, "inherited_stock",
+                        lambda label: {"label": "2026-10-18 14", "at": datetime(2026, 10, 18, 14, 40)})
+    html = unescape(client.get("/run").text)
+    assert "8시간 전 받은 재고입니다. 지금 재고로 세우려면 'API 수집 생략'을 끄세요." in html
+
+    monkeypatch.setattr(store, "inherited_stock",
+                        lambda label: {"label": "2026-10-18 22", "at": datetime(2026, 10, 18, 22, 0)})
+    html = unescape(client.get("/run").text)
+    assert "물려받는 재고(2026-10-18 22, 22:00 수집)로 세웁니다" in html
+    assert "받은 재고입니다" not in html, "2시간이 안 된 재고에 다시 받으라고 했다"
+
+
 def test_물려받을_재고가_없으면_띄우기_전에_말한다(client, monkeypatch):
     from webapp import store
 
@@ -2898,6 +2919,18 @@ def test_하루가_지나면_낡았다고_판정한다():
     stale = store.age_note("2026-09-06 10:00", now="2026-09-08 10:00")
     assert fresh["stale"] is False
     assert stale["stale"] is True
+
+
+def test_재고가_2시간을_넘으면_다시_세울_때라고_판정한다():
+    """EXPERIMENTS 65장(1.26.439): 출발 때 다시 세운 계획은 2시간 전 재고로 세운 계획보다 빈 대여소에
+    1.15배(평일) 배송했고, 30분 전 계획과는 차이가 없었다. 낡음(24시간)과 따로 판정한다."""
+    from webapp import store
+
+    assert store.PLAN_REPLAN_HOURS == 2
+    before = store.age_note("2026-09-08 08:01", now="2026-09-08 10:00")
+    at = store.age_note("2026-09-08 08:00", now="2026-09-08 10:00")
+    assert before["replan"] is False and at["replan"] is True
+    assert at["stale"] is False, "2시간은 다시 세울 때일 뿐 낡음(하루)이 아니다"
 
 
 def test_판정할_수_없으면_모른다고_한다():

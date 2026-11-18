@@ -499,6 +499,53 @@ def test_회차_없이_연_실행은_그_실행의_첫_회차로_채운다(runs_
     assert app_module._orders_context(PLAN_NEW, None)["duration"] == DURATIONS[0]
 
 
+# --- 재고 나이: 출발 전이면 다시 세우라고 알린다 (1.26.439, EXPERIMENTS 65장) --------------------
+# 출발 때 다시 세운 계획은 2시간 전 재고로 세운 계획보다 빈 대여소에 1.15배(평일) 배송했다. 지시서는
+# 언제 받은 재고로 세운 계획인지 한마디도 하지 않았다(인계 2026-09-23 실측: '시간 전' 0건).
+
+def _orders_at(client, monkeypatch, tmp_path, label, now) -> str:
+    """재고 파일이 없는 곳을 가리켜 재고 시각이 그 실행의 기록 시각(`runs.created_at`)으로 물러서게 한다."""
+    import project_config
+    from webapp import app as app_module
+
+    monkeypatch.setattr(project_config, "PP_ROOT", tmp_path / "재고 파일 없음")
+    monkeypatch.setattr(app_module, "_clock", lambda: now)
+    return client.get("/orders", params={"run_label": label, "duration": DURATIONS[0]}).text
+
+
+def _alert_tag(html: str, marker: str) -> str:
+    head = html.split(marker, 1)[0]
+    return head[head.rindex("<div"):]
+
+
+def test_작업지시서는_2시간이_지난_재고로_세운_계획이면_다시_세우라고_알린다(runs_client, monkeypatch, tmp_path):
+    from datetime import datetime
+
+    marker = "받은 재고로 세운 계획입니다"
+    # PLAN_NEW는 2026-09-22 15:06:39에 기록됐다.
+    html = _orders_at(runs_client, monkeypatch, tmp_path, PLAN_NEW, datetime(2026, 9, 22, 17, 30))
+    assert "2시간 전 " + marker in html
+    assert _alert_tag(html, marker).startswith('<div class="alert no-print">'), \
+        "하루가 안 됐으면 홈의 '오래된 계획'(.bad)보다 가볍게 띄운다"
+    assert '<a href="/run">새로 계획</a>' in html, "알리기만 하고 길을 주지 않는다"
+
+    html = _orders_at(runs_client, monkeypatch, tmp_path, PLAN_NEW, datetime(2026, 9, 22, 16, 30))
+    assert marker not in html, "2시간이 안 된 계획에 알렸다(30분 전 계획은 다시 세워도 차이가 없었다)"
+
+    html = _orders_at(runs_client, monkeypatch, tmp_path, PLAN_NEW, datetime(2026, 9, 24, 9, 0))
+    assert "1일 전 " + marker in html
+    assert _alert_tag(html, marker).startswith('<div class="alert no-print bad">'), "하루가 지났으면 낡음과 같은 무게다"
+
+
+def test_실험_실행의_지시서에는_재고_나이를_말하지_않는다(runs_client, monkeypatch, tmp_path):
+    """실험 · 수집은 옛 자료를 일부러 다시 돌린 것이라 '다시 세우라'가 맞지 않는다."""
+    from datetime import datetime
+
+    html = _orders_at(runs_client, monkeypatch, tmp_path, MIXED, datetime(2026, 11, 18, 9, 0))
+    assert "<table" in html or "V01" in html, "지시서가 그려지지 않아 시험이 아무것도 보지 않는다"
+    assert "받은 재고로 세운 계획입니다" not in html
+
+
 def _work(vehicle: str, cluster: int = 0) -> dict:
     """배정 한 행 — `db.save_assignments`가 받는 모양."""
     return {"vehicle_id": vehicle, "cluster": cluster, "stations": 5,

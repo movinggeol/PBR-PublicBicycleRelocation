@@ -512,6 +512,16 @@ def records(frame: pd.DataFrame) -> list:
 # `/orders`의 '지금 재고와 대조하기'가 그것을 확인하는 길이다.
 PLAN_STALE_HOURS = 24
 
+# 출발 전이면 **다시 세우라고 권할** 재고 나이(시간). **실측에서 골랐다**(EXPERIMENTS 65장, 1.26.439).
+# 출발 시각 재고로 다시 세운 계획은 2시간 전 재고로 세운 계획보다, 도착 뒤 3시간 안에 빈 대여소에 실제로
+# 배송한 대수가 평일 1.15배 · 휴일 1.09배였다(사전 등록 기준 통과). 30분 전 계획과는 차이가 없었다(1.01배).
+# 30분과 2시간 사이는 재지 않았으므로 2시간은 *늦어도 이때는* 이라는 경계다.
+#
+# ⚠️ `PLAN_STALE_HOURS`와 뜻이 다르다. 이쪽은 *"출발 전이면 다시 세우는 편이 낫다"* 이고, 출발 직전에 보는
+# 화면(작업지시서 · 'API 수집 생략'의 물려받는 재고)에만 건다. 둘러보는 홈에는 걸지 않는다 — 마지막 계획은
+# 대부분의 시간에 2시간보다 오래되어 늘 켜진 경고가 되고, 늘 켜진 경고는 무시된다.
+PLAN_REPLAN_HOURS = 2
+
 
 def age_note(when, *, now=None) -> Optional[dict]:
     """*"얼마나 오래됐나"* 를 사람 말로. 못 읽으면 **`None`(모름)** 을 낸다.
@@ -521,9 +531,9 @@ def age_note(when, *, now=None) -> Optional[dict]:
     있었다(2026-09-08 실측). 지도는 이미 지문으로 낡음을 말하는데
     (`catalog.list_maps()`) 계획에는 그 장치가 없었다.
 
-    돌려주는 것: `{"hours": float, "text": str, "stale": bool}`.
-    `stale`은 `PLAN_STALE_HOURS`를 넘겼는지다. **판정할 수 없으면 `None`** 이라
-    화면이 *"모른다"* 고 말할 수 있다 — 지도 쪽과 같은 규약이다.
+    돌려주는 것: `{"hours": float, "text": str, "stale": bool, "replan": bool}`.
+    `stale`은 `PLAN_STALE_HOURS`를, `replan`은 `PLAN_REPLAN_HOURS`를 넘겼는지다.
+    **판정할 수 없으면 `None`** 이라 화면이 *"모른다"* 고 말할 수 있다 — 지도 쪽과 같은 규약이다.
     """
     if when is None or (isinstance(when, float) and pd.isna(when)):
         return None
@@ -541,7 +551,25 @@ def age_note(when, *, now=None) -> Optional[dict]:
     else:
         text = f"{int(hours // 24)}일 전"
     return {"hours": round(hours, 1), "text": text,
-            "stale": hours >= PLAN_STALE_HOURS}
+            "stale": hours >= PLAN_STALE_HOURS,
+            "replan": hours >= PLAN_REPLAN_HOURS}
+
+
+def stock_age(label: str, *, now=None) -> Optional[dict]:
+    """그 실행이 쓴 **재고를 받은 뒤** 지난 시간(`age_note` 모양). 모르면 None.
+
+    실행 시각이 아니라 재고 시각으로 잰다. 'API 수집 생략'으로 물려받은 재고는 실행보다 오래됐고,
+    계획의 값을 가르는 것은 그 재고의 나이다(EXPERIMENTS 65장). 시각은 파이프라인 · 실행 폼과 같은
+    `run_pipeline.stock_time()` 한 벌이다(재고 파일의 수정 시각, 물려받은 재고는 `copy2`라 처음 수집한 시각).
+    """
+    import run_pipeline
+
+    try:
+        at = run_pipeline.stock_time(label)
+    except Exception as err:
+        print(f"[경고] 재고 시각 조회 실패: {type(err).__name__}: {err}")
+        return None
+    return age_note(at, now=now)
 
 
 def stock_station_count() -> int:
