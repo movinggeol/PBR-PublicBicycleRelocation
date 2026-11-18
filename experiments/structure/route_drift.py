@@ -804,6 +804,34 @@ def stock_change_tables(frame: pd.DataFrame) -> None:
                   f"걸리는 줄 {rate((seen['status'] != '가능').sum(), len(seen)):.1%}")
 
 
+def fired_tables(frame: pd.DataFrame, inst: pd.DataFrame) -> None:
+    """사후 표(2026-11-18 사용자 물음 *"작업 직전에 세운 계획이 작업 중 대조에서 가능한 작업량이 ~% 이하이면 남은 계획을
+    고치면 어떤가"*. 등록에 없고 판정에 쓰지 않는다). D안이 실제로 다시 푼 회차와, 다시 풀어 지시가 바뀐 군집만 떼어 A안과
+    견준다. 회차 평균(리드 30분 1.00배)이 다시 풀지 않은 회차 · 군집으로 묽어진 값인지 보려는 것이다.
+    """
+    if inst.empty or "d_replanned" not in inst.columns:
+        return
+    key = ["day", "dur", "lead"]
+    print("\n### 사후: D안이 실제로 다시 푼 회차 · 군집만 (2026-11-18, 등록에 없음, 판정에 쓰지 않음)")
+    for (dt, lead), fired in inst[(inst["lead"] > 0) & (inst["d_replanned"] > 0)].groupby(["dt", "lead"]):
+        total = int(((inst["dt"] == dt) & (inst["lead"] == lead)).sum())
+        g = frame[(frame["dt"] == dt) & (frame["lead"] == lead) & frame["arm"].isin(["A", "D"])].merge(fired[key], on=key)
+        by = g.groupby(key + ["arm"])["useful"].sum().unstack("arm")
+        wins, losses = int((by["D"] > by["A"]).sum()), int((by["D"] < by["A"]).sum())
+        changed = []
+        for _, part in g.groupby(key):
+            a, d = part[part["arm"] == "A"], part[part["arm"] == "D"]
+            for c in set(a["cluster"]) | set(d["cluster"]):
+                ca, cd = a[a["cluster"] == c], d[d["cluster"] == c]
+                if sorted(zip(ca["station_id"], ca["q"])) != sorted(zip(cd["station_id"], cd["q"])):
+                    changed.append((float(ca["useful"].sum()), float(cd["useful"].sum())))
+        ua, ud = sum(x for x, _ in changed), sum(y for _, y in changed)
+        cw, cl = sum(1 for x, y in changed if y > x), sum(1 for x, y in changed if y < x)
+        print(f"  {pv.DAY_TYPES[dt]} 리드 {lead}분: 다시 푼 회차 {len(fired)} / {total} · 그 회차의 유효 배송 D/A "
+              f"{rate(by['D'].sum(), by['A'].sum()):.3f} · 회차 {wins}승 {losses}패 p = {pv.sign_test(wins, losses):.3f}"
+              f" | 지시가 바뀐 군집 {len(changed)}개: 유효 배송 {ua:,.0f} → {ud:,.0f}대 · {cw}승 {cl}패 p = {pv.sign_test(cw, cl):.3f}")
+
+
 def frontier(frames: list) -> None:
     """Q3 요약(65장 판정 (4), 보고만): 마지막 3분의 1 못 채움이 문턱 이하인 칸과 그 칸의 일의 양을 현행과 견준다."""
     rows = []
@@ -860,6 +888,7 @@ def report() -> int:
     extra_tables(frame, inst)
     age_tables(frame)
     stock_change_tables(frame)
+    fired_tables(frame, inst)
     sweep = [pd.read_csv(f) for f in sorted(OUT_DIR.glob("sweep_*.csv")) if not f.stem.endswith("_회차")]
     if sweep:
         cur = frame[(frame["dt"] == "weekday") & (frame["arm"] == "A") & frame["lead"].isin(SWEEP_LEADS)]
