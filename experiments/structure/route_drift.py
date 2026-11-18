@@ -42,6 +42,8 @@
     python experiments/structure/route_drift.py --run main                  # Q1 · Q2 (현행 설정, 평일 · 휴일)
     python experiments/structure/route_drift.py --run sweep                 # Q3 (격자, 평일)
     python experiments/structure/route_drift.py --report                    # 표와 판정
+    python experiments/structure/route_drift.py --run fine                  # 66장: 평일 60 · 90분 리드(A안만)
+    python experiments/structure/route_drift.py --report-fine               # 66장 판정(65장 (3)과 같은 기준)
 """
 import argparse
 import contextlib
@@ -545,6 +547,14 @@ def main_cells():
     return [(CURRENT[0], CURRENT[1], LEADS, [dt], ["A", "D", "E"], f"main_{dt}") for dt in ("weekday", "holiday")]
 
 
+FINE_LEADS = (60, 90)                      # 66장: 30분과 2시간 사이
+
+
+def fine_cells():
+    """66장: 평일 A안만, 리드마다 자식 하나. C안과 30 · 120분 A안은 65장 결과(main_weekday.csv)를 그대로 쓴다."""
+    return [(CURRENT[0], CURRENT[1], [lead], ["weekday"], ["A"], f"fine_weekday_{lead}") for lead in FINE_LEADS]
+
+
 def sweep_cells():
     cells = []
     for limit in GRID_LIMITS:
@@ -858,6 +868,29 @@ def report() -> int:
     return 0
 
 
+def fine_report() -> int:
+    """66장(사전 등록 2026-11-18): 다시 세울 리드를 30분과 2시간 사이로 좁힌다. 판정은 65장 (3)과 같은 `q2_table` 기준이다."""
+    main = OUT_DIR / "main_weekday.csv"
+    fine = [f for f in sorted(OUT_DIR.glob("fine_weekday_*.csv")) if not f.stem.endswith("_회차")]
+    if not main.exists() or not fine:
+        print("결과가 없습니다 — 65장 --run main과 66장 --run fine을 먼저 돌리십시오")
+        return 1
+    base = pd.read_csv(main)
+    base = base[base["arm"].isin(["A", "C"]) & base["lead"].isin([0, 30, 120])]
+    frame = pd.concat([base] + [pd.read_csv(f) for f in fine], ignore_index=True)
+    q1_table(frame, "평일 (66장, 30 · 120분과 C안은 65장 결과)")
+    verdict = q2_table(frame, "weekday")
+    leads = sorted(lead for arm, lead in verdict if arm == "C")
+    print("\n## 판정 (66장 사전 등록: 평일, 65장 (3)과 같은 기준)")
+    for lead in leads:
+        print(f"  리드 {lead}분: {'✅' if verdict[('C', lead)] else '❌'}")
+    passed = [lead for lead in leads if verdict[("C", lead)]]
+    monotone = all(verdict[("C", b)] for a, b in zip(leads, leads[1:]) if verdict[("C", a)])
+    print(f"  다시 세울 가장 짧은 리드: {f'{passed[0]}분' if passed else '없음'}"
+          + ("" if monotone else " · ⚠️ 통과가 리드 순서대로가 아니다(등록대로 경계를 정하지 않는다)"))
+    return 0
+
+
 # ---------------------------------------------------------------- 진입점
 
 def sanity(until: str) -> int:
@@ -903,8 +936,9 @@ def sanity(until: str) -> int:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--sanity", action="store_true")
-    parser.add_argument("--run", choices=("main", "sweep", "all"))
+    parser.add_argument("--run", choices=("main", "sweep", "all", "fine"))
     parser.add_argument("--report", action="store_true")
+    parser.add_argument("--report-fine", action="store_true", help="66장 판정(60 · 90분 리드)")
     parser.add_argument("--until", default=UNTIL)
     parser.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--leads", default=",".join(map(str, LEADS)), help=argparse.SUPPRESS)
@@ -918,10 +952,14 @@ def main(argv=None) -> int:
     if args.sanity:
         return sanity(args.until)
     if args.run:
+        if args.run == "fine":
+            return spawn(fine_cells(), args.until)
         cells = (main_cells() if args.run in ("main", "all") else []) + (sweep_cells() if args.run in ("sweep", "all") else [])
         return spawn(cells, args.until)
     if args.report:
         return report()
+    if args.report_fine:
+        return fine_report()
     parser.print_help()
     return 0
 
