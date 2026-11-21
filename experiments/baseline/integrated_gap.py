@@ -40,6 +40,7 @@ import contextlib
 import io
 import sys
 import time
+import weakref
 from pathlib import Path
 
 import numpy as np
@@ -230,8 +231,12 @@ class UnitModel:
 
 
 def solve_units(model: UnitModel, vehicles: int, initial, limit_sec: int, *,
-                optional: bool = False, hard_budget: bool = False, soft_budget: bool = False):
+                optional: bool = False, hard_budget: bool = False, soft_budget: bool = False,
+                progress: list | None = None):
     """K대 1-상품 수거 · 배송 경로를 푼다. initial(노드 번호 경로)에서 출발한다.
+
+    progress에 리스트를 주면 해를 찾을 때마다 (탐색 시작 뒤 초, 목적값)을 덧붙인다(73장의 계산 시간).
+    주지 않으면 콜백을 걸지 않아 68장과 똑같이 푼다.
 
     반환: (노드 경로 목록, 출발해 목적값, 최종 목적값, 상태 문구)
     """
@@ -258,6 +263,16 @@ def solve_units(model: UnitModel, vehicles: int, initial, limit_sec: int, *,
         for node in range(1, model.size):
             routing.AddDisjunction([manager.NodeToIndex(node)], SKIP_PENALTY_M)
 
+    clock = {"t0": None}
+    if progress is not None:
+        ref = weakref.ref(routing)      # OR-Tools 예제처럼 약한 참조로 순환 참조를 피한다
+
+        def _record():
+            r = ref()
+            if r is not None and clock["t0"] is not None:
+                progress.append((time.time() - clock["t0"], int(r.CostVar().Value())))
+        routing.AddAtSolutionCallback(_record)
+
     params = pywrapcp.DefaultRoutingSearchParameters()
     params.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
     params.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
@@ -270,6 +285,7 @@ def solve_units(model: UnitModel, vehicles: int, initial, limit_sec: int, *,
         padded = list(initial) + [[] for _ in range(vehicles - len(initial))]
         init = routing.ReadAssignmentFromRoutes(
             [[manager.NodeToIndex(n) for n in r] for r in padded], True)
+    clock["t0"] = time.time()
     if init is not None:
         start_obj = int(init.ObjectiveValue())
         solution = routing.SolveFromAssignmentWithParameters(init, params)
