@@ -28,14 +28,23 @@
   찍기만  옮겨 끝낸 대수 · 거리 · 120분 넘는 차(모든 갈래를 integrated_gap.solution_metrics 한 자로) ·
           계산 시간(P 계획, I-c 모형 짓기 · 탐색, 마지막으로 해가 나아진 시각)
 
+중단 처리 (2026-11-21 21시에 더했다. 결과를 보기 전이다. 노트북을 옮기느라 실행을 사례 사이에서 멈췄다)
+  --resume은 --out에 이미 있는 사례 가운데 끝까지 잰 것은 그대로 두고 나머지만 잰다. 다시 재는 사례는
+  여섯 갈래가 다 없거나 끝 열까지 쓰지 못한 행이 있거나, I-c 탐색이 제한 + 30초를 넘었거나(탐색 중에 절전 등으로 멈췄다), P 계획이 ILP 제한
+  (600초)을 넘었거나, I-c 탐색의 CPU 시간이 벽시계의 절반에 못 미치는(ic_cpu_sec, 이어 잰 사례부터 남는다) 사례다.
+  끝난 사례는 다시 재지 않는다(같은 사례를 두 번 재어 나은 쪽을 고르지 않는다). 배터리로 돌리지 않는다
+  (탐색 300초가 느려진 CPU에서 덜 나간다)
+
 실행
   python experiments/baseline/integrated_repeat.py --sanity     # 61장 원자료의 P · B0 · B1 재현, I-c 경로 확인(결품은 찍지 않는다)
   python experiments/baseline/integrated_repeat.py --periods "24년 08월,24년 09월" --out <CSV>   # 달을 나눠 함께 돌린다
+  python experiments/baseline/integrated_repeat.py --periods "24년 08월,24년 09월" --out <CSV> --resume   # 멈춘 곳부터
   python experiments/baseline/integrated_repeat.py --summary-only <CSV> [<CSV> ...]
 """
 import argparse
 import contextlib
 import io
+import os
 import sys
 import time
 from pathlib import Path
@@ -62,6 +71,9 @@ GAIN_SHARE = 0.05                  # 결품 개선: 평균 감소가 현행 효�
 NONINF_SHARE = 0.05                # 비열등: 평균 증가가 현행 효과의 5% 이하
 P_LEVEL = 0.05
 REFERENCE_CSV = ROOT / "data" / "exp61_f6_impact_1026.csv"   # 61장 원자료(원고 6장 자의 P · B0 · B1)
+OVERRUN_SEC = 30                   # 중단 처리: I-c 탐색이 제한보다 이만큼 넘게 걸렸으면 탐색 중에 멈췄던 것
+ILP_LIMIT_SEC = 600                # 중단 처리: ilp.SOLVER_TIME_LIMIT_SEC. P 계획이 이보다 길면 ILP가 제한에 걸렸을 수 있다
+CPU_SHARE_MIN = 0.5                # 중단 처리: I-c 탐색의 CPU 시간 / 벽시계가 이보다 작으면 탐색 중에 멈췄던 것
 
 
 def stops_frame(routes) -> pd.DataFrame:
@@ -119,10 +131,10 @@ def run_case(bc, step1, solver, net, base, period, duration, seed, limit_sec):
     init_c, _left = mc.to_unit_routes(trimmed)
     build_sec = time.time() - t2
     progress = []
-    t3 = time.time()
+    t3, c3 = time.time(), time.process_time()
     sol_c, _s_obj, _e_obj, ic_status = ig.solve_units(mc, K, init_c, limit_sec, optional=True,
                                                       hard_budget=True, progress=progress)
-    solve_sec = time.time() - t3
+    solve_sec, solve_cpu = time.time() - t3, time.process_time() - c3     # 절전이면 벽시계만 간다
     ic_routes = [mc.to_stops(r) for r in sol_c] if sol_c else trimmed
     if not sol_c:
         ic_status += " · 출발해를 그대로 쓴다"
@@ -155,6 +167,7 @@ def run_case(bc, step1, solver, net, base, period, duration, seed, limit_sec):
             "ic_status": ic_status if arm == "I-c" else "",
             "ic_build_sec": build_sec if arm == "I-c" else np.nan,
             "ic_solve_sec": solve_sec if arm == "I-c" else np.nan,
+            "ic_cpu_sec": solve_cpu if arm == "I-c" else np.nan,
             "ic_best_sec": best_sec if arm == "I-c" else np.nan,
             "ic_solutions": n_solutions if arm == "I-c" else np.nan,
             "limit_sec": limit_sec,
@@ -257,6 +270,39 @@ def summarize(frame: pd.DataFrame) -> None:
 
 # ---------------------------------------------------------------- 실행
 
+def finished_cases(frame: pd.DataFrame) -> set:
+    """이어 잴 때 다시 재지 않을 사례(달, 씨앗, 회차). 규칙은 맨 위 docstring의 '중단 처리'."""
+    done = set()
+    for key, g in frame.groupby(KEYS, sort=False):
+        if (set(g["arm"]) != set(ARMS) or len(g) != len(ARMS) or g["stockout_after"].isna().any()
+                or g["limit_sec"].isna().any() or g["limit_sec"].nunique() != 1):
+            continue                                    # 갈래가 모자라거나 겹치거나, 끝 열까지 쓰지 못한 줄이 있다
+        ic = g[g["arm"] == "I-c"].iloc[0]
+        p = g[g["arm"] == "P"].iloc[0]
+        if pd.isna(ic["ic_solve_sec"]) or pd.isna(p["plan_sec"]):
+            continue
+        if ic["ic_solve_sec"] > ic["limit_sec"] + OVERRUN_SEC or p["plan_sec"] > ILP_LIMIT_SEC:
+            continue
+        cpu = ic.get("ic_cpu_sec", np.nan)
+        if pd.notna(cpu) and cpu < CPU_SHARE_MIN * ic["ic_solve_sec"]:
+            continue
+        done.add(tuple(key))
+    return done
+
+
+def save_rows(rows: list, out: str) -> None:
+    """사례마다 통째로 다시 쓴다. 임시 파일에 쓴 뒤 바꿔 넣어, 쓰는 도중에 멈춰도 앞 사례들이 남는다."""
+    tmp = f"{out}.tmp"
+    pd.DataFrame(rows).to_csv(tmp, index=False, encoding="utf-8")
+    for _ in range(10):                  # 윈도우에서는 누가 결과 파일을 열고 있으면 바꿔 넣지 못한다
+        try:
+            os.replace(tmp, out)
+            return
+        except PermissionError:
+            time.sleep(1)
+    os.replace(tmp, out)
+
+
 def prepare():
     with contextlib.redirect_stdout(io.StringIO()):
         bc = load_baseline()
@@ -308,6 +354,8 @@ def main() -> int:
     parser.add_argument("--out", default="", help="사례별 결과 CSV(사례마다 덮어써 중간 결과를 남긴다)")
     parser.add_argument("--sanity", action="store_true", help="61장 재현과 I-c 경로만 확인한다")
     parser.add_argument("--summary-only", nargs="+", default=None, help="이미 만든 CSV(여럿 가능)로 판정만 다시")
+    parser.add_argument("--resume", action="store_true",
+                        help="--out에서 끝까지 잰 사례는 두고 나머지만 잰다(중단 처리)")
     args = parser.parse_args()
 
     if args.summary_only:
@@ -316,22 +364,46 @@ def main() -> int:
     if args.sanity:
         return sanity()
 
-    bc, step1, solver = prepare()
     periods = [p.strip() for p in args.periods.split(",") if p.strip()]
-    rows = []
+    rows, done = [], set()
+    if args.resume:
+        if not args.out:
+            raise SystemExit("--resume에는 --out이 필요합니다.")
+        if os.path.exists(args.out):
+            prev = pd.read_csv(args.out)
+            done = finished_cases(prev)
+            kept = prev[[tuple(k) in done for k in prev[KEYS].itertuples(index=False)]]
+            if not kept.empty and set(kept["limit_sec"].astype(int)) != {args.limit_sec}:
+                raise SystemExit(f"{args.out}의 탐색 시간이 --limit-sec {args.limit_sec}와 다릅니다.")
+            rows = kept.to_dict("records")
+            print(f"[이어 재기] {args.out}: 끝난 사례 {len(done)}개는 두고, "
+                  f"{len(prev[KEYS].drop_duplicates()) - len(done)}개는 다시 잰다", flush=True)
+    todo = [(p, s, d) for p in periods for d in ig.DAY_ROUNDS for s in SEEDS if (p, s, d) not in done]
+    if not todo:
+        print("남은 사례가 없습니다.")          # 판정을 찍지 않는다: 다 모이기 전에는 결과를 보지 않는다
+        return 0
+    print(f"남은 사례 {len(todo)}개", flush=True)
+
+    bc, step1, solver = prepare()
     started = time.time()
     for period in periods:
+        if all((period, s, d) in done for d in ig.DAY_ROUNDS for s in SEEDS):
+            continue
         bc.reset_population_guard()
         net, st_info, _w = bc.load_inputs(period, CANONICAL_RUN_LABEL, "weekday", 0, "")
         for duration in ig.DAY_ROUNDS:
+            if all((period, s, duration) in done for s in SEEDS):
+                continue
             base = bc.build_candidates(net, st_info, duration, None, pd.DataFrame(), 0, step1)
             if base.empty:
                 print(f"[건너뜀] {period} {duration}: 작업 대상 없음")
                 continue
             for seed in SEEDS:
+                if (period, seed, duration) in done:
+                    continue
                 rows.extend(run_case(bc, step1, solver, net, base, period, duration, seed, args.limit_sec))
                 if args.out:
-                    pd.DataFrame(rows).to_csv(args.out, index=False, encoding="utf-8")
+                    save_rows(rows, args.out)
         print(f"[{period}] 끝 · 누적 {time.time() - started:.0f}초", flush=True)
     if not rows:
         raise SystemExit("결과가 없습니다.")
