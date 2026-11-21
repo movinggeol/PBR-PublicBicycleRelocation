@@ -618,3 +618,27 @@ def test_기준_표를_주지_않으면_예전_안내_그대로다():
     assert row["advice"] == "4대가 빕니다. 같은 군집에 여유가 없으니 내려놓을 곳에서 그만큼 덜 내리세요"
     with_ref = orders.compare_stock(work, live, reference=_reference(N=(5.0, 10)))
     assert with_ref[["status", "possible"]].equals(orders.compare_stock(work, live)[["status", "possible"]])
+
+
+def test_관제_대조_지시서도_비고_칸에_할_일_안내를_보인다(client, monkeypatch):
+    """1.26.444까지 관제의 대조 표는 비고 칸에 판정 이유(`note`)만 그려, 같은 군집 · 계획 밖 안내가 현장 앱에만
+    보였다(사용자 결정 2026-11-21 *'넣어라'*). 가나 대여소(ST0010)에 2대뿐이라 4대가 비고, 같은 군집에 다른 수거지가 없다."""
+    from html import unescape
+
+    def fake_load(table, run_label=None, duration=None):
+        if table == "vrp_plan":
+            return VRP.copy(), "db"
+        if table == "pick_drop":
+            return CANDIDATES.copy(), "db"
+        if table == "rebalance_plan":
+            return _reference(ST0010=(14.0, 10), ST0020=(7.0, 10), ST0030=(11.0, 8), ST0099=(5.0, 10)), "db"
+        return pd.DataFrame(), "none"
+
+    monkeypatch.setattr(orders.store, "load", fake_load)
+    monkeypatch.setattr(tashu, "fetch_stations", lambda timeout=30: _near_live(
+        ST0010=(0, 0, 2), ST0020=(0.02, 0, 1), ST0030=(0.04, 0, 15), ST0099=(0.0027, 0, 9)))
+
+    html = unescape(client.get("/orders/live?run_label=R&duration=_05_10").text)
+    assert '<span class="advice">4대가 빕니다. 같은 군집에 여유가 없으니 계획 밖인 가까운 ST0099 대여소(300m)에서 ' \
+           '4대 더 실어 메우세요</span>' in html, "관제 대조 표에 할 일 안내가 없다"
+    assert "6대 중 2대만 실을 수 있습니다" in html, "판정 이유(note)는 그대로 남아야 한다"

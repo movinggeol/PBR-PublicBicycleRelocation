@@ -151,7 +151,8 @@
   .sheet table.cmp-table th:nth-child(10) { width: 52px; }  /* 차이 */
   .sheet table.cmp-table th:nth-child(11) { width: 52px; }  /* 가능 */
   .sheet table.cmp-table th:nth-child(12) { width: 72px; }  /* 판정 */
-  .sheet table.cmp-table th:nth-child(13) { width: 130px; } /* 비고 */
+  .sheet table.cmp-table th:nth-child(13) { width: 190px; } /* 비고 — 판정 이유 아래 할 일 안내까지(1.26.445).
+     190이 상한이다: 열 합이 1,100px이고 표를 담는 상자는 데스크톱 폭에서 늘 1,102px라, 200이면 8px 넘쳐 가로 스크롤이 생겼다(실측) */
   /* max-width는 <td>에 직접 걸면 auto 표 레이아웃이 무시하고 남는 폭을
      도로 채워 넣는다 — <td> 안의 블록 요소에 걸어야 실제로 먹힌다. */
   .sheet td.station .station-name {
@@ -163,6 +164,9 @@
   .sheet td.station .hint { display: block; white-space: nowrap; word-break: keep-all; }
   /* 대조 표는 대여소 열을 210px로 넓혔다(2026-11-07): 이름이 석 줄로 접히던 것을 한두 줄로. */
   .sheet table.cmp-table td.station .station-name { max-width: 16em; }
+  /* 비고 칸의 할 일 안내(`_suggest_actions`, 1.26.445). 판정 이유(흐린 글자) 아래 줄에 진한 글자로 둔다 —
+     읽고 따를 말이라 흐리게 둘 까닭이 없다. 현장 앱(`m_route.html`의 `.advice`)과 같은 자리다. */
+  .sheet table.cmp-table td .advice { display: block; color: var(--ink); margin-top: 2px; }
 
   /* 복사 단추 둘("좌표"·"이름")이 한 줄에 서야 한다. 이름 칸은 .station-name의
      max-width: 10em에 묶여 110px까지 좁아지는데, 단추 둘이 50px+50px+간격이라
@@ -378,7 +382,10 @@
       <td class="num muted" data-label="차이">{% if stop.delta is not none %}{{ "%+d" | format(stop.delta) }}{% else %}-{% endif %}</td>
       <td class="num" data-label="가능">{{ stop.possible if stop.possible is not none else "-" }}</td>
       <td data-label="판정">{{ stop.status or "-" }}</td>
-      <td class="wrap muted" data-label="비고">{{ stop.note or "" }}</td>
+      {# 판정 이유와 할 일 안내를 `.row-value` 하나로 감싼다 — 좁은 화면의 카드에서 둘이 따로 flex 항목이 되면
+         좌우 두 칸으로 갈라졌다(390px 실측, 1.26.445). base.html의 같은 관례(1.26.284). #}
+      <td class="wrap muted" data-label="비고"><span class="row-value">{{ stop.note or "" }}
+        {%- if stop.advice %}<span class="advice">{{ stop.advice }}</span>{% endif %}</span></td>
     </tr>
     {% endfor %}
     </tbody>
